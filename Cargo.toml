@@ -1,0 +1,16 @@
+[package]
+name = "mosaic"
+version = "0.1.0"
+authors = ["Aram Drevekenin <aram@poor.dev>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+termios = "0.3"
+libc = "0.2"
+nix = "0.17.0"
+signal-hook = "0.1.10"
+unicode-width = "0.1.8"
+unicode-truncate = "0.1.1"
+vte = "0.8.0"
