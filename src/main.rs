@@ -1,6 +1,7 @@
 use std::{mem, io};
+use std::cmp::max;
 use std::io::{stdin, stdout, Read, Write};
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use nix::unistd::{read, write, ForkResult};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::sys::termios::SpecialCharacterIndices::{VMIN, VTIME};
@@ -64,18 +65,6 @@ fn into_raw_mode(pid: RawFd) {
 
 }
 
-fn change_vmin_and_vtime(pid: RawFd) {
-    let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
-    // tio.control["VMIN"] = 1;
-    tio.control_chars[VMIN as usize] = 0;
-    tio.control_chars[VTIME as usize] = 0;
-    match tcsetattr(pid, SetArg::TCSANOW, &mut tio) {
-        Ok(_) => {},
-        Err(e) => panic!("error {:?}", e)
-    };
-
-}
-
 fn set_baud_rate(pid: RawFd) {
     let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
     cfsetospeed(&mut tio, BaudRate::B115200).expect("could not set baud rate");
@@ -104,7 +93,7 @@ pub fn set_terminal_size_using_fd(fd: RawFd, ws: &Winsize) {
     use libc::ioctl;
     use libc::TIOCSWINSZ;
 
-    let mut winsize = Winsize {
+    let winsize = Winsize {
         ws_row: ws.ws_row,
         ws_col: ws.ws_col,
         ws_xpixel: 0,
@@ -115,7 +104,6 @@ pub fn set_terminal_size_using_fd(fd: RawFd, ws: &Winsize) {
 
 
 fn spawn_terminal () -> (RawFd, RawFd, Winsize) {
-    // let ws = Winsize { ws_row: 11, ws_col: 116, ws_xpixel: 0, ws_ypixel: 0 };
     let ws = get_terminal_size_using_fd(0);
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(Some(&ws), None) {
@@ -130,6 +118,7 @@ fn spawn_terminal () -> (RawFd, RawFd, Winsize) {
                         // TODO: why does $SHELL not work?
                         // Command::new("$SHELL").spawn().expect("failed to spawn");
                         set_baud_rate(0);
+                        set_terminal_size_using_fd(0, &ws);
                         Command::new("/usr/bin/fish").spawn().expect("failed to spawn");
                         ::std::thread::sleep(std::time::Duration::from_millis(300000));
                         panic!("I am secondary, why?!");
@@ -145,207 +134,237 @@ fn spawn_terminal () -> (RawFd, RawFd, Winsize) {
     (pid_primary, pid_secondary, ws)
 }
 
-fn to_utf8_lines(buf: &[u8]) -> Vec<String> {
-    let buf_utf8 = String::from_utf8(buf.to_vec()).unwrap();
-    let mut lines: Vec<String> = buf_utf8.lines().map(|l| l.to_string()).collect();
-    for i in 0..lines.len() - 1 {
-//        lines[i].push('\r');
-//        lines[i].push('\n'); // TODO: remove these?
-    }
-    lines
+struct TerminalOutput {
+    pub characters: Vec<char>, // we use a vec rather than a string here because one char can take up multiple characters in a string
+    current_index_in_characters: usize,
+    cursor_position: usize,
+    newline_indices: HashSet<usize>,
+    linebreak_indices: HashSet<usize>,
+    display_rows: u16,
+    display_cols: u16,
+    unhandled_ansi_codes: HashMap<usize, String>,
 }
 
-
-/// A type implementing Perform that just logs actions
-struct CharacterCounter {
-    pub characters: u16
-}
-
-impl CharacterCounter {
-    pub fn new() -> CharacterCounter {
-        CharacterCounter {
-            characters: 0
+impl TerminalOutput {
+    pub fn new () -> TerminalOutput {
+        TerminalOutput {
+            characters: vec![],
+            current_index_in_characters: 0,
+            cursor_position: 0,
+            newline_indices: HashSet::new(),
+            linebreak_indices: HashSet::new(),
+            display_rows: 0,
+            display_cols: 0,
+            unhandled_ansi_codes: HashMap::new()
         }
     }
+    pub fn set_size(&mut self, ws: &Winsize) {
+        let orig_cols = self.display_cols;
+        self.display_rows = ws.ws_row;
+        self.display_cols = ws.ws_col;
+        if orig_cols != self.display_cols && orig_cols != 0 {
+            self.reflow_lines();
+        }
+    }
+    fn reflow_lines (&mut self) {
+        self.linebreak_indices.clear();
+        let mut x = 0;
+        for (i, _c) in self.characters.iter().enumerate() {
+            if self.newline_indices.contains(&i) {
+                x = 0;
+            } else if x == self.display_cols && i < self.cursor_position {
+                self.linebreak_indices.insert(i);
+                x = 0;
+            }
+            x += 1;
+        }
+    }
+    pub fn read_buffer_as_lines (&mut self) -> String {
+        let mut output = String::new();
+
+        for (i, c) in self.characters.iter().enumerate() {
+            if self.newline_indices.contains(&i) || self.linebreak_indices.contains(&i) {
+                output.push('\r');
+                output.push('\n');
+            }
+            if let Some(code) = self.unhandled_ansi_codes.get(&i) {
+                output.push_str(code);
+            }
+            output.push(*c);
+        }
+
+        self.current_index_in_characters = self.characters.len();
+        if self.cursor_position < self.characters.len() {
+            let start_of_last_line = self.index_of_beginning_of_last_line();
+            let difference_from_last_newline = self.cursor_position - start_of_last_line;
+            output.push_str(&format!("\r\u{1b}[{}C", difference_from_last_newline));
+        }
+        output
+    }
+    fn index_of_beginning_of_last_line (&self) -> usize {
+        let last_newline_index = if self.newline_indices.is_empty() {
+            None
+        } else {
+            // return last
+            Some(self.newline_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i })) // TODO: better?
+        };
+        let last_linebreak_index = if self.linebreak_indices.is_empty() {
+            None
+        } else {
+            // return last
+            Some(self.linebreak_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i })) // TODO: better?
+        };
+        match (last_newline_index, last_linebreak_index) {
+            (Some(last_newline_index), Some(last_linebreak_index)) => {
+                max(last_newline_index, last_linebreak_index)
+            },
+            (None, Some(last_linebreak_index)) => last_linebreak_index,
+            (Some(last_newline_index), None) => last_newline_index,
+            (None, None) => 0
+        }
+    }
+    fn add_newline (&mut self) {
+        self.newline_indices.insert(self.characters.len()); // -1?
+        self.cursor_position = self.characters.len(); // -1?
+    }
+    fn move_to_beginning_of_line (&mut self) {
+        // TODO: this always moves to the beginning of the non-wrapped line... is this the right
+        // behaviour?
+        let last_newline_index = if self.newline_indices.is_empty() {
+            0
+        } else {
+            // return last
+            self.newline_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i }) // TODO: better?
+        };
+        self.cursor_position = last_newline_index;
+    }
 }
 
-impl vte::Perform for CharacterCounter {
+const DEBUGGING: bool = false;
+
+impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
-        self.characters += 1;
-        // println!("[print] {:?}", c);
+        if DEBUGGING {
+            println!("\r[print] {:?}", c);
+        } else {
+            if self.characters.len() == self.cursor_position {
+                self.characters.push(c);
+            } else if self.characters.len() > self.cursor_position {
+                self.characters.splice(self.cursor_position..=self.cursor_position, [c].iter().copied()); // TODO: better
+            } else {
+                for _ in self.characters.len()..self.cursor_position {
+                    self.characters.push(' ');
+                };
+                self.characters.push(c);
+            }
+
+            let start_of_last_line = self.index_of_beginning_of_last_line();
+            let difference_from_last_newline = self.cursor_position - start_of_last_line;
+            if difference_from_last_newline == self.display_cols as usize {
+                self.linebreak_indices.insert(self.cursor_position);
+            }
+            self.cursor_position += 1;
+        }
     }
 
     fn execute(&mut self, byte: u8) {
-        // println!("[execute] {:02x}", byte);
+        if DEBUGGING {
+            if byte == 13 { // 0d, carriage return
+                println!("\rEXECUTE CARRIAGE RETURN");
+            } else if byte == 10 { // 0a, newline
+                println!("\rEXECUTE NEW LINE");
+            } else if byte == 08 { // backspace
+                println!("\rEXECUTE BACKSPACE");
+            } else {
+                println!("\r[execute] {:02x}", byte);
+            }
+        } else {
+            if byte == 13 { // 0d, carriage return
+                self.move_to_beginning_of_line();
+            } else if byte == 08 { // backspace
+                self.cursor_position -= 1;
+                self.unhandled_ansi_codes.remove(&self.cursor_position);
+            } else if byte == 10 { // 0a, newline
+                self.add_newline();
+            }
+        }
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
-//        println!(
-//            "[hook] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
-//            params, intermediates, ignore, c
-//        );
+        if DEBUGGING {
+            println!(
+                "\r[hook] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
+                params, intermediates, ignore, c
+            );
+        }
     }
 
     fn put(&mut self, byte: u8) {
-        // println!("[put] {:02x}", byte);
+        if DEBUGGING {
+            println!("\r[put] {:02x}", byte);
+        }
     }
 
     fn unhook(&mut self) {
-        // println!("[unhook]");
+        if DEBUGGING {
+            println!("\r[unhook]");
+        }
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-        // println!("[osc_dispatch] params={:?} bell_terminated={}", params, bell_terminated);
+        if DEBUGGING {
+            println!("\r[osc_dispatch] params={:?} bell_terminated={}", params, bell_terminated);
+        }
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
-//        println!(
-//            "[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
-//            params, intermediates, ignore, c
-//        );
+        if DEBUGGING {
+            println!(
+                "\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
+                params, intermediates, ignore, c
+            );
+        } else {
+            if c == 'm' {
+                // change foreground color (only?)
+                if params.len() == 1 && params[0] == 0 {
+                    // eg. \u{1b}[m
+                    self.unhandled_ansi_codes.insert(self.cursor_position, String::from("\u{1b}[m"));
+                } else {
+                    // eg. \u{1b}[38;5;0m
+                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                    self.unhandled_ansi_codes.insert(self.cursor_position, format!("\u{1b}[{}m", param_string));
+                }
+            } else if c == 'C' { // move cursor
+                self.cursor_position += params[0] as usize; // TODO: negative value?
+            } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
+                if params[0] == 0 {
+                    for i in self.cursor_position..self.characters.len() {
+                        self.characters[i] = ' ';
+                        self.unhandled_ansi_codes.remove(&i);
+                    }
+                }
+                // TODO: implement 1 and 2
+            } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+                if params[0] == 0 {
+                    for i in self.cursor_position..self.characters.len() {
+                        self.characters[i] = ' ';
+                        self.unhandled_ansi_codes.remove(&i);
+                    }
+                }
+                // TODO: implement 1, 2, and 3
+            }
+        }
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
-//        println!(
-//            "[esc_dispatch] intermediates={:?}, ignore={:?}, byte={:02x}",
-//            intermediates, ignore, byte
-//        );
+        if DEBUGGING {
+            println!(
+                // "\r[esc_dispatch] intermediates={:?}, ignore={:?}, byte={:02x}",
+                "\r[esc_dispatch] intermediates={:?}, ignore={:?}, byte={:?}",
+                intermediates, ignore, byte
+            );
+        }
     }
-}
-
-
-fn wrap_row (row: &str, columns: u16) -> Vec<String> {
-    // TODO:
-    // * create a new character_counter
-    // * loop through characters in row
-    // * add each character to the character_counter
-    // * once the counter reaches columns, push line into lines
-    let row = row.as_bytes();
-    let mut wrapped_lines = vec![];
-    let mut vte_parser = vte::Parser::new();
-    let mut character_counter = CharacterCounter::new();
-    let mut index_in_row = 0;
-    let mut line = vec![];
-    loop {
-        let character = row[index_in_row];
-        line.push(character);
-        vte_parser.advance(&mut character_counter, character);
-        if character_counter.characters == columns * (wrapped_lines.len() as u16 + 1) {
-            let mut string_line = String::from_utf8(line.clone()).expect("could not create utf8 string");
-//            string_line.push('\r');
-//            string_line.push('\n');
-            wrapped_lines.push(string_line);
-            line.clear();
-        }
-        if index_in_row == row.len() - 1 {
-            if line.len() > 0 {
-                let mut string_line = String::from_utf8(line.clone()).expect("could not create utf8 string");
-                // string_line.push('\n');
-                // string_line.push('\r');
-                wrapped_lines.push(string_line);
-                line.clear(); // TODO: we don't need this?
-            }
-            break;
-        }
-        index_in_row += 1;
-    }
-    // println!("\rwrapped_lines {:?}", wrapped_lines);
-    wrapped_lines
-
-
-
-
-//    let mut wrapped_lines = vec![];
-//    let mut line = String::new();
-//    let mut index_in_row = 0;
-//    loop {
-//        let (line, w) = &row.get(index_in_row..).unwrap().unicode_truncate(columns as usize);
-//        // let rest_of_line = &row.get(line.chars().count()..).unwrap();
-//        index_in_row += line.chars().count();
-//        let mut wrapped_line = String::from(*line);
-//        if index_in_row < row.chars().count() {
-//            // this is not the last row, so add newline
-//            wrapped_line.push('\r');
-//            wrapped_line.push('\n');
-//        }
-//        // wrapped_lines.push(String::from(*line));
-//        wrapped_lines.push(wrapped_line);
-//        if index_in_row >= row.chars().count() {
-//            break;
-//        }
-//    }
-//    wrapped_lines
-}
-
-fn lines_in_buffer(buffer: &Vec<String>, ws: &Winsize) -> Vec<u8> {
-    let column_count = ws.ws_col;
-    let row_count = ws.ws_row;
-    let mut rows = VecDeque::new();
-
-    if buffer.is_empty() {
-        return vec![]
-    };
-    let carriage_return = String::from("\r");
-    let mut index_in_buffer = buffer.len() - 1;
-    loop {
-        if rows.len() >= row_count as usize {
-            break;
-        }
-        let current_row = &buffer[index_in_buffer];
-        let mut current_row_wrapped = wrap_row(current_row, column_count);
-        current_row_wrapped.reverse();
-        for mut line in current_row_wrapped {
-            if rows.len() < row_count as usize {
-                line.push('\r');
-                line.push('\n');
-                rows.push_front(line);
-            }
-        }
-        index_in_buffer -= 1;
-        if index_in_buffer == 0 {
-            break;
-        }
-        // rows.push_front(String::from("\r\n"));
-    }
-    let rows_length = rows.len();
-    rows[rows_length - 1].pop(); // remove last \n (ugly hack, TODO better)
-//    println!("\rrow_count, rows.len {:?}, {:?}", row_count, rows.len());
-//    for row in rows {
-//        println!("\rrow: {:?}", row);
-//    }
-//    ::std::process::exit(2);
-
-    rows.push_front(carriage_return); // TODO: ??
-    let bytes: Vec<u8> = rows.iter().fold(vec![], |mut acc, l| {
-        for byte in l.as_bytes() {
-            acc.push(*byte)
-        }
-        acc
-    });
-    bytes
-}
-
-fn create_empty_lines(ws: &Winsize) -> Vec<u8> {
-    let columns = ws.ws_col;
-    let rows = ws.ws_row;
-    let mut lines = vec![];
-    let carriage_return = String::from("\r");
-    lines.append(carriage_return.as_bytes().to_vec().as_mut());
-    let mut empty_line = String::new();
-    let empty_char = ' ';
-    // for _i in 0..columns - 1 {
-    for _i in 0..columns {
-        empty_line.push(empty_char);
-    }
-    empty_line.push('\n');
-    for _i in 0..rows {
-        let mut line = vec![];
-        let carriage_return = String::from("\r");
-        line.append(carriage_return.as_bytes().to_vec().as_mut());
-        line.append(empty_line.as_bytes().to_vec().as_mut());
-        lines.append(&mut line);
-    }
-    lines
 }
 
 // sigwinch stuff
@@ -376,45 +395,55 @@ pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
 fn main() {
     let mut active_threads = vec![];
 
-    let (first_terminal_pid, pid_secondary, first_terminal_ws): (RawFd, RawFd, Winsize) = spawn_terminal();
+    let (first_terminal_pid, pid_secondary, mut first_terminal_ws): (RawFd, RawFd, Winsize) = spawn_terminal();
     let (second_terminal_pid, pid_secondary, second_terminal_ws): (RawFd, RawFd, Winsize) = spawn_terminal();
     let stdin = io::stdin();
     into_raw_mode(0);
     set_baud_rate(0);
     ::std::thread::sleep(std::time::Duration::from_millis(2000));
     let active_terminal = Arc::new(Mutex::new(first_terminal_pid));
-    let terminal1_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
-    let terminal2_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
+
     let first_terminal_ws = Arc::new(Mutex::new(first_terminal_ws));
     let second_terminal_ws = Arc::new(Mutex::new(second_terminal_ws));
+
+    let terminal1_output = Arc::new(Mutex::new(TerminalOutput::new()));
+    let terminal2_output = Arc::new(Mutex::new(TerminalOutput::new()));
+
     active_threads.push(
         thread::Builder::new()
             .name("terminal_stdout_handler".to_string())
             .spawn({
-                let active_terminal = active_terminal.clone();
-                let terminal1_buffer = terminal1_buffer.clone();
+
+                let mut vte_parser = vte::Parser::new();
+
+                let terminal1_output = terminal1_output.clone();
+                let first_terminal_ws = first_terminal_ws.clone();
                 move || {
-                    let mut read_buffer = vec![];
+                    let mut buffer_has_unread_data = true;
                     loop {
                         match read_from_pid(first_terminal_pid) {
-                            Some(mut read_bytes) => {
-                                read_buffer.append(&mut read_bytes);
+                            Some(read_bytes) => {
+                                if DEBUGGING {
+                                    println!("\n\rread_bytes: {:?}", String::from_utf8(read_bytes.to_vec()).unwrap());
+                                }
+                                for byte in read_bytes.iter() {
+                                    let first_terminal_ws = first_terminal_ws.lock().unwrap();
+                                    let mut terminal1_output = terminal1_output.lock().unwrap();
+                                    terminal1_output.set_size(&*first_terminal_ws);
+                                    vte_parser.advance(&mut *terminal1_output, *byte);
+                                }
+                                buffer_has_unread_data = true;
                             },
                             None => {
-                                if read_buffer.len() > 0 {
-                                    {
-                                        let mut terminal1_buffer = terminal1_buffer.lock().unwrap();
-                                        let mut lines = to_utf8_lines(&read_buffer);
-                                        terminal1_buffer.append(&mut lines);
-                                    }
-                                    {
-                                        let active_terminal = active_terminal.lock().unwrap();
-                                        if *active_terminal == first_terminal_pid {
-                                            ::std::io::stdout().write_all(&read_buffer).expect("cannot write to stdout");
-                                            ::std::io::stdout().flush().expect("could not flush");
-                                        }
-                                    }
-                                    read_buffer.clear();
+                                if DEBUGGING {
+                                    buffer_has_unread_data = false;
+                                } else if buffer_has_unread_data {
+                                    let mut terminal1_output = terminal1_output.lock().unwrap();
+                                    let data_lines = terminal1_output.read_buffer_as_lines();
+                                    print!("\u{1b}c"); // clear screen
+                                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+                                    ::std::io::stdout().flush().expect("could not flush");
+                                    buffer_has_unread_data = false;
                                 }
                                 ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
                             }
@@ -428,80 +457,42 @@ fn main() {
         thread::Builder::new()
             .name("terminal_stdout_handler2".to_string())
             .spawn({
-                let active_terminal = active_terminal.clone();
-                let terminal2_buffer = terminal2_buffer.clone();
+
+                let mut vte_parser = vte::Parser::new();
+
+                let terminal2_output = terminal2_output.clone();
+                let second_terminal_ws = second_terminal_ws.clone();
                 move || {
-                    let mut read_buffer = vec![];
+                    let mut buffer_has_unread_data = true;
                     loop {
                         match read_from_pid(second_terminal_pid) {
-                            Some(mut read_bytes) => {
-                                read_buffer.append(&mut read_bytes);
+                            Some(read_bytes) => {
+                                if DEBUGGING {
+                                    println!("\n\rread_bytes: {:?}", String::from_utf8(read_bytes.to_vec()).unwrap());
+                                }
+                                for byte in read_bytes.iter() {
+                                    let second_terminal_ws = second_terminal_ws.lock().unwrap();
+                                    let mut terminal2_output = terminal2_output.lock().unwrap();
+                                    terminal2_output.set_size(&*second_terminal_ws);
+                                    vte_parser.advance(&mut *terminal2_output, *byte);
+                                }
+                                buffer_has_unread_data = true;
                             },
                             None => {
-                                if read_buffer.len() > 0 {
-                                    {
-                                        let mut terminal2_buffer = terminal2_buffer.lock().unwrap();
-                                        let mut lines = to_utf8_lines(&read_buffer);
-                                        terminal2_buffer.append(&mut lines);
-                                    }
-                                    {
-                                        let active_terminal = active_terminal.lock().unwrap();
-                                        if *active_terminal == second_terminal_pid {
-                                            ::std::io::stdout().write_all(&read_buffer).expect("cannot write to stdout");
-                                            ::std::io::stdout().flush().expect("could not flush");
-                                        }
-                                    }
-                                    read_buffer.clear();
+                                if DEBUGGING {
+                                    buffer_has_unread_data = false;
+                                } else if buffer_has_unread_data {
+                                    let mut terminal2_output = terminal2_output.lock().unwrap();
+                                    let data_lines = terminal2_output.read_buffer_as_lines();
+                                    print!("\u{1b}c"); // clear screen
+                                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+                                    ::std::io::stdout().flush().expect("could not flush");
+                                    buffer_has_unread_data = false;
                                 }
                                 ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
                             }
                         }
                     }
-                }
-            })
-            .unwrap(),
-    );
-    let (on_sigwinch, cleanup) = sigwinch();
-    active_threads.push(
-        thread::Builder::new()
-            .name("resize_handler".to_string())
-            .spawn({
-                let active_terminal = active_terminal.clone();
-                let first_terminal_ws = first_terminal_ws.clone();
-                let second_terminal_ws = second_terminal_ws.clone();
-                let terminal1_buffer = terminal1_buffer.clone();
-                let terminal2_buffer = terminal2_buffer.clone();
-                move || {
-                    on_sigwinch(Box::new(move || {
-                        let active_terminal = active_terminal.lock().unwrap();
-                        let ws = get_terminal_size_using_fd(0);
-
-                        let empty_lines = create_empty_lines(&ws);
-
-
-                        set_terminal_size_using_fd(*active_terminal, &ws);
-                        if *active_terminal == first_terminal_pid {
-                            let mut first_terminal_ws = first_terminal_ws.lock().unwrap();
-                            *first_terminal_ws = ws;
-
-                            let terminal1_buffer = terminal1_buffer.lock().unwrap();
-                            let new_lines = lines_in_buffer(&*terminal1_buffer, &ws);
-
-                            ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                            ::std::io::stdout().write_all(&new_lines).expect("cannot write to stdout");
-                            ::std::io::stdout().flush().expect("could not flush");
-                        } else {
-                            let mut second_terminal_ws = second_terminal_ws.lock().unwrap();
-                            *second_terminal_ws = ws;
-
-                            let terminal2_buffer = terminal2_buffer.lock().unwrap();
-                            let new_lines = lines_in_buffer(&*terminal2_buffer, &ws);
-
-                            ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                            ::std::io::stdout().write_all(&new_lines).expect("cannot write to stdout");
-                            ::std::io::stdout().flush().expect("could not flush");
-                        }
-                    }));
                 }
             })
             .unwrap(),
@@ -514,73 +505,74 @@ fn main() {
             let mut handle = stdin.lock();
             handle.read(&mut buffer).expect("failed to read stdin");
             if buffer[0] == 10 { // ctrl-j
-                let mut active_terminal = active_terminal.lock().unwrap();
+                let active_terminal = active_terminal.lock().unwrap();
                 temp_ws.ws_col -= 10;
-                let empty_lines = create_empty_lines(&temp_ws);
                 if *active_terminal == first_terminal_pid {
                     let mut first_terminal_ws = first_terminal_ws.lock().unwrap();
                     *first_terminal_ws = temp_ws;
 
-                    let terminal1_buffer = terminal1_buffer.lock().unwrap();
-                    let new_lines = lines_in_buffer(&*terminal1_buffer, &temp_ws);
-
-                    ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                    ::std::io::stdout().write_all(&new_lines).expect("cannot write to stdout");
+                    let mut terminal1_output = terminal1_output.lock().unwrap();
+                    terminal1_output.set_size(&*first_terminal_ws);
+                    let data_lines = terminal1_output.read_buffer_as_lines();
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
                     ::std::io::stdout().flush().expect("could not flush");
-
                     set_terminal_size_using_fd(*active_terminal, &temp_ws);
                 } else {
-                    panic!("not terminal 1");
+                    let mut second_terminal_ws = second_terminal_ws.lock().unwrap();
+                    *second_terminal_ws = temp_ws;
+
+                    let mut terminal2_output = terminal2_output.lock().unwrap();
+                    terminal2_output.set_size(&*second_terminal_ws);
+                    let data_lines = terminal2_output.read_buffer_as_lines();
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+                    ::std::io::stdout().flush().expect("could not flush");
+                    set_terminal_size_using_fd(*active_terminal, &temp_ws);
                 }
                 continue;
             } else if buffer[0] == 11 { // ctrl-k
-                let mut active_terminal = active_terminal.lock().unwrap();
+                let active_terminal = active_terminal.lock().unwrap();
                 temp_ws.ws_col += 10;
-                let empty_lines = create_empty_lines(&temp_ws);
                 if *active_terminal == first_terminal_pid {
                     let mut first_terminal_ws = first_terminal_ws.lock().unwrap();
                     *first_terminal_ws = temp_ws;
 
-                    let terminal1_buffer = terminal1_buffer.lock().unwrap();
-                    let new_lines = lines_in_buffer(&*terminal1_buffer, &temp_ws);
-
-                    ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                    ::std::io::stdout().write_all(&new_lines).expect("cannot write to stdout");
+                    set_terminal_size_using_fd(*active_terminal, &temp_ws);
+                    let mut terminal1_output = terminal1_output.lock().unwrap();
+                    terminal1_output.set_size(&*first_terminal_ws);
+                    let data_lines = terminal1_output.read_buffer_as_lines();
+                    print!("\u{1b}c"); // clear screen
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
                     ::std::io::stdout().flush().expect("could not flush");
+
                 } else {
-                    panic!("not terminal 1");
+                    let mut second_terminal_ws = second_terminal_ws.lock().unwrap();
+                    *second_terminal_ws = temp_ws;
+
+                    let mut terminal2_output = terminal2_output.lock().unwrap();
+                    terminal2_output.set_size(&*second_terminal_ws);
+                    let data_lines = terminal2_output.read_buffer_as_lines();
+                    print!("\u{1b}c"); // clear screen
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+                    ::std::io::stdout().flush().expect("could not flush");
+                    set_terminal_size_using_fd(*active_terminal, &temp_ws);
                 }
                 continue;
             } else if buffer[0] == 16 { // ctrl-p
                 let mut active_terminal = active_terminal.lock().unwrap();
                 if *active_terminal == first_terminal_pid {
                     *active_terminal = second_terminal_pid;
-                    // TODO: this is actually not correct: we need to use the first terminal width to
-                    // clear and the second terminal width to write
-                    let first_terminal_ws = first_terminal_ws.lock().unwrap();
-
-                    let empty_lines = create_empty_lines(&*first_terminal_ws);
-
-                    let second_terminal_ws = second_terminal_ws.lock().unwrap();
-                    let terminal2_buffer = terminal2_buffer.lock().unwrap();
-                    let new_lines = lines_in_buffer(&*terminal2_buffer, &*second_terminal_ws);
-
-                    ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                    ::std::io::stdout().write_all(&new_lines).expect("cannot write to stdout");
-
+                    let mut terminal2_output = terminal2_output.lock().unwrap();
+                    let data_lines = terminal2_output.read_buffer_as_lines();
+                    print!("\u{1b}c"); // clear screen
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
                     ::std::io::stdout().flush().expect("could not flush");
                 } else {
                     *active_terminal = first_terminal_pid;
-                    let second_terminal_ws = second_terminal_ws.lock().unwrap();
-                    let empty_lines = create_empty_lines(&*second_terminal_ws);
 
-                    let first_terminal_ws = first_terminal_ws.lock().unwrap();
-                    let terminal1_buffer = terminal1_buffer.lock().unwrap();
-                    let lines = lines_in_buffer(&*terminal1_buffer, &*first_terminal_ws);
-
-                    ::std::io::stdout().write_all(&empty_lines).expect("cannot write to stdout");
-                    ::std::io::stdout().write_all(&lines).expect("cannot write to stdout");
-
+                    let mut terminal1_output = terminal1_output.lock().unwrap();
+                    let data_lines = terminal1_output.read_buffer_as_lines();
+                    print!("\u{1b}c"); // clear screen
+                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
                     ::std::io::stdout().flush().expect("could not flush");
                 }
                 continue;
