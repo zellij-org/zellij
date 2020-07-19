@@ -103,10 +103,9 @@ pub fn set_terminal_size_using_fd(fd: RawFd, ws: &Winsize) {
 }
 
 
-fn spawn_terminal () -> (RawFd, RawFd, Winsize) {
-    let ws = get_terminal_size_using_fd(0);
+fn spawn_terminal (ws: &Winsize) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
-        match forkpty(Some(&ws), None) {
+        match forkpty(Some(ws), None) {
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
@@ -131,7 +130,7 @@ fn spawn_terminal () -> (RawFd, RawFd, Winsize) {
             }
         }
     };
-    (pid_primary, pid_secondary, ws)
+    (pid_primary, pid_secondary)
 }
 
 struct TerminalOutput {
@@ -392,12 +391,31 @@ pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
     (Box::new(on_winch), Box::new(cleanup))
 }
 
+fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
+    let width_of_each_half = (rect.ws_col - 1) / 2;
+    let mut first_rect = rect.clone();
+    let mut second_rect = rect.clone();
+    first_rect.ws_col = width_of_each_half;
+    second_rect.ws_col = width_of_each_half;
+    (first_rect, second_rect)
+}
+
 fn main() {
     let mut active_threads = vec![];
 
-    let (first_terminal_pid, pid_secondary, mut first_terminal_ws): (RawFd, RawFd, Winsize) = spawn_terminal();
-    let (second_terminal_pid, pid_secondary, second_terminal_ws): (RawFd, RawFd, Winsize) = spawn_terminal();
+    // TODO (render two terminals side by side):
+    // * create 2 fds, each 1/2 the size of the screen (with 1 space in the middle) - DONE
+    // * join both stdout_handlers into a render loop 
+    // * render loop should read_from_pid until both are None, then it should sleep for 50 ms
+    // * it should get the line output as a vector of padded lines
+    // * it should loop through the vector, join <index> line (with 1 space in the middle) and
+    // print it to screen
+    let full_screen_ws = get_terminal_size_using_fd(0);
+    let (first_terminal_ws, second_terminal_ws) = split_horizontally_with_gap(&full_screen_ws);
+    let (first_terminal_pid, pid_secondary): (RawFd, RawFd) = spawn_terminal(&first_terminal_ws);
+    let (second_terminal_pid, pid_secondary): (RawFd, RawFd) = spawn_terminal(&second_terminal_ws);
     let stdin = io::stdin();
+    let mut temp_ws = first_terminal_ws.clone();
     into_raw_mode(0);
     set_baud_rate(0);
     ::std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -498,7 +516,6 @@ fn main() {
             .unwrap(),
     );
 
-    let mut temp_ws = get_terminal_size_using_fd(0);
     loop {
 		let mut buffer = [0; 1];
         {
