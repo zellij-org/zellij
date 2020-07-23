@@ -1,4 +1,5 @@
 use std::{mem, io};
+use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{stdin, stdout, Read, Write};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -30,7 +31,6 @@ use unicode_width::UnicodeWidthStr;
 use unicode_truncate::UnicodeTruncateStr;
 use vte;
 
-// fn read_from_pid (pid: RawFd) -> (usize, [u8; 115200]) {
 fn read_from_pid (pid: RawFd) -> Option<Vec<u8>> {
     let mut read_buffer = [0; 115200];
     let read_result = read(pid, &mut read_buffer);
@@ -133,9 +133,51 @@ fn spawn_terminal (ws: &Winsize) -> (RawFd, RawFd) {
     (pid_primary, pid_secondary)
 }
 
+#[derive(Clone, Debug)]
 struct TerminalCharacter {
     pub character: char,
     pub ansi_code: Option<String>,
+}
+
+impl PartialEq for TerminalCharacter {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.ansi_code, &other.ansi_code) {
+            (Some(self_code), Some(other_code)) => {
+                self_code == other_code && self.character == other.character
+            },
+            (None, None) => {
+                self.character == other.character
+            }
+            _ => {
+                false
+            }
+        }
+    }
+}
+
+impl Eq for TerminalCharacter {}
+
+impl TerminalCharacter {
+    pub fn new (character: char) -> Self {
+        TerminalCharacter {
+            character,
+            ansi_code: None
+        }
+    }
+    pub fn ansi_code(mut self, ansi_code: String) -> Self {
+        self.ansi_code = Some(ansi_code);
+        self
+    }
+}
+
+
+impl Display for TerminalCharacter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.ansi_code {
+            Some(code) => write!(f, "{}{}", code, self.character),
+            None => write!(f, "{}", self.character)
+        }
+    }
 }
 
 struct TerminalOutput {
@@ -191,39 +233,47 @@ impl TerminalOutput {
             x += 1;
         }
     }
-    pub fn read_buffer_as_lines (&mut self) -> Vec<String> {
-        let mut output: VecDeque<String> = VecDeque::new();
+    // pub fn read_buffer_as_lines (&mut self) -> Vec<String> {
+    pub fn read_buffer_as_lines (&mut self) -> Vec<Vec<TerminalCharacter>> {
+        // let mut output: VecDeque<String> = VecDeque::new();
+        let mut output: VecDeque<Vec<TerminalCharacter>> = VecDeque::new();
         let mut i = self.characters.len();
-        let mut current_line = String::new();
-        let mut number_of_control_chars_in_line = 0;
+        let mut current_line: VecDeque<TerminalCharacter> = VecDeque::new();
+        // let mut number_of_control_chars_in_line = 0;
         loop {
             i -= 1;
             let character = self.characters.get(i).unwrap();
-            current_line.insert(0, *character);
+            let mut terminal_character = TerminalCharacter::new(*character);
             if let Some(code) = self.unhandled_ansi_codes.get(&i) {
-                current_line.insert_str(0, code);
-                number_of_control_chars_in_line += code.len();
+                terminal_character.ansi_code = Some(code.clone());
+                // current_line.insert_str(0, code);
+                // number_of_control_chars_in_line += code.len();
             }
+            current_line.push_front(terminal_character);
+            // current_line.insert(0, *character);
             if self.newline_indices.contains(&i) || self.linebreak_indices.contains(&i) {
                 // pad line
-                for _ in current_line.chars().count() - number_of_control_chars_in_line..self.display_cols as usize {
-                    current_line.push(' ');
+                // for _ in current_line.chars().count() - number_of_control_chars_in_line..self.display_cols as usize {
+                for _ in current_line.len()..self.display_cols as usize {
+                    current_line.push_back(TerminalCharacter::new(' '));
                 }
-                output.push_front(current_line.clone());
-                current_line.clear();
-                number_of_control_chars_in_line = 0;
+                output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+                // output.push_front(Vec::from(current_line.clone()));
+                // current_line.clear();
+                // number_of_control_chars_in_line = 0;
             }
             if i == 0 || output.len() == self.display_rows as usize {
                 break;
             }
         }
         if output.len() < self.display_rows as usize {
-            let mut empty_line = String::new();
+            // let mut empty_line = String::new();
+            let mut empty_line = vec![];
             for _ in 0..self.display_cols {
-                empty_line.push(' ');
+                empty_line.push(TerminalCharacter::new(' '));
             }
             for _ in output.len()..self.display_rows as usize {
-                output.push_front(empty_line.clone());
+                output.push_front(Vec::from(empty_line.clone()));
             }
         }
         Vec::from(output)
@@ -439,29 +489,188 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
-fn render (terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
-    let left_terminal_lines = terminal1_output.read_buffer_as_lines();
-    let right_terminal_lines = terminal2_output.read_buffer_as_lines();
-    let mut data_lines = String::new();
-    for i in 0..full_screen_ws.ws_row {
-        let mut line = String::new();
-        line.push_str(left_terminal_lines.get(i as usize).unwrap());
-        line.push_str("\u{1b}[m"); // clear style
-        line.push('|');
-        line.push_str(right_terminal_lines.get(i as usize).unwrap());
-        data_lines.push_str(&line);
+fn get_previous_style (frame: &Vec<TerminalCharacter>, current_index: usize) -> Option<&str> {
+    if current_index == 0 {
+        return None
+    };
+    let mut prev_index = current_index;
+    loop {
+        prev_index -= 1;
+        match frame.get(prev_index) {
+            Some(previous_character) => {
+                if let Some(previous_ansi_code) = &previous_character.ansi_code {
+                    return Some(previous_ansi_code)
+                }
+            },
+            None => {
+                return None;
+            }
+        };
+        if prev_index == 0 {
+            // TODO: stop at beginning of line
+            return None;
+        }
     }
-    let left_terminal_cursor_position = terminal1_output.cursor_position_in_last_line();
-    let right_terminal_cursor_position = terminal2_output.cursor_position_in_last_line();
-    print!("\u{1b}c"); // clear screen
-    if terminal1_is_active {
-        data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
-    } else {
-        data_lines.push_str(&format!("\r\u{1b}[{}C", right_terminal_cursor_position + (terminal1_output.display_cols + 1) as usize));
+}
+
+fn character_is_already_onscreen(last_frame: &Vec<TerminalCharacter>, current_frame: &Vec<TerminalCharacter>, index: usize) -> bool {
+    let last_character = last_frame.get(index).unwrap();
+    let current_character = current_frame.get(index).unwrap();
+    let last_character_style = match &last_character.ansi_code {
+        Some(ansi_code) => Some(ansi_code.as_str()),
+        None => get_previous_style(&last_frame, index),
+    };
+    let current_character_style = match &current_character.ansi_code {
+        Some(ansi_code) => Some(ansi_code.as_str()),
+        None => get_previous_style(&current_frame, index),
+    };
+    last_character_style == current_character_style && last_character.character == current_character.character
+}
+
+struct Screen {
+    last_frame: Option<Vec<TerminalCharacter>>
+}
+
+impl Screen {
+    pub fn new () -> Self {
+        Screen { last_frame: None }
     }
-    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
-    ::std::io::stdout().flush().expect("could not flush");
-    // [24;80H
+//    pub fn render (&mut self, terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
+//        let left_terminal_lines = terminal1_output.read_buffer_as_lines();
+//        let right_terminal_lines = terminal2_output.read_buffer_as_lines();
+//
+//        let mut data_lines = String::new();
+//        for i in 0..full_screen_ws.ws_row {
+//            let mut line = String::new();
+//            let left_terminal_row = left_terminal_lines.get(i as usize).unwrap();
+//            for terminal_character in left_terminal_row.iter() {
+//                line.push_str(&terminal_character.to_string());
+//            }
+//
+//            line.push_str("\u{1b}[m"); // clear style
+//            line.push('|');
+//
+//            let right_terminal_row = right_terminal_lines.get(i as usize).unwrap();
+//            for terminal_character in right_terminal_row.iter() {
+//                line.push_str(&terminal_character.to_string());
+//            }
+//
+//            data_lines.push_str(&line);
+//        }
+//        let left_terminal_cursor_position = terminal1_output.cursor_position_in_last_line();
+//        let right_terminal_cursor_position = terminal2_output.cursor_position_in_last_line();
+//        print!("\u{1b}c"); // clear screen
+//        if terminal1_is_active {
+//            data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
+//        } else {
+//            data_lines.push_str(&format!("\r\u{1b}[{}C", right_terminal_cursor_position + (terminal1_output.display_cols + 1) as usize));
+//        }
+//        ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+//        ::std::io::stdout().flush().expect("could not flush");
+//        // [24;80H
+//        // * if there is a previous state, find the diff:
+//        // * loop through characters of previous state, when we find a differing character (derive Eq
+//        // for TerminalCharacter)
+//        // * make a "differing sequence", starting with the "goto" ansi code and including a string of
+//        // all characters following it until the non-differing character
+//        // * push all these sequences together
+//    }
+    pub fn render (&mut self, terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
+        let left_terminal_lines = terminal1_output.read_buffer_as_lines();
+        let right_terminal_lines = terminal2_output.read_buffer_as_lines();
+
+        let mut frame: Vec<TerminalCharacter> = vec![];
+        let vertical_separator = TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m"));
+        for i in 0..full_screen_ws.ws_row {
+            let left_terminal_row = left_terminal_lines.get(i as usize).unwrap();
+            for terminal_character in left_terminal_row.iter() {
+                frame.push(terminal_character.clone());
+            }
+
+            frame.push(vertical_separator.clone());
+
+            let right_terminal_row = right_terminal_lines.get(i as usize).unwrap();
+            for terminal_character in right_terminal_row.iter() {
+                frame.push(terminal_character.clone());
+            }
+
+        }
+
+        let mut data_lines = String::new();
+        match &self.last_frame {
+            Some(last_frame) => {
+                if last_frame.len() != frame.len() {
+                    // this is not ideal
+                    // right now it happens when we resize a pane, until fish resets the last line
+                    return
+                }
+                let mut last_character_was_changed = false;
+                for i in 0..last_frame.len() {
+                    let current_character = frame.get(i).unwrap();
+                    // TODO:
+                    // character_is_already_printed(last_frame, frame, i)
+                    if !character_is_already_onscreen(&last_frame, &frame, i) {
+                    // if current_character != last_character {
+                        let row = i / full_screen_ws.ws_col as usize + 1;
+                        let col = i % full_screen_ws.ws_col as usize + 1;
+                        if !last_character_was_changed {
+                            // goto row/col
+                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, col));
+                            // copy the last style from the last frame, or reset the style
+                            // this is so that if the first character of the changed string
+                            // has no style, it will get the appropriate one and not the one
+                            // from where the cursor happened to be previously
+                            if i > 0 {
+                                match get_previous_style(&frame, i) {
+                                    Some(previous_ansi_code) => {
+                                        data_lines.push_str("\u{1b}[m"); // reset style
+                                        data_lines.push_str(&previous_ansi_code);
+                                    },
+                                    None => {
+                                        data_lines.push_str("\u{1b}[m"); // reset style
+                                    }
+                                };
+                            } else {
+                                data_lines.push_str("\u{1b}[m"); // reset style
+                            }
+                        }
+                        data_lines.push_str(&current_character.to_string());
+                        last_character_was_changed = true;
+                    } else {
+                        last_character_was_changed = false;
+                    }
+                }
+//                println!("\rdata_lines {:?}", data_lines);
+//                ::std::process::exit(2);
+                // ::std::thread::sleep(std::time::Duration::from_millis(1000));
+            },
+            None => {
+                print!("\u{1b}c"); // clear screen
+                for terminal_character in frame.iter() {
+                    data_lines.push_str(&terminal_character.to_string());
+                }
+            }
+        }
+        self.last_frame = Some(frame);
+
+        let left_terminal_cursor_position = terminal1_output.cursor_position_in_last_line();
+        let right_terminal_cursor_position = terminal2_output.cursor_position_in_last_line();
+        // print!("\u{1b}c"); // clear screen
+        if terminal1_is_active {
+            data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
+        } else {
+            data_lines.push_str(&format!("\r\u{1b}[{}C", right_terminal_cursor_position + (terminal1_output.display_cols + 1) as usize));
+        }
+        ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+        ::std::io::stdout().flush().expect("could not flush");
+        // [24;80H
+        // * if there is a previous state, find the diff:
+        // * loop through characters of previous state, when we find a differing character (derive Eq
+        // for TerminalCharacter)
+        // * make a "differing sequence", starting with the "goto" ansi code and including a string of
+        // all characters following it until the non-differing character
+        // * push all these sequences together
+    }
 }
 
 fn main() {
@@ -489,6 +698,8 @@ fn main() {
     let terminal1_output = Arc::new(Mutex::new(TerminalOutput::new()));
     let terminal2_output = Arc::new(Mutex::new(TerminalOutput::new()));
 
+    let screen = Arc::new(Mutex::new(Screen::new()));
+
     active_threads.push(
         thread::Builder::new()
             .name("terminal_stdout_handler".to_string())
@@ -502,6 +713,7 @@ fn main() {
                 let terminal2_output = terminal2_output.clone();
                 let first_terminal_ws = first_terminal_ws.clone();
                 let second_terminal_ws = second_terminal_ws.clone();
+                let screen = screen.clone();
                 move || {
                     let mut buffer_has_unread_data = true;
                     {
@@ -535,7 +747,7 @@ fn main() {
                                     vte_parser_terminal1.advance(&mut *terminal1_output, *byte);
                                 }
                                 let active_terminal = active_terminal.lock().unwrap();
-                                render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                                 // buffer_has_unread_data = true;
                             }
                             (None, Some(second_terminal_read_bytes)) => {
@@ -545,7 +757,7 @@ fn main() {
                                     vte_parser_terminal2.advance(&mut *terminal2_output, *byte);
                                 }
                                 let active_terminal = active_terminal.lock().unwrap();
-                                render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                                 // buffer_has_unread_data = true;
                             }
                             (None, None) => {
@@ -553,7 +765,7 @@ fn main() {
                                 let mut terminal2_output = terminal2_output.lock().unwrap();
                                 if buffer_has_unread_data {
                                     let active_terminal = active_terminal.lock().unwrap();
-                                    render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                                    screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                                     buffer_has_unread_data = false;
                                 }
                                 ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
@@ -649,9 +861,10 @@ fn main() {
                 let active_terminal = active_terminal.lock().unwrap();
                 terminal1_output.reduce_width(10);
                 terminal2_output.increase_width(10);
-                render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                // screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 set_terminal_size_using_fd(first_terminal_pid, terminal1_output.display_cols, terminal1_output.display_rows);
                 set_terminal_size_using_fd(second_terminal_pid, terminal2_output.display_cols, terminal2_output.display_rows);
+                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 continue;
             } else if buffer[0] == 11 { // ctrl-k
                 let mut terminal1_output = terminal1_output.lock().unwrap();
@@ -659,7 +872,7 @@ fn main() {
                 let active_terminal = active_terminal.lock().unwrap();
                 terminal1_output.increase_width(10);
                 terminal2_output.reduce_width(10);
-                render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 set_terminal_size_using_fd(first_terminal_pid, terminal1_output.display_cols, terminal1_output.display_rows);
                 set_terminal_size_using_fd(second_terminal_pid, terminal2_output.display_cols, terminal2_output.display_rows);
                 continue;
@@ -669,12 +882,12 @@ fn main() {
                     *active_terminal = second_terminal_pid;
                     let mut terminal1_output = terminal1_output.lock().unwrap();
                     let mut terminal2_output = terminal2_output.lock().unwrap();
-                    render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                    screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 } else {
                     *active_terminal = first_terminal_pid;
                     let mut terminal1_output = terminal1_output.lock().unwrap();
                     let mut terminal2_output = terminal2_output.lock().unwrap();
-                    render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                    screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 }
                 continue;
             }
