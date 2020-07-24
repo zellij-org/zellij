@@ -184,24 +184,24 @@ struct TerminalOutput {
     pub characters: Vec<char>, // we use a vec rather than a string here because one char can take up multiple characters in a string
     pub display_rows: u16,
     pub display_cols: u16,
-    current_index_in_characters: usize,
     cursor_position: usize,
-    newline_indices: HashSet<usize>,
-    linebreak_indices: HashSet<usize>,
+    newline_indices: HashSet<usize>, // canonical line breaks we get from the vt interpreter
+    linebreak_indices: HashSet<usize>, // linebreaks from line wrapping
     unhandled_ansi_codes: HashMap<usize, String>,
+    pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
 
 impl TerminalOutput {
     pub fn new () -> TerminalOutput {
         TerminalOutput {
             characters: vec![],
-            current_index_in_characters: 0,
             cursor_position: 0,
             newline_indices: HashSet::new(),
             linebreak_indices: HashSet::new(),
             display_rows: 0,
             display_cols: 0,
-            unhandled_ansi_codes: HashMap::new()
+            unhandled_ansi_codes: HashMap::new(),
+            pending_ansi_code: None,
         }
     }
     pub fn reduce_width(&mut self, count: u16) {
@@ -235,39 +235,32 @@ impl TerminalOutput {
     }
     // pub fn read_buffer_as_lines (&mut self) -> Vec<String> {
     pub fn read_buffer_as_lines (&mut self) -> Vec<Vec<TerminalCharacter>> {
-        // let mut output: VecDeque<String> = VecDeque::new();
+        if DEBUGGING {
+            return vec![];
+        }
         let mut output: VecDeque<Vec<TerminalCharacter>> = VecDeque::new();
         let mut i = self.characters.len();
         let mut current_line: VecDeque<TerminalCharacter> = VecDeque::new();
-        // let mut number_of_control_chars_in_line = 0;
         loop {
             i -= 1;
             let character = self.characters.get(i).unwrap();
             let mut terminal_character = TerminalCharacter::new(*character);
             if let Some(code) = self.unhandled_ansi_codes.get(&i) {
                 terminal_character.ansi_code = Some(code.clone());
-                // current_line.insert_str(0, code);
-                // number_of_control_chars_in_line += code.len();
             }
             current_line.push_front(terminal_character);
-            // current_line.insert(0, *character);
             if self.newline_indices.contains(&i) || self.linebreak_indices.contains(&i) {
                 // pad line
-                // for _ in current_line.chars().count() - number_of_control_chars_in_line..self.display_cols as usize {
                 for _ in current_line.len()..self.display_cols as usize {
                     current_line.push_back(TerminalCharacter::new(' '));
                 }
                 output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
-                // output.push_front(Vec::from(current_line.clone()));
-                // current_line.clear();
-                // number_of_control_chars_in_line = 0;
             }
             if i == 0 || output.len() == self.display_rows as usize {
                 break;
             }
         }
         if output.len() < self.display_rows as usize {
-            // let mut empty_line = String::new();
             let mut empty_line = vec![];
             for _ in 0..self.display_cols {
                 empty_line.push(TerminalCharacter::new(' '));
@@ -309,17 +302,36 @@ impl TerminalOutput {
             (None, None) => 0
         }
     }
+    fn index_of_beginning_of_line (&self, index_in_line: usize) -> usize {
+        let last_newline_index = if self.newline_indices.is_empty() {
+            None
+        } else {
+            // return last less than index_in_line
+            Some(self.newline_indices.iter().fold(0, |acc, n_i| if *n_i > acc && *n_i <= index_in_line { *n_i } else { acc })) // TODO: better?
+        };
+        let last_linebreak_index = if self.linebreak_indices.is_empty() {
+            None
+        } else {
+            // return last less than index_in_line
+            Some(self.linebreak_indices.iter().fold(0, |acc, l_i| if *l_i > acc && *l_i <= index_in_line { *l_i } else { acc })) // TODO: better?
+        };
+        match (last_newline_index, last_linebreak_index) {
+            (Some(last_newline_index), Some(last_linebreak_index)) => {
+                max(last_newline_index, last_linebreak_index)
+            },
+            (None, Some(last_linebreak_index)) => last_linebreak_index,
+            (Some(last_newline_index), None) => last_newline_index,
+            (None, None) => 0
+        }
+    }
     fn add_newline (&mut self) {
         self.newline_indices.insert(self.characters.len()); // -1?
         self.cursor_position = self.characters.len(); // -1?
     }
     fn move_to_beginning_of_line (&mut self) {
-        // TODO: this always moves to the beginning of the non-wrapped line... is this the right
-        // behaviour?
         let last_newline_index = if self.newline_indices.is_empty() {
             0
         } else {
-            // return last
             self.newline_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i }) // TODO: better?
         };
         self.cursor_position = last_newline_index;
@@ -343,8 +355,12 @@ impl vte::Perform for TerminalOutput {
                 };
                 self.characters.push(c);
             }
+            if let Some(ansi_code) = &self.pending_ansi_code {
+                self.unhandled_ansi_codes.insert(self.cursor_position, ansi_code.clone());
+                self.pending_ansi_code = None;
+            }
 
-            let start_of_last_line = self.index_of_beginning_of_last_line();
+            let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
             let difference_from_last_newline = self.cursor_position - start_of_last_line;
             if difference_from_last_newline == self.display_cols as usize {
                 self.linebreak_indices.insert(self.cursor_position);
@@ -414,28 +430,32 @@ impl vte::Perform for TerminalOutput {
                 // change foreground color (only?)
                 if params.len() == 1 && params[0] == 0 {
                     // eg. \u{1b}[m
+                    self.pending_ansi_code = Some(String::from("\u{1b}[m"));
                     self.unhandled_ansi_codes.insert(self.cursor_position, String::from("\u{1b}[m"));
                 } else {
                     // eg. \u{1b}[38;5;0m
                     let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                    self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
                     self.unhandled_ansi_codes.insert(self.cursor_position, format!("\u{1b}[{}m", param_string));
                 }
             } else if c == 'C' { // move cursor
                 self.cursor_position += params[0] as usize; // TODO: negative value?
             } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
                 if params[0] == 0 {
-                    for i in self.cursor_position..self.characters.len() {
+                    for i in self.cursor_position + 1..self.characters.len() {
                         self.unhandled_ansi_codes.remove(&i);
-                        // TODO: also remove line breaks?
+                        self.newline_indices.remove(&i);
+                        self.linebreak_indices.remove(&i);
                     }
                     self.characters.truncate(self.cursor_position + 1);
                 }
                 // TODO: implement 1 and 2
             } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
                 if params[0] == 0 {
-                    for i in self.cursor_position..self.characters.len() {
+                    for i in self.cursor_position + 1..self.characters.len() {
                         self.unhandled_ansi_codes.remove(&i);
-                        // TODO: also remove line breaks?
+                        self.newline_indices.remove(&i);
+                        self.linebreak_indices.remove(&i);
                     }
                     self.characters.truncate(self.cursor_position + 1);
                 }
@@ -535,47 +555,10 @@ impl Screen {
     pub fn new () -> Self {
         Screen { last_frame: None }
     }
-//    pub fn render (&mut self, terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
-//        let left_terminal_lines = terminal1_output.read_buffer_as_lines();
-//        let right_terminal_lines = terminal2_output.read_buffer_as_lines();
-//
-//        let mut data_lines = String::new();
-//        for i in 0..full_screen_ws.ws_row {
-//            let mut line = String::new();
-//            let left_terminal_row = left_terminal_lines.get(i as usize).unwrap();
-//            for terminal_character in left_terminal_row.iter() {
-//                line.push_str(&terminal_character.to_string());
-//            }
-//
-//            line.push_str("\u{1b}[m"); // clear style
-//            line.push('|');
-//
-//            let right_terminal_row = right_terminal_lines.get(i as usize).unwrap();
-//            for terminal_character in right_terminal_row.iter() {
-//                line.push_str(&terminal_character.to_string());
-//            }
-//
-//            data_lines.push_str(&line);
-//        }
-//        let left_terminal_cursor_position = terminal1_output.cursor_position_in_last_line();
-//        let right_terminal_cursor_position = terminal2_output.cursor_position_in_last_line();
-//        print!("\u{1b}c"); // clear screen
-//        if terminal1_is_active {
-//            data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
-//        } else {
-//            data_lines.push_str(&format!("\r\u{1b}[{}C", right_terminal_cursor_position + (terminal1_output.display_cols + 1) as usize));
-//        }
-//        ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
-//        ::std::io::stdout().flush().expect("could not flush");
-//        // [24;80H
-//        // * if there is a previous state, find the diff:
-//        // * loop through characters of previous state, when we find a differing character (derive Eq
-//        // for TerminalCharacter)
-//        // * make a "differing sequence", starting with the "goto" ansi code and including a string of
-//        // all characters following it until the non-differing character
-//        // * push all these sequences together
-//    }
     pub fn render (&mut self, terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
+        if DEBUGGING {
+            return;
+        }
         let left_terminal_lines = terminal1_output.read_buffer_as_lines();
         let right_terminal_lines = terminal2_output.read_buffer_as_lines();
 
@@ -608,9 +591,7 @@ impl Screen {
                 for i in 0..last_frame.len() {
                     let current_character = frame.get(i).unwrap();
                     // TODO:
-                    // character_is_already_printed(last_frame, frame, i)
                     if !character_is_already_onscreen(&last_frame, &frame, i) {
-                    // if current_character != last_character {
                         let row = i / full_screen_ws.ws_col as usize + 1;
                         let col = i % full_screen_ws.ws_col as usize + 1;
                         if !last_character_was_changed {
@@ -640,9 +621,6 @@ impl Screen {
                         last_character_was_changed = false;
                     }
                 }
-//                println!("\rdata_lines {:?}", data_lines);
-//                ::std::process::exit(2);
-                // ::std::thread::sleep(std::time::Duration::from_millis(1000));
             },
             None => {
                 print!("\u{1b}c"); // clear screen
@@ -663,25 +641,12 @@ impl Screen {
         }
         ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
         ::std::io::stdout().flush().expect("could not flush");
-        // [24;80H
-        // * if there is a previous state, find the diff:
-        // * loop through characters of previous state, when we find a differing character (derive Eq
-        // for TerminalCharacter)
-        // * make a "differing sequence", starting with the "goto" ansi code and including a string of
-        // all characters following it until the non-differing character
-        // * push all these sequences together
     }
 }
 
 fn main() {
     let mut active_threads = vec![];
 
-    // TODO (render two terminals side by side):
-    // * make switching between terminals work - DONE
-    // * make resizing terminals work - DONE
-    // * reset styling in the pipe between terminals - DONE
-    // * make render loop only render the diff (with goto stuff printed to stdout) <=== TODO: CONTINUE HERE
-    // print!("\u{1b}[24;80H"); // this moves the cursor to row 24 column 80
     let full_screen_ws = get_terminal_size_using_fd(0);
     let (first_terminal_ws, second_terminal_ws) = split_horizontally_with_gap(&full_screen_ws);
     let (first_terminal_pid, pid_secondary): (RawFd, RawFd) = spawn_terminal(&first_terminal_ws);
@@ -728,8 +693,6 @@ fn main() {
                     loop {
                         match (read_from_pid(first_terminal_pid), read_from_pid(second_terminal_pid)) {
                             (Some(first_terminal_read_bytes), Some(second_terminal_read_bytes)) => {
-//                                println!("\r first_terminal_read_bytes: {:?}", String::from_utf8(first_terminal_read_bytes).unwrap());
-//                                ::std::process::exit(2);
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
                                 for byte in first_terminal_read_bytes.iter() {
                                     vte_parser_terminal1.advance(&mut *terminal1_output, *byte);
@@ -748,7 +711,6 @@ fn main() {
                                 }
                                 let active_terminal = active_terminal.lock().unwrap();
                                 screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
-                                // buffer_has_unread_data = true;
                             }
                             (None, Some(second_terminal_read_bytes)) => {
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
@@ -758,7 +720,6 @@ fn main() {
                                 }
                                 let active_terminal = active_terminal.lock().unwrap();
                                 screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
-                                // buffer_has_unread_data = true;
                             }
                             (None, None) => {
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
@@ -771,85 +732,11 @@ fn main() {
                                 ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
                             }
                         }
-
-
-//                        match read_from_pid(first_terminal_pid) {
-//                            Some(read_bytes) => {
-//                                if DEBUGGING {
-//                                    println!("\n\rread_bytes: {:?}", String::from_utf8(read_bytes.to_vec()).unwrap());
-//                                }
-//                                for byte in read_bytes.iter() {
-//                                    let first_terminal_ws = first_terminal_ws.lock().unwrap();
-//                                    let mut terminal1_output = terminal1_output.lock().unwrap();
-//                                    terminal1_output.set_size(&*first_terminal_ws);
-//                                    vte_parser.advance(&mut *terminal1_output, *byte);
-//                                }
-//                                buffer_has_unread_data = true;
-//                            },
-//                            None => {
-//                                if DEBUGGING {
-//                                    buffer_has_unread_data = false;
-//                                } else if buffer_has_unread_data {
-//                                    let mut terminal1_output = terminal1_output.lock().unwrap();
-//                                    let data_lines = terminal1_output.read_buffer_as_lines();
-//                                    print!("\u{1b}c"); // clear screen
-//                                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
-//                                    ::std::io::stdout().flush().expect("could not flush");
-//                                    buffer_has_unread_data = false;
-//                                }
-//                                ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
-//                            }
-//                        }
                     }
                 }
             })
             .unwrap(),
     );
-//    active_threads.push(
-//        thread::Builder::new()
-//            .name("terminal_stdout_handler2".to_string())
-//            .spawn({
-//
-//                let mut vte_parser = vte::Parser::new();
-//
-//                let terminal2_output = terminal2_output.clone();
-//                let second_terminal_ws = second_terminal_ws.clone();
-//                move || {
-//                    let mut buffer_has_unread_data = true;
-//                    loop {
-//                        match read_from_pid(second_terminal_pid) {
-//                            Some(read_bytes) => {
-//                                if DEBUGGING {
-//                                    println!("\n\rread_bytes: {:?}", String::from_utf8(read_bytes.to_vec()).unwrap());
-//                                }
-//                                for byte in read_bytes.iter() {
-//                                    let second_terminal_ws = second_terminal_ws.lock().unwrap();
-//                                    let mut terminal2_output = terminal2_output.lock().unwrap();
-//                                    terminal2_output.set_size(&*second_terminal_ws);
-//                                    vte_parser.advance(&mut *terminal2_output, *byte);
-//                                }
-//                                buffer_has_unread_data = true;
-//                            },
-//                            None => {
-//                                if DEBUGGING {
-//                                    buffer_has_unread_data = false;
-//                                } else if buffer_has_unread_data {
-//                                    let mut terminal2_output = terminal2_output.lock().unwrap();
-//                                    let data_lines = terminal2_output.read_buffer_as_lines();
-//                                    print!("\u{1b}c"); // clear screen
-//                                    ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
-//                                    ::std::io::stdout().flush().expect("could not flush");
-//                                    buffer_has_unread_data = false;
-//                                }
-//                                ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
-//                            }
-//                        }
-//                    }
-//                }
-//            })
-//            .unwrap(),
-//    );
-
     loop {
 		let mut buffer = [0; 1];
         {
@@ -861,7 +748,6 @@ fn main() {
                 let active_terminal = active_terminal.lock().unwrap();
                 terminal1_output.reduce_width(10);
                 terminal2_output.increase_width(10);
-                // screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 set_terminal_size_using_fd(first_terminal_pid, terminal1_output.display_cols, terminal1_output.display_rows);
                 set_terminal_size_using_fd(second_terminal_pid, terminal2_output.display_cols, terminal2_output.display_rows);
                 screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
@@ -872,9 +758,9 @@ fn main() {
                 let active_terminal = active_terminal.lock().unwrap();
                 terminal1_output.increase_width(10);
                 terminal2_output.reduce_width(10);
-                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 set_terminal_size_using_fd(first_terminal_pid, terminal1_output.display_cols, terminal1_output.display_rows);
                 set_terminal_size_using_fd(second_terminal_pid, terminal2_output.display_cols, terminal2_output.display_rows);
+                screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                 continue;
             } else if buffer[0] == 16 { // ctrl-p
                 let mut active_terminal = active_terminal.lock().unwrap();
