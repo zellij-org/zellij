@@ -1,9 +1,10 @@
 use std::time::{Duration, Instant};
+use std::iter::FromIterator;
 use std::{mem, io};
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{stdin, stdout, Read, Write};
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeSet, HashSet, HashMap, VecDeque};
 use nix::unistd::{read, write, ForkResult};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::sys::termios::SpecialCharacterIndices::{VMIN, VTIME};
@@ -188,8 +189,8 @@ struct TerminalOutput {
     pub display_cols: u16,
     pub should_render: bool,
     cursor_position: usize,
-    newline_indices: BTreeSet<usize>, // canonical line breaks we get from the vt interpreter
-    linebreak_indices: BTreeSet<usize>, // linebreaks from line wrapping
+    newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
+    linebreak_indices: Vec<usize>, // linebreaks from line wrapping
     unhandled_ansi_codes: HashMap<usize, String>,
     pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
@@ -199,8 +200,8 @@ impl TerminalOutput {
         TerminalOutput {
             characters: vec![],
             cursor_position: 0,
-            newline_indices: BTreeSet::new(),
-            linebreak_indices: BTreeSet::new(),
+            newline_indices: Vec::new(),
+            linebreak_indices: Vec::new(),
             display_rows: 0,
             display_cols: 0,
             should_render: false,
@@ -228,18 +229,18 @@ impl TerminalOutput {
     }
     fn reflow_lines (&mut self) {
         self.linebreak_indices.clear();
-        let mut x = 0;
+        let newline_indices: HashSet<&usize> = HashSet::from_iter(self.newline_indices.iter());
+        let mut x: u64 = 0;
         for (i, _c) in self.characters.iter().enumerate() {
-            if self.newline_indices.contains(&i) {
+            if newline_indices.contains(&i) {
                 x = 0;
-            } else if x == self.display_cols && i < self.cursor_position {
-                self.linebreak_indices.insert(i);
+            } else if x == self.display_cols as u64 && i < self.cursor_position {
+                self.linebreak_indices.push(i);
                 x = 0;
             }
             x += 1;
         }
     }
-    // pub fn read_buffer_as_lines (&mut self) -> Vec<String> {
     pub fn read_buffer_as_lines (&mut self) -> Vec<Vec<TerminalCharacter>> {
         if DEBUGGING {
             return vec![];
@@ -247,6 +248,9 @@ impl TerminalOutput {
         let mut output: VecDeque<Vec<TerminalCharacter>> = VecDeque::new();
         let mut i = self.characters.len();
         let mut current_line: VecDeque<TerminalCharacter> = VecDeque::new();
+        
+        let newline_indices: HashSet<&usize> = HashSet::from_iter(self.newline_indices.iter());
+        let linebreak_indices: HashSet<&usize> = HashSet::from_iter(self.linebreak_indices.iter());
         loop {
             i -= 1;
             let character = self.characters.get(i).unwrap();
@@ -255,7 +259,7 @@ impl TerminalOutput {
                 terminal_character.ansi_code = Some(code.clone());
             }
             current_line.push_front(terminal_character);
-            if self.newline_indices.contains(&i) || self.linebreak_indices.contains(&i) {
+            if newline_indices.contains(&i) || linebreak_indices.contains(&i) {
                 // pad line
                 for _ in current_line.len()..self.display_cols as usize {
                     current_line.push_back(TerminalCharacter::new(' '));
@@ -292,17 +296,13 @@ impl TerminalOutput {
             None
         } else {
             // return last
-            // None
-            Some(*self.newline_indices.iter().last().unwrap())
-            // Some(self.newline_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i })) // TODO: better?
+            Some(*self.newline_indices.last().unwrap())
         };
         let last_linebreak_index = if self.linebreak_indices.is_empty() {
             None
         } else {
             // return last
-            // None
-            Some(*self.linebreak_indices.iter().last().unwrap())
-            // Some(self.linebreak_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i })) // TODO: better?
+            Some(*self.linebreak_indices.last().unwrap())
         };
         match (last_newline_index, last_linebreak_index) {
             (Some(last_newline_index), Some(last_linebreak_index)) => {
@@ -318,8 +318,7 @@ impl TerminalOutput {
             None
         } else {
             // return last less than index_in_line
-            // None
-            let last_newline_index = *self.newline_indices.iter().last().unwrap();
+            let last_newline_index = *self.newline_indices.last().unwrap();
             if last_newline_index <= index_in_line {
                 Some(last_newline_index)
             } else {
@@ -333,14 +332,12 @@ impl TerminalOutput {
                 }
                 Some(last_newline_index)
             }
-            // Some(self.newline_indices.iter().fold(0, |acc, n_i| if *n_i > acc && *n_i <= index_in_line { *n_i } else { acc })) // TODO: better?
         };
         let last_linebreak_index = if self.linebreak_indices.is_empty() {
             None
         } else {
             // return last less than index_in_line
-            // None
-            let last_linebreak_index = *self.linebreak_indices.iter().last().unwrap();
+            let last_linebreak_index = *self.linebreak_indices.last().unwrap();
             if last_linebreak_index <= index_in_line {
                 Some(last_linebreak_index)
             } else {
@@ -365,7 +362,7 @@ impl TerminalOutput {
         }
     }
     fn add_newline (&mut self) {
-        self.newline_indices.insert(self.characters.len()); // -1?
+        self.newline_indices.push(self.characters.len()); // -1?
         self.cursor_position = self.characters.len(); // -1?
         self.should_render = true;
     }
@@ -373,7 +370,7 @@ impl TerminalOutput {
         let last_newline_index = if self.newline_indices.is_empty() {
             0
         } else {
-            self.newline_indices.iter().fold(0, |acc, i| if acc > *i { acc } else { *i }) // TODO: better?
+            *self.newline_indices.last().unwrap()
         };
         self.cursor_position = last_newline_index;
         self.should_render = true;
@@ -405,11 +402,10 @@ impl vte::Perform for TerminalOutput {
             let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
             let difference_from_last_newline = self.cursor_position - start_of_last_line;
             if difference_from_last_newline == self.display_cols as usize {
-                self.linebreak_indices.insert(self.cursor_position);
+                self.linebreak_indices.push(self.cursor_position);
             }
             self.cursor_position += 1;
         }
-        // println!("\rDONE PRINT {:?}", now.elapsed().as_millis());
     }
 
     fn execute(&mut self, byte: u8) {
@@ -429,6 +425,7 @@ impl vte::Perform for TerminalOutput {
             } else if byte == 08 { // backspace
                 self.cursor_position -= 1;
                 self.unhandled_ansi_codes.remove(&self.cursor_position);
+                // TODO: also remove character
             } else if byte == 10 { // 0a, newline
                 self.add_newline();
             }
@@ -487,8 +484,12 @@ impl vte::Perform for TerminalOutput {
                 if params[0] == 0 {
                     for i in self.cursor_position + 1..self.characters.len() {
                         self.unhandled_ansi_codes.remove(&i);
-                        self.newline_indices.remove(&i);
-                        self.linebreak_indices.remove(&i);
+                    }
+                    if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
+                        self.newline_indices.truncate(position_of_first_newline_index_to_delete);
+                    }
+                    if let Some(position_of_first_linebreak_index_to_delete) = self.linebreak_indices.iter().position(|&li| li > self.cursor_position) {
+                        self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
                     }
                     self.characters.truncate(self.cursor_position + 1);
                 }
@@ -497,8 +498,12 @@ impl vte::Perform for TerminalOutput {
                 if params[0] == 0 {
                     for i in self.cursor_position + 1..self.characters.len() {
                         self.unhandled_ansi_codes.remove(&i);
-                        self.newline_indices.remove(&i);
-                        self.linebreak_indices.remove(&i);
+                    }
+                    if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
+                        self.newline_indices.truncate(position_of_first_newline_index_to_delete);
+                    }
+                    if let Some(position_of_first_linebreak_index_to_delete) = self.linebreak_indices.iter().position(|&li| li > self.cursor_position) {
+                        self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
                     }
                     self.characters.truncate(self.cursor_position + 1);
                 }
@@ -552,12 +557,15 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
-fn get_previous_style (frame: &Vec<TerminalCharacter>, current_index: usize) -> Option<&str> {
-    if current_index == 0 {
+fn get_previous_style (frame: &Vec<TerminalCharacter>, current_index: usize, current_column: usize) -> Option<&str> {
+    if current_index == 0 || current_column == 0 {
+    // if true {
         return None
     };
+    let mut character_count = current_column; // only check back until line break, styles before that are not relevant
     let mut prev_index = current_index;
     loop {
+        character_count -= 1;
         prev_index -= 1;
         match frame.get(prev_index) {
             Some(previous_character) => {
@@ -569,23 +577,29 @@ fn get_previous_style (frame: &Vec<TerminalCharacter>, current_index: usize) -> 
                 return None;
             }
         };
-        if prev_index == 0 {
-            // TODO: stop at beginning of line
+        if prev_index == 0 || character_count == 0 {
             return None;
         }
     }
 }
 
-fn character_is_already_onscreen(last_frame: &Vec<TerminalCharacter>, current_frame: &Vec<TerminalCharacter>, index: usize) -> bool {
+fn character_is_already_onscreen(
+    last_frame: &Vec<TerminalCharacter>,
+    current_frame: &Vec<TerminalCharacter>,
+    index: usize,
+    character_column: &usize
+) -> bool {
     let last_character = last_frame.get(index).unwrap();
     let current_character = current_frame.get(index).unwrap();
     let last_character_style = match &last_character.ansi_code {
         Some(ansi_code) => Some(ansi_code.as_str()),
-        None => get_previous_style(&last_frame, index),
+        // None => None,
+        None => get_previous_style(&last_frame, index, *character_column),
     };
     let current_character_style = match &current_character.ansi_code {
         Some(ansi_code) => Some(ansi_code.as_str()),
-        None => get_previous_style(&current_frame, index),
+        // None => None,
+        None => get_previous_style(&current_frame, index, *character_column),
     };
     last_character_style == current_character_style && last_character.character == current_character.character
 }
@@ -633,18 +647,19 @@ impl Screen {
                 let mut last_character_was_changed = false;
                 for i in 0..last_frame.len() {
                     let current_character = frame.get(i).unwrap();
-                    if !character_is_already_onscreen(&last_frame, &frame, i) {
-                        let row = i / full_screen_ws.ws_col as usize + 1;
-                        let col = i % full_screen_ws.ws_col as usize + 1;
+                    let row = i / full_screen_ws.ws_col as usize + 1;
+                    let col = i % full_screen_ws.ws_col as usize + 1;
+                    if !character_is_already_onscreen(&last_frame, &frame, i, &col) {
+                    // if true {
                         if !last_character_was_changed {
                             // goto row/col
-                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, col));
+                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, &col));
                             // copy the last style from the last frame, or reset the style
                             // this is so that if the first character of the changed string
                             // has no style, it will get the appropriate one and not the one
                             // from where the cursor happened to be previously
                             if i > 0 {
-                                match get_previous_style(&frame, i) {
+                                match get_previous_style(&frame, i, col) {
                                     Some(previous_ansi_code) => {
                                         data_lines.push_str("\u{1b}[m"); // reset style
                                         data_lines.push_str(&previous_ansi_code);
@@ -746,19 +761,10 @@ fn main() {
                                 buffer_has_unread_data = true;
                             }
                             (Some(first_terminal_read_bytes), None) => {
-                                let now = Instant::now();
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
-                                // let mut terminal2_output = terminal2_output.lock().unwrap();
-                                // println!("\rread bytes, parsing...");
-                                let now = Instant::now();
                                 for byte in first_terminal_read_bytes.iter() {
                                     vte_parser_terminal1.advance(&mut *terminal1_output, *byte);
                                 }
-                                // println!("\rdone parsing bytes in {:?}", now.elapsed());
-//                                println!("\rprint time: {:?}", terminal1_output.debug_print_time.as_millis());
-                                buffer_has_unread_data = true;
-                                // let active_terminal = active_terminal.lock().unwrap();
-                                // screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                             }
                             (None, Some(second_terminal_read_bytes)) => {
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
@@ -766,18 +772,8 @@ fn main() {
                                 for byte in second_terminal_read_bytes.iter() {
                                     vte_parser_terminal2.advance(&mut *terminal2_output, *byte);
                                 }
-                                buffer_has_unread_data = true;
-                                // let active_terminal = active_terminal.lock().unwrap();
-                                // screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                             }
                             (None, None) => {
-//                                let mut terminal1_output = terminal1_output.lock().unwrap();
-//                                let mut terminal2_output = terminal2_output.lock().unwrap();
-//                                if buffer_has_unread_data {
-//                                    let active_terminal = active_terminal.lock().unwrap();
-//                                    screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
-//                                    buffer_has_unread_data = false;
-//                                }
                                 ::std::thread::sleep(std::time::Duration::from_millis(50)); // TODO: adjust this
                             }
                         }
@@ -785,7 +781,10 @@ fn main() {
                         let mut terminal2_output = terminal2_output.lock().unwrap();
                         if terminal1_output.should_render || terminal2_output.should_render {
                             let active_terminal = active_terminal.lock().unwrap();
-                            screen.lock().unwrap().render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                            let mut screen = screen.lock().unwrap();
+                            // let now = Instant::now();
+                            screen.render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
+                            // println!("\r->R rendered in {:?}", now.elapsed());
                         }
                     }
                 }
