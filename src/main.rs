@@ -184,14 +184,13 @@ impl Display for TerminalCharacter {
 }
 
 struct TerminalOutput {
-    pub characters: Vec<char>, // we use a vec rather than a string here because one char can take up multiple characters in a string
+    pub characters: Vec<TerminalCharacter>,
     pub display_rows: u16,
     pub display_cols: u16,
     pub should_render: bool,
     cursor_position: usize,
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
-    unhandled_ansi_codes: HashMap<usize, String>,
     pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
 
@@ -205,7 +204,6 @@ impl TerminalOutput {
             display_rows: 0,
             display_cols: 0,
             should_render: false,
-            unhandled_ansi_codes: HashMap::new(),
             pending_ansi_code: None,
         }
     }
@@ -253,12 +251,8 @@ impl TerminalOutput {
         let linebreak_indices: HashSet<&usize> = HashSet::from_iter(self.linebreak_indices.iter());
         loop {
             i -= 1;
-            let character = self.characters.get(i).unwrap();
-            let mut terminal_character = TerminalCharacter::new(*character);
-            if let Some(code) = self.unhandled_ansi_codes.get(&i) {
-                terminal_character.ansi_code = Some(code.clone());
-            }
-            current_line.push_front(terminal_character);
+            let terminal_character = self.characters.get(i).unwrap();
+            current_line.push_front(terminal_character.clone());
             if newline_indices.contains(&i) || linebreak_indices.contains(&i) {
                 // pad line
                 for _ in current_line.len()..self.display_cols as usize {
@@ -365,6 +359,7 @@ impl TerminalOutput {
         self.newline_indices.push(self.characters.len()); // -1?
         self.cursor_position = self.characters.len(); // -1?
         self.should_render = true;
+        self.pending_ansi_code = None;
     }
     fn move_to_beginning_of_line (&mut self) {
         let last_newline_index = if self.newline_indices.is_empty() {
@@ -384,19 +379,20 @@ impl vte::Perform for TerminalOutput {
         if DEBUGGING {
             println!("\r[print] {:?}", c);
         } else {
+            let mut terminal_character = TerminalCharacter::new(c);
+            terminal_character.ansi_code = self.pending_ansi_code.clone();
             if self.characters.len() == self.cursor_position {
-                self.characters.push(c);
+                self.characters.push(terminal_character);
             } else if self.characters.len() > self.cursor_position {
-                self.characters.splice(self.cursor_position..=self.cursor_position, [c].iter().copied()); // TODO: better
+                self.characters.remove(self.cursor_position);
+                self.characters.insert(self.cursor_position, terminal_character);
             } else {
+                let mut space_character = TerminalCharacter::new(' ');
+                space_character.ansi_code = self.pending_ansi_code.clone();
                 for _ in self.characters.len()..self.cursor_position {
-                    self.characters.push(' ');
+                    self.characters.push(space_character.clone());
                 };
-                self.characters.push(c);
-            }
-            if let Some(ansi_code) = &self.pending_ansi_code {
-                self.unhandled_ansi_codes.insert(self.cursor_position, ansi_code.clone());
-                self.pending_ansi_code = None;
+                self.characters.push(terminal_character);
             }
 
             let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
@@ -424,8 +420,7 @@ impl vte::Perform for TerminalOutput {
                 self.move_to_beginning_of_line();
             } else if byte == 08 { // backspace
                 self.cursor_position -= 1;
-                self.unhandled_ansi_codes.remove(&self.cursor_position);
-                // TODO: also remove character
+                self.characters.remove(self.cursor_position);
             } else if byte == 10 { // 0a, newline
                 self.add_newline();
             }
@@ -471,20 +466,15 @@ impl vte::Perform for TerminalOutput {
                 if params.len() == 1 && params[0] == 0 {
                     // eg. \u{1b}[m
                     self.pending_ansi_code = Some(String::from("\u{1b}[m"));
-                    self.unhandled_ansi_codes.insert(self.cursor_position, String::from("\u{1b}[m"));
                 } else {
                     // eg. \u{1b}[38;5;0m
                     let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
                     self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
-                    self.unhandled_ansi_codes.insert(self.cursor_position, format!("\u{1b}[{}m", param_string));
                 }
             } else if c == 'C' { // move cursor
                 self.cursor_position += params[0] as usize; // TODO: negative value?
             } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
                 if params[0] == 0 {
-                    for i in self.cursor_position + 1..self.characters.len() {
-                        self.unhandled_ansi_codes.remove(&i);
-                    }
                     if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
                         self.newline_indices.truncate(position_of_first_newline_index_to_delete);
                     }
@@ -496,9 +486,6 @@ impl vte::Perform for TerminalOutput {
                 // TODO: implement 1 and 2
             } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
                 if params[0] == 0 {
-                    for i in self.cursor_position + 1..self.characters.len() {
-                        self.unhandled_ansi_codes.remove(&i);
-                    }
                     if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
                         self.newline_indices.truncate(position_of_first_newline_index_to_delete);
                     }
@@ -557,32 +544,6 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
-fn get_previous_style (frame: &Vec<TerminalCharacter>, current_index: usize, current_column: usize) -> Option<&str> {
-    if current_index == 0 || current_column == 0 {
-    // if true {
-        return None
-    };
-    let mut character_count = current_column; // only check back until line break, styles before that are not relevant
-    let mut prev_index = current_index;
-    loop {
-        character_count -= 1;
-        prev_index -= 1;
-        match frame.get(prev_index) {
-            Some(previous_character) => {
-                if let Some(previous_ansi_code) = &previous_character.ansi_code {
-                    return Some(previous_ansi_code)
-                }
-            },
-            None => {
-                return None;
-            }
-        };
-        if prev_index == 0 || character_count == 0 {
-            return None;
-        }
-    }
-}
-
 fn character_is_already_onscreen(
     last_frame: &Vec<TerminalCharacter>,
     current_frame: &Vec<TerminalCharacter>,
@@ -593,13 +554,11 @@ fn character_is_already_onscreen(
     let current_character = current_frame.get(index).unwrap();
     let last_character_style = match &last_character.ansi_code {
         Some(ansi_code) => Some(ansi_code.as_str()),
-        // None => None,
-        None => get_previous_style(&last_frame, index, *character_column),
+        None => None,
     };
     let current_character_style = match &current_character.ansi_code {
         Some(ansi_code) => Some(ansi_code.as_str()),
-        // None => None,
-        None => get_previous_style(&current_frame, index, *character_column),
+        None => None,
     };
     last_character_style == current_character_style && last_character.character == current_character.character
 }
@@ -650,28 +609,12 @@ impl Screen {
                     let row = i / full_screen_ws.ws_col as usize + 1;
                     let col = i % full_screen_ws.ws_col as usize + 1;
                     if !character_is_already_onscreen(&last_frame, &frame, i, &col) {
-                    // if true {
                         if !last_character_was_changed {
-                            // goto row/col
-                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, &col));
-                            // copy the last style from the last frame, or reset the style
-                            // this is so that if the first character of the changed string
-                            // has no style, it will get the appropriate one and not the one
-                            // from where the cursor happened to be previously
-                            if i > 0 {
-                                match get_previous_style(&frame, i, col) {
-                                    Some(previous_ansi_code) => {
-                                        data_lines.push_str("\u{1b}[m"); // reset style
-                                        data_lines.push_str(&previous_ansi_code);
-                                    },
-                                    None => {
-                                        data_lines.push_str("\u{1b}[m"); // reset style
-                                    }
-                                };
-                            } else {
-                                data_lines.push_str("\u{1b}[m"); // reset style
-                            }
+                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, &col)); // goto row/col
+                            data_lines.push_str("\u{1b}[m"); // reset style
                         }
+                        // TODO: only render the ansi_code if it is different from the previous
+                        // rendered ansi code (previous char in this loop)
                         data_lines.push_str(&current_character.to_string());
                         last_character_was_changed = true;
                     } else {
@@ -762,12 +705,14 @@ fn main() {
                             }
                             (Some(first_terminal_read_bytes), None) => {
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
+                                let now = Instant::now();
                                 for byte in first_terminal_read_bytes.iter() {
                                     vte_parser_terminal1.advance(&mut *terminal1_output, *byte);
                                 }
+                                // println!("\rParsed      in {:?}", now.elapsed());
                             }
                             (None, Some(second_terminal_read_bytes)) => {
-                                let mut terminal1_output = terminal1_output.lock().unwrap();
+                                // let mut terminal1_output = terminal1_output.lock().unwrap();
                                 let mut terminal2_output = terminal2_output.lock().unwrap();
                                 for byte in second_terminal_read_bytes.iter() {
                                     vte_parser_terminal2.advance(&mut *terminal2_output, *byte);
@@ -782,9 +727,9 @@ fn main() {
                         if terminal1_output.should_render || terminal2_output.should_render {
                             let active_terminal = active_terminal.lock().unwrap();
                             let mut screen = screen.lock().unwrap();
-                            // let now = Instant::now();
+                            let now = Instant::now();
                             screen.render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
-                            // println!("\r->R rendered in {:?}", now.elapsed());
+                            // println!("\r-------->R rendered in {:?}", now.elapsed());
                         }
                     }
                 }
