@@ -247,18 +247,37 @@ impl TerminalOutput {
         let mut i = self.characters.len();
         let mut current_line: VecDeque<TerminalCharacter> = VecDeque::new();
         
-        let newline_indices: HashSet<&usize> = HashSet::from_iter(self.newline_indices.iter());
-        let linebreak_indices: HashSet<&usize> = HashSet::from_iter(self.linebreak_indices.iter());
+        let mut newline_indices = self.newline_indices.iter().rev();
+        let mut linebreak_indices = self.linebreak_indices.iter().rev();
+
+        let mut next_newline_index = newline_indices.next();
+        let mut next_linebreak_index = linebreak_indices.next();
+
         loop {
             i -= 1;
             let terminal_character = self.characters.get(i).unwrap();
             current_line.push_front(terminal_character.clone());
-            if newline_indices.contains(&i) || linebreak_indices.contains(&i) {
-                // pad line
-                for _ in current_line.len()..self.display_cols as usize {
-                    current_line.push_back(TerminalCharacter::new(' '));
+            if let Some(newline_index) = next_newline_index {
+                if newline_index == &i {
+                    // pad line
+                    for _ in current_line.len()..self.display_cols as usize {
+                        current_line.push_back(TerminalCharacter::new(' '));
+                    }
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+                    next_newline_index = newline_indices.next();
+                    continue;
                 }
-                output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+            }
+            if let Some(linebreak_index) = next_linebreak_index {
+                if linebreak_index == &i {
+                    // pad line
+                    for _ in current_line.len()..self.display_cols as usize {
+                        current_line.push_back(TerminalCharacter::new(' '));
+                    }
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+                    next_linebreak_index = linebreak_indices.next();
+                    continue;
+                }
             }
             if i == 0 || output.len() == self.display_rows as usize {
                 break;
@@ -604,21 +623,27 @@ impl Screen {
                     return
                 }
                 let mut last_character_was_changed = false;
+                let mut last_rendered_char_style = None;
                 for i in 0..last_frame.len() {
                     let current_character = frame.get(i).unwrap();
                     let row = i / full_screen_ws.ws_col as usize + 1;
                     let col = i % full_screen_ws.ws_col as usize + 1;
                     if !character_is_already_onscreen(&last_frame, &frame, i, &col) {
                         if !last_character_was_changed {
-                            data_lines.push_str(&format!("\u{1b}[{};{}H", row, &col)); // goto row/col
-                            data_lines.push_str("\u{1b}[m"); // reset style
+                            data_lines.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row, &col)); // goto row/col
                         }
                         // TODO: only render the ansi_code if it is different from the previous
                         // rendered ansi code (previous char in this loop)
-                        data_lines.push_str(&current_character.to_string());
+                        if last_rendered_char_style == current_character.ansi_code && last_character_was_changed {
+                            data_lines.push(current_character.character);
+                        } else {
+                            data_lines.push_str(&current_character.to_string());
+                            last_rendered_char_style = current_character.ansi_code.clone();
+                        }
                         last_character_was_changed = true;
                     } else {
                         last_character_was_changed = false;
+                        last_rendered_char_style = None;
                     }
                 }
             },
