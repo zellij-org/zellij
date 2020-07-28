@@ -194,6 +194,8 @@ struct TerminalOutput {
     pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
 
+const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_code: None };
+
 impl TerminalOutput {
     pub fn new () -> TerminalOutput {
         TerminalOutput {
@@ -239,13 +241,13 @@ impl TerminalOutput {
             x += 1;
         }
     }
-    pub fn read_buffer_as_lines (&mut self) -> Vec<Vec<TerminalCharacter>> {
+    pub fn read_buffer_as_lines (&mut self) -> Vec<Vec<&TerminalCharacter>> {
         if DEBUGGING {
             return vec![];
         }
-        let mut output: VecDeque<Vec<TerminalCharacter>> = VecDeque::new();
+        let mut output: VecDeque<Vec<&TerminalCharacter>> = VecDeque::new();
         let mut i = self.characters.len();
-        let mut current_line: VecDeque<TerminalCharacter> = VecDeque::new();
+        let mut current_line: VecDeque<&TerminalCharacter> = VecDeque::new();
         
         let mut newline_indices = self.newline_indices.iter().rev();
         let mut linebreak_indices = self.linebreak_indices.iter().rev();
@@ -256,14 +258,14 @@ impl TerminalOutput {
         loop {
             i -= 1;
             let terminal_character = self.characters.get(i).unwrap();
-            current_line.push_front(terminal_character.clone());
+            current_line.push_front(terminal_character);
             if let Some(newline_index) = next_newline_index {
                 if newline_index == &i {
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(TerminalCharacter::new(' '));
+                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_newline_index = newline_indices.next();
                     continue;
                 }
@@ -272,9 +274,9 @@ impl TerminalOutput {
                 if linebreak_index == &i {
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(TerminalCharacter::new(' '));
+                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<TerminalCharacter>>()));
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_linebreak_index = linebreak_indices.next();
                     continue;
                 }
@@ -286,7 +288,7 @@ impl TerminalOutput {
         if output.len() < self.display_rows as usize {
             let mut empty_line = vec![];
             for _ in 0..self.display_cols {
-                empty_line.push(TerminalCharacter::new(' '));
+                empty_line.push(&EMPTY_TERMINAL_CHARACTER);
             }
             for _ in output.len()..self.display_rows as usize {
                 output.push_front(Vec::from(empty_line.clone()));
@@ -564,13 +566,9 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
 }
 
 fn character_is_already_onscreen(
-    last_frame: &Vec<TerminalCharacter>,
-    current_frame: &Vec<TerminalCharacter>,
-    index: usize,
-    character_column: &usize
+    last_character: &TerminalCharacter,
+    current_character: &TerminalCharacter,
 ) -> bool {
-    let last_character = last_frame.get(index).unwrap();
-    let current_character = current_frame.get(index).unwrap();
     let last_character_style = match &last_character.ansi_code {
         Some(ansi_code) => Some(ansi_code.as_str()),
         None => None,
@@ -583,12 +581,16 @@ fn character_is_already_onscreen(
 }
 
 struct Screen {
-    last_frame: Option<Vec<TerminalCharacter>>
+    last_frame: Option<Vec<TerminalCharacter>>,
+    vertical_separator: TerminalCharacter, // TODO: better
 }
 
 impl Screen {
     pub fn new () -> Self {
-        Screen { last_frame: None }
+        Screen {
+            last_frame: None,
+            vertical_separator: TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m")), // TODO: better
+        }
     }
     pub fn render (&mut self, terminal1_output: &mut TerminalOutput, terminal2_output: &mut TerminalOutput, full_screen_ws: &Winsize, terminal1_is_active: bool) {
         if DEBUGGING {
@@ -597,21 +599,19 @@ impl Screen {
         let left_terminal_lines = terminal1_output.read_buffer_as_lines();
         let right_terminal_lines = terminal2_output.read_buffer_as_lines();
 
-        let mut frame: Vec<TerminalCharacter> = vec![];
-        let vertical_separator = TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m"));
+        let mut frame: Vec<&TerminalCharacter> = vec![];
         for i in 0..full_screen_ws.ws_row {
             let left_terminal_row = left_terminal_lines.get(i as usize).unwrap();
             for terminal_character in left_terminal_row.iter() {
-                frame.push(terminal_character.clone());
+                frame.push(terminal_character);
             }
 
-            frame.push(vertical_separator.clone());
+            frame.push(&self.vertical_separator);
 
             let right_terminal_row = right_terminal_lines.get(i as usize).unwrap();
             for terminal_character in right_terminal_row.iter() {
-                frame.push(terminal_character.clone());
+                frame.push(terminal_character);
             }
-
         }
 
         let mut data_lines = String::new();
@@ -625,10 +625,11 @@ impl Screen {
                 let mut last_character_was_changed = false;
                 let mut last_rendered_char_style = None;
                 for i in 0..last_frame.len() {
+                    let last_character = last_frame.get(i).unwrap();
                     let current_character = frame.get(i).unwrap();
                     let row = i / full_screen_ws.ws_col as usize + 1;
                     let col = i % full_screen_ws.ws_col as usize + 1;
-                    if !character_is_already_onscreen(&last_frame, &frame, i, &col) {
+                    if !character_is_already_onscreen(&last_character, &current_character) {
                         if !last_character_was_changed {
                             data_lines.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row, &col)); // goto row/col
                         }
@@ -654,11 +655,11 @@ impl Screen {
                 }
             }
         }
-        self.last_frame = Some(frame);
+        // TODO: consider looping through current frame and only updating the cells that changed
+        self.last_frame = Some(frame.into_iter().cloned().collect::<Vec<_>>());
 
         let left_terminal_cursor_position = terminal1_output.cursor_position_in_last_line();
         let right_terminal_cursor_position = terminal2_output.cursor_position_in_last_line();
-        // print!("\u{1b}c"); // clear screen
         if terminal1_is_active {
             data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
         } else {
