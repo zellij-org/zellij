@@ -229,11 +229,15 @@ impl TerminalOutput {
     }
     fn reflow_lines (&mut self) {
         self.linebreak_indices.clear();
-        let newline_indices: HashSet<&usize> = HashSet::from_iter(self.newline_indices.iter());
+
+        let mut newline_indices = self.newline_indices.iter();
+        let mut next_newline_index = newline_indices.next();
+
         let mut x: u64 = 0;
         for (i, _c) in self.characters.iter().enumerate() {
-            if newline_indices.contains(&i) {
+            if next_newline_index == Some(&i) {
                 x = 0;
+                next_newline_index = newline_indices.next();
             } else if x == self.display_cols as u64 && i < self.cursor_position {
                 self.linebreak_indices.push(i);
                 x = 0;
@@ -441,7 +445,6 @@ impl vte::Perform for TerminalOutput {
                 self.move_to_beginning_of_line();
             } else if byte == 08 { // backspace
                 self.cursor_position -= 1;
-                self.characters.remove(self.cursor_position);
             } else if byte == 10 { // 0a, newline
                 self.add_newline();
             }
