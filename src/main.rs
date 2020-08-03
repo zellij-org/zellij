@@ -1,36 +1,27 @@
-use std::time::{Duration, Instant};
-use std::iter::FromIterator;
-use std::{mem, io};
+// use std::time::{Duration, Instant};
+use std::io;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
-use std::io::{stdin, stdout, Read, Write};
-use std::collections::{BTreeSet, HashSet, HashMap, VecDeque};
+use std::io::{Read, Write};
+use std::collections::VecDeque;
 use nix::unistd::{read, write, ForkResult};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::sys::termios::SpecialCharacterIndices::{VMIN, VTIME};
 use nix::sys::termios::{
     tcgetattr,
     cfmakeraw,
     tcsetattr,
     SetArg,
     tcdrain,
-    tcflush,
-    FlushArg,
     cfsetispeed,
     cfsetospeed,
     BaudRate,
-    InputFlags,
 };
 use nix::pty::{forkpty, Winsize};
-use std::os::unix::io::{RawFd, FromRawFd};
+use std::os::unix::io::RawFd;
 use std::process::Command;
-use ::std::{thread, time};
-use ::std::fs::File;
-use ::std::io::prelude::*;
+use ::std::thread;
 use ::std::sync::{Arc, Mutex};
 
-use unicode_width::UnicodeWidthStr;
-use unicode_truncate::UnicodeTruncateStr;
 use vte;
 
 fn read_from_pid (pid: RawFd) -> Option<Vec<u8>> {
@@ -678,8 +669,8 @@ fn main() {
 
     let full_screen_ws = get_terminal_size_using_fd(0);
     let (first_terminal_ws, second_terminal_ws) = split_horizontally_with_gap(&full_screen_ws);
-    let (first_terminal_pid, pid_secondary): (RawFd, RawFd) = spawn_terminal(&first_terminal_ws);
-    let (second_terminal_pid, pid_secondary): (RawFd, RawFd) = spawn_terminal(&second_terminal_ws);
+    let (first_terminal_pid, _pid_secondary): (RawFd, RawFd) = spawn_terminal(&first_terminal_ws);
+    let (second_terminal_pid, _pid_secondary): (RawFd, RawFd) = spawn_terminal(&second_terminal_ws);
     let stdin = io::stdin();
     into_raw_mode(0);
     set_baud_rate(0);
@@ -709,7 +700,6 @@ fn main() {
                 let second_terminal_ws = second_terminal_ws.clone();
                 let screen = screen.clone();
                 move || {
-                    let mut buffer_has_unread_data = true;
                     {
                         // TODO: better
                         let first_terminal_ws = first_terminal_ws.lock().unwrap();
@@ -730,11 +720,10 @@ fn main() {
                                 for byte in second_terminal_read_bytes.iter() {
                                     vte_parser_terminal2.advance(&mut *terminal2_output, *byte);
                                 }
-                                buffer_has_unread_data = true;
                             }
                             (Some(first_terminal_read_bytes), None) => {
                                 let mut terminal1_output = terminal1_output.lock().unwrap();
-                                let now = Instant::now();
+                                // let now = Instant::now();
                                 for byte in first_terminal_read_bytes.iter() {
                                     vte_parser_terminal1.advance(&mut *terminal1_output, *byte);
                                 }
@@ -756,7 +745,7 @@ fn main() {
                         if terminal1_output.should_render || terminal2_output.should_render {
                             let active_terminal = active_terminal.lock().unwrap();
                             let mut screen = screen.lock().unwrap();
-                            let now = Instant::now();
+                            // let now = Instant::now();
                             screen.render(&mut *terminal1_output, &mut *terminal2_output, &full_screen_ws, *active_terminal == first_terminal_pid);
                             // println!("\r-------->R rendered in {:?}", now.elapsed());
                         }
