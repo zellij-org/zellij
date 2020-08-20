@@ -14,3 +14,8 @@ signal-hook = "0.1.10"
 unicode-width = "0.1.8"
 unicode-truncate = "0.1.1"
 vte = "0.8.0"
+futures = "0.3.5"
+
+[dependencies.async-std]
+version = "1.3.0"
+features = ["unstable"]
