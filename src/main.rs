@@ -1,69 +1,56 @@
-use std::time::{Duration, Instant};
+mod os_input_output;
+
 use std::io;
 use futures::future::join_all;
-use std::cell::Cell;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{Read, Write};
 use std::collections::VecDeque;
-use nix::unistd::{read, write, ForkResult};
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::sys::termios::{
-    tcgetattr,
-    cfmakeraw,
-    tcsetattr,
-    SetArg,
-    tcdrain,
-    cfsetispeed,
-    cfsetospeed,
-    BaudRate,
-};
-use nix::pty::{forkpty, Winsize};
+use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
-use std::process::Command;
 use ::std::thread;
-use ::std::sync::{Arc, Mutex};
 use vte;
 use async_std::stream::*;
 use async_std::task;
 use async_std::task::*;
-use async_std::prelude::*;
 use ::std::pin::*;
 use std::sync::mpsc::{channel, Sender, Receiver};
+
+use crate::os_input_output::{get_os_input, OsInputOutput, OsApi};
 
 
 
 struct ReadFromPid {
     pid: RawFd,
-    read_buffer: [u8; 115200],
+    os_input: Box<dyn OsApi>,
 }
 
 impl ReadFromPid {
-    fn new(pid: &RawFd) -> ReadFromPid {
+    fn new(pid: &RawFd, os_input: Box<dyn OsApi>) -> ReadFromPid {
         ReadFromPid {
             pid: *pid,
-            read_buffer: [0; 115200], // TODO: ???
+            os_input,
         }
     }
 }
 
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let read_result = read(self.pid, &mut self.read_buffer);
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut read_buffer = [0; 115200];
+        let read_result = &self.os_input.read(self.pid, &mut read_buffer);
         match read_result {
             Ok(res) => {
                 // TODO: this might become an issue with multiple panes sending data simultaneously
                 // ...consider returning None if res == 0 and handling it in the task (or sending
                 // Poll::Pending?)
-                let res = Some(self.read_buffer[..=res].to_vec());
-                self.read_buffer = [0; 115200];
+                let res = Some(read_buffer[..=*res].to_vec());
                 return Poll::Ready(res)
             },
             Err(e) => {
                 match e {
                     nix::Error::Sys(errno) => {
-                        if errno == nix::errno::Errno::EAGAIN {
+                        if *errno == nix::errno::Errno::EAGAIN {
                             return Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
                             // task::block_on(task::sleep(Duration::from_millis(10)));
                         } else {
@@ -75,110 +62,6 @@ impl Stream for ReadFromPid {
             }
         }
     }
-}
-
-fn read_from_pid (pid: RawFd) -> Option<Vec<u8>> {
-    let mut read_buffer = [0; 115200];
-    let read_result = read(pid, &mut read_buffer);
-    match read_result {
-        Ok(res) => {
-            let res = Some(read_buffer[..=res].to_vec());
-            res
-            // (res, read_buffer)
-        },
-        Err(e) => {
-            match e {
-                nix::Error::Sys(errno) => {
-                    if errno == nix::errno::Errno::EAGAIN {
-                        None
-                        // (0, read_buffer)
-                    } else {
-                        panic!("error {:?}", e);
-                    }
-                },
-                _ => panic!("error {:?}", e)
-            }
-        }
-    }
-}
-
-fn into_raw_mode(pid: RawFd) {
-    let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
-    cfmakeraw(&mut tio);
-    match tcsetattr(pid, SetArg::TCSANOW, &mut tio) {
-        Ok(_) => {},
-        Err(e) => panic!("error {:?}", e)
-    };
-
-}
-
-fn set_baud_rate(pid: RawFd) {
-    let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
-    cfsetospeed(&mut tio, BaudRate::B115200).expect("could not set baud rate");
-    cfsetispeed(&mut tio, BaudRate::B115200).expect("could not set baud rate");
-    tcsetattr(pid, SetArg::TCSANOW, &mut tio).expect("could not set attributes");
-}
-
-pub fn get_terminal_size_using_fd(fd: RawFd) -> Winsize {
-    // TODO: do this with the nix ioctl
-    use libc::ioctl;
-    use libc::TIOCGWINSZ;
-
-    let mut winsize = Winsize {
-        ws_row: 0,
-        ws_col: 0,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-
-    unsafe { ioctl(fd, TIOCGWINSZ.into(), &mut winsize) };
-    winsize
-}
-
-pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
-    // TODO: do this with the nix ioctl
-    use libc::ioctl;
-    use libc::TIOCSWINSZ;
-
-    let winsize = Winsize {
-        ws_col: columns,
-        ws_row: rows,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
-}
-
-
-fn spawn_terminal (ws: &Winsize) -> (RawFd, RawFd) {
-    let (pid_primary, pid_secondary): (RawFd, RawFd) = {
-        match forkpty(Some(ws), None) {
-            Ok(fork_pty_res) => {
-                let pid_primary = fork_pty_res.master;
-                let pid_secondary = match fork_pty_res.fork_result {
-                    ForkResult::Parent { child } => {
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
-                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
-                        child
-                    },
-                    ForkResult::Child => {
-                        // TODO: why does $SHELL not work?
-                        // Command::new("$SHELL").spawn().expect("failed to spawn");
-                        set_baud_rate(0);
-                        set_terminal_size_using_fd(0, ws.ws_col, ws.ws_row);
-                        Command::new("/usr/bin/fish").spawn().expect("failed to spawn");
-                        ::std::thread::sleep(std::time::Duration::from_millis(300000));
-                        panic!("I am secondary, why?!");
-                    },
-                };
-                (pid_primary, pid_secondary.as_raw())
-            }
-            Err(e) => {
-                panic!("failed to fork {:?}", e);
-            }
-        }
-    };
-    (pid_primary, pid_secondary)
 }
 
 #[derive(Clone, Debug)]
@@ -293,14 +176,6 @@ impl TerminalOutput {
         self.display_cols += count;
         self.reflow_lines();
         self.should_render = true;
-    }
-    pub fn set_size(&mut self, ws: &Winsize) {
-        let orig_cols = self.display_cols;
-        self.display_rows = ws.ws_row;
-        self.display_cols = ws.ws_col;
-        if orig_cols != self.display_cols && orig_cols != 0 {
-            self.reflow_lines();
-        }
     }
     fn reflow_lines (&mut self) {
         self.linebreak_indices.clear();
@@ -750,21 +625,22 @@ struct Screen {
     active_terminal: Option<RawFd>,
     terminal1_output: Option<TerminalOutput>,
     terminal2_output: Option<TerminalOutput>,
+    os_api: Box<dyn OsApi>,
 }
 
 impl Screen {
-    pub fn new () -> Self {
+    pub fn new (full_screen_ws: &Winsize, os_api: Box<dyn OsApi>) -> Self {
         let (sender, receiver): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
-        let full_screen_ws = get_terminal_size_using_fd(0);
         Screen {
             receiver,
             sender,
-            full_screen_ws,
+            full_screen_ws: full_screen_ws.clone(),
             last_frame: None,
             vertical_separator: TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m")), // TODO: better
             terminal1_output: None,
             terminal2_output: None,
             active_terminal: None,
+            os_api,
         }
     }
     pub fn add_terminal(&mut self, pid: RawFd, ws: Winsize) {
@@ -794,8 +670,8 @@ impl Screen {
     pub fn write_to_active_terminal(&self, byte: u8) {
         if let Some(active_terminal) = &self.active_terminal {
             let mut buffer = [byte];
-            write(*active_terminal, &mut buffer).expect("failed to write to terminal");
-            tcdrain(*active_terminal).expect("failed to drain terminal");
+            self.os_api.write(*active_terminal, &mut buffer).expect("failed to write to terminal");
+            self.os_api.tcdrain(*active_terminal).expect("failed to drain terminal");
         }
     }
     pub fn render (&mut self) {
@@ -883,16 +759,16 @@ impl Screen {
         let terminal2_output = self.terminal2_output.as_mut().unwrap();
         terminal1_output.reduce_width(10);
         terminal2_output.increase_width(10);
-        set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
-        set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
+        self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
+        self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
     }
     pub fn resize_right (&mut self) {
         let terminal1_output = self.terminal1_output.as_mut().unwrap();
         let terminal2_output = self.terminal2_output.as_mut().unwrap();
         terminal1_output.increase_width(10);
         terminal2_output.reduce_width(10);
-        set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
-        set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
+        self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
+        self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
     }
     pub fn move_focus(&mut self) {
         let terminal1_output = self.terminal1_output.as_ref().unwrap();
@@ -910,25 +786,27 @@ impl Screen {
 struct PtyBus {
     sender: Sender<ScreenInstruction>,
     active_ptys: Vec<JoinHandle<()>>,
+    os_input: Box<dyn OsApi>,
 }
 
 impl PtyBus {
-    pub fn new (sender: Sender<ScreenInstruction>) -> Self {
+    pub fn new (sender: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
         PtyBus {
             sender,
-            active_ptys: Vec::new()
+            active_ptys: Vec::new(),
+            os_input,
         }
     }
     pub fn spawn_terminal(&mut self, ws: &Winsize) {
         let ws = *ws;
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = spawn_terminal(&ws);
+        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(&ws);
         let task_handle = task::spawn({
-            // let pid_primary = pid_primary.clone();
             let sender = self.sender.clone();
+            let os_input = self.os_input.clone();
             async move {
                 let mut vte_parser = vte::Parser::new();
                 let mut vte_event_sender = VteEventSender::new(pid_primary, sender.clone());
-                let mut first_terminal_bytes = ReadFromPid::new(&pid_primary);
+                let mut first_terminal_bytes = ReadFromPid::new(&pid_primary, os_input);
                 while let Some(bytes) = first_terminal_bytes.next().await {
                     let bytes_is_empty = bytes.is_empty();
                     for byte in bytes {
@@ -956,26 +834,32 @@ impl PtyBus {
 }
 
 fn main() {
+    let os_input = get_os_input();
+    start(os_input);
+}
+
+fn start(os_input: OsInputOutput) {
     let mut active_threads = vec![];
 
     let stdin = io::stdin();
-    into_raw_mode(0);
-    set_baud_rate(0);
+
+    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    os_input.into_raw_mode(0);
     ::std::thread::sleep(std::time::Duration::from_millis(2000));
-    let mut screen = Screen::new();
+    let mut screen = Screen::new(&full_screen_ws, Box::new(os_input.clone()));
     let send_screen_instructions = screen.sender.clone();
 
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
-                let full_screen_ws = get_terminal_size_using_fd(0);
                 let (first_terminal_ws, second_terminal_ws) = split_horizontally_with_gap(&full_screen_ws);
                 let first_terminal_ws = first_terminal_ws.clone();
                 let second_terminal_ws = second_terminal_ws.clone();
                 let send_screen_instructions = send_screen_instructions.clone();
+                let os_input = os_input.clone();
                 move || {
-                    let mut pty_bus = PtyBus::new(send_screen_instructions);
+                    let mut pty_bus = PtyBus::new(send_screen_instructions, Box::new(os_input));
                     // this is done here so that we can add terminals dynamically on a different
                     // thread later
                     pty_bus.spawn_terminal(&first_terminal_ws);
