@@ -11,6 +11,8 @@ use nix::pty::{forkpty, Winsize};
 use std::os::unix::io::RawFd;
 use std::process::Command;
 
+use std::env;
+
 fn into_raw_mode(pid: RawFd) {
     let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
     cfmakeraw(&mut tio);
@@ -63,12 +65,9 @@ fn spawn_terminal (ws: &Winsize) -> (RawFd, RawFd) {
                         child
                     },
                     ForkResult::Child => {
-                        // TODO: why does $SHELL not work?
-                        // Command::new("$SHELL").spawn().expect("failed to spawn");
-                        // set_terminal_size_using_fd(0, ws.ws_col, ws.ws_row);
-                        Command::new("/usr/bin/fish").spawn().expect("failed to spawn");
-                        ::std::thread::sleep(std::time::Duration::from_millis(300000));
-                        panic!("I am secondary, why?!");
+                        Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
+                        ::std::thread::park();
+                        todo!();
                     },
                 };
                 (pid_primary, pid_secondary.as_raw())

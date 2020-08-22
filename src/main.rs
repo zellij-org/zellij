@@ -845,7 +845,6 @@ fn start(os_input: OsInputOutput) {
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
-    ::std::thread::sleep(std::time::Duration::from_millis(2000));
     let mut screen = Screen::new(&full_screen_ws, Box::new(os_input.clone()));
     let send_screen_instructions = screen.sender.clone();
 
