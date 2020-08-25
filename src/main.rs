@@ -5,7 +5,7 @@ use futures::future::join_all;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{Read, Write};
-use std::collections::VecDeque;
+use std::collections::{VecDeque};
 use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
 use ::std::thread;
@@ -17,8 +17,6 @@ use ::std::pin::*;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use crate::os_input_output::{get_os_input, OsInputOutput, OsApi};
-
-
 
 struct ReadFromPid {
     pid: RawFd,
@@ -52,7 +50,6 @@ impl Stream for ReadFromPid {
                     nix::Error::Sys(errno) => {
                         if *errno == nix::errno::Errno::EAGAIN {
                             return Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
-                            // task::block_on(task::sleep(Duration::from_millis(10)));
                         } else {
                             panic!("error {:?}", e);
                         }
@@ -121,12 +118,13 @@ struct TerminalOutput {
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
     pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    x_coords: u16,
 }
 
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_code: None };
 
 impl TerminalOutput {
-    pub fn new (pid: RawFd, ws: Winsize) -> TerminalOutput {
+    pub fn new (pid: RawFd, ws: Winsize, x_coords: u16) -> TerminalOutput {
         TerminalOutput {
             pid,
             characters: vec![],
@@ -137,9 +135,11 @@ impl TerminalOutput {
             display_cols: ws.ws_col,
             should_render: false,
             pending_ansi_code: None,
+            x_coords,
         }
     }
     pub fn handle_event(&mut self, event: VteEvent) {
+        self.should_render = true; // TODO: more accurately
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
@@ -167,12 +167,24 @@ impl TerminalOutput {
             }
         }
     }
-    pub fn reduce_width(&mut self, count: u16) {
+    pub fn reduce_width_right(&mut self, count: u16) {
+        self.x_coords += count;
         self.display_cols -= count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn increase_width(&mut self, count: u16) {
+    pub fn reduce_width_left(&mut self, count: u16) {
+        self.display_cols -= count;
+        self.reflow_lines();
+        self.should_render = true;
+    }
+    pub fn increase_width_left(&mut self, count: u16) {
+        self.x_coords -= count;
+        self.display_cols += count;
+        self.reflow_lines();
+        self.should_render = true;
+    }
+    pub fn increase_width_right(&mut self, count: u16) {
         self.display_cols += count;
         self.reflow_lines();
         self.should_render = true;
@@ -188,14 +200,37 @@ impl TerminalOutput {
             if next_newline_index == Some(&i) {
                 x = 0;
                 next_newline_index = newline_indices.next();
-            } else if x == self.display_cols as u64 && i < self.cursor_position {
+            } else if x == self.display_cols as u64 && i <= self.cursor_position {
                 self.linebreak_indices.push(i);
                 x = 0;
             }
             x += 1;
         }
     }
-    pub fn read_buffer_as_lines (&self) -> Vec<Vec<&TerminalCharacter>> {
+    pub fn buffer_as_vte_output(&mut self) -> Option<String> {
+        if self.should_render {
+            let mut vte_output = String::new();
+            let buffer_lines = &self.read_buffer_as_lines();
+            let display_cols = &self.display_cols;
+            for (row, line) in buffer_lines.iter().enumerate() {
+                // vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, 1)); // goto row/col
+                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, self.x_coords + 1)); // goto row/col
+                for (col, t_character) in line.iter().enumerate() {
+                    if (col as u16) < *display_cols {
+                        // in some cases (eg. while resizing) some characters will spill over
+                        // before they are corrected by the shell (for the prompt) or by reflowing
+                        // lines
+                        vte_output.push_str(&t_character.to_string());
+                    }
+                }
+            }
+            self.should_render = false;
+            Some(vte_output)
+        } else {
+            None
+        }
+    }
+    fn read_buffer_as_lines (&self) -> Vec<Vec<&TerminalCharacter>> {
         if DEBUGGING {
             return vec![];
         }
@@ -212,33 +247,41 @@ impl TerminalOutput {
         let mut next_newline_index = newline_indices.next();
         let mut next_linebreak_index = linebreak_indices.next();
 
+        let mut debug_messages = String::new();
         loop {
+            debug_messages.push_str(&format!("\r\n*** i {:?}", i));
             i -= 1;
-            let terminal_character = self.characters.get(i).unwrap();
-            current_line.push_front(terminal_character);
             if let Some(newline_index) = next_newline_index {
-                if newline_index == &i {
+                debug_messages.push_str(&format!("Some(newline_index): {:?} == {:?}", newline_index, i));
+                if *newline_index == i + 1 {
+                    debug_messages.push_str(&format!("equals i"));
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
                     output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_newline_index = newline_indices.next();
-                    continue;
                 }
             }
             if let Some(linebreak_index) = next_linebreak_index {
-                if linebreak_index == &i {
+                debug_messages.push_str(&format!("Some(linebreak_index): {:?}", linebreak_index));
+                if *linebreak_index == i + 1 {
+                    debug_messages.push_str(&format!("equals i"));
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
                     output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_linebreak_index = linebreak_indices.next();
-                    continue;
                 }
             }
-            if i == 0 || output.len() == self.display_rows as usize {
+            let terminal_character = self.characters.get(i).unwrap();
+            current_line.push_front(terminal_character);
+            if i == 0 || output.len() == self.display_rows as usize - 1 {
+                for _ in current_line.len()..self.display_cols as usize {
+                    current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+                }
+                output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                 break;
             }
         }
@@ -251,7 +294,14 @@ impl TerminalOutput {
                 output.push_front(Vec::from(empty_line.clone()));
             }
         }
-        // self.should_render = false;
+
+        let mut debug_output = String::new();
+        for line in output.iter() {
+            for t_char in line.iter() {
+                debug_output.push(t_char.character);
+            }
+            debug_output.push('\n');
+        }
         Vec::from(output)
     }
     pub fn cursor_position_in_last_line (&self) -> usize {
@@ -334,8 +384,8 @@ impl TerminalOutput {
         }
     }
     fn add_newline (&mut self) {
-        self.newline_indices.push(self.characters.len()); // -1?
-        self.cursor_position = self.characters.len(); // -1?
+        self.newline_indices.push(self.characters.len());
+        self.cursor_position = self.characters.len();
         self.should_render = true;
         self.pending_ansi_code = None;
     }
@@ -591,21 +641,6 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
-fn character_is_already_onscreen(
-    last_character: &TerminalCharacter,
-    current_character: &TerminalCharacter,
-) -> bool {
-    let last_character_style = match &last_character.ansi_code {
-        Some(ansi_code) => Some(ansi_code.as_str()),
-        None => None,
-    };
-    let current_character_style = match &current_character.ansi_code {
-        Some(ansi_code) => Some(ansi_code.as_str()),
-        None => None,
-    };
-    last_character_style == current_character_style && last_character.character == current_character.character
-}
-
 enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
@@ -620,7 +655,6 @@ struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
     pub sender: Sender<ScreenInstruction>,
     full_screen_ws: Winsize,
-    last_frame: Option<Vec<TerminalCharacter>>,
     vertical_separator: TerminalCharacter, // TODO: better
     active_terminal: Option<RawFd>,
     terminal1_output: Option<TerminalOutput>,
@@ -635,7 +669,6 @@ impl Screen {
             receiver,
             sender,
             full_screen_ws: full_screen_ws.clone(),
-            last_frame: None,
             vertical_separator: TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m")), // TODO: better
             terminal1_output: None,
             terminal2_output: None,
@@ -645,10 +678,12 @@ impl Screen {
     }
     pub fn add_terminal(&mut self, pid: RawFd, ws: Winsize) {
         if self.terminal1_output.is_none() {
-            self.terminal1_output = Some(TerminalOutput::new(pid, ws));
+            let terminal1_x = 0;
+            self.terminal1_output = Some(TerminalOutput::new(pid, ws, terminal1_x));
             self.active_terminal = Some(pid);
         } else if self.terminal2_output.is_none() {
-            self.terminal2_output = Some(TerminalOutput::new(pid, ws));
+            let terminal2_x = self.terminal1_output.as_ref().unwrap().display_cols + 1;
+            self.terminal2_output = Some(TerminalOutput::new(pid, ws, terminal2_x));
         } else {
             panic!("cannot support more than 2 terminals atm");
         }
@@ -675,98 +710,48 @@ impl Screen {
         }
     }
     pub fn render (&mut self) {
-        let left_terminal_lines = self.terminal1_output.as_ref().unwrap().read_buffer_as_lines();
-        let right_terminal_lines = self.terminal2_output.as_ref().unwrap().read_buffer_as_lines();
-        if left_terminal_lines.len() < self.full_screen_ws.ws_row as usize || right_terminal_lines.len() < self.full_screen_ws.ws_row as usize {
-            // TODO: this is hacky and is only here(?) for when the terminals are not ready yet
-            return;
+        let vte_output_terminal1 = self.terminal1_output.as_mut().unwrap().buffer_as_vte_output();
+        let vte_output_terminal2 = self.terminal2_output.as_mut().unwrap().buffer_as_vte_output();
+
+        let mut vte_output_boundaries = String::new();
+        for row in 0..self.full_screen_ws.ws_row {
+            vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, self.terminal1_output.as_ref().unwrap().display_cols + 1)); // goto row/col
+            vte_output_boundaries.push_str(&self.vertical_separator.to_string());
         }
-
-        let mut frame: Vec<&TerminalCharacter> = vec![];
-        let empty_vec = vec![]; // TODO: do not allocate, and less hacky
-        for i in 0..self.full_screen_ws.ws_row {
-            let left_terminal_row = left_terminal_lines.get(i as usize).unwrap_or(&empty_vec);
-            for terminal_character in left_terminal_row.iter() {
-                frame.push(terminal_character);
-            }
-
-            frame.push(&self.vertical_separator);
-
-            let right_terminal_row = right_terminal_lines.get(i as usize).unwrap_or(&empty_vec);
-            for terminal_character in right_terminal_row.iter() {
-                frame.push(terminal_character);
-            }
-        }
-
-        let mut data_lines = String::new();
-        match &self.last_frame {
-            Some(last_frame) => {
-                if last_frame.len() != frame.len() {
-                    // this is not ideal
-                    // right now it happens when we resize a pane, until fish resets the last line
-                    return
-                }
-                let mut last_character_was_changed = false;
-                let mut last_rendered_char_style = None;
-                for i in 0..last_frame.len() {
-                    let last_character = last_frame.get(i).unwrap();
-                    let current_character = frame.get(i).unwrap();
-                    let row = i / self.full_screen_ws.ws_col as usize + 1;
-                    let col = i % self.full_screen_ws.ws_col as usize + 1;
-                    if !character_is_already_onscreen(&last_character, &current_character) {
-                        if !last_character_was_changed {
-                            data_lines.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row, &col)); // goto row/col
-                        }
-                        // TODO: only render the ansi_code if it is different from the previous
-                        // rendered ansi code (previous char in this loop)
-                        if last_rendered_char_style == current_character.ansi_code && last_character_was_changed {
-                            data_lines.push(current_character.character);
-                        } else {
-                            data_lines.push_str(&current_character.to_string());
-                            last_rendered_char_style = current_character.ansi_code.clone();
-                        }
-                        last_character_was_changed = true;
-                    } else {
-                        last_character_was_changed = false;
-                        last_rendered_char_style = None;
-                    }
-                }
-            },
-            None => {
-                print!("\u{1b}c"); // clear screen
-                for terminal_character in frame.iter() {
-                    data_lines.push_str(&terminal_character.to_string());
-                }
-            }
-        }
-        // TODO: consider looping through current frame and only updating the cells that changed
-        self.last_frame = Some(frame.into_iter().cloned().collect::<Vec<_>>());
-
         let left_terminal_cursor_position = self.terminal1_output.as_ref().unwrap().cursor_position_in_last_line();
         let right_terminal_cursor_position = self.terminal2_output.as_ref().unwrap().cursor_position_in_last_line();
 
         let active_terminal = self.active_terminal.unwrap();
         if active_terminal == self.terminal1_output.as_ref().unwrap().pid {
-            data_lines.push_str(&format!("\r\u{1b}[{}C", left_terminal_cursor_position));
+            let goto_cursor_position = format!("\r\u{1b}[{}C", left_terminal_cursor_position);
+            vte_output_boundaries.push_str(&goto_cursor_position);
         } else {
-            data_lines.push_str(&format!("\r\u{1b}[{}C", right_terminal_cursor_position + (self.terminal1_output.as_ref().unwrap().display_cols + 1) as usize));
+            let goto_cursor_position = format!("\r\u{1b}[{}C", right_terminal_cursor_position + (self.terminal1_output.as_ref().unwrap().display_cols + 1) as usize);
+            vte_output_boundaries.push_str(&goto_cursor_position);
         }
-        ::std::io::stdout().write_all(&data_lines.as_bytes()).expect("cannot write to stdout");
+        if let Some(vte_output_terminal1) = vte_output_terminal1 {
+            ::std::io::stdout().write_all(&vte_output_terminal1.as_bytes()).expect("cannot write to stdout");
+        }
+        if let Some(vte_output_terminal2) = vte_output_terminal2 {
+            ::std::io::stdout().write_all(&vte_output_terminal2.as_bytes()).expect("cannot write to stdout");
+        }
+        // ::std::io::stdout().write_all(&vte_output_terminal2.as_bytes()).expect("cannot write to stdout");
+        ::std::io::stdout().write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
         ::std::io::stdout().flush().expect("could not flush");
     }
     pub fn resize_left (&mut self) {
         let terminal1_output = self.terminal1_output.as_mut().unwrap();
         let terminal2_output = self.terminal2_output.as_mut().unwrap();
-        terminal1_output.reduce_width(10);
-        terminal2_output.increase_width(10);
+        terminal1_output.reduce_width_left(10);
+        terminal2_output.increase_width_left(10);
         self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
         self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
     }
     pub fn resize_right (&mut self) {
         let terminal1_output = self.terminal1_output.as_mut().unwrap();
         let terminal2_output = self.terminal2_output.as_mut().unwrap();
-        terminal1_output.increase_width(10);
-        terminal2_output.reduce_width(10);
+        terminal1_output.increase_width_right(10);
+        terminal2_output.reduce_width_right(10);
         self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
         self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
     }
