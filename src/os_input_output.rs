@@ -53,9 +53,9 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
 }
 
-fn spawn_terminal (ws: &Winsize) -> (RawFd, RawFd) {
+fn spawn_terminal () -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
-        match forkpty(Some(ws), None) {
+        match forkpty(None, None) {
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
@@ -92,7 +92,7 @@ pub trait OsApi: Send + Sync {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize;
     fn set_terminal_size_using_fd(&self, pid: RawFd, cols: u16, rows: u16);
     fn into_raw_mode(&self, pid: RawFd);
-    fn spawn_terminal(&self, ws: &Winsize) -> (RawFd, RawFd);
+    fn spawn_terminal(&self) -> (RawFd, RawFd);
     fn read(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn write(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error>;
@@ -110,8 +110,8 @@ impl OsApi for OsInputOutput {
     fn into_raw_mode(&self, pid: RawFd) {
         into_raw_mode(pid);
     }
-    fn spawn_terminal(&self, ws: &Winsize) -> (RawFd, RawFd) {
-        spawn_terminal(ws)
+    fn spawn_terminal(&self) -> (RawFd, RawFd) {
+        spawn_terminal()
     }
     fn read(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         read(pid, buf)

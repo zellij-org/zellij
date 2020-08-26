@@ -5,7 +5,7 @@ use futures::future::join_all;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{Read, Write};
-use std::collections::{VecDeque};
+use std::collections::{VecDeque, HashMap};
 use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
 use ::std::thread;
@@ -133,7 +133,7 @@ impl TerminalOutput {
             linebreak_indices: Vec::new(),
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
-            should_render: false,
+            should_render: true,
             pending_ansi_code: None,
             x_coords,
         }
@@ -189,6 +189,12 @@ impl TerminalOutput {
         self.reflow_lines();
         self.should_render = true;
     }
+    pub fn change_size(&mut self, ws: &Winsize) {
+        self.display_cols = ws.ws_col;
+        self.display_rows = ws.ws_row;
+        self.reflow_lines();
+        self.should_render = true;
+    }
     fn reflow_lines (&mut self) {
         self.linebreak_indices.clear();
 
@@ -235,7 +241,15 @@ impl TerminalOutput {
             return vec![];
         }
         if self.characters.len() == 0 {
-            return vec![];
+            let mut output = vec![];
+            let mut empty_line = vec![];
+            for _ in 0..self.display_cols {
+                empty_line.push(&EMPTY_TERMINAL_CHARACTER);
+            }
+            for _ in 0..self.display_rows as usize {
+                output.push(Vec::from(empty_line.clone()));
+            }
+            return output
         }
         let mut output: VecDeque<Vec<&TerminalCharacter>> = VecDeque::new();
         let mut i = self.characters.len();
@@ -247,14 +261,10 @@ impl TerminalOutput {
         let mut next_newline_index = newline_indices.next();
         let mut next_linebreak_index = linebreak_indices.next();
 
-        let mut debug_messages = String::new();
         loop {
-            debug_messages.push_str(&format!("\r\n*** i {:?}", i));
             i -= 1;
             if let Some(newline_index) = next_newline_index {
-                debug_messages.push_str(&format!("Some(newline_index): {:?} == {:?}", newline_index, i));
                 if *newline_index == i + 1 {
-                    debug_messages.push_str(&format!("equals i"));
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
@@ -264,9 +274,7 @@ impl TerminalOutput {
                 }
             }
             if let Some(linebreak_index) = next_linebreak_index {
-                debug_messages.push_str(&format!("Some(linebreak_index): {:?}", linebreak_index));
                 if *linebreak_index == i + 1 {
-                    debug_messages.push_str(&format!("equals i"));
                     // pad line
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
@@ -295,18 +303,15 @@ impl TerminalOutput {
             }
         }
 
-        let mut debug_output = String::new();
-        for line in output.iter() {
-            for t_char in line.iter() {
-                debug_output.push(t_char.character);
-            }
-            debug_output.push('\n');
-        }
         Vec::from(output)
     }
     pub fn cursor_position_in_last_line (&self) -> usize {
         if self.cursor_position < self.characters.len() {
             let start_of_last_line = self.index_of_beginning_of_last_line();
+            if self.cursor_position < start_of_last_line {
+                // TODO: why does this happen?
+                return self.display_cols as usize
+            };
             let difference_from_last_newline = self.cursor_position - start_of_last_line;
             difference_from_last_newline
         } else {
@@ -644,7 +649,7 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
 enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
-    AddTerminal(RawFd, Winsize),
+    AddTerminal(RawFd),
     WriteCharacter(u8),
     ResizeLeft,
     ResizeRight,
@@ -653,12 +658,11 @@ enum ScreenInstruction {
 
 struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
-    pub sender: Sender<ScreenInstruction>,
+    pub send_screen_instructions: Sender<ScreenInstruction>,
     full_screen_ws: Winsize,
     vertical_separator: TerminalCharacter, // TODO: better
+    terminals: HashMap<RawFd, TerminalOutput>,
     active_terminal: Option<RawFd>,
-    terminal1_output: Option<TerminalOutput>,
-    terminal2_output: Option<TerminalOutput>,
     os_api: Box<dyn OsApi>,
 }
 
@@ -667,130 +671,311 @@ impl Screen {
         let (sender, receiver): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
         Screen {
             receiver,
-            sender,
+            send_screen_instructions: sender,
             full_screen_ws: full_screen_ws.clone(),
-            vertical_separator: TerminalCharacter::new('|').ansi_code(String::from("\u{1b}[m")), // TODO: better
-            terminal1_output: None,
-            terminal2_output: None,
+            vertical_separator: TerminalCharacter::new('│').ansi_code(String::from("\u{1b}[m")), // TODO: better
+            terminals: HashMap::new(),
             active_terminal: None,
             os_api,
         }
     }
-    pub fn add_terminal(&mut self, pid: RawFd, ws: Winsize) {
-        if self.terminal1_output.is_none() {
-            let terminal1_x = 0;
-            self.terminal1_output = Some(TerminalOutput::new(pid, ws, terminal1_x));
+    pub fn add_terminal(&mut self, pid: RawFd) {
+        if self.terminals.is_empty() {
+            let x = 0;
+            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
-        } else if self.terminal2_output.is_none() {
-            let terminal2_x = self.terminal1_output.as_ref().unwrap().display_cols + 1;
-            self.terminal2_output = Some(TerminalOutput::new(pid, ws, terminal2_x));
         } else {
-            panic!("cannot support more than 2 terminals atm");
+            // TODO: check minimum size of active terminal
+            let (active_terminal_ws, active_terminal_x_coords) = {
+                let active_terminal = &self.get_active_terminal().unwrap();
+                (
+                    Winsize {
+                        ws_row: active_terminal.display_rows,
+                        ws_col: active_terminal.display_cols,
+                        ws_xpixel: 0,
+                        ws_ypixel: 0,
+                    },
+                    active_terminal.x_coords
+                )
+            };
+            let (left_winszie, right_winsize) = split_horizontally_with_gap(&active_terminal_ws);
+            let right_side_x = active_terminal_x_coords + left_winszie.ws_col + 1;
+            let new_terminal = TerminalOutput::new(pid, right_winsize, right_side_x);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
+
+            {
+                let active_terminal_id = &self.get_active_terminal_id().unwrap();
+                let active_terminal = &mut self.terminals.get_mut(&active_terminal_id).unwrap();
+                active_terminal.change_size(&left_winszie);
+            }
+
+            self.terminals.insert(pid, new_terminal);
+            let active_terminal_pid = self.get_active_terminal_id().unwrap();
+            self.os_api.set_terminal_size_using_fd(active_terminal_pid, left_winszie.ws_col, left_winszie.ws_row);
+            self.active_terminal = Some(pid);
+            self.render();
+        }
+    }
+    fn get_active_terminal (&self) -> Option<&TerminalOutput> {
+        match self.active_terminal {
+            Some(active_terminal) => self.terminals.get(&active_terminal),
+            None => None
+        }
+    }
+    fn get_active_terminal_id (&self) -> Option<RawFd> {
+        match self.active_terminal {
+            Some(active_terminal) => Some(self.terminals.get(&active_terminal).unwrap().pid),
+            None => None
         }
     }
     pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
-        if let Some(terminal_output) = self.terminal1_output.as_mut() {
-            if terminal_output.pid == pid {
-                terminal_output.handle_event(event);
-                return;
-            }
-        }
-        if let Some(terminal_output) = self.terminal2_output.as_mut() {
-            if terminal_output.pid == pid {
-                terminal_output.handle_event(event);
-                return;
-            }
-        }
+        let terminal_output = self.terminals.get_mut(&pid).unwrap();
+        terminal_output.handle_event(event);
     }
     pub fn write_to_active_terminal(&self, byte: u8) {
-        if let Some(active_terminal) = &self.active_terminal {
+        if let Some(active_terminal_id) = &self.get_active_terminal_id() {
             let mut buffer = [byte];
-            self.os_api.write(*active_terminal, &mut buffer).expect("failed to write to terminal");
-            self.os_api.tcdrain(*active_terminal).expect("failed to drain terminal");
+            self.os_api.write(*active_terminal_id, &mut buffer).expect("failed to write to terminal");
+            self.os_api.tcdrain(*active_terminal_id).expect("failed to drain terminal");
         }
+    }
+    fn get_active_terminal_cursor_position(&self) -> usize {
+        let active_terminal = &self.get_active_terminal().unwrap();
+        active_terminal.x_coords as usize + active_terminal.cursor_position_in_last_line()
     }
     pub fn render (&mut self) {
-        let vte_output_terminal1 = self.terminal1_output.as_mut().unwrap().buffer_as_vte_output();
-        let vte_output_terminal2 = self.terminal2_output.as_mut().unwrap().buffer_as_vte_output();
-
-        let mut vte_output_boundaries = String::new();
-        for row in 0..self.full_screen_ws.ws_row {
-            vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, self.terminal1_output.as_ref().unwrap().display_cols + 1)); // goto row/col
-            vte_output_boundaries.push_str(&self.vertical_separator.to_string());
+        for (_pid, terminal) in self.terminals.iter_mut() {
+            if let Some(vte_output) = terminal.buffer_as_vte_output() {
+                if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
+                    let boundary_x_coords = terminal.x_coords + terminal.display_cols;
+                    let mut vte_output_boundaries = String::new();
+                    for row in 0..self.full_screen_ws.ws_row {
+                        vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, boundary_x_coords + 1)); // goto row/col
+                        vte_output_boundaries.push_str(&self.vertical_separator.to_string());
+                    }
+                    ::std::io::stdout().write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
+                }
+                ::std::io::stdout().write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
+            }
         }
-        let left_terminal_cursor_position = self.terminal1_output.as_ref().unwrap().cursor_position_in_last_line();
-        let right_terminal_cursor_position = self.terminal2_output.as_ref().unwrap().cursor_position_in_last_line();
-
-        let active_terminal = self.active_terminal.unwrap();
-        if active_terminal == self.terminal1_output.as_ref().unwrap().pid {
-            let goto_cursor_position = format!("\r\u{1b}[{}C", left_terminal_cursor_position);
-            vte_output_boundaries.push_str(&goto_cursor_position);
-        } else {
-            let goto_cursor_position = format!("\r\u{1b}[{}C", right_terminal_cursor_position + (self.terminal1_output.as_ref().unwrap().display_cols + 1) as usize);
-            vte_output_boundaries.push_str(&goto_cursor_position);
-        }
-        if let Some(vte_output_terminal1) = vte_output_terminal1 {
-            ::std::io::stdout().write_all(&vte_output_terminal1.as_bytes()).expect("cannot write to stdout");
-        }
-        if let Some(vte_output_terminal2) = vte_output_terminal2 {
-            ::std::io::stdout().write_all(&vte_output_terminal2.as_bytes()).expect("cannot write to stdout");
-        }
-        // ::std::io::stdout().write_all(&vte_output_terminal2.as_bytes()).expect("cannot write to stdout");
-        ::std::io::stdout().write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
+        let active_terminal_cursor_position = self.get_active_terminal_cursor_position();
+        let goto_cursor_position = format!("\r\u{1b}[{}C", active_terminal_cursor_position);
+        ::std::io::stdout().write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
         ::std::io::stdout().flush().expect("could not flush");
     }
+    fn terminal_ids_directly_left_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
+        let mut ids = vec![];
+        let terminal_to_check = self.terminals.get(id).unwrap();
+        if terminal_to_check.x_coords == 0 {
+            return None;
+        }
+        for (pid, terminal) in self.terminals.iter() {
+            if terminal.x_coords + terminal.display_cols == terminal_to_check.x_coords - 1 {
+                ids.push(*pid);
+            }
+        }
+        if ids.is_empty() {
+            None
+        } else {
+            Some(ids)
+        }
+    }
+    fn terminal_ids_directly_right_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
+        let mut ids = vec![];
+        let terminal_to_check = self.terminals.get(id).unwrap();
+        for (pid, terminal) in self.terminals.iter() {
+            if terminal.x_coords == terminal_to_check.x_coords + terminal_to_check.display_cols + 1 {
+                ids.push(*pid);
+            }
+        }
+        if ids.is_empty() {
+            None
+        } else {
+            Some(ids)
+        }
+    }
     pub fn resize_left (&mut self) {
-        let terminal1_output = self.terminal1_output.as_mut().unwrap();
-        let terminal2_output = self.terminal2_output.as_mut().unwrap();
-        terminal1_output.reduce_width_left(10);
-        terminal2_output.increase_width_left(10);
-        self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
-        self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
+        // TODO: find out by how much we actually reduced and only reduce by that much
+        let count = 10;
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let terminals_to_the_left = self.terminal_ids_directly_left_of(&active_terminal_id);
+            let terminals_to_the_right = self.terminal_ids_directly_right_of(&active_terminal_id);
+            match (terminals_to_the_left, terminals_to_the_right) {
+                (Some(terminals_to_the_left), Some(_terminals_to_the_right)) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.increase_width_left(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_left {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.reduce_width_left(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                (Some(terminals_to_the_left), None) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.increase_width_left(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_left {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.reduce_width_left(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                (None, Some(terminals_to_the_right)) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.reduce_width_left(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_right {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.increase_width_left(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                _ => {}
+            }
+        }
     }
     pub fn resize_right (&mut self) {
-        let terminal1_output = self.terminal1_output.as_mut().unwrap();
-        let terminal2_output = self.terminal2_output.as_mut().unwrap();
-        terminal1_output.increase_width_right(10);
-        terminal2_output.reduce_width_right(10);
-        self.os_api.set_terminal_size_using_fd(terminal1_output.pid, terminal1_output.display_cols, terminal1_output.display_rows);
-        self.os_api.set_terminal_size_using_fd(terminal2_output.pid, terminal2_output.display_cols, terminal2_output.display_rows);
+        let count = 10;
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let terminals_to_the_left = self.terminal_ids_directly_left_of(&active_terminal_id);
+            let terminals_to_the_right = self.terminal_ids_directly_right_of(&active_terminal_id);
+            match (terminals_to_the_left, terminals_to_the_right) {
+                (Some(_terminals_to_the_left), Some(terminals_to_the_right)) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.increase_width_right(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_right {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.reduce_width_right(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                (Some(terminals_to_the_left), None) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.reduce_width_right(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_left {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.increase_width_right(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                (None, Some(terminals_to_the_right)) => {
+                    let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                    active_terminal.increase_width_right(count);
+                    self.os_api.set_terminal_size_using_fd(
+                        active_terminal.pid,
+                        active_terminal.display_cols,
+                        active_terminal.display_rows
+                    );
+                    for terminal_id in terminals_to_the_right {
+                        let terminal = self.terminals.get_mut(&terminal_id).unwrap();
+                        terminal.reduce_width_right(count);
+                        self.os_api.set_terminal_size_using_fd(
+                            terminal.pid,
+                            terminal.display_cols,
+                            terminal.display_rows
+                        );
+                    }
+                },
+                _ => {}
+            }
+        }
     }
     pub fn move_focus(&mut self) {
-        let terminal1_output = self.terminal1_output.as_ref().unwrap();
-        let terminal2_output = self.terminal2_output.as_ref().unwrap();
-        let active_terminal = self.active_terminal.unwrap();
-        if active_terminal == terminal1_output.pid {
-            self.active_terminal = Some(terminal2_output.pid);
-        } else {
-            self.active_terminal = Some(terminal1_output.pid);
+        if self.terminals.is_empty() {
+            return;
         }
+        let active_terminal = self.get_active_terminal().unwrap();
+        let mut first_terminal = active_terminal.pid;
+        for (terminal_pid, terminal_output) in self.terminals.iter() {
+            if terminal_output.x_coords == 0 {
+                first_terminal = terminal_output.pid
+            } else if active_terminal.x_coords + active_terminal.display_cols == terminal_output.x_coords - 1 {
+                self.active_terminal = Some(*terminal_pid);
+                self.render();
+                return;
+            }
+        }
+        self.active_terminal = Some(first_terminal);
         self.render();
     }
 }
 
+enum PtyInstruction {
+    SpawnTerminal
+}
+
 struct PtyBus {
-    sender: Sender<ScreenInstruction>,
+    receive_pty_instructions: Receiver<PtyInstruction>,
+    send_pty_instructions: Sender<PtyInstruction>,
+    send_screen_instructions: Sender<ScreenInstruction>,
     active_ptys: Vec<JoinHandle<()>>,
     os_input: Box<dyn OsApi>,
 }
 
 impl PtyBus {
-    pub fn new (sender: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
+    pub fn new (send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
+        let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
         PtyBus {
-            sender,
+            send_pty_instructions,
+            send_screen_instructions,
+            receive_pty_instructions,
             active_ptys: Vec::new(),
             os_input,
         }
     }
-    pub fn spawn_terminal(&mut self, ws: &Winsize) {
-        let ws = *ws;
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(&ws);
+    pub fn spawn_terminal(&mut self) {
+        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
         let task_handle = task::spawn({
-            let sender = self.sender.clone();
+            let send_screen_instructions = self.send_screen_instructions.clone();
             let os_input = self.os_input.clone();
             async move {
                 let mut vte_parser = vte::Parser::new();
-                let mut vte_event_sender = VteEventSender::new(pid_primary, sender.clone());
+                let mut vte_event_sender = VteEventSender::new(pid_primary, send_screen_instructions.clone());
                 let mut first_terminal_bytes = ReadFromPid::new(&pid_primary, os_input);
                 while let Some(bytes) = first_terminal_bytes.next().await {
                     let bytes_is_empty = bytes.is_empty();
@@ -798,15 +983,15 @@ impl PtyBus {
                         vte_parser.advance(&mut vte_event_sender, byte);
                     }
                     if !bytes_is_empty {
-                        sender.send(ScreenInstruction::Render).unwrap();
+                        send_screen_instructions.send(ScreenInstruction::Render).unwrap();
                     }
                 }
             }
         });
-        self.sender.send(ScreenInstruction::AddTerminal(pid_primary, ws)).unwrap();
+        self.send_screen_instructions.send(ScreenInstruction::AddTerminal(pid_primary)).unwrap();
         self.active_ptys.push(task_handle);
     }
-    pub async fn wait_for_tasks(&mut self) {
+    pub async fn _wait_for_tasks(&mut self) {
 //        let task1 = self.active_ptys.get_mut(0).unwrap();
 //        task1.await;
         let mut v = vec![];
@@ -831,25 +1016,28 @@ fn start(os_input: OsInputOutput) {
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let mut screen = Screen::new(&full_screen_ws, Box::new(os_input.clone()));
-    let send_screen_instructions = screen.sender.clone();
+    let send_screen_instructions = screen.send_screen_instructions.clone();
+    let mut pty_bus = PtyBus::new(send_screen_instructions.clone(), Box::new(os_input.clone()));
+    let send_pty_instructions = pty_bus.send_pty_instructions.clone();
 
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
-                let (first_terminal_ws, second_terminal_ws) = split_horizontally_with_gap(&full_screen_ws);
-                let first_terminal_ws = first_terminal_ws.clone();
-                let second_terminal_ws = second_terminal_ws.clone();
-                let send_screen_instructions = send_screen_instructions.clone();
-                let os_input = os_input.clone();
                 move || {
-                    let mut pty_bus = PtyBus::new(send_screen_instructions, Box::new(os_input));
-                    // this is done here so that we can add terminals dynamically on a different
-                    // thread later
-                    pty_bus.spawn_terminal(&first_terminal_ws);
-                    pty_bus.spawn_terminal(&second_terminal_ws);
-                    task::block_on(pty_bus.wait_for_tasks());
-
+                    pty_bus.spawn_terminal();
+                    loop {
+                        let event = pty_bus.receive_pty_instructions
+                            .recv()
+                            .expect("failed to receive event on channel");
+                        match event {
+                            PtyInstruction::SpawnTerminal => {
+                                pty_bus.spawn_terminal();
+                            }
+                        }
+                    }
+                    // TODO: do this when we exit
+                    // task::block_on(pty_bus.wait_for_tasks());
                 }
             }).unwrap()
     );
@@ -870,8 +1058,8 @@ fn start(os_input: OsInputOutput) {
                             ScreenInstruction::Render => {
                                 screen.render();
                             },
-                            ScreenInstruction::AddTerminal(pid, ws) => {
-                                screen.add_terminal(pid, ws);
+                            ScreenInstruction::AddTerminal(pid) => {
+                                screen.add_terminal(pid);
                             }
                             ScreenInstruction::WriteCharacter(byte) => {
                                 screen.write_to_active_terminal(byte);
@@ -904,6 +1092,9 @@ fn start(os_input: OsInputOutput) {
                 continue;
             } else if buffer[0] == 16 { // ctrl-p
                 send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+                continue;
+            } else if buffer[0] == 14 { // ctrl-n
+                send_pty_instructions.send(PtyInstruction::SpawnTerminal).unwrap();
                 continue;
             }
         }
