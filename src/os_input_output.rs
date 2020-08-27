@@ -11,6 +11,7 @@ use nix::sys::signal::kill;
 use nix::pty::{forkpty, Winsize};
 use std::os::unix::io::RawFd;
 use std::process::Command;
+use std::io::{Read, Write};
 
 use std::env;
 
@@ -93,6 +94,8 @@ pub trait OsApi: Send + Sync {
     fn write(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error>;
     fn kill(&self, pid: RawFd) -> Result<(), nix::Error>;
+    fn get_stdin_reader(&self) -> Box<dyn Read>;
+    fn get_stdout_writer(&self) -> Box<dyn Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
 
@@ -120,6 +123,17 @@ impl OsApi for OsInputOutput {
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())
+    }
+    fn get_stdin_reader(&self) -> Box<dyn Read> {
+        // TODO: stdin lock, right now it's not done because we don't have where to put it
+        // if we put it on the struct, we won't be able to clone the struct
+        // if we leave it here, we're referencing a temporary value
+        let stdin = ::std::io::stdin();
+        Box::new(stdin)
+    }
+    fn get_stdout_writer(&self) -> Box<dyn Write> {
+        let stdout = ::std::io::stdout();
+        Box::new(stdout)
     }
     fn kill(&self, fd: RawFd) -> Result<(), nix::Error> {
         kill(Pid::from_raw(fd), None)

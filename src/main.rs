@@ -1,6 +1,5 @@
 mod os_input_output;
 
-use std::io;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{Read, Write};
@@ -218,7 +217,6 @@ impl TerminalOutput {
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = &self.display_cols;
             for (row, line) in buffer_lines.iter().enumerate() {
-                // vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, 1)); // goto row/col
                 vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, self.x_coords + 1)); // goto row/col
                 for (col, t_character) in line.iter().enumerate() {
                     if (col as u16) < *display_cols {
@@ -746,6 +744,7 @@ impl Screen {
         active_terminal.x_coords as usize + active_terminal.cursor_position_in_last_line()
     }
     pub fn render (&mut self) {
+        let mut stdout = self.os_api.get_stdout_writer();
         for (_pid, terminal) in self.terminals.iter_mut() {
             if let Some(vte_output) = terminal.buffer_as_vte_output() {
                 if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
@@ -755,15 +754,15 @@ impl Screen {
                         vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, boundary_x_coords + 1)); // goto row/col
                         vte_output_boundaries.push_str(&self.vertical_separator.to_string());
                     }
-                    ::std::io::stdout().write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
+                    stdout.write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
                 }
-                ::std::io::stdout().write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
+                stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
             }
         }
         let active_terminal_cursor_position = self.get_active_terminal_cursor_position();
         let goto_cursor_position = format!("\r\u{1b}[{}C", active_terminal_cursor_position);
-        ::std::io::stdout().write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
-        ::std::io::stdout().flush().expect("could not flush");
+        stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
+        stdout.flush().expect("could not flush");
     }
     fn terminal_ids_directly_left_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
         let mut ids = vec![];
@@ -964,7 +963,6 @@ impl PtyBus {
             send_pty_instructions,
             send_screen_instructions,
             receive_pty_instructions,
-            // active_ptys: Vec::new(),
             os_input,
         }
     }
@@ -999,8 +997,6 @@ fn main() {
 
 fn start(os_input: OsInputOutput) {
     let mut active_threads = vec![];
-
-    let stdin = io::stdin();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
@@ -1072,30 +1068,25 @@ fn start(os_input: OsInputOutput) {
             }).unwrap()
     );
 
+    let mut stdin = os_input.get_stdin_reader();
     loop {
 		let mut buffer = [0; 1];
-        {
-            let mut handle = stdin.lock();
-            handle.read(&mut buffer).expect("failed to read stdin");
-            if buffer[0] == 10 { // ctrl-j
-                send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
-                continue;
-            } else if buffer[0] == 11 { // ctrl-k
-                send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
-                continue;
-            } else if buffer[0] == 16 { // ctrl-p
-                send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
-                continue;
-            } else if buffer[0] == 14 { // ctrl-n
-                send_pty_instructions.send(PtyInstruction::SpawnTerminal).unwrap();
-                continue;
-            } else if buffer[0] == 17 { // ctrl-q
-                send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
-                send_pty_instructions.send(PtyInstruction::Quit).unwrap();
-                break;
-            }
+        stdin.read(&mut buffer).expect("failed to read stdin");
+        if buffer[0] == 10 { // ctrl-j
+            send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
+        } else if buffer[0] == 11 { // ctrl-k
+            send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
+        } else if buffer[0] == 16 { // ctrl-p
+            send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+        } else if buffer[0] == 14 { // ctrl-n
+            send_pty_instructions.send(PtyInstruction::SpawnTerminal).unwrap();
+        } else if buffer[0] == 17 { // ctrl-q
+            send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
+            send_pty_instructions.send(PtyInstruction::Quit).unwrap();
+            break;
+        } else {
+            send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer[0])).unwrap();
         }
-        send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer[0])).unwrap();
     };
     
     for thread_handler in active_threads {
