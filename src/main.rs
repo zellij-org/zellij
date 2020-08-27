@@ -1093,6 +1093,9 @@ fn start(os_input: OsInputOutput) {
         thread_handler.join().unwrap();
     }
     // cleanup();
-    println!("\rBye from Mosaic!");
+    let reset_style = "\u{1b}[m";
+    let goodbye_message = format!("\r{}Bye from Mosaic!", reset_style);
+
+    os_input.get_stdout_writer().write(goodbye_message.as_bytes()).unwrap();
 
 }
