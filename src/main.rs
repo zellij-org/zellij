@@ -1,7 +1,6 @@
 mod os_input_output;
 
 use std::io;
-use futures::future::join_all;
 use ::std::fmt::{self, Display, Formatter};
 use std::cmp::max;
 use std::io::{Read, Write};
@@ -51,10 +50,10 @@ impl Stream for ReadFromPid {
                         if *errno == nix::errno::Errno::EAGAIN {
                             return Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
                         } else {
-                            panic!("error {:?}", e);
+                            Poll::Ready(None)
                         }
                     },
-                    _ => panic!("error {:?}", e)
+                    _ => Poll::Ready(None)
                 }
             }
         }
@@ -654,6 +653,7 @@ enum ScreenInstruction {
     ResizeLeft,
     ResizeRight,
     MoveFocus,
+    Quit,
 }
 
 struct Screen {
@@ -946,14 +946,14 @@ impl Screen {
 }
 
 enum PtyInstruction {
-    SpawnTerminal
+    SpawnTerminal,
+    Quit
 }
 
 struct PtyBus {
     receive_pty_instructions: Receiver<PtyInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
     send_screen_instructions: Sender<ScreenInstruction>,
-    active_ptys: Vec<JoinHandle<()>>,
     os_input: Box<dyn OsApi>,
 }
 
@@ -964,13 +964,13 @@ impl PtyBus {
             send_pty_instructions,
             send_screen_instructions,
             receive_pty_instructions,
-            active_ptys: Vec::new(),
+            // active_ptys: Vec::new(),
             os_input,
         }
     }
     pub fn spawn_terminal(&mut self) {
         let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
-        let task_handle = task::spawn({
+        task::spawn({
             let send_screen_instructions = self.send_screen_instructions.clone();
             let os_input = self.os_input.clone();
             async move {
@@ -989,17 +989,6 @@ impl PtyBus {
             }
         });
         self.send_screen_instructions.send(ScreenInstruction::AddTerminal(pid_primary)).unwrap();
-        self.active_ptys.push(task_handle);
-    }
-    pub async fn _wait_for_tasks(&mut self) {
-//        let task1 = self.active_ptys.get_mut(0).unwrap();
-//        task1.await;
-        let mut v = vec![];
-        for handle in self.active_ptys.iter_mut() {
-            // TODO: better, see commented lines above... can't we do this on the original vec?
-            v.push(handle);
-        }
-        join_all(v).await;
     }
 }
 
@@ -1034,10 +1023,11 @@ fn start(os_input: OsInputOutput) {
                             PtyInstruction::SpawnTerminal => {
                                 pty_bus.spawn_terminal();
                             }
+                            PtyInstruction::Quit => {
+                                break;
+                            }
                         }
                     }
-                    // TODO: do this when we exit
-                    // task::block_on(pty_bus.wait_for_tasks());
                 }
             }).unwrap()
     );
@@ -1073,6 +1063,9 @@ fn start(os_input: OsInputOutput) {
                             ScreenInstruction::MoveFocus => {
                                 screen.move_focus();
                             }
+                            ScreenInstruction::Quit => {
+                                break;
+                            }
                         }
                     }
                 }
@@ -1096,14 +1089,19 @@ fn start(os_input: OsInputOutput) {
             } else if buffer[0] == 14 { // ctrl-n
                 send_pty_instructions.send(PtyInstruction::SpawnTerminal).unwrap();
                 continue;
+            } else if buffer[0] == 17 { // ctrl-q
+                send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
+                send_pty_instructions.send(PtyInstruction::Quit).unwrap();
+                break;
             }
         }
         send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer[0])).unwrap();
     };
-//    cleanup();
     
-//    for thread_handler in active_threads {
-//        thread_handler.join().unwrap();
-//    }
+    for thread_handler in active_threads {
+        thread_handler.join().unwrap();
+    }
+    // cleanup();
+    println!("\rBye from Mosaic!");
 
 }

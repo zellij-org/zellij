@@ -1,4 +1,4 @@
-use nix::unistd::{read, write, ForkResult};
+use nix::unistd::{read, write, ForkResult, Pid};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::sys::termios::{
     tcgetattr,
@@ -7,6 +7,7 @@ use nix::sys::termios::{
     SetArg,
     tcdrain,
 };
+use nix::sys::signal::kill;
 use nix::pty::{forkpty, Winsize};
 use std::os::unix::io::RawFd;
 use std::process::Command;
@@ -66,8 +67,8 @@ fn spawn_terminal () -> (RawFd, RawFd) {
                     },
                     ForkResult::Child => {
                         Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
-                        ::std::thread::park();
-                        todo!();
+                        ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
+                        Pid::from_raw(0) // TODO: better
                     },
                 };
                 (pid_primary, pid_secondary.as_raw())
@@ -81,12 +82,7 @@ fn spawn_terminal () -> (RawFd, RawFd) {
 }
 
 #[derive(Clone)]
-pub struct OsInputOutput {
-//    pub get_terminal_size_using_fd: Box<dyn Fn(RawFd) -> Winsize + Send>,
-//    pub set_terminal_size_using_fd: Box<dyn Fn(RawFd, u16, u16) + Send>,
-//    pub into_raw_mode: Box<dyn Fn(RawFd) + Send>,
-//    pub spawn_terminal: Box<dyn Fn(&Winsize) -> (RawFd, RawFd) + Send>,
-}
+pub struct OsInputOutput {}
 
 pub trait OsApi: Send + Sync {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize;
@@ -96,8 +92,8 @@ pub trait OsApi: Send + Sync {
     fn read(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn write(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error>;
+    fn kill(&self, pid: RawFd) -> Result<(), nix::Error>;
     fn box_clone(&self) -> Box<dyn OsApi>;
-        // let read_result = read(self.pid, &mut self.read_buffer);
 }
 
 impl OsApi for OsInputOutput {
@@ -124,6 +120,9 @@ impl OsApi for OsInputOutput {
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())
+    }
+    fn kill(&self, fd: RawFd) -> Result<(), nix::Error> {
+        kill(Pid::from_raw(fd), None)
     }
 }
 
