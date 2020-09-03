@@ -62,8 +62,8 @@ fn spawn_terminal () -> (RawFd, RawFd) {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
-                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
+                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
+                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
                         child
                     },
                     ForkResult::Child => {
@@ -87,13 +87,13 @@ pub struct OsInputOutput {}
 
 pub trait OsApi: Send + Sync {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize;
-    fn set_terminal_size_using_fd(&self, pid: RawFd, cols: u16, rows: u16);
-    fn into_raw_mode(&self, pid: RawFd);
-    fn spawn_terminal(&self) -> (RawFd, RawFd);
-    fn read(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn write(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error>;
-    fn kill(&self, pid: RawFd) -> Result<(), nix::Error>;
+    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
+    fn into_raw_mode(&mut self, pid: RawFd);
+    fn spawn_terminal(&mut self) -> (RawFd, RawFd);
+    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     fn get_stdin_reader(&self) -> Box<dyn Read>;
     fn get_stdout_writer(&self) -> Box<dyn Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
@@ -103,22 +103,22 @@ impl OsApi for OsInputOutput {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize {
         get_terminal_size_using_fd(pid)
     }
-    fn set_terminal_size_using_fd(&self, pid: RawFd, cols: u16, rows: u16) {
+    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(pid, cols, rows);
     }
-    fn into_raw_mode(&self, pid: RawFd) {
+    fn into_raw_mode(&mut self, pid: RawFd) {
         into_raw_mode(pid);
     }
-    fn spawn_terminal(&self) -> (RawFd, RawFd) {
+    fn spawn_terminal(&mut self) -> (RawFd, RawFd) {
         spawn_terminal()
     }
-    fn read(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         read(pid, buf)
     }
-    fn write(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         write(pid, buf)
     }
-    fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
         tcdrain(pid)
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
@@ -135,7 +135,7 @@ impl OsApi for OsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn kill(&self, fd: RawFd) -> Result<(), nix::Error> {
+    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
         kill(Pid::from_raw(fd), None)
     }
 }

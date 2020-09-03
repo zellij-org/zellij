@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 mod os_input_output;
 
 use ::std::fmt::{self, Display, Formatter};
@@ -14,7 +17,9 @@ use async_std::task::*;
 use ::std::pin::*;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
-use crate::os_input_output::{get_os_input, OsInputOutput, OsApi};
+use crate::os_input_output::{get_os_input, OsApi};
+
+use vte::Perform;
 
 struct ReadFromPid {
     pid: RawFd,
@@ -32,16 +37,19 @@ impl ReadFromPid {
 
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut read_buffer = [0; 115200];
-        let read_result = &self.os_input.read(self.pid, &mut read_buffer);
+        let pid = self.pid;
+        let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
         match read_result {
             Ok(res) => {
-                // TODO: this might become an issue with multiple panes sending data simultaneously
-                // ...consider returning None if res == 0 and handling it in the task (or sending
-                // Poll::Pending?)
-                let res = Some(read_buffer[..=*res].to_vec());
-                return Poll::Ready(res)
+                if *res == 0 {
+                    // indicates end of file
+                    return Poll::Ready(None);
+                } else {
+                    let res = Some(read_buffer[..=*res].to_vec());
+                    return Poll::Ready(res);
+                }
             },
             Err(e) => {
                 match e {
@@ -59,8 +67,8 @@ impl Stream for ReadFromPid {
     }
 }
 
-#[derive(Clone, Debug)]
-struct TerminalCharacter {
+#[derive(Clone)]
+pub struct TerminalCharacter {
     pub character: char,
     pub ansi_code: Option<String>,
 }
@@ -106,7 +114,14 @@ impl Display for TerminalCharacter {
     }
 }
 
-struct TerminalOutput {
+impl ::std::fmt::Debug for TerminalCharacter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.character);
+        Ok(())
+    }
+}
+
+pub struct TerminalOutput {
     pub pid: RawFd,
     pub characters: Vec<TerminalCharacter>,
     pub display_rows: u16,
@@ -155,7 +170,8 @@ impl TerminalOutput {
                 self.unhook();
             },
             VteEvent::OscDispatch(params, bell_terminated) => {
-                self.osc_dispatch(params, bell_terminated);
+                let params: Vec<&[u8]> = params.iter().map(|p| &p[..]).collect();
+                self.osc_dispatch(&params[..], bell_terminated);
             },
             VteEvent::CsiDispatch(params, intermediates, ignore, c) => {
                 self.csi_dispatch(&params, &intermediates, ignore, c);
@@ -337,6 +353,14 @@ impl TerminalOutput {
             (None, None) => 0
         }
     }
+    fn index_of_beginning_of_last_canonical_line (&self) -> usize {
+        if self.newline_indices.is_empty() {
+            0
+        } else {
+            // return last
+            *self.newline_indices.last().unwrap()
+        }
+    }
     fn index_of_beginning_of_line (&self, index_in_line: usize) -> usize {
         let last_newline_index = if self.newline_indices.is_empty() {
             None
@@ -404,8 +428,7 @@ impl TerminalOutput {
 
 const DEBUGGING: bool = false;
 
-// vte methods
-impl TerminalOutput {
+impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
         if DEBUGGING {
             println!("\r[print] {:?}", c);
@@ -424,14 +447,15 @@ impl TerminalOutput {
                     self.characters.push(space_character.clone());
                 };
                 self.characters.push(terminal_character);
-            }
 
-            let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
-            let difference_from_last_newline = self.cursor_position - start_of_last_line;
-            if difference_from_last_newline == self.display_cols as usize {
-                self.linebreak_indices.push(self.cursor_position);
+                let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
+                let difference_from_last_newline = self.cursor_position - start_of_last_line;
+                if difference_from_last_newline == self.display_cols as usize {
+                    self.linebreak_indices.push(self.cursor_position);
+                }
             }
             self.cursor_position += 1;
+
         }
     }
 
@@ -478,9 +502,8 @@ impl TerminalOutput {
         }
     }
 
-    // fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
     // TODO: normalize vec/slices for all of these methods and the enum
-    fn osc_dispatch(&mut self, params: Vec<Vec<u8>>, bell_terminated: bool) {
         if DEBUGGING {
             println!("\r[osc_dispatch] params={:?} bell_terminated={}", params, bell_terminated);
         }
@@ -503,7 +526,7 @@ impl TerminalOutput {
                     let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
                     self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
                 }
-            } else if c == 'C' { // move cursor
+            } else if c == 'C' { // move cursor forward
                 self.cursor_position += params[0] as usize; // TODO: negative value?
             } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
                 if params[0] == 0 {
@@ -527,6 +550,25 @@ impl TerminalOutput {
                     self.characters.truncate(self.cursor_position + 1);
                 }
                 // TODO: implement 1, 2, and 3
+            } else if c == 'H' { // goto row/col
+                let row = params[0] as usize - 1; // we subtract 1 here because this csi is 1 indexed and we index from 0
+                let col = params[1] as usize - 1;
+
+                match self.newline_indices.get(row as usize) {
+                    Some(index_of_next_row) => {
+                        let index_of_row = index_of_next_row - self.display_cols as usize;
+                        self.cursor_position = index_of_row + col as usize;
+                    }
+                    None => {
+                        let start_of_last_line = self.index_of_beginning_of_last_canonical_line();
+                        let num_of_lines_to_add = row - self.newline_indices.len();
+                        for i in 0..num_of_lines_to_add {
+                            self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
+                        }
+                        let index_of_row = self.newline_indices.last().unwrap_or(&0); // TODO: better
+                        self.cursor_position = index_of_row + col as usize;
+                    }
+                }
             }
         }
     }
@@ -542,7 +584,8 @@ impl TerminalOutput {
     }
 }
 
-enum VteEvent { // TODO: try not to allocate Vecs
+#[derive(Debug)]
+pub enum VteEvent { // TODO: try not to allocate Vecs
     Print(char),
     Execute(u8), // byte
     Hook(Vec<i64>, Vec<u8>, bool, char), // params, intermediates, ignore, char
@@ -643,6 +686,7 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
+#[derive(Debug)]
 enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
@@ -732,10 +776,10 @@ impl Screen {
         let terminal_output = self.terminals.get_mut(&pid).unwrap();
         terminal_output.handle_event(event);
     }
-    pub fn write_to_active_terminal(&self, byte: u8) {
+    pub fn write_to_active_terminal(&mut self, byte: u8) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
             let mut buffer = [byte];
-            self.os_api.write(*active_terminal_id, &mut buffer).expect("failed to write to terminal");
+            self.os_api.write_to_tty_stdin(*active_terminal_id, &mut buffer).expect("failed to write to terminal");
             self.os_api.tcdrain(*active_terminal_id).expect("failed to drain terminal");
         }
     }
@@ -747,6 +791,7 @@ impl Screen {
         let mut stdout = self.os_api.get_stdout_writer();
         for (_pid, terminal) in self.terminals.iter_mut() {
             if let Some(vte_output) = terminal.buffer_as_vte_output() {
+                // write boundaries
                 if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
                     let boundary_x_coords = terminal.x_coords + terminal.display_cols;
                     let mut vte_output_boundaries = String::new();
@@ -990,19 +1035,19 @@ impl PtyBus {
     }
 }
 
-fn main() {
+pub fn main() {
     let os_input = get_os_input();
-    start(os_input);
+    start(Box::new(os_input));
 }
 
-fn start(os_input: OsInputOutput) {
+pub fn start(mut os_input: Box<dyn OsApi>) {
     let mut active_threads = vec![];
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
-    let mut screen = Screen::new(&full_screen_ws, Box::new(os_input.clone()));
+    let mut screen = Screen::new(&full_screen_ws, os_input.clone());
     let send_screen_instructions = screen.send_screen_instructions.clone();
-    let mut pty_bus = PtyBus::new(send_screen_instructions.clone(), Box::new(os_input.clone()));
+    let mut pty_bus = PtyBus::new(send_screen_instructions.clone(), os_input.clone());
     let send_pty_instructions = pty_bus.send_pty_instructions.clone();
 
     active_threads.push(
@@ -1094,8 +1139,9 @@ fn start(os_input: OsInputOutput) {
     }
     // cleanup();
     let reset_style = "\u{1b}[m";
-    let goodbye_message = format!("\r{}Bye from Mosaic!", reset_style);
+    let goodbye_message = format!("\n\r{}Bye from Mosaic!", reset_style);
 
     os_input.get_stdout_writer().write(goodbye_message.as_bytes()).unwrap();
+    os_input.get_stdout_writer().flush().unwrap();
 
 }
