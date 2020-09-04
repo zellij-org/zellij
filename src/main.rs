@@ -866,7 +866,7 @@ impl Screen {
                 if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
                     let boundary_x_coords = terminal.x_coords + terminal.display_cols;
                     let mut vte_output_boundaries = String::new();
-                    for row in terminal.y_coords..=terminal.y_coords + terminal.display_rows {
+                    for row in terminal.y_coords..terminal.y_coords + terminal.display_rows {
                         vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, boundary_x_coords + 1)); // goto row/col
                         vte_output_boundaries.push_str(&self.vertical_separator.to_string());
                     }
@@ -875,7 +875,7 @@ impl Screen {
                 if terminal.y_coords + terminal.display_rows < self.full_screen_ws.ws_row {
                     let boundary_y_coords = terminal.y_coords + terminal.display_rows;
                     let mut vte_output_boundaries = String::new();
-                    for col in terminal.x_coords..=terminal.x_coords + terminal.display_cols {
+                    for col in terminal.x_coords..terminal.x_coords + terminal.display_cols {
                         vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", boundary_y_coords + 1, col + 1)); // goto row/col
                         vte_output_boundaries.push_str(&self.horizontal_separator.to_string());
                     }
