@@ -116,8 +116,7 @@ impl Display for TerminalCharacter {
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character);
-        Ok(())
+        write!(f, "{}", self.character)
     }
 }
 
@@ -132,12 +131,13 @@ pub struct TerminalOutput {
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
     pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
     x_coords: u16,
+    y_coords: u16,
 }
 
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_code: None };
 
 impl TerminalOutput {
-    pub fn new (pid: RawFd, ws: Winsize, x_coords: u16) -> TerminalOutput {
+    pub fn new (pid: RawFd, ws: Winsize, x_coords: u16, y_coords: u16) -> TerminalOutput {
         TerminalOutput {
             pid,
             characters: vec![],
@@ -149,6 +149,7 @@ impl TerminalOutput {
             should_render: true,
             pending_ansi_code: None,
             x_coords,
+            y_coords,
         }
     }
     pub fn handle_event(&mut self, event: VteEvent) {
@@ -233,7 +234,7 @@ impl TerminalOutput {
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = &self.display_cols;
             for (row, line) in buffer_lines.iter().enumerate() {
-                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, self.x_coords + 1)); // goto row/col
+                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", self.y_coords as usize + row + 1, self.x_coords + 1)); // goto row/col
                 for (col, t_character) in line.iter().enumerate() {
                     if (col as u16) < *display_cols {
                         // in some cases (eg. while resizing) some characters will spill over
@@ -437,6 +438,13 @@ impl vte::Perform for TerminalOutput {
             terminal_character.ansi_code = self.pending_ansi_code.clone();
             if self.characters.len() == self.cursor_position {
                 self.characters.push(terminal_character);
+
+                let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
+                let difference_from_last_newline = self.cursor_position - start_of_last_line;
+                if difference_from_last_newline == self.display_cols as usize {
+                    self.linebreak_indices.push(self.cursor_position);
+                }
+
             } else if self.characters.len() > self.cursor_position {
                 self.characters.remove(self.cursor_position);
                 self.characters.insert(self.cursor_position, terminal_character);
@@ -455,7 +463,6 @@ impl vte::Perform for TerminalOutput {
                 }
             }
             self.cursor_position += 1;
-
         }
     }
 
@@ -677,12 +684,29 @@ pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
     (Box::new(on_winch), Box::new(cleanup))
 }
 
-fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
+fn split_vertically_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     let width_of_each_half = (rect.ws_col - 1) / 2;
     let mut first_rect = rect.clone();
     let mut second_rect = rect.clone();
-    first_rect.ws_col = width_of_each_half;
+    if rect.ws_col % 2 == 0 {
+        first_rect.ws_col = width_of_each_half + 1;
+    } else {
+        first_rect.ws_col = width_of_each_half;
+    }
     second_rect.ws_col = width_of_each_half;
+    (first_rect, second_rect)
+}
+
+fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
+    let height_of_each_half = (rect.ws_row - 1) / 2;
+    let mut first_rect = rect.clone();
+    let mut second_rect = rect.clone();
+    if rect.ws_row % 2 == 0 {
+        first_rect.ws_row = height_of_each_half + 1;
+    } else {
+        first_rect.ws_row = height_of_each_half;
+    }
+    second_rect.ws_row = height_of_each_half;
     (first_rect, second_rect)
 }
 
@@ -690,7 +714,8 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
 enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
-    AddTerminal(RawFd),
+    HorizontalSplit(RawFd),
+    VerticalSplit(RawFd),
     WriteCharacter(u8),
     ResizeLeft,
     ResizeRight,
@@ -703,6 +728,7 @@ struct Screen {
     pub send_screen_instructions: Sender<ScreenInstruction>,
     full_screen_ws: Winsize,
     vertical_separator: TerminalCharacter, // TODO: better
+    horizontal_separator: TerminalCharacter, // TODO: better
     terminals: HashMap<RawFd, TerminalOutput>,
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
@@ -716,21 +742,23 @@ impl Screen {
             send_screen_instructions: sender,
             full_screen_ws: full_screen_ws.clone(),
             vertical_separator: TerminalCharacter::new('│').ansi_code(String::from("\u{1b}[m")), // TODO: better
+            horizontal_separator: TerminalCharacter::new('─').ansi_code(String::from("\u{1b}[m")), // TODO: better
             terminals: HashMap::new(),
             active_terminal: None,
             os_api,
         }
     }
-    pub fn add_terminal(&mut self, pid: RawFd) {
+    pub fn horizontal_split(&mut self, pid: RawFd) {
         if self.terminals.is_empty() {
             let x = 0;
-            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x);
+            let y = 0;
+            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x, y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
         } else {
             // TODO: check minimum size of active terminal
-            let (active_terminal_ws, active_terminal_x_coords) = {
+            let (active_terminal_ws, active_terminal_x_coords, active_terminal_y_coords) = {
                 let active_terminal = &self.get_active_terminal().unwrap();
                 (
                     Winsize {
@@ -739,12 +767,54 @@ impl Screen {
                         ws_xpixel: 0,
                         ws_ypixel: 0,
                     },
-                    active_terminal.x_coords
+                    active_terminal.x_coords,
+                    active_terminal.y_coords
                 )
             };
-            let (left_winszie, right_winsize) = split_horizontally_with_gap(&active_terminal_ws);
+            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&active_terminal_ws);
+            let bottom_half_y = active_terminal_y_coords + top_winsize.ws_row + 1;
+            let new_terminal = TerminalOutput::new(pid, bottom_winsize, active_terminal_x_coords, bottom_half_y);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, bottom_winsize.ws_col, bottom_winsize.ws_row);
+
+            {
+                let active_terminal_id = &self.get_active_terminal_id().unwrap();
+                let active_terminal = &mut self.terminals.get_mut(&active_terminal_id).unwrap();
+                active_terminal.change_size(&top_winsize);
+            }
+
+            self.terminals.insert(pid, new_terminal);
+            let active_terminal_pid = self.get_active_terminal_id().unwrap();
+            self.os_api.set_terminal_size_using_fd(active_terminal_pid, top_winsize.ws_col, top_winsize.ws_row);
+            self.active_terminal = Some(pid);
+            self.render();
+        }
+    }
+    pub fn vertical_split(&mut self, pid: RawFd) {
+        if self.terminals.is_empty() {
+            let x = 0;
+            let y = 0;
+            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x, y);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.terminals.insert(pid, new_terminal);
+            self.active_terminal = Some(pid);
+        } else {
+            // TODO: check minimum size of active terminal
+            let (active_terminal_ws, active_terminal_x_coords, active_terminal_y_coords) = {
+                let active_terminal = &self.get_active_terminal().unwrap();
+                (
+                    Winsize {
+                        ws_row: active_terminal.display_rows,
+                        ws_col: active_terminal.display_cols,
+                        ws_xpixel: 0,
+                        ws_ypixel: 0,
+                    },
+                    active_terminal.x_coords,
+                    active_terminal.y_coords
+                )
+            };
+            let (left_winszie, right_winsize) = split_vertically_with_gap(&active_terminal_ws);
             let right_side_x = active_terminal_x_coords + left_winszie.ws_col + 1;
-            let new_terminal = TerminalOutput::new(pid, right_winsize, right_side_x);
+            let new_terminal = TerminalOutput::new(pid, right_winsize, right_side_x, active_terminal_y_coords);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
 
             {
@@ -791,16 +861,27 @@ impl Screen {
         let mut stdout = self.os_api.get_stdout_writer();
         for (_pid, terminal) in self.terminals.iter_mut() {
             if let Some(vte_output) = terminal.buffer_as_vte_output() {
+
                 // write boundaries
                 if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
                     let boundary_x_coords = terminal.x_coords + terminal.display_cols;
                     let mut vte_output_boundaries = String::new();
-                    for row in 0..self.full_screen_ws.ws_row {
+                    for row in terminal.y_coords..=terminal.y_coords + terminal.display_rows {
                         vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, boundary_x_coords + 1)); // goto row/col
                         vte_output_boundaries.push_str(&self.vertical_separator.to_string());
                     }
                     stdout.write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
                 }
+                if terminal.y_coords + terminal.display_rows < self.full_screen_ws.ws_row {
+                    let boundary_y_coords = terminal.y_coords + terminal.display_rows;
+                    let mut vte_output_boundaries = String::new();
+                    for col in terminal.x_coords..=terminal.x_coords + terminal.display_cols {
+                        vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", boundary_y_coords + 1, col + 1)); // goto row/col
+                        vte_output_boundaries.push_str(&self.horizontal_separator.to_string());
+                    }
+                    stdout.write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
+                }
+
                 stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
             }
         }
@@ -990,7 +1071,8 @@ impl Screen {
 }
 
 enum PtyInstruction {
-    SpawnTerminal,
+    SpawnTerminalVertically,
+    SpawnTerminalHorizontally,
     Quit
 }
 
@@ -1011,7 +1093,7 @@ impl PtyBus {
             os_input,
         }
     }
-    pub fn spawn_terminal(&mut self) {
+    pub fn spawn_terminal_vertically(&mut self) {
         let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
         task::spawn({
             let send_screen_instructions = self.send_screen_instructions.clone();
@@ -1031,7 +1113,29 @@ impl PtyBus {
                 }
             }
         });
-        self.send_screen_instructions.send(ScreenInstruction::AddTerminal(pid_primary)).unwrap();
+        self.send_screen_instructions.send(ScreenInstruction::VerticalSplit(pid_primary)).unwrap();
+    }
+    pub fn spawn_terminal_horizontally(&mut self) {
+        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
+        task::spawn({
+            let send_screen_instructions = self.send_screen_instructions.clone();
+            let os_input = self.os_input.clone();
+            async move {
+                let mut vte_parser = vte::Parser::new();
+                let mut vte_event_sender = VteEventSender::new(pid_primary, send_screen_instructions.clone());
+                let mut first_terminal_bytes = ReadFromPid::new(&pid_primary, os_input);
+                while let Some(bytes) = first_terminal_bytes.next().await {
+                    let bytes_is_empty = bytes.is_empty();
+                    for byte in bytes {
+                        vte_parser.advance(&mut vte_event_sender, byte);
+                    }
+                    if !bytes_is_empty {
+                        send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                    }
+                }
+            }
+        });
+        self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
     }
 }
 
@@ -1055,14 +1159,17 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             .name("pty".to_string())
             .spawn({
                 move || {
-                    pty_bus.spawn_terminal();
+                    pty_bus.spawn_terminal_vertically();
                     loop {
                         let event = pty_bus.receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
                         match event {
-                            PtyInstruction::SpawnTerminal => {
-                                pty_bus.spawn_terminal();
+                            PtyInstruction::SpawnTerminalVertically => {
+                                pty_bus.spawn_terminal_vertically();
+                            }
+                            PtyInstruction::SpawnTerminalHorizontally => {
+                                pty_bus.spawn_terminal_horizontally();
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -1089,8 +1196,11 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             ScreenInstruction::Render => {
                                 screen.render();
                             },
-                            ScreenInstruction::AddTerminal(pid) => {
-                                screen.add_terminal(pid);
+                            ScreenInstruction::HorizontalSplit(pid) => {
+                                screen.horizontal_split(pid);
+                            }
+                            ScreenInstruction::VerticalSplit(pid) => {
+                                screen.vertical_split(pid);
                             }
                             ScreenInstruction::WriteCharacter(byte) => {
                                 screen.write_to_active_terminal(byte);
@@ -1123,8 +1233,10 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
         } else if buffer[0] == 16 { // ctrl-p
             send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+        } else if buffer[0] == 8 { // ctrl-h
+            send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally).unwrap();
         } else if buffer[0] == 14 { // ctrl-n
-            send_pty_instructions.send(PtyInstruction::SpawnTerminal).unwrap();
+            send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically).unwrap();
         } else if buffer[0] == 17 { // ctrl-q
             send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
             send_pty_instructions.send(PtyInstruction::Quit).unwrap();

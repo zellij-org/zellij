@@ -24,13 +24,14 @@ pub fn starts_with_one_terminal () {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
     let x = 0;
+    let y = 0;
     let fake_win_size = Winsize { // TODO: combine with above
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x);
+    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
 
     for frame in output_frames.iter() {
         for byte in frame.iter() {
@@ -67,13 +68,14 @@ pub fn split_terminals_vertically() {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
     let x = 0;
+    let y = 0;
     let fake_win_size = Winsize { // TODO: combine with above
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x);
+    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
 
     for frame in output_frames.iter() {
         for byte in frame.iter() {
