@@ -148,7 +148,7 @@ impl OsApi for FakeInputOutput {
         Box::new((*self).clone())
     }
     fn get_stdin_reader(&self) -> Box<dyn Read> {
-        let mut input_chars = vec![0, 1, 2];
+        let mut input_chars = vec![0];
         if let Some(input_to_add) = self.input_to_add.lock().unwrap().as_ref() {
             for byte in input_to_add {
                 input_chars.push(*byte);

@@ -105,7 +105,7 @@ pub fn split_terminals_horizontally() {
     // TODO: this test is a little flaky - there's some sort of race condition that makes the
     // second terminal in the split appear blank sometimes - fix this
     let mut fake_input_output = get_fake_os_input();
-    fake_input_output.add_terminal_input(&[8, 17]); // split-horizontally and quit (ctrl-n + ctrl-q)
+    fake_input_output.add_terminal_input(&[2, 17]); // split-horizontally and quit (ctrl-b + ctrl-q)
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
