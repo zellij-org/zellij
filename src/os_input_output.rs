@@ -62,8 +62,8 @@ fn spawn_terminal () -> (RawFd, RawFd) {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
-                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
+                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
+                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
                         child
                     },
                     ForkResult::Child => {

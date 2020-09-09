@@ -1496,6 +1496,8 @@ impl PtyBus {
                     }
                     if !bytes_is_empty {
                         send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                    } else {
+                        task::sleep(::std::time::Duration::from_millis(10)).await;
                     }
                 }
             }
@@ -1518,6 +1520,8 @@ impl PtyBus {
                     }
                     if !bytes_is_empty {
                         send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                    } else {
+                        task::sleep(::std::time::Duration::from_millis(10)).await;
                     }
                 }
             }
