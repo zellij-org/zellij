@@ -2,23 +2,23 @@
 source: src/tests/integration.rs
 expression: snapshot
 ---
-                                                                                                                         
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-                                                            │                                                            
-Welcome to fish, the friendly interactive shell             │                                                            
-                                                            │                                                            
-                                                            │                                                            
-⋊> ~/c/mosaic on main ⨯                                     │                                                            
+a                                                           │                                                            
+line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+line15-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+line16-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                            
+a                                                           │                                                            
+prompt $                                                    │█                                                           

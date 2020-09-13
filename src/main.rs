@@ -302,30 +302,45 @@ impl TerminalOutput {
             if let Some(newline_index) = next_newline_index {
                 if *newline_index == i + 1 {
                     // pad line
-                    for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+                    if current_line.len() > 0 {
+                        for _ in current_line.len()..self.display_cols as usize {
+                            current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+                        }
+                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_newline_index = newline_indices.next();
                 }
             }
             if let Some(linebreak_index) = next_linebreak_index {
                 if *linebreak_index == i + 1 {
                     // pad line
+                    if current_line.len() > 0 {
+                        for _ in current_line.len()..self.display_cols as usize {
+                            current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+                        }
+                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    }
+                    next_linebreak_index = linebreak_indices.next();
+                }
+            }
+            if output.len() == self.display_rows as usize {
+                if current_line.len() > 0 {
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
                     output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                    next_linebreak_index = linebreak_indices.next();
                 }
+                break;
             }
             let terminal_character = self.characters.get(i).unwrap();
             current_line.push_front(terminal_character);
-            if i == 0 || output.len() == self.display_rows as usize - 1 {
-                for _ in current_line.len()..self.display_cols as usize {
-                    current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+            if i == 0 {
+                if current_line.len() > 0 {
+                    for _ in current_line.len()..self.display_cols as usize {
+                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
+                    }
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                 }
-                output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                 break;
             }
         }
@@ -342,7 +357,7 @@ impl TerminalOutput {
         Vec::from(output)
     }
     pub fn cursor_position_in_last_line (&self) -> usize {
-        if self.cursor_position < self.characters.len() {
+        if self.cursor_position <= self.characters.len() {
             let start_of_last_line = self.index_of_beginning_of_last_line();
             if self.cursor_position < start_of_last_line {
                 // TODO: why does this happen?
