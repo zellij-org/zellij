@@ -369,6 +369,33 @@ impl TerminalOutput {
             self.display_cols as usize
         }
     }
+    pub fn cursor_coordinates (&self) -> (usize, usize) { // (x, y)
+        let mut lines_from_end = 0;
+
+        let mut newline_indices = self.newline_indices.iter().rev();
+        let mut linebreak_indices = self.linebreak_indices.iter().rev();
+
+        let mut next_newline_index = newline_indices.next().unwrap_or(&0);
+        let mut next_linebreak_index = linebreak_indices.next().unwrap_or(&0);
+
+        let next_line_start = loop {
+            let next_line_start = ::std::cmp::max(*next_newline_index, *next_linebreak_index);
+            if self.cursor_position >= next_line_start {
+                break next_line_start;
+            }
+            if next_line_start == *next_newline_index {
+                next_newline_index = newline_indices.next().unwrap_or(&0);
+                lines_from_end += 1;
+            }
+            if next_line_start == *next_linebreak_index {
+                next_linebreak_index = linebreak_indices.next().unwrap_or(&0);
+                lines_from_end += 1;
+            }
+        };
+        let y = self.display_rows - lines_from_end; // TODO: this might overflow, fix when introducing scrolling
+        let x = self.cursor_position - next_line_start;
+        (x, y as usize)
+    }
     fn index_of_beginning_of_last_line (&self) -> usize {
         let last_newline_index = if self.newline_indices.is_empty() {
             None

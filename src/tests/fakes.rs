@@ -31,7 +31,9 @@ impl FakeStdinReader {
 
 impl Read for FakeStdinReader {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        ::std::thread::sleep(Duration::from_millis(1000)); // TODO: adjust duration
+        // ideally, we shouldn't have to sleep here
+        // stdin should be buffered and handled in the app itself
+        ::std::thread::sleep(Duration::from_millis(50));
         let read_position = self.input_chars.read_position;
         buf[0] = self.input_chars.content[read_position];
         self.input_chars.set_read_position(read_position + 1);
@@ -117,18 +119,37 @@ impl OsApi for FakeInputOutput {
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        let mut read_buffers = self.read_buffers.lock().unwrap();
-        let mut bytes_read = 0;
-        if let Some(bytes) = read_buffers.get_mut(&pid) {
-            for i in bytes.read_position..bytes.content.len() {
-                bytes_read += 1;
-                buf[i] = bytes.content[i];
+        let mut attempts_left = 3;
+        loop {
+            if attempts_left < 3 {
+                // this sometimes happens because in the context of the tests,
+                // the read_buffers are set in set_terminal_size_using_fd
+                // which sometimes happens after the first read and then the tests get messed up
+                // in a real world application this doesn't matter, but here the snapshots taken
+                // in the tests are asserted against exact copies, and so a slight variation makes
+                // them fail
+                ::std::thread::sleep(::std::time::Duration::from_millis(25));
+            } else if attempts_left == 0 {
+                return Ok(0);
             }
-            if bytes_read > bytes.read_position {
-                bytes.set_read_position(bytes_read);
+            let mut read_buffers = self.read_buffers.lock().unwrap();
+            let mut bytes_read = 0;
+            match read_buffers.get_mut(&pid) {
+                Some(bytes) => {
+                    for i in bytes.read_position..bytes.content.len() {
+                        bytes_read += 1;
+                        buf[i] = bytes.content[i];
+                    }
+                    if bytes_read > bytes.read_position {
+                        bytes.set_read_position(bytes_read);
+                    }
+                    return Ok(bytes_read);
+                },
+                None => {
+                    attempts_left -= 1;
+                }
             }
         }
-        Ok(bytes_read)
     }
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut stdin_writes = self.stdin_writes.lock().unwrap();
