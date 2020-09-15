@@ -1,0 +1,44 @@
+---
+source: src/tests/integration/resize_down.rs
+expression: snapshot
+---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb     │line1-bbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbb│line2-bbbbbbbbbbbbbbbbbbbbbbb     │line2-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb     │line3-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
+a                             │bbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb     │line4-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
+line17-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb     │line5-bbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb     │line6-bbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb     │line7-bbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbb│line8-bbbbbbbbbbbbbbbbbbbbbbb     │line8-bbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbb
+a                             │bbbbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb     │line9-bbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb
+line18-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb     │line10-bbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb     │line11-bbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb     │line12-bbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb     │line13-bbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+a                             │line19-bbb│line14-bbbbbbbbbbbbbbbbbbbbbb     │line14-bbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+line19-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb     │line15-bbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb     │line16-bbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb     │line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb     │line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+a                             │bbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb     │line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                      │prompt $  │prompt $                          │prompt $      │prompt $                     
+──────────────────────────────│────────────────────────────────────────────────────────────│─────────────────────────────
+line2-bbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
+line3-bbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
+line4-bbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
+line5-bbbbbbbbbbbbbbbbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
+line6-bbbbbbbbbbbbbbbbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb
+line7-bbbbbbbbbbbbbbbbbbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb
+line8-bbbbbbbbbbbbbbbbbbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbb
+line9-bbbbbbbbbbbbbbbbbbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb
+line10-bbbbbbbbbbbbbbbbbbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb
+line11-bbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
+line12-bbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
+line13-bbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+line14-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+line15-bbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+line16-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+line17-bbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+line18-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+line19-bbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                      │prompt $                                                    │prompt $ █                   
