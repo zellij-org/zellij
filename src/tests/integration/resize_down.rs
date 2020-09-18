@@ -1,8 +1,9 @@
 use ::nix::pty::Winsize;
 use ::insta::assert_snapshot;
 
-use crate::{start, TerminalOutput};
+use crate::start;
 use crate::tests::fakes::{FakeInputOutput};
+use crate::tests::utils::get_output_frame_snapshots;
 
 fn get_fake_os_input (fake_win_size: &Winsize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -30,31 +31,8 @@ pub fn resize_down_with_pane_above() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let cursor_position_in_last_line = terminal_output.cursor_position_in_last_line();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == output_lines.len() - 1 && character_index == cursor_position_in_last_line {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -80,31 +58,8 @@ pub fn resize_down_with_pane_below() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -134,31 +89,8 @@ pub fn resize_down_with_panes_above_and_below() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -187,31 +119,8 @@ pub fn resize_down_with_multiple_panes_above() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -240,31 +149,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -293,31 +179,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -346,31 +209,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -400,31 +240,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -453,31 +270,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -506,31 +300,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -560,31 +331,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
@@ -615,31 +363,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     start(Box::new(fake_input_output.clone()));
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
-    let mut vte_parser = vte::Parser::new();
-    let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, fake_win_size, x, y);
-
-    for frame in output_frames.iter() {
-        for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
-        }
-        let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
-        let mut snapshot = String::new();
-        for (line_index, line) in output_lines.iter().enumerate() {
-            for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
-                }
-            }
-            if line_index != output_lines.len() - 1 {
-                snapshot.push('\n');
-            }
-        }
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
         assert_snapshot!(snapshot);
     }
 }
