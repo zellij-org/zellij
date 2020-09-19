@@ -558,26 +558,31 @@ impl vte::Perform for TerminalOutput {
                         self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
                     }
                     self.characters.truncate(self.cursor_position + 1);
+                } else if params[0] == 2 {
+                    // TODO: this also deletes all the scrollback buffer, it needs to be adjusted
+                    // for scrolling
+                    self.characters.clear();
+                    self.linebreak_indices.clear();
+                    self.newline_indices.clear();
                 }
-                // TODO: implement 1, 2, and 3
             } else if c == 'H' { // goto row/col
-                let row = params[0] as usize - 1; // we subtract 1 here because this csi is 1 indexed and we index from 0
-                let col = params[1] as usize - 1;
-
-                match self.newline_indices.get(row as usize) {
-                    Some(index_of_next_row) => {
-                        let index_of_row = index_of_next_row - self.display_cols as usize;
-                        self.cursor_position = index_of_row + col as usize;
+                let (row, col) = if params.len() == 1 {
+                    (params[0] as usize, 0) // TODO: is this always correct ?
+                } else {
+                    (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
+                };
+                if row == 0 {
+                    self.cursor_position = col;
+                } else if let Some(index_of_start_of_row) = self.newline_indices.get(row - 1) {
+                    self.cursor_position = index_of_start_of_row + col;
+                } else {
+                    let start_of_last_line = self.index_of_beginning_of_last_canonical_line();
+                    let num_of_lines_to_add = row - self.newline_indices.len();
+                    for i in 0..num_of_lines_to_add {
+                        self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
                     }
-                    None => {
-                        let start_of_last_line = self.index_of_beginning_of_last_canonical_line();
-                        let num_of_lines_to_add = row - self.newline_indices.len();
-                        for i in 0..num_of_lines_to_add {
-                            self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
-                        }
-                        let index_of_row = self.newline_indices.last().unwrap_or(&0); // TODO: better
-                        self.cursor_position = index_of_row + col as usize;
-                    }
+                    let index_of_start_of_row = self.newline_indices.get(row - 1).unwrap();
+                    self.cursor_position = index_of_start_of_row + col;
                 }
             }
         }
