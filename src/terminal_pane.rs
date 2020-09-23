@@ -8,27 +8,20 @@ use ::vte::Perform;
 use crate::VteEvent;
 
 const DEBUGGING: bool = false;
-const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_code: None };
+const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_codes: None, no_style: true };
 
 #[derive(Clone)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub ansi_code: Option<String>,
+    pub ansi_codes: Option<Vec<String>>,
+    pub no_style: bool, // TODO: better - this currently means that the style should be reset
+                        // we do this here because we need to restructure ansi_codes and otherwise
+                        // EMPTY_TERMINAL_CHARACTER won't be Copy, hacky but yeah
 }
 
 impl PartialEq for TerminalCharacter {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.ansi_code, &other.ansi_code) {
-            (Some(self_code), Some(other_code)) => {
-                self_code == other_code && self.character == other.character
-            },
-            (None, None) => {
-                self.character == other.character
-            }
-            _ => {
-                false
-            }
-        }
+        self.ansi_codes == other.ansi_codes
     }
 }
 
@@ -38,22 +31,35 @@ impl TerminalCharacter {
     pub fn new (character: char) -> Self {
         TerminalCharacter {
             character,
-            ansi_code: None
+            ansi_codes: Some(vec![]),
+            no_style: false,
         }
     }
-    pub fn ansi_code(mut self, ansi_code: String) -> Self {
-        self.ansi_code = Some(ansi_code);
-        self
+    pub fn with_ansi_code (mut self, ansi_code: String) -> Self {
+        if let Some(ansi_codes) = self.ansi_codes.as_mut() {
+            ansi_codes.push(ansi_code);
+            self
+        } else {
+            let mut ansi_codes = vec![];
+            ansi_codes.push(ansi_code);
+            self.ansi_codes = Some(ansi_codes);
+            self
+        }
     }
 }
 
 
 impl Display for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.ansi_code {
-            Some(code) => write!(f, "{}{}", code, self.character),
-            None => write!(f, "{}", self.character)
+        let mut code_string = String::new(); // TODO: better
+        if self.no_style {
+            code_string.push_str("\u{1b}[m"); // TODO: better, see comment on no_style
+        } else if let Some(ansi_codes) = self.ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
         }
+        write!(f, "{}{}", code_string, self.character)
     }
 }
 
@@ -74,7 +80,7 @@ pub struct TerminalOutput {
     cursor_position: usize,
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
-    pending_ansi_code: Option<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    pending_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
 
 impl TerminalOutput {
@@ -88,7 +94,7 @@ impl TerminalOutput {
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
-            pending_ansi_code: None,
+            pending_ansi_codes: vec![],
             x_coords,
             y_coords,
         }
@@ -419,7 +425,7 @@ impl TerminalOutput {
         self.newline_indices.push(self.characters.len());
         self.cursor_position = self.characters.len();
         self.should_render = true;
-        self.pending_ansi_code = None;
+        self.pending_ansi_codes = vec![];
     }
     fn move_to_beginning_of_line (&mut self) {
         let last_newline_index = if self.newline_indices.is_empty() {
@@ -434,11 +440,16 @@ impl TerminalOutput {
 
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
+        // print!("-{:?}>>{:?}<<-", &self.pending_ansi_code.clone().unwrap_or(String::from("None")), c);
         if DEBUGGING {
             println!("\r[print] {:?}", c);
         } else {
             let mut terminal_character = TerminalCharacter::new(c);
-            terminal_character.ansi_code = self.pending_ansi_code.clone();
+            let mut ansi_codes = vec![];
+            for ansi_code in &self.pending_ansi_codes {
+                ansi_codes.push(ansi_code.clone());
+            }
+            terminal_character.ansi_codes = Some(ansi_codes);
             if self.characters.len() == self.cursor_position {
                 self.characters.push(terminal_character);
 
@@ -452,8 +463,11 @@ impl vte::Perform for TerminalOutput {
                 self.characters.remove(self.cursor_position);
                 self.characters.insert(self.cursor_position, terminal_character);
             } else {
+                // let mut space_character = TerminalCharacter::new(' ');
                 let mut space_character = TerminalCharacter::new(' ');
-                space_character.ansi_code = self.pending_ansi_code.clone();
+                // space_character.ansi_code = self.pending_ansi_code.clone();
+                let reset_style = "\u{1b}[m";
+                space_character.ansi_codes = Some(vec![ String::from(reset_style) ]);
                 for _ in self.characters.len()..self.cursor_position {
                     self.characters.push(space_character.clone());
                 };
@@ -520,6 +534,10 @@ impl vte::Perform for TerminalOutput {
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
+//        println!(
+//            "\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
+//            params, intermediates, ignore, c
+//        );
         if DEBUGGING {
             println!(
                 "\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
@@ -527,15 +545,49 @@ impl vte::Perform for TerminalOutput {
             );
         } else {
             if c == 'm' {
+                // TODO:
+                // 38 => foreground
+                // 48 => background
+                // * change pending_ansi_code to pending_ansi_foreground and pending_ansi_background
+                // * delete them accordingly and treat htem accordingly, see if this solves the
+                // diskonaut problem
+                //
                 // change foreground color (only?)
-                if params.len() == 1 && params[0] == 0 {
-                    // eg. \u{1b}[m
-                    self.pending_ansi_code = Some(String::from("\u{1b}[m"));
-                } else {
-                    // eg. \u{1b}[38;5;0m
-                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                    self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
-                }
+
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+//                if params.len() == 1 {
+//
+//                    // if params[0] == 0 ???
+//                    if params[0] == 39 {
+//                        self.pending_ansi_foreground_code = Some(String::from("\u{1b}[39m"));
+//                    } else if params[0] == 49 {
+//                        self.pending_ansi_background_code = Some(String::from("\u{1b}[49m"));
+//                    } else {
+//                        // ?????
+//                        let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
+//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
+//                    }
+//                    // eg. \u{1b}[m
+//                    // self.pending_ansi_code = Some(String::from("\u{1b}[m"));
+//                    // self.pending_ansi_code = Some(String::from("\u{1b}[0m"));
+//                    // self.pending_ansi_code = Some(String::from("\u{1b}[39m\u{1b}[49m")); // reset
+//                } else {
+//                    // eg. \u{1b}[38;5;0m
+//                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+//                    if params[0] == 38 {
+//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
+//                    } else if params[0] == 48 {
+//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
+//                    } else {
+//                        // ???
+//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
+//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
+//                    }
+////                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+////                    self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
+//                }
             } else if c == 'C' { // move cursor forward
                 self.cursor_position += params[0] as usize; // TODO: negative value?
             } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
@@ -584,6 +636,17 @@ impl vte::Perform for TerminalOutput {
                     let index_of_start_of_row = self.newline_indices.get(row - 1).unwrap();
                     self.cursor_position = index_of_start_of_row + col;
                 }
+            } else if c == 'D' {
+                // move cursor backwards, stop at left edge of screen
+                self.cursor_position -= params[0] as usize;
+                // TODO: stop at left edge of screen
+            } else if c == 'l' {
+                // TBD
+            } else if c == 'h' {
+                // TBD
+            } else {
+                println!("unhandled csi: {:?}->{:?}", c, params);
+                panic!("aaa!!!");
             }
         }
     }
