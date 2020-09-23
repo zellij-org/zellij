@@ -8,20 +8,35 @@ use ::vte::Perform;
 use crate::VteEvent;
 
 const DEBUGGING: bool = false;
-const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter { character: ' ', ansi_codes: None, no_style: true };
+const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
+    character: ' ',
+    foreground_ansi_codes: None,
+    background_ansi_codes: None,
+    misc_ansi_codes: None,
+    reset_foreground_ansi_code: true,
+    reset_background_ansi_code: true,
+    reset_misc_ansi_code: true,
+};
 
 #[derive(Clone)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub ansi_codes: Option<Vec<String>>,
-    pub no_style: bool, // TODO: better - this currently means that the style should be reset
-                        // we do this here because we need to restructure ansi_codes and otherwise
-                        // EMPTY_TERMINAL_CHARACTER won't be Copy, hacky but yeah
+    pub foreground_ansi_codes: Option<Vec<String>>,
+    pub background_ansi_codes: Option<Vec<String>>,
+    pub misc_ansi_codes: Option<Vec<String>>,
+    pub reset_foreground_ansi_code: bool,
+    pub reset_background_ansi_code: bool,
+    pub reset_misc_ansi_code: bool,
 }
 
 impl PartialEq for TerminalCharacter {
     fn eq(&self, other: &Self) -> bool {
-        self.ansi_codes == other.ansi_codes
+        self.foreground_ansi_codes == other.foreground_ansi_codes &&
+        self.background_ansi_codes == other.background_ansi_codes &&
+        self.misc_ansi_codes == other.misc_ansi_codes &&
+        self.reset_background_ansi_code == other.reset_background_ansi_code &&
+        self.reset_foreground_ansi_code == other.reset_foreground_ansi_code &&
+        self.reset_misc_ansi_code == other.reset_misc_ansi_code
     }
 }
 
@@ -31,20 +46,28 @@ impl TerminalCharacter {
     pub fn new (character: char) -> Self {
         TerminalCharacter {
             character,
-            ansi_codes: Some(vec![]),
-            no_style: false,
+            foreground_ansi_codes: Some(vec![]),
+            background_ansi_codes: Some(vec![]),
+            misc_ansi_codes: Some(vec![]),
+            reset_foreground_ansi_code: false,
+            reset_background_ansi_code: false,
+            reset_misc_ansi_code: false,
         }
     }
-    pub fn with_ansi_code (mut self, ansi_code: String) -> Self {
-        if let Some(ansi_codes) = self.ansi_codes.as_mut() {
-            ansi_codes.push(ansi_code);
-            self
-        } else {
-            let mut ansi_codes = vec![];
-            ansi_codes.push(ansi_code);
-            self.ansi_codes = Some(ansi_codes);
-            self
+    pub fn reset_all_ansi_codes(mut self) -> Self {
+        if let Some(foreground_ansi_codes) = self.foreground_ansi_codes.as_mut() {
+            foreground_ansi_codes.clear();
         }
+        if let Some(background_ansi_codes) = self.background_ansi_codes.as_mut() {
+            background_ansi_codes.clear();
+        }
+        if let Some(misc_ansi_codes) = self.misc_ansi_codes.as_mut() {
+            misc_ansi_codes.clear();
+        }
+        self.reset_foreground_ansi_code = true;
+        self.reset_background_ansi_code = true;
+        self.reset_misc_ansi_code = true;
+        self
     }
 }
 
@@ -52,9 +75,27 @@ impl TerminalCharacter {
 impl Display for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut code_string = String::new(); // TODO: better
-        if self.no_style {
-            code_string.push_str("\u{1b}[m"); // TODO: better, see comment on no_style
-        } else if let Some(ansi_codes) = self.ansi_codes.as_ref() {
+        if self.reset_foreground_ansi_code && self.reset_background_ansi_code && self.reset_misc_ansi_code {
+            code_string.push_str("\u{1b}[m");
+        } else {
+            if self.reset_foreground_ansi_code {
+                code_string.push_str("\u{1b}[39m");
+            }
+            if self.reset_background_ansi_code {
+                code_string.push_str("\u{1b}[49m");
+            }
+        }
+        if let Some(ansi_codes) = self.foreground_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.background_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.misc_ansi_codes.as_ref() {
             for code in ansi_codes {
                 code_string.push_str(&code);
             }
@@ -80,7 +121,12 @@ pub struct TerminalOutput {
     cursor_position: usize,
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
-    pending_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    reset_foreground_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
+    reset_background_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
+    reset_misc_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
+    pending_foreground_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    pending_background_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    pending_misc_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
 }
 
 impl TerminalOutput {
@@ -94,7 +140,12 @@ impl TerminalOutput {
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
-            pending_ansi_codes: vec![],
+            reset_foreground_ansi_code: false,
+            reset_background_ansi_code: false,
+            reset_misc_ansi_code: false,
+            pending_foreground_ansi_codes: vec![],
+            pending_background_ansi_codes: vec![],
+            pending_misc_ansi_codes: vec![],
             x_coords,
             y_coords,
         }
@@ -425,7 +476,8 @@ impl TerminalOutput {
         self.newline_indices.push(self.characters.len());
         self.cursor_position = self.characters.len();
         self.should_render = true;
-        self.pending_ansi_codes = vec![];
+        self.pending_foreground_ansi_codes.clear();
+        self.pending_background_ansi_codes.clear();
     }
     fn move_to_beginning_of_line (&mut self) {
         let last_newline_index = if self.newline_indices.is_empty() {
@@ -440,16 +492,39 @@ impl TerminalOutput {
 
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
-        // print!("-{:?}>>{:?}<<-", &self.pending_ansi_code.clone().unwrap_or(String::from("None")), c);
+        // print!("-{:?}-{:?}>>{:?}<<-", &self.pending_ansi_codes, self.reset_ansi_code, c);
         if DEBUGGING {
             println!("\r[print] {:?}", c);
         } else {
             let mut terminal_character = TerminalCharacter::new(c);
-            let mut ansi_codes = vec![];
-            for ansi_code in &self.pending_ansi_codes {
-                ansi_codes.push(ansi_code.clone());
+            if self.reset_foreground_ansi_code {
+                terminal_character.reset_foreground_ansi_code = true;
+            } else {
+                let mut foreground_ansi_codes = vec![];
+                for ansi_code in &self.pending_foreground_ansi_codes {
+                    foreground_ansi_codes.push(ansi_code.clone());
+                }
+                terminal_character.foreground_ansi_codes = Some(foreground_ansi_codes);
             }
-            terminal_character.ansi_codes = Some(ansi_codes);
+            if self.reset_background_ansi_code {
+                terminal_character.reset_background_ansi_code = true;
+            } else {
+                let mut background_ansi_codes = vec![];
+                for ansi_code in &self.pending_background_ansi_codes {
+                    background_ansi_codes.push(ansi_code.clone());
+                }
+                terminal_character.background_ansi_codes = Some(background_ansi_codes);
+            }
+            if self.reset_misc_ansi_code {
+                terminal_character.reset_misc_ansi_code = true;
+            } else {
+                let mut misc_ansi_codes = vec![];
+                for ansi_code in &self.pending_misc_ansi_codes {
+                    misc_ansi_codes.push(ansi_code.clone());
+                }
+                terminal_character.misc_ansi_codes = Some(misc_ansi_codes);
+            }
+
             if self.characters.len() == self.cursor_position {
                 self.characters.push(terminal_character);
 
@@ -463,13 +538,8 @@ impl vte::Perform for TerminalOutput {
                 self.characters.remove(self.cursor_position);
                 self.characters.insert(self.cursor_position, terminal_character);
             } else {
-                // let mut space_character = TerminalCharacter::new(' ');
-                let mut space_character = TerminalCharacter::new(' ');
-                // space_character.ansi_code = self.pending_ansi_code.clone();
-                let reset_style = "\u{1b}[m";
-                space_character.ansi_codes = Some(vec![ String::from(reset_style) ]);
                 for _ in self.characters.len()..self.cursor_position {
-                    self.characters.push(space_character.clone());
+                    self.characters.push(EMPTY_TERMINAL_CHARACTER.clone());
                 };
                 self.characters.push(terminal_character);
 
@@ -545,49 +615,34 @@ impl vte::Perform for TerminalOutput {
             );
         } else {
             if c == 'm' {
-                // TODO:
-                // 38 => foreground
-                // 48 => background
-                // * change pending_ansi_code to pending_ansi_foreground and pending_ansi_background
-                // * delete them accordingly and treat htem accordingly, see if this solves the
-                // diskonaut problem
-                //
-                // change foreground color (only?)
-
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-//                if params.len() == 1 {
-//
-//                    // if params[0] == 0 ???
-//                    if params[0] == 39 {
-//                        self.pending_ansi_foreground_code = Some(String::from("\u{1b}[39m"));
-//                    } else if params[0] == 49 {
-//                        self.pending_ansi_background_code = Some(String::from("\u{1b}[49m"));
-//                    } else {
-//                        // ?????
-//                        let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
-//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
-//                    }
-//                    // eg. \u{1b}[m
-//                    // self.pending_ansi_code = Some(String::from("\u{1b}[m"));
-//                    // self.pending_ansi_code = Some(String::from("\u{1b}[0m"));
-//                    // self.pending_ansi_code = Some(String::from("\u{1b}[39m\u{1b}[49m")); // reset
-//                } else {
-//                    // eg. \u{1b}[38;5;0m
-//                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-//                    if params[0] == 38 {
-//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
-//                    } else if params[0] == 48 {
-//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
-//                    } else {
-//                        // ???
-//                        self.pending_ansi_foreground_code = Some(format!("\u{1b}[{}m", param_string));
-//                        self.pending_ansi_background_code = Some(format!("\u{1b}[{}m", param_string));
-//                    }
-////                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-////                    self.pending_ansi_code = Some(format!("\u{1b}[{}m", param_string));
-//                }
+                // TODO: handle misc codes specifically
+                // like here: https://github.com/alacritty/alacritty/blob/46c0f352c40ecb68653421cb178a297acaf00c6d/alacritty_terminal/src/ansi.rs#L1176
+                if params.is_empty() || params[0] == 0 {
+                    self.reset_foreground_ansi_code = true;
+                    self.reset_background_ansi_code = true;
+                    self.reset_misc_ansi_code = true;
+                    self.pending_foreground_ansi_codes.clear();
+                    self.pending_background_ansi_codes.clear();
+                    self.pending_misc_ansi_codes.clear();
+                } else if params[0] == 39 {
+                    self.reset_foreground_ansi_code = true;
+                    self.pending_foreground_ansi_codes.clear();
+                } else if params[0] == 49 {
+                    self.reset_background_ansi_code = true;
+                    self.pending_background_ansi_codes.clear();
+                } else if params[0] == 38 {
+                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                    self.pending_foreground_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                    self.reset_foreground_ansi_code = false;
+                } else if params[0] == 48 {
+                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                    self.pending_background_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                    self.reset_background_ansi_code = false;
+                } else {
+                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                    self.pending_misc_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                    self.reset_misc_ansi_code = false;
+                }
             } else if c == 'C' { // move cursor forward
                 self.cursor_position += params[0] as usize; // TODO: negative value?
             } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)

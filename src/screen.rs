@@ -69,8 +69,8 @@ impl Screen {
             receiver,
             send_screen_instructions: sender,
             full_screen_ws: full_screen_ws.clone(),
-            vertical_separator: TerminalCharacter::new('│').with_ansi_code(String::from("\u{1b}[m")), // TODO: better
-            horizontal_separator: TerminalCharacter::new('─').with_ansi_code(String::from("\u{1b}[m")), // TODO: better
+            vertical_separator: TerminalCharacter::new('│').reset_all_ansi_codes(),
+            horizontal_separator: TerminalCharacter::new('─').reset_all_ansi_codes(),
             terminals: BTreeMap::new(),
             active_terminal: None,
             os_api,
