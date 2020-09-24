@@ -296,21 +296,19 @@ impl TerminalOutput {
         let mut next_linebreak_index = linebreak_indices.next();
 
         loop {
-            i -= 1;
             if let Some(newline_index) = next_newline_index {
-                if *newline_index == i + 1 {
+                if *newline_index == i {
                     // pad line
-                    if current_line.len() > 0 {
-                        for _ in current_line.len()..self.display_cols as usize {
-                            current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                        }
-                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    for _ in current_line.len()..self.display_cols as usize {
+                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
+                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     next_newline_index = newline_indices.next();
+                    continue; // we continue here in case there's another new line in this index
                 }
             }
             if let Some(linebreak_index) = next_linebreak_index {
-                if *linebreak_index == i + 1 {
+                if *linebreak_index == i {
                     // pad line
                     if current_line.len() > 0 {
                         for _ in current_line.len()..self.display_cols as usize {
@@ -319,6 +317,7 @@ impl TerminalOutput {
                         output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
                     }
                     next_linebreak_index = linebreak_indices.next();
+                    continue; // we continue here in case there's another new line in this index
                 }
             }
             if output.len() == self.display_rows as usize {
@@ -330,6 +329,7 @@ impl TerminalOutput {
                 }
                 break;
             }
+            i -= 1;
             let terminal_character = self.characters.get(i).unwrap();
             current_line.push_front(terminal_character);
             if i == 0 {
@@ -478,13 +478,10 @@ impl TerminalOutput {
         self.should_render = true;
         self.pending_foreground_ansi_codes.clear();
         self.pending_background_ansi_codes.clear();
+        self.pending_misc_ansi_codes.clear();
     }
     fn move_to_beginning_of_line (&mut self) {
-        let last_newline_index = if self.newline_indices.is_empty() {
-            0
-        } else {
-            *self.newline_indices.last().unwrap()
-        };
+        let last_newline_index = self.index_of_beginning_of_line(self.cursor_position);
         self.cursor_position = last_newline_index;
         self.should_render = true;
     }
@@ -492,7 +489,7 @@ impl TerminalOutput {
 
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
-        // print!("-{:?}-{:?}>>{:?}<<-", &self.pending_ansi_codes, self.reset_ansi_code, c);
+        // print!("\n\r{}", c);
         if DEBUGGING {
             println!("\r[print] {:?}", c);
         } else {
@@ -605,7 +602,7 @@ impl vte::Perform for TerminalOutput {
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
 //        println!(
-//            "\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
+//            "\n\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
 //            params, intermediates, ignore, c
 //        );
         if DEBUGGING {
