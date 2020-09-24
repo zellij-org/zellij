@@ -638,8 +638,8 @@ impl Screen {
     fn reduce_pane_and_surroundings_up(&mut self, id: &RawFd, count: u16) {
         let mut terminals_below = self.terminal_ids_directly_below(&id).expect("can't reduce pane size up if there are no terminals below");
         let terminal_borders_below: HashSet<u16> = terminals_below.iter().map(|t| self.terminals.get(t).unwrap().x_coords).collect();
-        let (left_resize_border, terminals_to_the_left) = self.top_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
-        let (right_resize_border, terminals_to_the_right) = self.top_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
+        let (left_resize_border, terminals_to_the_left) = self.bottom_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
+        let (right_resize_border, terminals_to_the_right) = self.bottom_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
         terminals_below.retain(|t| self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border));
         self.reduce_pane_height_up(&id, count);
         for terminal_id in terminals_below {
