@@ -566,6 +566,7 @@ impl vte::Perform for TerminalOutput {
                 self.move_to_beginning_of_line();
             } else if byte == 08 { // backspace
                 self.cursor_position -= 1;
+                self.characters.truncate(self.cursor_position);
             } else if byte == 10 { // 0a, newline
                 self.add_newline();
             }
