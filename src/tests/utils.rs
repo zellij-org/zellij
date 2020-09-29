@@ -18,7 +18,7 @@ pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize)
         let mut snapshot = String::new();
         for (line_index, line) in output_lines.iter().enumerate() {
             for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y - 1 && character_index == cursor_x {
+                if line_index == cursor_y && character_index == cursor_x {
                     snapshot.push('█');
                 } else {
                     snapshot.push(terminal_character.character);

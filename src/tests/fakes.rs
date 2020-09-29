@@ -6,7 +6,7 @@ use ::std::collections::HashMap;
 use ::std::sync::{Arc, Mutex};
 
 use crate::os_input_output::OsApi;
-use crate::tests::possible_inputs::{Bytes, get_possible_inputs};
+use crate::tests::possible_tty_inputs::{Bytes, get_possible_tty_inputs};
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -74,7 +74,7 @@ pub struct FakeInputOutput {
     pub stdout_writer: FakeStdoutWriter, // stdout_writer.output is already an arc/mutex
     io_events: Arc<Mutex<Vec<IoEvent>>>,
     win_sizes: Arc<Mutex<HashMap<RawFd, Winsize>>>,
-    possible_inputs: HashMap<u16, Bytes>,
+    possible_tty_inputs: HashMap<u16, Bytes>,
 }
 
 impl FakeInputOutput {
@@ -88,8 +88,12 @@ impl FakeInputOutput {
             stdout_writer: FakeStdoutWriter::default(),
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
-            possible_inputs: get_possible_inputs(),
+            possible_tty_inputs: get_possible_tty_inputs(),
         }
+    }
+    pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
+        self.possible_tty_inputs = tty_inputs;
+        self
     }
     pub fn add_terminal_input(&mut self, input: &[u8]) {
         self.input_to_add = Arc::new(Mutex::new(Some(input.to_vec())));
@@ -106,7 +110,7 @@ impl OsApi for FakeInputOutput {
         *winsize
     }
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
-        let terminal_input = self.possible_inputs.get(&cols).expect(&format!("could not find input for size {:?}", cols));
+        let terminal_input = self.possible_tty_inputs.get(&cols).expect(&format!("could not find input for size {:?}", cols));
         self.read_buffers.lock().unwrap().insert(pid, terminal_input.clone());
         self.io_events.lock().unwrap().push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }

@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use crate::tests::tty_inputs::{COL_10, COL_60, COL_14, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39, COL_40, COL_50, COL_70, COL_121};
 
 #[derive(Clone, Debug)]
@@ -11,6 +13,18 @@ impl Bytes {
     pub fn new() -> Self {
         Bytes {
             content: vec![],
+            read_position: 0
+        }
+    }
+    pub fn from_file_in_fixtures(file_name: &str) -> Self {
+        let mut path_to_file = PathBuf::new();
+        path_to_file.push("src");
+        path_to_file.push("tests");
+        path_to_file.push("fixtures");
+        path_to_file.push(file_name);
+        let content = fs::read(path_to_file).expect(&format!("could not read fixture {:?}", &file_name));
+        Bytes {
+            content,
             read_position: 0
         }
     }
@@ -33,7 +47,7 @@ impl Bytes {
     }
 }
 
-pub fn get_possible_inputs () -> HashMap<u16, Bytes> { // the key is the column count for this terminal input
+pub fn get_possible_tty_inputs () -> HashMap<u16, Bytes> { // the key is the column count for this terminal input
     let mut possible_inputs = HashMap::new();
     let col_10_bytes = Bytes::new().content_from_str(&COL_10);
     let col_14_bytes = Bytes::new().content_from_str(&COL_14);
