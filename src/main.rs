@@ -162,7 +162,8 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
     }
     // cleanup();
     let reset_style = "\u{1b}[m";
-    let goodbye_message = format!("\n\r{}Bye from Mosaic!", reset_style);
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.ws_row, 1);
+    let goodbye_message = format!("{}\n{}Bye from Mosaic!", goto_start_of_last_line, reset_style);
 
     os_input.get_stdout_writer().write(goodbye_message.as_bytes()).unwrap();
     os_input.get_stdout_writer().flush().unwrap();

@@ -183,9 +183,11 @@ impl Screen {
     }
     fn get_active_terminal_cursor_position(&self) -> (usize, usize) { // (x, y)
         let active_terminal = &self.get_active_terminal().unwrap();
-        let x = active_terminal.x_coords as usize + active_terminal.cursor_position_in_last_line();
-        let y = active_terminal.y_coords + active_terminal.display_rows - 1;
-        (x, y as usize)
+        let (x_in_terminal, y_in_terminal) = active_terminal.cursor_coordinates();
+
+        let x = active_terminal.x_coords as usize + x_in_terminal;
+        let y = active_terminal.y_coords as usize + y_in_terminal;
+        (x, y)
     }
     pub fn render (&mut self) {
         let mut stdout = self.os_api.get_stdout_writer();
