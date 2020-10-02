@@ -7,7 +7,6 @@ use ::vte::Perform;
 
 use crate::VteEvent;
 
-const DEBUGGING: bool = false;
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     foreground_ansi_codes: None,
@@ -67,6 +66,45 @@ impl TerminalCharacter {
         self.reset_foreground_ansi_code = true;
         self.reset_background_ansi_code = true;
         self.reset_misc_ansi_code = true;
+        self
+    }
+    pub fn reset_foreground_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(foreground_ansi_codes) = self.foreground_ansi_codes.as_mut() {
+            if *should_reset {
+                foreground_ansi_codes.clear();
+            }
+        }
+        self.reset_foreground_ansi_code = *should_reset;
+        self
+    }
+    pub fn reset_background_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(background_ansi_codes) = self.background_ansi_codes.as_mut() {
+            if *should_reset {
+                background_ansi_codes.clear();
+            }
+        }
+        self.reset_background_ansi_code = *should_reset;
+        self
+    }
+    pub fn reset_misc_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(misc_ansi_codes) = self.misc_ansi_codes.as_mut() {
+            if *should_reset {
+                misc_ansi_codes.clear();
+            }
+        }
+        self.reset_misc_ansi_code = *should_reset;
+        self
+    }
+    pub fn foreground_ansi_codes(mut self, foreground_ansi_codes: &[String]) -> Self {
+        self.foreground_ansi_codes = Some(foreground_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn background_ansi_codes(mut self, background_ansi_codes: &[String]) -> Self {
+        self.background_ansi_codes = Some(background_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn misc_ansi_codes(mut self, misc_ansi_codes: &[String]) -> Self {
+        self.misc_ansi_codes = Some(misc_ansi_codes.iter().cloned().collect());
         self
     }
 }
@@ -272,9 +310,6 @@ impl TerminalOutput {
         }
     }
     pub fn read_buffer_as_lines (&self) -> Vec<Vec<&TerminalCharacter>> {
-        if DEBUGGING {
-            return vec![];
-        }
         if self.characters.len() == 0 {
             let mut output = vec![];
             let mut empty_line = vec![];
@@ -356,43 +391,36 @@ impl TerminalOutput {
         Vec::from(output)
     }
     pub fn cursor_coordinates (&self) -> (usize, usize) { // (x, y)
-        let mut lines_from_end = 0;
-
         let mut newline_indices = self.newline_indices.iter().rev();
         let mut linebreak_indices = self.linebreak_indices.iter().rev();
 
-        let mut next_newline_index = newline_indices.next().copied();
-        let mut next_linebreak_index = linebreak_indices.next().copied();
+        let mut next_newline = newline_indices.next();
+        let mut next_linebreak = linebreak_indices.next();
 
-        let next_line_start = loop {
-            let next_line_index = ::std::cmp::max(next_newline_index, next_linebreak_index);
-            if let Some(next_line_index) = next_line_index {
-                if self.cursor_position > next_line_index {
-                    break next_line_index;
-                }
-            } else {
-                break next_line_index.unwrap_or(0);
+        let mut lines_from_end = 0;
+        let mut current_line_start_index = 0;
+        loop {
+            match max(next_newline, next_linebreak) {
+                Some(next_line_index) => {
+                    if next_line_index <= &self.cursor_position {
+                        current_line_start_index = *next_line_index;
+                        break;
+                    } else {
+                        lines_from_end += 1;
+                        if Some(next_line_index) == next_newline {
+                            next_newline = newline_indices.next();
+                        } else if Some(next_line_index) == next_linebreak {
+                            next_linebreak = linebreak_indices.next();
+                        }
+                    }
+                },
+                None => break,
             }
-            if next_line_index == next_newline_index {
-                next_newline_index = newline_indices.next().copied();
-                lines_from_end += 1;
-            }
-            if next_line_index == next_linebreak_index {
-                next_linebreak_index = linebreak_indices.next().copied();
-                lines_from_end += 1;
-            }
-        };
-        let y = if self.display_rows < lines_from_end { 1 } else { self.display_rows - 1 - lines_from_end };
-        // TODO: why 1?
-        let x = self.cursor_position - next_line_start;
-        (x, y as usize)
-    }
-    fn index_of_beginning_of_last_canonical_line (&self) -> usize {
-        if self.newline_indices.is_empty() {
-            0
-        } else {
-            *self.newline_indices.last().unwrap()
         }
+        let index_of_last_row = self.display_rows as usize - 1;
+        let y = index_of_last_row - lines_from_end;
+        let x = self.cursor_position - current_line_start_index;
+        (x, y)
     }
     fn index_of_end_of_canonical_line(&self, index_in_line: usize) -> usize {
         let newlines = self.newline_indices.iter().rev();
@@ -408,60 +436,20 @@ impl TerminalOutput {
         index_of_end_of_canonical_line
     }
     fn index_of_beginning_of_line (&self, index_in_line: usize) -> usize {
-        let last_newline_index = if self.newline_indices.is_empty() {
-            None
-        } else {
-            // return last less than index_in_line
-            let last_newline_index = *self.newline_indices.last().unwrap();
-            if last_newline_index < index_in_line {
-                Some(last_newline_index)
-            } else {
-                let mut last_newline_index = 0;
-                for n_i in self.newline_indices.iter() {
-                    if *n_i > last_newline_index && *n_i <= index_in_line {
-                        last_newline_index = *n_i;
-                    } else if *n_i > index_in_line {
-                        break;
-                    }
-                }
-                Some(last_newline_index)
-            }
-        };
-        let last_linebreak_index = if self.linebreak_indices.is_empty() {
-            None
-        } else {
-            // return last less than index_in_line
-            let last_linebreak_index = *self.linebreak_indices.last().unwrap();
-            if last_linebreak_index < index_in_line {
-                Some(last_linebreak_index)
-            } else {
-                let mut last_linebreak_index = 0;
-                for l_i in self.linebreak_indices.iter() {
-                    if *l_i > last_linebreak_index && *l_i <= index_in_line {
-                        last_linebreak_index = *l_i;
-                    } else if *l_i > index_in_line {
-                        break;
-                    }
-                }
-                Some(last_linebreak_index)
-            }
-        };
-        match (last_newline_index, last_linebreak_index) {
-            (Some(last_newline_index), Some(last_linebreak_index)) => {
-                max(last_newline_index, last_linebreak_index)
-            },
-            (None, Some(last_linebreak_index)) => last_linebreak_index,
-            (Some(last_newline_index), None) => last_newline_index,
-            (None, None) => 0
-        }
+        let last_newline_index = self.newline_indices.iter().rev().find(|&&n_i| n_i <= index_in_line).unwrap_or(&0);
+        let last_linebreak_index = self.linebreak_indices.iter().rev().find(|&&l_i| l_i <= index_in_line).unwrap_or(&0);
+        max(*last_newline_index, *last_linebreak_index)
     }
     fn add_newline (&mut self) {
         let nearest_line_end = self.index_of_end_of_canonical_line(self.cursor_position);
         if nearest_line_end == self.characters.len() {
             self.newline_indices.push(nearest_line_end);
-            self.cursor_position = nearest_line_end; // + 1 ?
+            self.cursor_position = nearest_line_end;
         } else {
-            self.cursor_position = nearest_line_end; // + 1 ?
+            // we shouldn't add a new line in the middle of the text
+            // in this case, we'll move to the next existing line and it
+            // will be overriden as we print on it
+            self.cursor_position = nearest_line_end;
         }
         self.should_render = true;
         self.pending_foreground_ansi_codes.clear();
@@ -477,67 +465,34 @@ impl TerminalOutput {
 
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
-        if DEBUGGING {
-            println!("\r[print] {:?}", c);
+        // while not ideal that we separate the reset and actual code logic here,
+        // combining them is a question of rendering performance and not refactoring,
+        // so will be addressed separately
+        let terminal_character = TerminalCharacter::new(c)
+            .reset_foreground_ansi_code(&self.reset_foreground_ansi_code)
+            .reset_background_ansi_code(&self.reset_background_ansi_code)
+            .reset_misc_ansi_code(&self.reset_misc_ansi_code)
+            .foreground_ansi_codes(&self.pending_foreground_ansi_codes)
+            .background_ansi_codes(&self.pending_background_ansi_codes)
+            .misc_ansi_codes(&self.pending_misc_ansi_codes);
+
+        if self.characters.len() > self.cursor_position {
+            self.characters.remove(self.cursor_position);
+            self.characters.insert(self.cursor_position, terminal_character);
+            if !self.newline_indices.contains(&(self.cursor_position + 1)) {
+                // advancing the cursor beyond the borders of the line has to be done explicitly
+                self.cursor_position += 1;
+            }
         } else {
-            let mut terminal_character = TerminalCharacter::new(c);
-            if self.reset_foreground_ansi_code {
-                terminal_character.reset_foreground_ansi_code = true;
-            } else {
-                let mut foreground_ansi_codes = vec![];
-                for ansi_code in &self.pending_foreground_ansi_codes {
-                    foreground_ansi_codes.push(ansi_code.clone());
-                }
-                terminal_character.foreground_ansi_codes = Some(foreground_ansi_codes);
-            }
-            if self.reset_background_ansi_code {
-                terminal_character.reset_background_ansi_code = true;
-            } else {
-                let mut background_ansi_codes = vec![];
-                for ansi_code in &self.pending_background_ansi_codes {
-                    background_ansi_codes.push(ansi_code.clone());
-                }
-                terminal_character.background_ansi_codes = Some(background_ansi_codes);
-            }
-            if self.reset_misc_ansi_code {
-                terminal_character.reset_misc_ansi_code = true;
-            } else {
-                let mut misc_ansi_codes = vec![];
-                for ansi_code in &self.pending_misc_ansi_codes {
-                    misc_ansi_codes.push(ansi_code.clone());
-                }
-                terminal_character.misc_ansi_codes = Some(misc_ansi_codes);
-            }
+            for _ in self.characters.len()..self.cursor_position {
+                self.characters.push(EMPTY_TERMINAL_CHARACTER.clone());
+            };
+            self.characters.push(terminal_character);
 
-            if self.characters.len() == self.cursor_position {
-                self.characters.push(terminal_character);
-
-                let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
-                let difference_from_last_newline = self.cursor_position - start_of_last_line;
-                if difference_from_last_newline == self.display_cols as usize {
-                    self.linebreak_indices.push(self.cursor_position);
-                }
-
-            } else if self.characters.len() > self.cursor_position {
-                self.characters.remove(self.cursor_position);
-                self.characters.insert(self.cursor_position, terminal_character);
-                if self.newline_indices.contains(&(self.cursor_position + 1)) {
-                    // TODO: ???
-                    return;
-                }
-            } else {
-                for i in self.characters.len()..self.cursor_position {
-                    if !self.newline_indices.contains(&i) {
-                        self.characters.push(EMPTY_TERMINAL_CHARACTER.clone());
-                    }
-                };
-                self.characters.push(terminal_character);
-
-                let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
-                let difference_from_last_newline = self.cursor_position - start_of_last_line;
-                if difference_from_last_newline == self.display_cols as usize {
-                    self.linebreak_indices.push(self.cursor_position);
-                }
+            let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
+            let difference_from_last_newline = self.cursor_position - start_of_last_line;
+            if difference_from_last_newline == self.display_cols as usize {
+                self.linebreak_indices.push(self.cursor_position);
             }
             self.cursor_position += 1;
         }
@@ -554,195 +509,177 @@ impl vte::Perform for TerminalOutput {
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
-        if DEBUGGING {
-            println!(
-                "\r[hook] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
-                params, intermediates, ignore, c
-            );
-        }
+        // TBD
     }
 
     fn put(&mut self, byte: u8) {
-        if DEBUGGING {
-            println!("\r[put] {:02x}", byte);
-        }
+        // TBD
     }
 
     fn unhook(&mut self) {
-        if DEBUGGING {
-            println!("\r[unhook]");
-        }
+        // TBD
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-    // TODO: normalize vec/slices for all of these methods and the enum
-        if DEBUGGING {
-            println!("\r[osc_dispatch] params={:?} bell_terminated={}", params, bell_terminated);
-        }
+        // TBD
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
-        if DEBUGGING {
-            println!(
-                "\r[csi_dispatch] params={:?}, intermediates={:?}, ignore={:?}, char={:?}",
-                params, intermediates, ignore, c
-            );
-        } else {
-            if c == 'm' {
-                // TODO: handle misc codes specifically
-                // like here: https://github.com/alacritty/alacritty/blob/46c0f352c40ecb68653421cb178a297acaf00c6d/alacritty_terminal/src/ansi.rs#L1176
-                if params.is_empty() || params[0] == 0 {
-                    self.reset_foreground_ansi_code = true;
-                    self.reset_background_ansi_code = true;
-                    self.reset_misc_ansi_code = true;
-                    self.pending_foreground_ansi_codes.clear();
-                    self.pending_background_ansi_codes.clear();
-                    self.pending_misc_ansi_codes.clear();
-                } else if params[0] == 39 {
-                    self.reset_foreground_ansi_code = true;
-                    self.pending_foreground_ansi_codes.clear();
-                } else if params[0] == 49 {
-                    self.reset_background_ansi_code = true;
-                    self.pending_background_ansi_codes.clear();
-                } else if params[0] == 38 {
-                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                    self.pending_foreground_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                    self.reset_foreground_ansi_code = false;
-                } else if params[0] == 48 {
-                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                    self.pending_background_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                    self.reset_background_ansi_code = false;
-                } else {
-                    let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                    self.pending_misc_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                    self.reset_misc_ansi_code = false;
-                }
-            } else if c == 'C' { // move cursor forward
-                let move_by = params[0] as usize;
-                let closest_newline = self.newline_indices.iter().find(|x| x > &&self.cursor_position).copied();
-                let closest_linebreak = self.linebreak_indices.iter().find(|x| x > &&self.cursor_position).copied();
-                let max_move_position = match (closest_newline, closest_linebreak) {
-                    (Some(closest_newline), Some(closest_linebreak)) => {
-                        ::std::cmp::min(
-                            closest_newline,
-                            closest_linebreak
-                        )
-                    },
-                    (Some(closest_newline), None) => {
-                        closest_newline
-                    },
-                    (None, Some(closest_linebreak)) => {
+        if c == 'm' {
+            // TODO: handle misc codes specifically
+            // like here: https://github.com/alacritty/alacritty/blob/46c0f352c40ecb68653421cb178a297acaf00c6d/alacritty_terminal/src/ansi.rs#L1176
+            if params.is_empty() || params[0] == 0 {
+                self.reset_foreground_ansi_code = true;
+                self.reset_background_ansi_code = true;
+                self.reset_misc_ansi_code = true;
+                self.pending_foreground_ansi_codes.clear();
+                self.pending_background_ansi_codes.clear();
+                self.pending_misc_ansi_codes.clear();
+            } else if params[0] == 39 {
+                self.reset_foreground_ansi_code = true;
+                self.pending_foreground_ansi_codes.clear();
+            } else if params[0] == 49 {
+                self.reset_background_ansi_code = true;
+                self.pending_background_ansi_codes.clear();
+            } else if params[0] == 38 {
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_foreground_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_foreground_ansi_code = false;
+            } else if params[0] == 48 {
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_background_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_background_ansi_code = false;
+            } else {
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_misc_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_misc_ansi_code = false;
+            }
+        } else if c == 'C' { // move cursor forward
+            let move_by = params[0] as usize;
+            let closest_newline = self.newline_indices.iter().find(|x| x > &&self.cursor_position).copied();
+            let closest_linebreak = self.linebreak_indices.iter().find(|x| x > &&self.cursor_position).copied();
+            let max_move_position = match (closest_newline, closest_linebreak) {
+                (Some(closest_newline), Some(closest_linebreak)) => {
+                    ::std::cmp::min(
+                        closest_newline,
                         closest_linebreak
-                    },
-                    (None, None) => {
-                        // TODO: NO!!
-                        self.cursor_position + move_by
-                    }
-                };
-                if self.cursor_position + move_by < max_move_position {
-                    self.cursor_position += move_by;
-                } else {
-                    self.cursor_position = max_move_position;
+                    )
+                },
+                (Some(closest_newline), None) => {
+                    closest_newline
+                },
+                (None, Some(closest_linebreak)) => {
+                    closest_linebreak
+                },
+                (None, None) => {
+                    let last_line_start = ::std::cmp::max(self.newline_indices.last(), self.linebreak_indices.last()).unwrap_or(&0);
+                    let position_in_last_line = self.cursor_position - last_line_start;
+                    let columns_from_last_line_end = self.display_cols as usize - position_in_last_line;
+                    self.cursor_position + columns_from_last_line_end
                 }
+            };
+            if self.cursor_position + move_by < max_move_position {
+                self.cursor_position += move_by;
+            } else {
+                self.cursor_position = max_move_position;
+            }
 
-            } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
-                if params[0] == 0 {
-                    let newlines = self.newline_indices.iter().rev();
-                    let mut delete_until = self.characters.len();
-                    for newline_index in newlines {
-                        if newline_index < &self.cursor_position {
-                            break;
-                        }
-                        delete_until = *newline_index;
-                    }
-                    // TODO: better
-                    for i in self.cursor_position..delete_until {
-                        self.characters[i] = EMPTY_TERMINAL_CHARACTER.clone();
-                    }
-                }
-                // TODO: implement 1 and 2
-            } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
-                if params[0] == 0 {
-                    if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
-                        self.newline_indices.truncate(position_of_first_newline_index_to_delete);
-                    }
-                    if let Some(position_of_first_linebreak_index_to_delete) = self.linebreak_indices.iter().position(|&li| li > self.cursor_position) {
-                        self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
-                    }
-                    self.characters.truncate(self.cursor_position + 1);
-                } else if params[0] == 2 {
-                    // TODO: this also deletes all the scrollback buffer, it needs to be adjusted
-                    // for scrolling
-                    self.characters.clear();
-                    self.linebreak_indices.clear();
-                    self.newline_indices.clear();
-                }
-            } else if c == 'H' { // goto row/col
-                let (row, col) = if params.len() == 1 {
-                    (params[0] as usize, 0) // TODO: is this always correct ?
-                } else {
-                    (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
-                };
-                if row == 0 {
-                    self.cursor_position = col;
-                } else if let Some(index_of_start_of_row) = self.newline_indices.get(row - 1) {
-                    self.cursor_position = index_of_start_of_row + col;
-                } else {
-                    let start_of_last_line = self.index_of_beginning_of_last_canonical_line();
-                    let num_of_lines_to_add = row - self.newline_indices.len();
-                    for i in 0..num_of_lines_to_add {
-                        self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
-                    }
-                    let index_of_start_of_row = self.newline_indices.get(row - 1).unwrap();
-                    self.cursor_position = index_of_start_of_row + col;
-                }
-            } else if c == 'A' { // move cursor up until edge of screen
-                let move_up_count = if params[0] == 0 { 1 } else { params[0] };
+        } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
+            if params[0] == 0 {
                 let newlines = self.newline_indices.iter().rev();
-                let mut position_in_line = None;
-                let mut lines_traversed = 0;
+                let mut delete_until = self.characters.len();
                 for newline_index in newlines {
-                    if position_in_line.is_some() {
-                        lines_traversed += 1;
-                    }
-                    if newline_index < &self.cursor_position && position_in_line.is_none() {
-                        // this is the current cursor line
-                        position_in_line = Some(self.cursor_position - newline_index);
-                    }
-                    if lines_traversed == move_up_count {
-                        self.cursor_position = newline_index + position_in_line.unwrap();
+                    if newline_index < &self.cursor_position {
                         break;
                     }
+                    delete_until = *newline_index;
                 }
-                // TODO: stop at upper edge of screen
-            } else if c == 'D' {
-                // move cursor backwards, stop at left edge of screen
-                let reduce_by = if params[0] == 0 { 1 } else { params[0] as usize };
-                if reduce_by > self.cursor_position {
-                    // TODO: no, this is incorrect
-                    self.cursor_position = 0;
-                } else {
-                    self.cursor_position -= reduce_by;
+                // TODO: better
+                for i in self.cursor_position..delete_until {
+                    self.characters[i] = EMPTY_TERMINAL_CHARACTER.clone();
                 }
-                // TODO: stop at left edge of screen
-            } else if c == 'l' {
-                // TBD
-            } else if c == 'h' {
-                // TBD
-            } else {
-                println!("unhandled csi: {:?}->{:?}", c, params);
-                panic!("aaa!!!");
             }
+            // TODO: implement 1 and 2
+        } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+            if params[0] == 0 {
+                if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
+                    self.newline_indices.truncate(position_of_first_newline_index_to_delete);
+                }
+                if let Some(position_of_first_linebreak_index_to_delete) = self.linebreak_indices.iter().position(|&li| li > self.cursor_position) {
+                    self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
+                }
+                self.characters.truncate(self.cursor_position + 1);
+            } else if params[0] == 2 {
+                // TODO: this also deletes all the scrollback buffer, it needs to be adjusted
+                // for scrolling
+                self.characters.clear();
+                self.linebreak_indices.clear();
+                self.newline_indices.clear();
+            }
+        } else if c == 'H' { // goto row/col
+            let (row, col) = if params.len() == 1 {
+                (params[0] as usize, 0) // TODO: is this always correct ?
+            } else {
+                (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
+            };
+            if row == 0 {
+                self.cursor_position = col;
+            } else if let Some(index_of_start_of_row) = self.newline_indices.get(row - 1) {
+                self.cursor_position = index_of_start_of_row + col;
+            } else {
+                let start_of_last_line = *self.newline_indices.last().unwrap_or(&0);
+                let num_of_lines_to_add = row - self.newline_indices.len();
+                for i in 0..num_of_lines_to_add {
+                    self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
+                }
+                let index_of_start_of_row = self.newline_indices.get(row - 1).unwrap();
+                self.cursor_position = index_of_start_of_row + col;
+            }
+        } else if c == 'A' { // move cursor up until edge of screen
+            let move_up_count = if params[0] == 0 { 1 } else { params[0] };
+            let newlines = self.newline_indices.iter().rev();
+            let mut position_in_line = None;
+            let mut lines_traversed = 0;
+            for newline_index in newlines {
+                if position_in_line.is_some() {
+                    lines_traversed += 1;
+                }
+                if newline_index < &self.cursor_position && position_in_line.is_none() {
+                    // this is the current cursor line
+                    position_in_line = Some(self.cursor_position - newline_index);
+                }
+                if lines_traversed == move_up_count {
+                    self.cursor_position = newline_index + position_in_line.unwrap();
+                    return;
+                    // break;
+                }
+            }
+            // if we reached this point, we were asked to move more lines than we have
+            // so let's move the maximum before slipping off-screen
+            // TODO: this is buggy and moves to the first line rather than the first line on screen
+            // fix this
+            self.cursor_position = self.newline_indices.iter().next().unwrap_or(&0) + position_in_line.unwrap_or(0);
+        } else if c == 'D' {
+            // move cursor backwards, stop at left edge of screen
+            let reduce_by = if params[0] == 0 { 1 } else { params[0] as usize };
+            let beginning_of_current_line = self.index_of_beginning_of_line(self.cursor_position);
+            let max_reduce = self.cursor_position - beginning_of_current_line;
+            if reduce_by > max_reduce {
+                self.cursor_position -= max_reduce;
+            } else {
+                self.cursor_position -= reduce_by;
+            }
+        } else if c == 'l' {
+            // TBD
+        } else if c == 'h' {
+            // TBD
+        } else {
+            println!("unhandled csi: {:?}->{:?}", c, params);
+            panic!("aaa!!!");
         }
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
-        if DEBUGGING {
-            println!(
-                // "\r[esc_dispatch] intermediates={:?}, ignore={:?}, byte={:02x}",
-                "\r[esc_dispatch] intermediates={:?}, ignore={:?}, byte={:?}",
-                intermediates, ignore, byte
-            );
-        }
+        // TBD
     }
 }
