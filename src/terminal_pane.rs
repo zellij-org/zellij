@@ -159,6 +159,7 @@ pub struct TerminalOutput {
     cursor_position: usize,
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
+    scroll_region: (usize, usize), // top line index / bottom line index
     reset_foreground_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     reset_background_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     reset_misc_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
@@ -175,6 +176,7 @@ impl TerminalOutput {
             cursor_position: 0,
             newline_indices: Vec::new(),
             linebreak_indices: Vec::new(),
+            scroll_region: (1, ws.ws_row as usize),
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
@@ -440,21 +442,168 @@ impl TerminalOutput {
         let last_linebreak_index = self.linebreak_indices.iter().rev().find(|&&l_i| l_i <= index_in_line).unwrap_or(&0);
         max(*last_newline_index, *last_linebreak_index)
     }
+    fn scroll_region_line_indices (&self) -> (usize, usize) {
+        let mut newline_indices = self.newline_indices.iter().rev();
+        let mut linebreak_indices = self.linebreak_indices.iter().rev();
+
+        let mut next_newline = newline_indices.next();
+        let mut next_linebreak = linebreak_indices.next();
+
+        let mut lines_from_end = 0;
+
+        let scroll_end_index_from_screen_bottom = self.display_rows as usize - self.scroll_region.1;
+        let scroll_start_index_from_screen_bottom = scroll_end_index_from_screen_bottom + (self.scroll_region.1 - self.scroll_region.0);
+
+        let mut scroll_region_start_index = None;
+        let mut scroll_region_end_index = None;
+
+        loop {
+            match max(next_newline, next_linebreak) {
+                Some(next_line_index) => {
+                    if lines_from_end == scroll_start_index_from_screen_bottom {
+                        scroll_region_start_index = Some(next_line_index);
+                    }
+                    if lines_from_end == scroll_end_index_from_screen_bottom {
+                        scroll_region_end_index = Some(next_line_index);
+                    }
+                    if scroll_region_start_index.is_some() && scroll_region_end_index.is_some() {
+                        break;
+                    }
+                    if Some(next_line_index) == next_newline {
+                        next_newline = newline_indices.next();
+                    } else if Some(next_line_index) == next_linebreak {
+                        next_linebreak = linebreak_indices.next();
+                    }
+                    lines_from_end += 1;
+                },
+                None => break,
+            }
+        }
+        (*scroll_region_start_index.unwrap_or(&0), *scroll_region_end_index.unwrap_or(&0))
+    }
+    fn index_of_next_line_after(&self, index_in_line: usize) -> usize {
+        let last_newline_index = self.newline_indices.iter().find(|&&n_i| n_i >= index_in_line).unwrap_or(&0);
+        let last_linebreak_index = self.linebreak_indices.iter().find(|&&l_i| l_i >= index_in_line).unwrap_or(&0);
+        max(*last_newline_index, *last_linebreak_index)
+    }
+    fn insert_empty_lines_at_cursor(&mut self, count: usize) {
+        for _ in 0..count {
+            self.delete_last_line_in_scroll_region();
+            let start_of_current_line = self.index_of_beginning_of_line(self.cursor_position);
+            let end_of_current_line = self.index_of_next_line_after(self.cursor_position);
+            for i in 0..end_of_current_line - start_of_current_line {
+                self.characters.insert(start_of_current_line + i, EMPTY_TERMINAL_CHARACTER.clone())
+            }
+        }
+
+    }
+    fn delete_last_line_in_scroll_region(&mut self) {
+        if let Some(newline_index_of_scroll_region_end) = self.get_line_position_on_screen(self.scroll_region.1) {
+            let end_of_last_scroll_region_line = self.get_line_position_on_screen(self.scroll_region.1 + 1).unwrap();
+            &self.characters.drain(newline_index_of_scroll_region_end..end_of_last_scroll_region_line);
+        }
+    }
+    fn delete_first_line_in_scroll_region(&mut self) {
+        if let Some(newline_index_of_scroll_region_start) = self.get_line_position_on_screen(self.scroll_region.0) {
+            let end_of_first_scroll_region_line = self.get_line_position_on_screen(self.scroll_region.0 + 1).unwrap();
+            let removed_count = {
+                let removed_line = &self.characters.drain(newline_index_of_scroll_region_start..end_of_first_scroll_region_line);
+                removed_line.len()
+            };
+            let newline_index_of_scroll_region_end = self.get_line_position_on_screen(self.scroll_region.1).unwrap();
+            for i in 0..removed_count {
+                self.characters.insert(newline_index_of_scroll_region_end + i, EMPTY_TERMINAL_CHARACTER.clone())
+            }
+            // TODO: if removed_count is larger than the line it was inserted it, recalculate all
+            // newline_indices after it
+        }
+    }
+    fn get_line_position_on_screen(&self, index_on_screen: usize) -> Option<usize> {
+        let mut newline_indices = self.newline_indices.iter().rev();
+        let mut linebreak_indices = self.linebreak_indices.iter().rev();
+
+        let mut next_newline = newline_indices.next();
+        let mut next_linebreak = linebreak_indices.next();
+
+        let mut lines_from_end = 0; // 1 because we're counting and not indexing TODO: fix this
+        loop {
+            match max(next_newline, next_linebreak) {
+                Some(next_line_index) => {
+                    if index_on_screen == self.display_rows as usize - lines_from_end {
+                        return Some(*next_line_index);
+                    } else {
+                        lines_from_end += 1;
+                    }
+                    if lines_from_end > self.display_rows as usize {
+                        return None;
+                    }
+                    if Some(next_line_index) == next_newline {
+                        next_newline = newline_indices.next();
+                    } else if Some(next_line_index) == next_linebreak {
+                        next_linebreak = linebreak_indices.next();
+                    }
+                },
+                None => {
+                    if index_on_screen == self.display_rows as usize - lines_from_end {
+                        return Some(0);
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+    // TODO: better naming of these two functions
+    fn get_line_index_on_screen (&self, position_in_characters: usize) -> Option<usize> {
+        let mut newline_indices = self.newline_indices.iter().rev();
+        let mut linebreak_indices = self.linebreak_indices.iter().rev();
+
+        let mut next_newline = newline_indices.next();
+        let mut next_linebreak = linebreak_indices.next();
+
+        let mut lines_from_end = 0;
+        loop {
+            match max(next_newline, next_linebreak) {
+                Some(next_line_index) => {
+                    if *next_line_index <= position_in_characters {
+                        break;
+                    } else {
+                        lines_from_end += 1;
+                        if Some(next_line_index) == next_newline {
+                            next_newline = newline_indices.next();
+                        } else if Some(next_line_index) == next_linebreak {
+                            next_linebreak = linebreak_indices.next();
+                        }
+                    }
+                },
+                None => break,
+            }
+        }
+        if lines_from_end > self.display_rows as usize {
+            None
+        } else {
+            Some(self.display_rows as usize - lines_from_end)
+        }
+    }
     fn add_newline (&mut self) {
         let nearest_line_end = self.index_of_end_of_canonical_line(self.cursor_position);
+        let current_line_index_on_screen = self.get_line_index_on_screen(self.cursor_position);
         if nearest_line_end == self.characters.len() {
             self.newline_indices.push(nearest_line_end);
             self.cursor_position = nearest_line_end;
+        } else if current_line_index_on_screen == Some(self.scroll_region.1) { // end of scroll region
+            // shift all lines in scroll region up
+            self.delete_first_line_in_scroll_region();
         } else {
             // we shouldn't add a new line in the middle of the text
             // in this case, we'll move to the next existing line and it
             // will be overriden as we print on it
             self.cursor_position = nearest_line_end;
         }
-        self.should_render = true;
         self.pending_foreground_ansi_codes.clear();
         self.pending_background_ansi_codes.clear();
         self.pending_misc_ansi_codes.clear();
+        self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
         let last_newline_index = self.index_of_beginning_of_line(self.cursor_position);
@@ -463,8 +612,18 @@ impl TerminalOutput {
     }
 }
 
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
+
+
         // while not ideal that we separate the reset and actual code logic here,
         // combining them is a question of rendering performance and not refactoring,
         // so will be addressed separately
@@ -673,6 +832,29 @@ impl vte::Perform for TerminalOutput {
             // TBD
         } else if c == 'h' {
             // TBD
+        } else if c == 'r' {
+            debug_log_to_file(format!("\rparams {:?}", params));
+            if params.len() > 1 {
+                // TODO: why do we need this if? what does a 1 parameter 'r' mean?
+                self.scroll_region = (params[0] as usize, params[1] as usize);
+            }
+        } else if c == 't' {
+            // TBD - title?
+        } else if c == 'n' {
+            // TBD - device status report
+        } else if c == 'c' {
+            // TBD - identify terminal
+        } else if c == 'M' {
+            // delete lines if currently inside scroll region
+            let line_count_to_delete = params[0];
+            for _ in 0..line_count_to_delete {
+                // TODO: better, do this in bulk
+                self.delete_first_line_in_scroll_region()
+            }
+        } else if c == 'L' {
+            // insert blank lines if inside scroll region
+            let line_count_to_add = params[0];
+            self.insert_empty_lines_at_cursor(line_count_to_add as usize);
         } else {
             println!("unhandled csi: {:?}->{:?}", c, params);
             panic!("aaa!!!");

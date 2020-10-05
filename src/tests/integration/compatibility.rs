@@ -88,3 +88,80 @@ pub fn fish_select_tab_completion_options() {
         assert_snapshot!(snapshot);
     }
 }
+
+#[test]
+pub fn vim_scroll_region_down () {
+    // here we test a case where vim defines the scroll region as lesser than the screen row count
+    // and then scrolls down
+    // the region is defined here by vim as 1-26 (there are 28 rows)
+    // then the cursor is moved to line 26 and a new line is added
+    // what should happen is that the first line in the scroll region (1) is deleted
+    // and an empty line is inserted in the last scroll region line (26)
+    // this tests also has other steps afterwards that fills the line with the next line in the
+    // file
+    // experience appear to the user
+    let fake_win_size = Winsize {
+        ws_col: 116,
+        ws_row: 28,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let fixture_name = "vim_scroll_region_down";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[17]); // quit (ctrl-q)
+    start(Box::new(fake_input_output.clone()));
+    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+pub fn vim_ctrl_d() {
+    // in vim ctrl-d moves down half a page
+    // in this case, it sends the terminal the csi 'M' directive, which tells it to delete X (13 in
+    // this case) lines inside the scroll region and push the other lines up
+    // what happens here is that 13 lines are deleted and instead 13 empty lines are added at the
+    // end of the scroll region
+    // vim makes sure to fill these empty lines with the rest of the file
+    let fake_win_size = Winsize {
+        ws_col: 116,
+        ws_row: 28,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let fixture_name = "vim_ctrl_d";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[17]); // quit (ctrl-q)
+    start(Box::new(fake_input_output.clone()));
+    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+pub fn vim_ctrl_u() {
+    // in vim ctrl-u moves up half a page
+    // in this case, it sends the terminal the csi 'L' directive, which tells it to insert X (13 in
+    // this case) lines at the cursor, pushing away (deleting) the last line in the scroll region
+    // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
+    // file above the current content)
+    let fake_win_size = Winsize {
+        ws_col: 116,
+        ws_row: 28,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let fixture_name = "vim_ctrl_u";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[17]); // quit (ctrl-q)
+    start(Box::new(fake_input_output.clone()));
+    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
