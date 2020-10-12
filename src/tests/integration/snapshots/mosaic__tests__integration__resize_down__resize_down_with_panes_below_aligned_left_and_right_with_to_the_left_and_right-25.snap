@@ -2,7 +2,7 @@
 source: src/tests/integration/resize_down.rs
 expression: snapshot
 ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │              │line1-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │█             │line1-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbb│              │line2-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│              │line3-bbbbbbbbbbbbbbbbbbbbbbb
 a                             │line12-bbbbbbbbbbbbbbbbbbbbbbb│b             │              │line4-bbbbbbbbbbbbbbbbbbbbbbb
@@ -21,7 +21,7 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbb│b             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbb│              │line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│              │line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │              │line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                      │prompt $                      │prompt $      │█             │prompt $                     
+prompt $                      │prompt $                      │prompt $      │              │prompt $                     
 ──────────────────────────────│────────────────────────────────────────────────────────────│─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 line3-bbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb

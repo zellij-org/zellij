@@ -2,7 +2,7 @@
 source: src/tests/integration/resize_right.rs
 expression: snapshot
 ---
-a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│█                            
 line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 a                                                           │line12-bbbbbbbbbbbbbbbbbbbbbbb│                             
@@ -21,4 +21,4 @@ a                                                           │line18-bbbbbbbbbb
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbb│                             
 a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-prompt $                                                    │prompt $                      │█                            
+prompt $                                                    │prompt $                      │                             

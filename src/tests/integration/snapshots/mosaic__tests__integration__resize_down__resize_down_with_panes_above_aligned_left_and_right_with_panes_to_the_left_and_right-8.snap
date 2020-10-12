@@ -2,43 +2,43 @@
 source: src/tests/integration/resize_down.rs
 expression: snapshot
 ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│                                                  │                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-a                                       │bbbbbbbbbb                                        │                             
-line11-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line2-bbbbbbbbbbbbbbbbbbbbbbb
+a                                       │line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
+line11-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line4-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line6-bbbbbbbbbbbbbbbbbbbbbbb
+a                                       │line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb
+line12-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line8-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line10-bbbbbbbbbbbbbbbbbbbbbb
+a                                       │line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
+line13-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line12-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line7-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line14-bbbbbbbbbbbbbbbbbbbbbb
+a                                       │line8-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line16-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line9-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line18-bbbbbbbbbbbbbbbbbbbbbb
+a                                       │line10-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+line15-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │prompt $                     
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-a                                       │bbbbbbbbbb                                        │                             
-line12-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+a                                       │line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+line16-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-a                                       │bbbbbbbbbb                                        │                             
-line13-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+a                                       │line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line7-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-a                                       │bbbbbbbbbb                                        │                             
-line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line8-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+a                                       │line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line9-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-a                                       │bbbbbbbbbb                                        │                             
-line15-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line10-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line1-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
-a                                       │bbbbbbbbbb                                        │line3-bbbbbbbbbbbbbbbbbbbbbbb
-line16-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line5-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb
-a                                       │bbbbbbbbbb                                        │line7-bbbbbbbbbbbbbbbbbbbbbbb
-line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line9-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb
-a                                       │bbbbbbbbbb                                        │line11-bbbbbbbbbbbbbbbbbbbbbb
-line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line13-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
-a                                       │bbbbbbbbbb                                        │line15-bbbbbbbbbbbbbbbbbbbbbb
-line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │line17-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
-a                                       │bbbbbbbbbb                                        │line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $ █                              │prompt $                                          │prompt $                     
+a                                       │line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│                             
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb                                        │                             
+a                                       │prompt $                                          │                             
+prompt $ █                              │                                                  │                             
