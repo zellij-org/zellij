@@ -19,9 +19,9 @@ line19-aaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $                                                    │line18-bbbbbbbbbbbbbbbbbbbbbb
-a                             │────────────────────────────────────────────────────────────│line19-bbbbbbbbbbbbbbbbbbbbbb
+a                             ├──────────┬──────────────────────────────────┬──────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │bbbbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb     │line1-bbbbbbbb│prompt $                     
-──────────────────────────────│bbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb     │line2-bbbbbbbb│─────────────────────────────
+──────────────────────────────┤bbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb     │line2-bbbbbbbb├─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│line17-bbb│line3-bbbbbbbbbbbbbbbbbbbbbbb     │line3-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 line3-bbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb     │line4-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
 line4-bbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb     │line5-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb

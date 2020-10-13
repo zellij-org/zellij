@@ -21,9 +21,9 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb     
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb     │line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             │bbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb     │line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │bbbbbbbbbb│prompt $                          │prompt $      │prompt $                     
-──────────────────────────────│bbbbbbbbbb│                                  │              │─────────────────────────────
+──────────────────────────────┤bbbbbbbbbb│                                  │              ├─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│prompt $  │                                  │              │line2-bbbbbbbbbbbbbbbbbbbbbbb
-line3-bbbbbbbbbbbbbbbbbbbbbbbb│──────────b──────────────────────────────────b──────────────│line3-bbbbbbbbbbbbbbbbbbbbbbb
+line3-bbbbbbbbbbbbbbbbbbbbbbbb├──────────┴──────────────────────────────────┴──────────────┤line3-bbbbbbbbbbbbbbbbbbbbbbb
 line4-bbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
 line5-bbbbbbbbbbbbbbbbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
 line6-bbbbbbbbbbbbbbbbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb

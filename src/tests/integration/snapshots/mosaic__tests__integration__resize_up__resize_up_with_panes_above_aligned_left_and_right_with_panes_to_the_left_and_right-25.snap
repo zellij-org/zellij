@@ -22,7 +22,7 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             │line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $ █                    │prompt $                                                    │prompt $                     
-──────────────────────────────│────────────────────────────────────────────────────────────│─────────────────────────────
+──────────────────────────────┼──────────────────────────────┬──────────────┬──────────────┼─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbb│line2-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 line3-bbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line3-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
 line4-bbbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbbb│b             │line4-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb

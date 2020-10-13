@@ -5,6 +5,7 @@ mod os_input_output;
 mod terminal_pane;
 mod pty_bus;
 mod screen;
+mod boundaries;
 
 use std::io::{Read, Write};
 use ::std::thread;

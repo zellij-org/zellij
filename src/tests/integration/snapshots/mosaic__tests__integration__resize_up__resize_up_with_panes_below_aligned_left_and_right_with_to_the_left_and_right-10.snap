@@ -22,7 +22,7 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             │line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │prompt $                                                    │prompt $                     
-──────────────────────────────│                                                            │                             
+──────────────────────────────┤                                                            │                             
 █                             │                                                            │                             
                               │                                                            │                             
                               │                                                            │                             

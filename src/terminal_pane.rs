@@ -6,6 +6,7 @@ use ::nix::pty::Winsize;
 use ::vte::Perform;
 
 use crate::VteEvent;
+use crate::boundaries::Rect;
 
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -276,6 +277,21 @@ pub struct TerminalOutput {
     pending_foreground_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
     pending_background_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
     pending_misc_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
+}
+
+impl Rect for &mut TerminalOutput {
+    fn x(&self) -> usize {
+        self.x_coords as usize
+    }
+    fn y(&self) -> usize {
+        self.y_coords as usize
+    }
+    fn rows(&self) -> usize {
+        self.display_rows as usize
+    }
+    fn columns(&self) -> usize {
+        self.display_cols as usize
+    }
 }
 
 impl TerminalOutput {

@@ -5,8 +5,17 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use crate::os_input_output::OsApi;
-use crate::terminal_pane::{TerminalOutput, TerminalCharacter};
+use crate::terminal_pane::TerminalOutput;
 use crate::pty_bus::VteEvent;
+use crate::boundaries::Boundaries;
+
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
 
 type BorderAndPaneIds = (u16, Vec<RawFd>);
 
@@ -55,8 +64,6 @@ pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
     pub send_screen_instructions: Sender<ScreenInstruction>,
     full_screen_ws: Winsize,
-    vertical_separator: TerminalCharacter, // TODO: better
-    horizontal_separator: TerminalCharacter, // TODO: better
     terminals: BTreeMap<RawFd, TerminalOutput>, // BTreeMap because we need a predictable order when changing focus
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
@@ -69,8 +76,6 @@ impl Screen {
             receiver,
             send_screen_instructions: sender,
             full_screen_ws: full_screen_ws.clone(),
-            vertical_separator: TerminalCharacter::new('│').reset_all_ansi_codes(),
-            horizontal_separator: TerminalCharacter::new('─').reset_all_ansi_codes(),
             terminals: BTreeMap::new(),
             active_terminal: None,
             os_api,
@@ -191,32 +196,18 @@ impl Screen {
     }
     pub fn render (&mut self) {
         let mut stdout = self.os_api.get_stdout_writer();
+        let mut boundaries = Boundaries::new(self.full_screen_ws.ws_col, self.full_screen_ws.ws_row);
         for (_pid, terminal) in self.terminals.iter_mut() {
+            boundaries.add_rect(&terminal);
             if let Some(vte_output) = terminal.buffer_as_vte_output() {
-
-                // write boundaries
-                if terminal.x_coords + terminal.display_cols < self.full_screen_ws.ws_col {
-                    let boundary_x_coords = terminal.x_coords + terminal.display_cols;
-                    let mut vte_output_boundaries = String::new();
-                    for row in terminal.y_coords..terminal.y_coords + terminal.display_rows {
-                        vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", row + 1, boundary_x_coords + 1)); // goto row/col
-                        vte_output_boundaries.push_str(&self.vertical_separator.to_string());
-                    }
-                    stdout.write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
-                }
-                if terminal.y_coords + terminal.display_rows < self.full_screen_ws.ws_row {
-                    let boundary_y_coords = terminal.y_coords + terminal.display_rows;
-                    let mut vte_output_boundaries = String::new();
-                    for col in terminal.x_coords..terminal.x_coords + terminal.display_cols {
-                        vte_output_boundaries.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", boundary_y_coords + 1, col + 1)); // goto row/col
-                        vte_output_boundaries.push_str(&self.horizontal_separator.to_string());
-                    }
-                    stdout.write_all(&vte_output_boundaries.as_bytes()).expect("cannot write to stdout");
-                }
-
                 stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
             }
         }
+
+        // TODO: only render (and calculate) boundaries if there was a resize
+        let vte_output = boundaries.vte_output();
+        stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
+
         let (cursor_position_x, cursor_position_y) = self.get_active_terminal_cursor_position();
         let goto_cursor_position = format!("\u{1b}[{};{}H\u{1b}[m", cursor_position_y + 1, cursor_position_x + 1); // goto row/col
         stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
