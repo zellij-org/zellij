@@ -1156,7 +1156,7 @@ impl vte::Perform for TerminalOutput {
                 let newlines = self.newline_indices.iter().rev();
                 let mut delete_until = self.characters.len();
                 for newline_index in newlines {
-                    if newline_index < &self.cursor_position {
+                    if newline_index <= &self.cursor_position {
                         break;
                     }
                     delete_until = *newline_index;

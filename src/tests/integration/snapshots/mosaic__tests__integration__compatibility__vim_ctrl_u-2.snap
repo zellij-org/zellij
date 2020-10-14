@@ -28,5 +28,5 @@ expression: snapshot
   2 line28                                                                                                          
   3 line29                                                                                                          
  NORMAL  testfile.rs                                                              unix | utf-8 | rust   61%   26:1  
-"/tmp/testfile.rs" 42L, 285C                                                                                        
+                                                                                                                    
 Bye from Mosaic!█                                                                                                   
