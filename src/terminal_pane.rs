@@ -486,7 +486,7 @@ pub struct TerminalOutput {
     cursor_position: usize,
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
-    scroll_region: (usize, usize), // top line index / bottom line index
+    scroll_region: Option<(usize, usize)>, // top line index / bottom line index
     reset_foreground_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     reset_background_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     reset_bold_ansi_code: bool,
@@ -535,7 +535,7 @@ impl TerminalOutput {
             cursor_position: 0,
             newline_indices: Vec::new(),
             linebreak_indices: Vec::new(),
-            scroll_region: (1, ws.ws_row as usize),
+            scroll_region: None,
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
@@ -648,6 +648,10 @@ impl TerminalOutput {
     }
     fn reflow_lines (&mut self) {
         self.linebreak_indices.clear();
+        if self.scroll_region.is_some() {
+            // TODO: still do this for lines outside the scroll region?
+            return;
+        }
 
         let mut newline_indices = self.newline_indices.iter();
         let mut next_newline_index = newline_indices.next();
@@ -873,14 +877,18 @@ impl TerminalOutput {
         if nearest_line_end == self.characters.len() {
             self.newline_indices.push(nearest_line_end);
             self.cursor_position = nearest_line_end;
-        } else if current_line_index_on_screen == Some(self.scroll_region.1 - 1) { // end of scroll region
-            let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-            grid.delete_lines(self.scroll_region.0 as usize - 1, 1); // -1 because scroll_region is indexed at 1
-            grid.add_empty_lines(self.scroll_region.1 as usize - 1, 1); // -1 because scroll_region is indexed at 1
-            let (characters, newline_indices) = grid.serialize();
-            self.newline_indices = newline_indices;
-            self.characters = characters;
-            self.reflow_lines();
+        } else if let Some(scroll_region) = self.scroll_region {
+            if current_line_index_on_screen == Some(scroll_region.1 - 1) { // end of scroll region
+                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
+                grid.delete_lines(scroll_region.0 as usize - 1, 1); // -1 because scroll_region is indexed at 1
+                grid.add_empty_lines(scroll_region.1 as usize - 1, 1); // -1 because scroll_region is indexed at 1
+                let (characters, newline_indices) = grid.serialize();
+                self.newline_indices = newline_indices;
+                self.characters = characters;
+                self.reflow_lines();
+            } else {
+                self.cursor_position = nearest_line_end;
+            }
         } else {
             // we shouldn't add a new line in the middle of the text
             // in this case, we'll move to the next existing line and it
@@ -955,7 +963,7 @@ impl vte::Perform for TerminalOutput {
 
             let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
             let difference_from_last_newline = self.cursor_position - start_of_last_line;
-            if difference_from_last_newline == self.display_cols as usize {
+            if difference_from_last_newline == self.display_cols as usize && self.scroll_region.is_none() {
                 self.linebreak_indices.push(self.cursor_position);
             }
             self.cursor_position += 1;
@@ -1234,8 +1242,10 @@ impl vte::Perform for TerminalOutput {
             // TBD
         } else if c == 'r' {
             if params.len() > 1 {
-                // TODO: why do we need this if? what does a 1 parameter 'r' mean?
-                self.scroll_region = (params[0] as usize, params[1] as usize);
+                self.scroll_region = Some((params[0] as usize, params[1] as usize));
+                self.reflow_lines(); // TODO: this clears the linebreaks, what about stuff outside the scroll region?
+            } else {
+                self.scroll_region = None;
             }
         } else if c == 't' {
             // TBD - title?
@@ -1245,26 +1255,30 @@ impl vte::Perform for TerminalOutput {
             // TBD - identify terminal
         } else if c == 'M' {
             // delete lines if currently inside scroll region
-            let line_count_to_delete = if params[0] == 0 { 1 } else { params[0] as usize };
-            let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-            let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
-            grid.add_empty_lines(self.scroll_region.1, line_count_to_delete);
-            grid.delete_lines(position_of_current_line, line_count_to_delete);
-            let (characters, newline_indices) = grid.serialize();
-            self.characters = characters;
-            self.newline_indices = newline_indices;
-            self.reflow_lines();
+            if let Some(scroll_region) = self.scroll_region {
+                let line_count_to_delete = if params[0] == 0 { 1 } else { params[0] as usize };
+                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
+                let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
+                grid.add_empty_lines(scroll_region.1, line_count_to_delete);
+                grid.delete_lines(position_of_current_line, line_count_to_delete);
+                let (characters, newline_indices) = grid.serialize();
+                self.characters = characters;
+                self.newline_indices = newline_indices;
+                self.reflow_lines();
+            }
         } else if c == 'L' {
             // insert blank lines if inside scroll region
-            let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
-            let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-            let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
-            grid.add_empty_lines(position_of_current_line, line_count_to_add as usize);
-            grid.delete_lines(self.scroll_region.1, line_count_to_add);
-            let (characters, newline_indices) = grid.serialize();
-            self.characters = characters;
-            self.newline_indices = newline_indices;
-            self.reflow_lines();
+            if let Some(scroll_region) = self.scroll_region {
+                let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
+                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
+                let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
+                grid.add_empty_lines(position_of_current_line, line_count_to_add as usize);
+                grid.delete_lines(scroll_region.1, line_count_to_add);
+                let (characters, newline_indices) = grid.serialize();
+                self.characters = characters;
+                self.newline_indices = newline_indices;
+                self.reflow_lines();
+            }
         } else {
             println!("unhandled csi: {:?}->{:?}", c, params);
             panic!("aaa!!!");
