@@ -12,9 +12,23 @@ const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     foreground_ansi_codes: None,
     background_ansi_codes: None,
+    strike_ansi_codes:None,
+    hidden_ansi_codes:None,
+    reverse_ansi_codes:None,
+    blink_ansi_codes:None,
+    underline_ansi_codes:None,
+    bold_dim_ansi_codes:None,
+    italic_ansi_codes:None,
     misc_ansi_codes: None,
     reset_foreground_ansi_code: true,
     reset_background_ansi_code: true,
+    reset_bold_ansi_codes: true,
+    reset_italic_ansi_code: true,
+    reset_underline_ansi_codes: true,
+    reset_blink_ansi_code: true,
+    reset_reverse_ansi_codes: true,
+    reset_hidden_ansi_codes: true,
+    reset_strike_ansi_codes: true,
     reset_misc_ansi_code: true,
 };
 
@@ -27,20 +41,23 @@ pub struct TerminalCharacter {
     pub reset_foreground_ansi_code: bool,
     pub reset_background_ansi_code: bool,
     pub reset_misc_ansi_code: bool,
-}
 
-impl PartialEq for TerminalCharacter {
-    fn eq(&self, other: &Self) -> bool {
-        self.foreground_ansi_codes == other.foreground_ansi_codes &&
-        self.background_ansi_codes == other.background_ansi_codes &&
-        self.misc_ansi_codes == other.misc_ansi_codes &&
-        self.reset_background_ansi_code == other.reset_background_ansi_code &&
-        self.reset_foreground_ansi_code == other.reset_foreground_ansi_code &&
-        self.reset_misc_ansi_code == other.reset_misc_ansi_code
-    }
-}
+    pub reset_bold_ansi_codes: bool,
+    pub reset_italic_ansi_code: bool,
+    pub reset_underline_ansi_codes: bool,
+    pub reset_blink_ansi_code: bool,
+    pub reset_reverse_ansi_codes: bool,
+    pub reset_hidden_ansi_codes: bool,
+    pub reset_strike_ansi_codes: bool,
 
-impl Eq for TerminalCharacter {}
+    pub strike_ansi_codes: Option<Vec<String>>,
+    pub hidden_ansi_codes: Option<Vec<String>>,
+    pub reverse_ansi_codes: Option<Vec<String>>,
+    pub blink_ansi_codes: Option<Vec<String>>,
+    pub underline_ansi_codes: Option<Vec<String>>,
+    pub bold_dim_ansi_codes: Option<Vec<String>>,
+    pub italic_ansi_codes: Option<Vec<String>>,
+}
 
 impl TerminalCharacter {
     pub fn new (character: char) -> Self {
@@ -48,26 +65,25 @@ impl TerminalCharacter {
             character,
             foreground_ansi_codes: Some(vec![]),
             background_ansi_codes: Some(vec![]),
+            strike_ansi_codes: Some(vec![]),
+            hidden_ansi_codes: Some(vec![]),
+            reverse_ansi_codes: Some(vec![]),
+            blink_ansi_codes: Some(vec![]),
+            underline_ansi_codes: Some(vec![]),
+            bold_dim_ansi_codes: Some(vec![]),
+            italic_ansi_codes: Some(vec![]),
             misc_ansi_codes: Some(vec![]),
             reset_foreground_ansi_code: false,
             reset_background_ansi_code: false,
+            reset_bold_ansi_codes: false,
+            reset_italic_ansi_code: false,
+            reset_underline_ansi_codes: false,
+            reset_blink_ansi_code: false,
+            reset_reverse_ansi_codes: false,
+            reset_hidden_ansi_codes: false,
+            reset_strike_ansi_codes: false,
             reset_misc_ansi_code: false,
         }
-    }
-    pub fn reset_all_ansi_codes(mut self) -> Self {
-        if let Some(foreground_ansi_codes) = self.foreground_ansi_codes.as_mut() {
-            foreground_ansi_codes.clear();
-        }
-        if let Some(background_ansi_codes) = self.background_ansi_codes.as_mut() {
-            background_ansi_codes.clear();
-        }
-        if let Some(misc_ansi_codes) = self.misc_ansi_codes.as_mut() {
-            misc_ansi_codes.clear();
-        }
-        self.reset_foreground_ansi_code = true;
-        self.reset_background_ansi_code = true;
-        self.reset_misc_ansi_code = true;
-        self
     }
     pub fn reset_foreground_ansi_code(mut self, should_reset: &bool) -> Self {
         if let Some(foreground_ansi_codes) = self.foreground_ansi_codes.as_mut() {
@@ -87,6 +103,84 @@ impl TerminalCharacter {
         self.reset_background_ansi_code = *should_reset;
         self
     }
+
+    pub fn reset_bold_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(bold_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
+            if *should_reset {
+                bold_ansi_codes.clear();
+            }
+        }
+        self.reset_bold_ansi_codes = *should_reset;
+        self
+    }
+    pub fn reset_bold_dim_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(bold_dim_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
+            if *should_reset {
+                bold_dim_ansi_codes.clear();
+            }
+        }
+        self.reset_bold_ansi_codes = *should_reset;
+        self
+    }
+    pub fn reset_italic_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(italic_ansi_codes) = self.italic_ansi_codes.as_mut() {
+            if *should_reset {
+                italic_ansi_codes.clear();
+            }
+        }
+        self.reset_italic_ansi_code = *should_reset;
+        self
+    }
+    pub fn reset_underline_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(underline_ansi_codes) = self.underline_ansi_codes.as_mut() {
+            if *should_reset {
+                underline_ansi_codes.clear();
+            }
+        }
+        self.reset_underline_ansi_codes = *should_reset;
+        self
+    }
+    pub fn reset_blink_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
+            if *should_reset {
+                blink_ansi_codes.clear();
+            }
+        }
+        self.reset_blink_ansi_code = *should_reset;
+        self
+    }
+    pub fn reset_reverse_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(reverse_ansi_codes) = self.reverse_ansi_codes.as_mut() {
+            if *should_reset {
+                reverse_ansi_codes.clear();
+            }
+        }
+        self.reset_reverse_ansi_codes = *should_reset;
+        self
+    }
+    pub fn reset_hidden_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(hidden_ansi_codes) = self.hidden_ansi_codes.as_mut() {
+            if *should_reset {
+                hidden_ansi_codes.clear();
+            }
+        }
+        self.reset_hidden_ansi_codes = *should_reset;
+        self
+    }
+    pub fn reset_strike_ansi_code(mut self, should_reset: &bool) -> Self {
+        if let Some(strike_ansi_codes) = self.strike_ansi_codes.as_mut() {
+            if *should_reset {
+                strike_ansi_codes.clear();
+            }
+        }
+        self.reset_strike_ansi_codes = *should_reset;
+        self
+    }
+
+
+
+
+
     pub fn reset_misc_ansi_code(mut self, should_reset: &bool) -> Self {
         if let Some(misc_ansi_codes) = self.misc_ansi_codes.as_mut() {
             if *should_reset {
@@ -104,6 +198,66 @@ impl TerminalCharacter {
         self.background_ansi_codes = Some(background_ansi_codes.iter().cloned().collect());
         self
     }
+
+    pub fn bold_ansi_codes(mut self, bold_ansi_codes: &[String]) -> Self {
+        self.bold_dim_ansi_codes = Some(bold_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn dim_ansi_codes(mut self, dim_ansi_codes: &[String]) -> Self {
+        if let Some(bold_dim_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
+            // TODO: better
+            for ansi_code in dim_ansi_codes {
+                bold_dim_ansi_codes.push(ansi_code.clone())
+            }
+        } else {
+            self.bold_dim_ansi_codes = Some(dim_ansi_codes.iter().cloned().collect());
+        }
+        self
+    }
+    pub fn italic_ansi_codes(mut self, italic_ansi_codes: &[String]) -> Self {
+        self.italic_ansi_codes = Some(italic_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn underline_ansi_codes(mut self, underline_ansi_codes: &[String]) -> Self {
+        self.underline_ansi_codes = Some(underline_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn blink_slow_ansi_codes(mut self, blink_slow_ansi_codes: &[String]) -> Self {
+        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
+            // TODO: better
+            for ansi_code in blink_slow_ansi_codes {
+                blink_ansi_codes.push(ansi_code.clone())
+            }
+        } else {
+            self.blink_ansi_codes = Some(blink_slow_ansi_codes.iter().cloned().collect());
+        }
+        self
+    }
+    pub fn blink_fast_ansi_codes(mut self, blink_fast_ansi_codes: &[String]) -> Self {
+        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
+            // TODO: better
+            for ansi_code in blink_fast_ansi_codes {
+                blink_ansi_codes.push(ansi_code.clone())
+            }
+        } else {
+            self.blink_ansi_codes = Some(blink_fast_ansi_codes.iter().cloned().collect());
+        }
+        self
+    }
+    pub fn reverse_ansi_codes(mut self, reverse_ansi_codes: &[String]) -> Self {
+        self.reverse_ansi_codes = Some(reverse_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn hidden_ansi_codes(mut self, hidden_ansi_codes: &[String]) -> Self {
+        self.hidden_ansi_codes = Some(hidden_ansi_codes.iter().cloned().collect());
+        self
+    }
+    pub fn strike_ansi_codes(mut self, strike_ansi_codes: &[String]) -> Self {
+        self.strike_ansi_codes = Some(strike_ansi_codes.iter().cloned().collect());
+        self
+    }
+
+
     pub fn misc_ansi_codes(mut self, misc_ansi_codes: &[String]) -> Self {
         self.misc_ansi_codes = Some(misc_ansi_codes.iter().cloned().collect());
         self
@@ -114,16 +268,40 @@ impl TerminalCharacter {
 impl Display for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut code_string = String::new(); // TODO: better
-        if self.reset_foreground_ansi_code && self.reset_background_ansi_code && self.reset_misc_ansi_code {
-            code_string.push_str("\u{1b}[m");
-        } else {
-            if self.reset_foreground_ansi_code {
-                code_string.push_str("\u{1b}[39m");
-            }
-            if self.reset_background_ansi_code {
-                code_string.push_str("\u{1b}[49m");
-            }
+
+        if self.reset_foreground_ansi_code {
+            code_string.push_str("\u{1b}[39m");
         }
+        if self.reset_background_ansi_code {
+            code_string.push_str("\u{1b}[49m");
+        }
+        if self.reset_bold_ansi_codes {
+            code_string.push_str("\u{1b}[21m");
+        }
+        if self.reset_italic_ansi_code {
+            code_string.push_str("\u{1b}[23m");
+        }
+        if self.reset_underline_ansi_codes {
+            code_string.push_str("\u{1b}[24m");
+        }
+        if self.reset_blink_ansi_code {
+            code_string.push_str("\u{1b}[25m");
+        }
+        if self.reset_reverse_ansi_codes {
+            code_string.push_str("\u{1b}[27m");
+        }
+        if self.reset_hidden_ansi_codes {
+            code_string.push_str("\u{1b}[28m");
+        }
+        if self.reset_strike_ansi_codes {
+            code_string.push_str("\u{1b}[29m");
+        }
+        if self.reset_misc_ansi_code {
+            // ideally, this should not happen, it means we missed some category of ansi
+            // reset/set codes
+            code_string.push_str("\u{1b}[m"); // resets all styles
+        }
+
         if let Some(ansi_codes) = self.foreground_ansi_codes.as_ref() {
             for code in ansi_codes {
                 code_string.push_str(&code);
@@ -139,6 +317,44 @@ impl Display for TerminalCharacter {
                 code_string.push_str(&code);
             }
         }
+
+        if let Some(ansi_codes) = self.strike_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.hidden_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.reverse_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.blink_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.underline_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.bold_dim_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+        if let Some(ansi_codes) = self.italic_ansi_codes.as_ref() {
+            for code in ansi_codes {
+                code_string.push_str(&code);
+            }
+        }
+
+
         write!(f, "{}{}", code_string, self.character)
     }
 }
@@ -273,10 +489,27 @@ pub struct TerminalOutput {
     scroll_region: (usize, usize), // top line index / bottom line index
     reset_foreground_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     reset_background_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
+    reset_bold_ansi_code: bool,
+    reset_bold_dim_ansi_code: bool,
+    reset_italic_ansi_code: bool,
+    reset_underline_ansi_code: bool,
+    reset_blink_ansi_code: bool,
+    reset_reverse_ansi_code: bool,
+    reset_hidden_ansi_code: bool,
+    reset_strike_ansi_code: bool,
     reset_misc_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
     pending_foreground_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
     pending_background_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
     pending_misc_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
+    pending_bold_ansi_codes: Vec<String>,
+    pending_dim_ansi_codes: Vec<String>,
+    pending_italic_ansi_codes: Vec<String>,
+    pending_underline_ansi_codes: Vec<String>,
+    pending_blink_slow_ansi_codes: Vec<String>,
+    pending_blink_fast_ansi_codes: Vec<String>,
+    pending_reverse_ansi_codes: Vec<String>,
+    pending_hidden_ansi_codes: Vec<String>,
+    pending_strike_ansi_codes: Vec<String>,
 }
 
 impl Rect for &mut TerminalOutput {
@@ -309,9 +542,26 @@ impl TerminalOutput {
             reset_foreground_ansi_code: false,
             reset_background_ansi_code: false,
             reset_misc_ansi_code: false,
+            reset_bold_ansi_code: false,
+            reset_bold_dim_ansi_code: false,
+            reset_italic_ansi_code: false,
+            reset_underline_ansi_code: false,
+            reset_blink_ansi_code: false,
+            reset_reverse_ansi_code: false,
+            reset_hidden_ansi_code: false,
+            reset_strike_ansi_code: false,
             pending_foreground_ansi_codes: vec![],
             pending_background_ansi_codes: vec![],
             pending_misc_ansi_codes: vec![],
+            pending_bold_ansi_codes: vec![],
+            pending_dim_ansi_codes: vec![],
+            pending_italic_ansi_codes: vec![],
+            pending_underline_ansi_codes: vec![],
+            pending_blink_slow_ansi_codes: vec![],
+            pending_blink_fast_ansi_codes: vec![],
+            pending_reverse_ansi_codes: vec![],
+            pending_hidden_ansi_codes: vec![],
+            pending_strike_ansi_codes: vec![],
             x_coords,
             y_coords,
         }
@@ -668,8 +918,26 @@ impl vte::Perform for TerminalOutput {
             .reset_foreground_ansi_code(&self.reset_foreground_ansi_code)
             .reset_background_ansi_code(&self.reset_background_ansi_code)
             .reset_misc_ansi_code(&self.reset_misc_ansi_code)
+            .reset_bold_ansi_code(&self.reset_bold_ansi_code)
+            .reset_bold_dim_ansi_code(&self.reset_bold_dim_ansi_code)
+            .reset_italic_ansi_code(&self.reset_italic_ansi_code)
+            .reset_underline_ansi_code(&self.reset_underline_ansi_code)
+            .reset_blink_ansi_code(&self.reset_blink_ansi_code)
+            .reset_reverse_ansi_code(&self.reset_reverse_ansi_code)
+            .reset_hidden_ansi_code(&self.reset_hidden_ansi_code)
+            .reset_strike_ansi_code(&self.reset_strike_ansi_code)
+            .reset_misc_ansi_code(&self.reset_misc_ansi_code)
             .foreground_ansi_codes(&self.pending_foreground_ansi_codes)
             .background_ansi_codes(&self.pending_background_ansi_codes)
+            .bold_ansi_codes(&self.pending_bold_ansi_codes)
+            .dim_ansi_codes(&self.pending_dim_ansi_codes)
+            .italic_ansi_codes(&self.pending_italic_ansi_codes)
+            .underline_ansi_codes(&self.pending_underline_ansi_codes)
+            .blink_slow_ansi_codes(&self.pending_blink_slow_ansi_codes)
+            .blink_fast_ansi_codes(&self.pending_blink_fast_ansi_codes)
+            .reverse_ansi_codes(&self.pending_reverse_ansi_codes)
+            .hidden_ansi_codes(&self.pending_hidden_ansi_codes)
+            .strike_ansi_codes(&self.pending_strike_ansi_codes)
             .misc_ansi_codes(&self.pending_misc_ansi_codes);
 
         if self.characters.len() > self.cursor_position {
@@ -728,8 +996,25 @@ impl vte::Perform for TerminalOutput {
                 self.reset_foreground_ansi_code = true;
                 self.reset_background_ansi_code = true;
                 self.reset_misc_ansi_code = true;
+                self.reset_strike_ansi_code = true;
+                self.reset_hidden_ansi_code = true;
+                self.reset_reverse_ansi_code = true;
+                self.reset_blink_ansi_code = true;
+                self.reset_underline_ansi_code = true;
+                self.reset_italic_ansi_code = true;
+                self.reset_bold_ansi_code = true;
+                self.reset_bold_dim_ansi_code = true;
                 self.pending_foreground_ansi_codes.clear();
                 self.pending_background_ansi_codes.clear();
+                self.pending_bold_ansi_codes.clear();
+                self.pending_bold_ansi_codes.clear();
+                self.pending_italic_ansi_codes.clear();
+                self.pending_underline_ansi_codes.clear();
+                self.pending_blink_fast_ansi_codes.clear();
+                self.pending_blink_slow_ansi_codes.clear();
+                self.pending_reverse_ansi_codes.clear();
+                self.pending_hidden_ansi_codes.clear();
+                self.pending_strike_ansi_codes.clear();
                 self.pending_misc_ansi_codes.clear();
             } else if params[0] == 39 {
                 self.reset_foreground_ansi_code = true;
@@ -737,6 +1022,39 @@ impl vte::Perform for TerminalOutput {
             } else if params[0] == 49 {
                 self.reset_background_ansi_code = true;
                 self.pending_background_ansi_codes.clear();
+            } else if params[0] == 21 {
+                // reset bold
+                self.reset_bold_ansi_code = true;
+                self.pending_bold_ansi_codes.clear();
+            } else if params[0] == 22 {
+                // reset bold and dim
+                self.reset_bold_dim_ansi_code = true;
+                self.pending_bold_ansi_codes.clear();
+            } else if params[0] == 23 {
+                // reset italic
+                self.reset_italic_ansi_code = true;
+                self.pending_italic_ansi_codes.clear();
+            } else if params[0] == 24 {
+                // reset underline
+                self.reset_underline_ansi_code = true;
+                self.pending_underline_ansi_codes.clear();
+            } else if params[0] == 25 {
+                // reset blink
+                self.reset_blink_ansi_code = true;
+                self.pending_blink_fast_ansi_codes.clear();
+                self.pending_blink_slow_ansi_codes.clear();
+            } else if params[0] == 27 {
+                // reset reverse
+                self.reset_reverse_ansi_code = true;
+                self.pending_reverse_ansi_codes.clear();
+            } else if params[0] == 28 {
+                // reset hidden
+                self.reset_hidden_ansi_code = true;
+                self.pending_hidden_ansi_codes.clear();
+            } else if params[0] == 29 {
+                // reset strike
+                self.reset_strike_ansi_code = true;
+                self.pending_strike_ansi_codes.clear();
             } else if params[0] == 38 {
                 let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
                 self.pending_foreground_ansi_codes.push(format!("\u{1b}[{}m", param_string));
@@ -745,6 +1063,51 @@ impl vte::Perform for TerminalOutput {
                 let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
                 self.pending_background_ansi_codes.push(format!("\u{1b}[{}m", param_string));
                 self.reset_background_ansi_code = false;
+            } else if params[0] == 1 {
+                // bold
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_bold_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_bold_ansi_code = false;
+            } else if params[0] == 2 {
+                // dim
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_dim_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_bold_dim_ansi_code = false;
+            } else if params[0] == 3 {
+                // italic
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_italic_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_italic_ansi_code = false;
+            } else if params[0] == 4 {
+                // underline
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_underline_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_underline_ansi_code = false;
+            } else if params[0] == 5 {
+                // blink slow
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_blink_slow_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_blink_ansi_code = false;
+            } else if params[0] == 6 {
+                // blink fast
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_blink_fast_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_blink_ansi_code = false;
+            } else if params[0] == 7 {
+                // reverse
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_reverse_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_reverse_ansi_code = false;
+            } else if params[0] == 8 {
+                // hidden
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_hidden_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_hidden_ansi_code = false;
+            } else if params[0] == 9 {
+                // strike
+                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
+                self.pending_strike_ansi_codes.push(format!("\u{1b}[{}m", param_string));
+                self.reset_strike_ansi_code = false;
             } else {
                 let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
                 self.pending_misc_ansi_codes.push(format!("\u{1b}[{}m", param_string));
@@ -890,6 +1253,7 @@ impl vte::Perform for TerminalOutput {
             let (characters, newline_indices) = grid.serialize();
             self.characters = characters;
             self.newline_indices = newline_indices;
+            self.reflow_lines();
         } else if c == 'L' {
             // insert blank lines if inside scroll region
             let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
@@ -900,6 +1264,7 @@ impl vte::Perform for TerminalOutput {
             let (characters, newline_indices) = grid.serialize();
             self.characters = characters;
             self.newline_indices = newline_indices;
+            self.reflow_lines();
         } else {
             println!("unhandled csi: {:?}->{:?}", c, params);
             panic!("aaa!!!");
