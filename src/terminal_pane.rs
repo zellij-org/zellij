@@ -481,6 +481,7 @@ pub struct TerminalOutput {
     pub display_rows: u16,
     pub display_cols: u16,
     pub should_render: bool,
+    pub scroll_up_count: Option<usize>,
     pub x_coords: u16,
     pub y_coords: u16,
     cursor_position: usize,
@@ -539,6 +540,7 @@ impl TerminalOutput {
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
+            scroll_up_count: None,
             reset_foreground_ansi_code: false,
             reset_background_ansi_code: false,
             reset_misc_ansi_code: false,
@@ -713,6 +715,8 @@ impl TerminalOutput {
         let mut next_newline_index = newline_indices.next();
         let mut next_linebreak_index = linebreak_indices.next();
 
+        let mut scroll_up_count = self.scroll_up_count.unwrap_or(0);
+
         loop {
             if let Some(newline_index) = next_newline_index {
                 if *newline_index == i {
@@ -720,7 +724,12 @@ impl TerminalOutput {
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    if scroll_up_count > 0 {
+                        scroll_up_count -= 1;
+                        current_line.clear();
+                    } else {
+                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    }
                     next_newline_index = newline_indices.next();
                     continue; // we continue here in case there's another new line in this index
                 }
@@ -732,7 +741,12 @@ impl TerminalOutput {
                         for _ in current_line.len()..self.display_cols as usize {
                             current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                         }
-                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                        if scroll_up_count > 0 {
+                            scroll_up_count -= 1;
+                            current_line.clear();
+                        } else {
+                            output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                        }
                     }
                     next_linebreak_index = linebreak_indices.next();
                     continue; // we continue here in case there's another new line in this index
@@ -743,7 +757,12 @@ impl TerminalOutput {
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    if scroll_up_count > 0 {
+                        scroll_up_count -= 1;
+                        current_line.clear();
+                    } else {
+                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    }
                 }
                 break;
             }
@@ -755,7 +774,12 @@ impl TerminalOutput {
                     for _ in current_line.len()..self.display_cols as usize {
                         current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
                     }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    if scroll_up_count > 0 {
+                        scroll_up_count -= 1;
+                        current_line.clear();
+                    } else {
+                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
+                    }
                 }
                 break;
             }
@@ -767,7 +791,12 @@ impl TerminalOutput {
                 empty_line.push(&EMPTY_TERMINAL_CHARACTER);
             }
             for _ in output.len()..self.display_rows as usize {
-                output.push_back(Vec::from(empty_line.clone()));
+                if scroll_up_count > 0 {
+                    scroll_up_count -= 1;
+                    empty_line.clear(); // TODO: better
+                } else {
+                    output.push_back(Vec::from(empty_line.clone()));
+                }
             }
         }
         Vec::from(output)
@@ -808,6 +837,32 @@ impl TerminalOutput {
         let y = index_of_last_row - lines_from_end;
         let x = self.cursor_position - current_line_start_index;
         (x, y)
+    }
+    pub fn scroll_up(&mut self, count: usize) {
+        if let Some(scroll_up_count) = self.scroll_up_count.as_mut() {
+            *scroll_up_count += count;
+        } else {
+            self.scroll_up_count = Some(count);
+        }
+        // TODO: do not render if we're at the top line
+        self.should_render = true;
+    }
+    pub fn scroll_down(&mut self, count: usize) {
+        if let Some(scroll_up_count) = self.scroll_up_count.as_mut() {
+            if *scroll_up_count > count {
+                *scroll_up_count -= count;
+                self.should_render = true;
+            } else {
+                self.scroll_up_count = None;
+                self.should_render = true;
+            }
+        }
+    }
+    pub fn clear_scroll(&mut self) {
+        if self.scroll_up_count.is_some() {
+            self.should_render = true;
+        }
+        self.scroll_up_count = None;
     }
     fn index_of_end_of_canonical_line(&self, index_in_line: usize) -> usize {
         let newlines = self.newline_indices.iter().rev();

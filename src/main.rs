@@ -121,6 +121,15 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             ScreenInstruction::MoveFocus => {
                                 screen.move_focus();
                             }
+                            ScreenInstruction::ScrollUp => {
+                                screen.scroll_active_terminal_up();
+                            }
+                            ScreenInstruction::ScrollDown => {
+                                screen.scroll_active_terminal_down();
+                            }
+                            ScreenInstruction::ClearScroll => {
+                                screen.clear_active_terminal_scroll();
+                            }
                             ScreenInstruction::Quit => {
                                 break;
                             }
@@ -152,8 +161,13 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
             send_pty_instructions.send(PtyInstruction::Quit).unwrap();
             break;
+        } else if buffer[0] == 27 { // ctrl-[
+            send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
+        } else if buffer[0] == 29 { // ctrl-]
+            send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
         } else {
             // println!("\r buffer {:?}   ", buffer[0]);
+            send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
             send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer[0])).unwrap();
         }
     };

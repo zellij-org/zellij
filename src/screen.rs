@@ -58,6 +58,9 @@ pub enum ScreenInstruction {
     ResizeUp,
     MoveFocus,
     Quit,
+    ScrollUp,
+    ScrollDown,
+    ClearScroll,
 }
 
 pub struct Screen {
@@ -822,5 +825,28 @@ impl Screen {
             self.active_terminal = Some(*first_terminal);
         }
         self.render();
+    }
+    pub fn scroll_active_terminal_up(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+            active_terminal.scroll_up(1);
+            self.render();
+        }
+    }
+    pub fn scroll_active_terminal_down(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+            active_terminal.scroll_down(1);
+            self.render();
+        }
+    }
+    pub fn clear_active_terminal_scroll(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+            if active_terminal.scroll_up_count.is_some() {
+                active_terminal.clear_scroll();
+                self.render();
+            }
+        }
     }
 }
