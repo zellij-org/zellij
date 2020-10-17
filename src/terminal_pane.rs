@@ -10,352 +10,520 @@ use crate::boundaries::Rect;
 
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
-    foreground_ansi_codes: None,
-    background_ansi_codes: None,
-    strike_ansi_codes:None,
-    hidden_ansi_codes:None,
-    reverse_ansi_codes:None,
-    blink_ansi_codes:None,
-    underline_ansi_codes:None,
-    bold_dim_ansi_codes:None,
-    italic_ansi_codes:None,
-    misc_ansi_codes: None,
-    reset_foreground_ansi_code: true,
-    reset_background_ansi_code: true,
-    reset_bold_ansi_codes: true,
-    reset_italic_ansi_code: true,
-    reset_underline_ansi_codes: true,
-    reset_blink_ansi_code: true,
-    reset_reverse_ansi_codes: true,
-    reset_hidden_ansi_codes: true,
-    reset_strike_ansi_codes: true,
-    reset_misc_ansi_code: true,
+    foreground: Some(AnsiCode::Reset),
+    background: Some(AnsiCode::Reset),
+    strike: Some(AnsiCode::Reset),
+    hidden: Some(AnsiCode::Reset),
+    reverse: Some(AnsiCode::Reset),
+    slow_blink: Some(AnsiCode::Reset),
+    fast_blink: Some(AnsiCode::Reset),
+    underline: Some(AnsiCode::Reset),
+    bold: Some(AnsiCode::Reset),
+    dim: Some(AnsiCode::Reset),
+    italic: Some(AnsiCode::Reset),
 };
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnsiCode {
+    Reset,
+    NamedColor(NamedColor),
+    Code((Option<u16>, Option<u16>))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum NamedColor {
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+}
+
+impl NamedColor {
+    fn to_foreground_ansi_code(&self) -> String {
+        match self {
+            NamedColor::Black => format!("{}", 30),
+            NamedColor::Red => format!("{}", 31),
+            NamedColor::Green => format!("{}", 32),
+            NamedColor::Yellow => format!("{}", 33),
+            NamedColor::Blue => format!("{}", 34),
+            NamedColor::Magenta => format!("{}", 35),
+            NamedColor::Cyan => format!("{}", 36),
+            NamedColor::White => format!("{}", 37),
+        }
+    }
+    fn to_background_ansi_code(&self) -> String {
+        match self {
+            NamedColor::Black => format!("{}", 40),
+            NamedColor::Red => format!("{}", 41),
+            NamedColor::Green => format!("{}", 42),
+            NamedColor::Yellow => format!("{}", 43),
+            NamedColor::Blue => format!("{}", 44),
+            NamedColor::Magenta => format!("{}", 45),
+            NamedColor::Cyan => format!("{}", 46),
+            NamedColor::White => format!("{}", 47),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub foreground_ansi_codes: Option<Vec<String>>,
-    pub background_ansi_codes: Option<Vec<String>>,
-    pub misc_ansi_codes: Option<Vec<String>>,
-    pub reset_foreground_ansi_code: bool,
-    pub reset_background_ansi_code: bool,
-    pub reset_misc_ansi_code: bool,
-
-    pub reset_bold_ansi_codes: bool,
-    pub reset_italic_ansi_code: bool,
-    pub reset_underline_ansi_codes: bool,
-    pub reset_blink_ansi_code: bool,
-    pub reset_reverse_ansi_codes: bool,
-    pub reset_hidden_ansi_codes: bool,
-    pub reset_strike_ansi_codes: bool,
-
-    pub strike_ansi_codes: Option<Vec<String>>,
-    pub hidden_ansi_codes: Option<Vec<String>>,
-    pub reverse_ansi_codes: Option<Vec<String>>,
-    pub blink_ansi_codes: Option<Vec<String>>,
-    pub underline_ansi_codes: Option<Vec<String>>,
-    pub bold_dim_ansi_codes: Option<Vec<String>>,
-    pub italic_ansi_codes: Option<Vec<String>>,
+    pub foreground: Option<AnsiCode>,
+    pub background: Option<AnsiCode>,
+    pub strike: Option<AnsiCode>,
+    pub hidden: Option<AnsiCode>,
+    pub reverse: Option<AnsiCode>,
+    pub slow_blink: Option<AnsiCode>,
+    pub fast_blink: Option<AnsiCode>,
+    pub underline: Option<AnsiCode>,
+    pub bold: Option<AnsiCode>,
+    pub dim: Option<AnsiCode>,
+    pub italic: Option<AnsiCode>,
 }
 
 impl TerminalCharacter {
     pub fn new (character: char) -> Self {
         TerminalCharacter {
             character,
-            foreground_ansi_codes: Some(vec![]),
-            background_ansi_codes: Some(vec![]),
-            strike_ansi_codes: Some(vec![]),
-            hidden_ansi_codes: Some(vec![]),
-            reverse_ansi_codes: Some(vec![]),
-            blink_ansi_codes: Some(vec![]),
-            underline_ansi_codes: Some(vec![]),
-            bold_dim_ansi_codes: Some(vec![]),
-            italic_ansi_codes: Some(vec![]),
-            misc_ansi_codes: Some(vec![]),
-            reset_foreground_ansi_code: false,
-            reset_background_ansi_code: false,
-            reset_bold_ansi_codes: false,
-            reset_italic_ansi_code: false,
-            reset_underline_ansi_codes: false,
-            reset_blink_ansi_code: false,
-            reset_reverse_ansi_codes: false,
-            reset_hidden_ansi_codes: false,
-            reset_strike_ansi_codes: false,
-            reset_misc_ansi_code: false,
+            foreground: None,
+            background: None,
+            strike: None,
+            hidden: None,
+            reverse: None,
+            slow_blink: None,
+            fast_blink: None,
+            underline: None,
+            bold: None,
+            dim: None,
+            italic: None,
         }
     }
-    pub fn reset_foreground_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(foreground_ansi_codes) = self.foreground_ansi_codes.as_mut() {
-            if *should_reset {
-                foreground_ansi_codes.clear();
+    pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
+        self.foreground = foreground_code;
+        self
+    }
+    pub fn background(mut self, background_code: Option<AnsiCode>) -> Self {
+        self.background = background_code;
+        self
+    }
+    pub fn bold(mut self, bold_code: Option<AnsiCode>) -> Self {
+        self.bold = bold_code;
+        self
+    }
+    pub fn dim(mut self, dim_code: Option<AnsiCode>) -> Self {
+        self.dim = dim_code;
+        self
+    }
+    pub fn italic(mut self, italic_code: Option<AnsiCode>) -> Self {
+        self.italic = italic_code;
+        self
+    }
+    pub fn underline(mut self, underline_code: Option<AnsiCode>) -> Self {
+        self.underline = underline_code;
+        self
+    }
+    pub fn blink_slow(mut self, slow_blink_code: Option<AnsiCode>) -> Self {
+        self.slow_blink = slow_blink_code;
+        self
+    }
+    pub fn blink_fast(mut self, fast_blink_code: Option<AnsiCode>) -> Self {
+        self.fast_blink = fast_blink_code;
+        self
+    }
+    pub fn reverse(mut self, reverse_code: Option<AnsiCode>) -> Self {
+        self.reverse = reverse_code;
+        self
+    }
+    pub fn hidden(mut self, hidden_code: Option<AnsiCode>) -> Self {
+        self.hidden = hidden_code;
+        self
+    }
+    pub fn strike(mut self, strike_code: Option<AnsiCode>) -> Self {
+        self.strike = strike_code;
+        self
+    }
+    pub fn update_styles_and_return_diff(&mut self, new_styles: &TerminalCharacter) -> Option<String> {
+        let mut diff: Option<TerminalCharacter> = None;
+        if self.foreground != new_styles.foreground {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.foreground(new_styles.foreground));
+                self.foreground = new_styles.foreground;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).foreground(new_styles.foreground));
+                self.foreground = new_styles.foreground;
             }
         }
-        self.reset_foreground_ansi_code = *should_reset;
-        self
-    }
-    pub fn reset_background_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(background_ansi_codes) = self.background_ansi_codes.as_mut() {
-            if *should_reset {
-                background_ansi_codes.clear();
+        if self.background != new_styles.background {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.background(new_styles.background));
+                self.background = new_styles.background;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).background(new_styles.background));
+                self.background = new_styles.background;
             }
         }
-        self.reset_background_ansi_code = *should_reset;
-        self
-    }
-
-    pub fn reset_bold_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(bold_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
-            if *should_reset {
-                bold_ansi_codes.clear();
+        if self.strike != new_styles.strike {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.strike(new_styles.strike));
+                self.strike = new_styles.strike;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).strike(new_styles.strike));
+                self.strike = new_styles.strike;
             }
         }
-        self.reset_bold_ansi_codes = *should_reset;
-        self
-    }
-    pub fn reset_bold_dim_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(bold_dim_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
-            if *should_reset {
-                bold_dim_ansi_codes.clear();
+        if self.hidden != new_styles.hidden {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.hidden(new_styles.hidden));
+                self.hidden = new_styles.hidden;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).hidden(new_styles.hidden));
+                self.hidden = new_styles.hidden;
             }
         }
-        self.reset_bold_ansi_codes = *should_reset;
-        self
-    }
-    pub fn reset_italic_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(italic_ansi_codes) = self.italic_ansi_codes.as_mut() {
-            if *should_reset {
-                italic_ansi_codes.clear();
+        if self.reverse != new_styles.reverse {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.reverse(new_styles.reverse));
+                self.reverse= new_styles.reverse;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).reverse(new_styles.reverse));
+                self.reverse= new_styles.reverse;
             }
         }
-        self.reset_italic_ansi_code = *should_reset;
-        self
-    }
-    pub fn reset_underline_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(underline_ansi_codes) = self.underline_ansi_codes.as_mut() {
-            if *should_reset {
-                underline_ansi_codes.clear();
+        if self.slow_blink != new_styles.slow_blink {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.blink_slow(new_styles.slow_blink));
+                self.slow_blink = new_styles.slow_blink;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).blink_slow(new_styles.slow_blink));
+                self.slow_blink = new_styles.slow_blink;
             }
         }
-        self.reset_underline_ansi_codes = *should_reset;
-        self
-    }
-    pub fn reset_blink_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
-            if *should_reset {
-                blink_ansi_codes.clear();
+        if self.fast_blink != new_styles.fast_blink {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.blink_fast(new_styles.fast_blink));
+                self.fast_blink = new_styles.fast_blink;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).blink_fast(new_styles.fast_blink));
+                self.fast_blink = new_styles.fast_blink;
             }
         }
-        self.reset_blink_ansi_code = *should_reset;
-        self
-    }
-    pub fn reset_reverse_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(reverse_ansi_codes) = self.reverse_ansi_codes.as_mut() {
-            if *should_reset {
-                reverse_ansi_codes.clear();
+        if self.underline != new_styles.underline {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.underline(new_styles.underline));
+                self.underline= new_styles.underline;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).underline(new_styles.underline));
+                self.underline= new_styles.underline;
             }
         }
-        self.reset_reverse_ansi_codes = *should_reset;
-        self
-    }
-    pub fn reset_hidden_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(hidden_ansi_codes) = self.hidden_ansi_codes.as_mut() {
-            if *should_reset {
-                hidden_ansi_codes.clear();
+        if self.bold != new_styles.bold {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.bold(new_styles.bold));
+                self.bold= new_styles.bold;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).bold(new_styles.bold));
+                self.bold= new_styles.bold;
             }
         }
-        self.reset_hidden_ansi_codes = *should_reset;
-        self
-    }
-    pub fn reset_strike_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(strike_ansi_codes) = self.strike_ansi_codes.as_mut() {
-            if *should_reset {
-                strike_ansi_codes.clear();
+        if self.dim != new_styles.dim {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.dim(new_styles.dim));
+                self.dim= new_styles.dim;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).dim(new_styles.dim));
+                self.dim= new_styles.dim;
             }
         }
-        self.reset_strike_ansi_codes = *should_reset;
-        self
-    }
-
-
-
-
-
-    pub fn reset_misc_ansi_code(mut self, should_reset: &bool) -> Self {
-        if let Some(misc_ansi_codes) = self.misc_ansi_codes.as_mut() {
-            if *should_reset {
-                misc_ansi_codes.clear();
+        if self.italic != new_styles.italic {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.italic(new_styles.italic));
+                self.italic = new_styles.italic;
+            } else {
+                diff = Some(TerminalCharacter::new(self.character).italic(new_styles.italic));
+                self.italic = new_styles.italic;
             }
         }
-        self.reset_misc_ansi_code = *should_reset;
-        self
-    }
-    pub fn foreground_ansi_codes(mut self, foreground_ansi_codes: &[String]) -> Self {
-        self.foreground_ansi_codes = Some(foreground_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn background_ansi_codes(mut self, background_ansi_codes: &[String]) -> Self {
-        self.background_ansi_codes = Some(background_ansi_codes.iter().cloned().collect());
-        self
-    }
-
-    pub fn bold_ansi_codes(mut self, bold_ansi_codes: &[String]) -> Self {
-        self.bold_dim_ansi_codes = Some(bold_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn dim_ansi_codes(mut self, dim_ansi_codes: &[String]) -> Self {
-        if let Some(bold_dim_ansi_codes) = self.bold_dim_ansi_codes.as_mut() {
-            // TODO: better
-            for ansi_code in dim_ansi_codes {
-                bold_dim_ansi_codes.push(ansi_code.clone())
-            }
-        } else {
-            self.bold_dim_ansi_codes = Some(dim_ansi_codes.iter().cloned().collect());
-        }
-        self
-    }
-    pub fn italic_ansi_codes(mut self, italic_ansi_codes: &[String]) -> Self {
-        self.italic_ansi_codes = Some(italic_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn underline_ansi_codes(mut self, underline_ansi_codes: &[String]) -> Self {
-        self.underline_ansi_codes = Some(underline_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn blink_slow_ansi_codes(mut self, blink_slow_ansi_codes: &[String]) -> Self {
-        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
-            // TODO: better
-            for ansi_code in blink_slow_ansi_codes {
-                blink_ansi_codes.push(ansi_code.clone())
-            }
-        } else {
-            self.blink_ansi_codes = Some(blink_slow_ansi_codes.iter().cloned().collect());
-        }
-        self
-    }
-    pub fn blink_fast_ansi_codes(mut self, blink_fast_ansi_codes: &[String]) -> Self {
-        if let Some(blink_ansi_codes) = self.blink_ansi_codes.as_mut() {
-            // TODO: better
-            for ansi_code in blink_fast_ansi_codes {
-                blink_ansi_codes.push(ansi_code.clone())
-            }
-        } else {
-            self.blink_ansi_codes = Some(blink_fast_ansi_codes.iter().cloned().collect());
-        }
-        self
-    }
-    pub fn reverse_ansi_codes(mut self, reverse_ansi_codes: &[String]) -> Self {
-        self.reverse_ansi_codes = Some(reverse_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn hidden_ansi_codes(mut self, hidden_ansi_codes: &[String]) -> Self {
-        self.hidden_ansi_codes = Some(hidden_ansi_codes.iter().cloned().collect());
-        self
-    }
-    pub fn strike_ansi_codes(mut self, strike_ansi_codes: &[String]) -> Self {
-        self.strike_ansi_codes = Some(strike_ansi_codes.iter().cloned().collect());
-        self
-    }
-
-
-    pub fn misc_ansi_codes(mut self, misc_ansi_codes: &[String]) -> Self {
-        self.misc_ansi_codes = Some(misc_ansi_codes.iter().cloned().collect());
-        self
+        diff.and_then(|d| Some(d.to_string()))
     }
 }
 
-
 impl Display for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut code_string = String::new(); // TODO: better
+        let mut character_ansi_codes = String::new(); // TODO: better
 
-        if self.reset_foreground_ansi_code {
-            code_string.push_str("\u{1b}[39m");
-        }
-        if self.reset_background_ansi_code {
-            code_string.push_str("\u{1b}[49m");
-        }
-        if self.reset_bold_ansi_codes {
-            code_string.push_str("\u{1b}[21m");
-        }
-        if self.reset_italic_ansi_code {
-            code_string.push_str("\u{1b}[23m");
-        }
-        if self.reset_underline_ansi_codes {
-            code_string.push_str("\u{1b}[24m");
-        }
-        if self.reset_blink_ansi_code {
-            code_string.push_str("\u{1b}[25m");
-        }
-        if self.reset_reverse_ansi_codes {
-            code_string.push_str("\u{1b}[27m");
-        }
-        if self.reset_hidden_ansi_codes {
-            code_string.push_str("\u{1b}[28m");
-        }
-        if self.reset_strike_ansi_codes {
-            code_string.push_str("\u{1b}[29m");
-        }
-        if self.reset_misc_ansi_code {
-            // ideally, this should not happen, it means we missed some category of ansi
-            // reset/set codes
-            code_string.push_str("\u{1b}[m"); // resets all styles
-        }
-
-        if let Some(ansi_codes) = self.foreground_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.foreground {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[38;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[38;{}m", param1));
+                        },
+                        (_, _) => {
+                            // TODO: can this happen?
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[39m"));
+                },
+                AnsiCode::NamedColor(named_color) => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[{}m", named_color.to_foreground_ansi_code()));
+                }
             }
         }
-        if let Some(ansi_codes) = self.background_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.background {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[48;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[48;{}m", param1));
+                        },
+                        (_, _) => {
+                            // TODO: can this happen?
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[49m"));
+                }
+                AnsiCode::NamedColor(named_color) => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[{}m", named_color.to_background_ansi_code()));
+                }
             }
         }
-        if let Some(ansi_codes) = self.misc_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.strike {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[9;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[9;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[9m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[29m"));
+                },
+                _ => {}
             }
         }
-
-        if let Some(ansi_codes) = self.strike_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.hidden {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[8;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[8;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[8m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[28m"));
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.hidden_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.reverse {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[7;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[7;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[7m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[27m"));
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.reverse_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.fast_blink {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[6;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[6;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[6m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[25m"));
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.blink_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.slow_blink {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[5;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[5;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[5m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[25m"));
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.underline_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.underline {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[4;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[4;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[4m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[24m"));
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.bold_dim_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        if let Some(ansi_code) = self.bold {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[1;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[1;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[1m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[22m\u{1b}[24m"));
+                    // character_ansi_codes.push_str(&format!("\u{1b}[22m"));
+                    // TODO: this cancels bold + underline, if this behaviour is indeed correct, we
+                    // need to properly handle it in the struct methods etc like dim
+                },
+                _ => {}
             }
         }
-        if let Some(ansi_codes) = self.italic_ansi_codes.as_ref() {
-            for code in ansi_codes {
-                code_string.push_str(&code);
+        // notice the order is important here, bold must be before underline
+        // because the bold reset also resets underline, and would override it
+        // otherwise
+        if let Some(ansi_code) = self.underline {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[4;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[4;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[4m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[24m"));
+                },
+                _ => {}
             }
         }
-
-
-        write!(f, "{}{}", code_string, self.character)
+        if let Some(ansi_code) = self.dim {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[2;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[2;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[2m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    if let Some(bold) = self.bold {
+                        // we only reset dim if both dim and bold should be reset
+                        match bold {
+                            AnsiCode::Reset => character_ansi_codes.push_str(&format!("\u{1b}[22m")), // TODO: better
+                            _ => {}
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        if let Some(ansi_code) = self.italic {
+            match ansi_code {
+                AnsiCode::Code((param1, param2)) => {
+                    match (param1, param2) {
+                        (Some(param1), Some(param2)) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[3;{};{}m", param1, param2));
+                        },
+                        (Some(param1), None) => {
+                            character_ansi_codes.push_str(&format!("\u{1b}[3;{}m", param1));
+                        },
+                        (_, _) => {
+                            character_ansi_codes.push_str("\u{1b}[3m");
+                        }
+                    }
+                },
+                AnsiCode::Reset => {
+                    character_ansi_codes.push_str(&format!("\u{1b}[23m"));
+                },
+                _ => {}
+            }
+        };
+        write!(f, "{}", character_ansi_codes)
     }
 }
 
@@ -488,29 +656,17 @@ pub struct TerminalOutput {
     newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
     linebreak_indices: Vec<usize>, // linebreaks from line wrapping
     scroll_region: Option<(usize, usize)>, // top line index / bottom line index
-    reset_foreground_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
-    reset_background_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
-    reset_bold_ansi_code: bool,
-    reset_bold_dim_ansi_code: bool,
-    reset_italic_ansi_code: bool,
-    reset_underline_ansi_code: bool,
-    reset_blink_ansi_code: bool,
-    reset_reverse_ansi_code: bool,
-    reset_hidden_ansi_code: bool,
-    reset_strike_ansi_code: bool,
-    reset_misc_ansi_code: bool, // this is a performance optimization, rather than placing and looking for the ansi reset code in pending_ansi_codes
-    pending_foreground_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
-    pending_background_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
-    pending_misc_ansi_codes: Vec<String>, // this is used eg. in a carriage return, where we need to preserve the style
-    pending_bold_ansi_codes: Vec<String>,
-    pending_dim_ansi_codes: Vec<String>,
-    pending_italic_ansi_codes: Vec<String>,
-    pending_underline_ansi_codes: Vec<String>,
-    pending_blink_slow_ansi_codes: Vec<String>,
-    pending_blink_fast_ansi_codes: Vec<String>,
-    pending_reverse_ansi_codes: Vec<String>,
-    pending_hidden_ansi_codes: Vec<String>,
-    pending_strike_ansi_codes: Vec<String>,
+    pending_foreground_code: Option<AnsiCode>,
+    pending_background_code: Option<AnsiCode>,
+    pending_bold_code: Option<AnsiCode>,
+    pending_dim_code: Option<AnsiCode>,
+    pending_italic_code: Option<AnsiCode>,
+    pending_underline_code: Option<AnsiCode>,
+    pending_slow_blink_code: Option<AnsiCode>,
+    pending_fast_blink_code: Option<AnsiCode>,
+    pending_reverse_code: Option<AnsiCode>,
+    pending_hidden_code: Option<AnsiCode>,
+    pending_strike_code: Option<AnsiCode>,
 }
 
 impl Rect for &mut TerminalOutput {
@@ -541,29 +697,17 @@ impl TerminalOutput {
             display_cols: ws.ws_col,
             should_render: true,
             scroll_up_count: None,
-            reset_foreground_ansi_code: false,
-            reset_background_ansi_code: false,
-            reset_misc_ansi_code: false,
-            reset_bold_ansi_code: false,
-            reset_bold_dim_ansi_code: false,
-            reset_italic_ansi_code: false,
-            reset_underline_ansi_code: false,
-            reset_blink_ansi_code: false,
-            reset_reverse_ansi_code: false,
-            reset_hidden_ansi_code: false,
-            reset_strike_ansi_code: false,
-            pending_foreground_ansi_codes: vec![],
-            pending_background_ansi_codes: vec![],
-            pending_misc_ansi_codes: vec![],
-            pending_bold_ansi_codes: vec![],
-            pending_dim_ansi_codes: vec![],
-            pending_italic_ansi_codes: vec![],
-            pending_underline_ansi_codes: vec![],
-            pending_blink_slow_ansi_codes: vec![],
-            pending_blink_fast_ansi_codes: vec![],
-            pending_reverse_ansi_codes: vec![],
-            pending_hidden_ansi_codes: vec![],
-            pending_strike_ansi_codes: vec![],
+            pending_foreground_code: None,
+            pending_background_code: None,
+            pending_bold_code: None,
+            pending_dim_code: None,
+            pending_italic_code: None,
+            pending_underline_code: None,
+            pending_slow_blink_code: None,
+            pending_fast_blink_code: None,
+            pending_reverse_code: None,
+            pending_hidden_code: None,
+            pending_strike_code: None,
             x_coords,
             y_coords,
         }
@@ -678,12 +822,16 @@ impl TerminalOutput {
             let display_cols = &self.display_cols;
             for (row, line) in buffer_lines.iter().enumerate() {
                 vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", self.y_coords as usize + row + 1, self.x_coords + 1)); // goto row/col
+                let mut terminal_character_styles = TerminalCharacter::new(' ');
                 for (col, t_character) in line.iter().enumerate() {
                     if (col as u16) < *display_cols {
                         // in some cases (eg. while resizing) some characters will spill over
                         // before they are corrected by the shell (for the prompt) or by reflowing
                         // lines
-                        vte_output.push_str(&t_character.to_string());
+                        if let Some(new_styles) = terminal_character_styles.update_styles_and_return_diff(&t_character) {
+                            vte_output.push_str(&new_styles);
+                        }
+                        vte_output.push(t_character.character);
                     }
                 }
             }
@@ -950,15 +1098,27 @@ impl TerminalOutput {
             // will be overriden as we print on it
             self.cursor_position = nearest_line_end;
         }
-        self.pending_foreground_ansi_codes.clear();
-        self.pending_background_ansi_codes.clear();
-        self.pending_misc_ansi_codes.clear();
+        self.reset_all_ansi_codes();
+
         self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
         let last_newline_index = self.index_of_beginning_of_line(self.cursor_position);
         self.cursor_position = last_newline_index;
         self.should_render = true;
+    }
+    fn reset_all_ansi_codes(&mut self) {
+        self.pending_foreground_code = None;
+        self.pending_background_code = None;
+        self.pending_bold_code = None;
+        self.pending_dim_code = None;
+        self.pending_italic_code = None;
+        self.pending_underline_code = None;
+        self.pending_slow_blink_code = None;
+        self.pending_fast_blink_code = None;
+        self.pending_reverse_code = None;
+        self.pending_hidden_code = None;
+        self.pending_strike_code = None;
     }
 }
 
@@ -978,30 +1138,17 @@ impl vte::Perform for TerminalOutput {
         // combining them is a question of rendering performance and not refactoring,
         // so will be addressed separately
         let terminal_character = TerminalCharacter::new(c)
-            .reset_foreground_ansi_code(&self.reset_foreground_ansi_code)
-            .reset_background_ansi_code(&self.reset_background_ansi_code)
-            .reset_misc_ansi_code(&self.reset_misc_ansi_code)
-            .reset_bold_ansi_code(&self.reset_bold_ansi_code)
-            .reset_bold_dim_ansi_code(&self.reset_bold_dim_ansi_code)
-            .reset_italic_ansi_code(&self.reset_italic_ansi_code)
-            .reset_underline_ansi_code(&self.reset_underline_ansi_code)
-            .reset_blink_ansi_code(&self.reset_blink_ansi_code)
-            .reset_reverse_ansi_code(&self.reset_reverse_ansi_code)
-            .reset_hidden_ansi_code(&self.reset_hidden_ansi_code)
-            .reset_strike_ansi_code(&self.reset_strike_ansi_code)
-            .reset_misc_ansi_code(&self.reset_misc_ansi_code)
-            .foreground_ansi_codes(&self.pending_foreground_ansi_codes)
-            .background_ansi_codes(&self.pending_background_ansi_codes)
-            .bold_ansi_codes(&self.pending_bold_ansi_codes)
-            .dim_ansi_codes(&self.pending_dim_ansi_codes)
-            .italic_ansi_codes(&self.pending_italic_ansi_codes)
-            .underline_ansi_codes(&self.pending_underline_ansi_codes)
-            .blink_slow_ansi_codes(&self.pending_blink_slow_ansi_codes)
-            .blink_fast_ansi_codes(&self.pending_blink_fast_ansi_codes)
-            .reverse_ansi_codes(&self.pending_reverse_ansi_codes)
-            .hidden_ansi_codes(&self.pending_hidden_ansi_codes)
-            .strike_ansi_codes(&self.pending_strike_ansi_codes)
-            .misc_ansi_codes(&self.pending_misc_ansi_codes);
+            .foreground(self.pending_foreground_code)
+            .background(self.pending_background_code)
+            .bold(self.pending_bold_code)
+            .dim(self.pending_dim_code)
+            .italic(self.pending_italic_code)
+            .underline(self.pending_underline_code)
+            .blink_slow(self.pending_slow_blink_code)
+            .blink_fast(self.pending_fast_blink_code)
+            .reverse(self.pending_reverse_code)
+            .hidden(self.pending_hidden_code)
+            .strike(self.pending_strike_code);
 
         if self.characters.len() > self.cursor_position {
             self.characters.remove(self.cursor_position);
@@ -1053,128 +1200,224 @@ impl vte::Perform for TerminalOutput {
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
         if c == 'm' {
-            // TODO: handle misc codes specifically
-            // like here: https://github.com/alacritty/alacritty/blob/46c0f352c40ecb68653421cb178a297acaf00c6d/alacritty_terminal/src/ansi.rs#L1176
             if params.is_empty() || params[0] == 0 {
-                self.reset_foreground_ansi_code = true;
-                self.reset_background_ansi_code = true;
-                self.reset_misc_ansi_code = true;
-                self.reset_strike_ansi_code = true;
-                self.reset_hidden_ansi_code = true;
-                self.reset_reverse_ansi_code = true;
-                self.reset_blink_ansi_code = true;
-                self.reset_underline_ansi_code = true;
-                self.reset_italic_ansi_code = true;
-                self.reset_bold_ansi_code = true;
-                self.reset_bold_dim_ansi_code = true;
-                self.pending_foreground_ansi_codes.clear();
-                self.pending_background_ansi_codes.clear();
-                self.pending_bold_ansi_codes.clear();
-                self.pending_bold_ansi_codes.clear();
-                self.pending_italic_ansi_codes.clear();
-                self.pending_underline_ansi_codes.clear();
-                self.pending_blink_fast_ansi_codes.clear();
-                self.pending_blink_slow_ansi_codes.clear();
-                self.pending_reverse_ansi_codes.clear();
-                self.pending_hidden_ansi_codes.clear();
-                self.pending_strike_ansi_codes.clear();
-                self.pending_misc_ansi_codes.clear();
+                // reset all
+                self.pending_foreground_code = Some(AnsiCode::Reset);
+                self.pending_background_code = Some(AnsiCode::Reset);
+                self.pending_bold_code = Some(AnsiCode::Reset);
+                self.pending_dim_code = Some(AnsiCode::Reset);
+                self.pending_italic_code = Some(AnsiCode::Reset);
+                self.pending_underline_code = Some(AnsiCode::Reset);
+                self.pending_slow_blink_code = Some(AnsiCode::Reset);
+                self.pending_fast_blink_code = Some(AnsiCode::Reset);
+                self.pending_reverse_code = Some(AnsiCode::Reset);
+                self.pending_hidden_code = Some(AnsiCode::Reset);
+                self.pending_strike_code = Some(AnsiCode::Reset);
             } else if params[0] == 39 {
-                self.reset_foreground_ansi_code = true;
-                self.pending_foreground_ansi_codes.clear();
+                self.pending_foreground_code = Some(AnsiCode::Reset);
             } else if params[0] == 49 {
-                self.reset_background_ansi_code = true;
-                self.pending_background_ansi_codes.clear();
+                self.pending_background_code = Some(AnsiCode::Reset);
             } else if params[0] == 21 {
                 // reset bold
-                self.reset_bold_ansi_code = true;
-                self.pending_bold_ansi_codes.clear();
+                self.pending_bold_code = Some(AnsiCode::Reset);
             } else if params[0] == 22 {
                 // reset bold and dim
-                self.reset_bold_dim_ansi_code = true;
-                self.pending_bold_ansi_codes.clear();
+                self.pending_bold_code = Some(AnsiCode::Reset);
+                self.pending_dim_code = Some(AnsiCode::Reset);
             } else if params[0] == 23 {
                 // reset italic
-                self.reset_italic_ansi_code = true;
-                self.pending_italic_ansi_codes.clear();
+                self.pending_italic_code = Some(AnsiCode::Reset);
             } else if params[0] == 24 {
                 // reset underline
-                self.reset_underline_ansi_code = true;
-                self.pending_underline_ansi_codes.clear();
+                self.pending_underline_code = Some(AnsiCode::Reset);
             } else if params[0] == 25 {
                 // reset blink
-                self.reset_blink_ansi_code = true;
-                self.pending_blink_fast_ansi_codes.clear();
-                self.pending_blink_slow_ansi_codes.clear();
+                self.pending_slow_blink_code = Some(AnsiCode::Reset);
+                self.pending_fast_blink_code = Some(AnsiCode::Reset);
             } else if params[0] == 27 {
                 // reset reverse
-                self.reset_reverse_ansi_code = true;
-                self.pending_reverse_ansi_codes.clear();
+                self.pending_reverse_code = Some(AnsiCode::Reset);
             } else if params[0] == 28 {
                 // reset hidden
-                self.reset_hidden_ansi_code = true;
-                self.pending_hidden_ansi_codes.clear();
+                self.pending_hidden_code = Some(AnsiCode::Reset);
             } else if params[0] == 29 {
                 // reset strike
-                self.reset_strike_ansi_code = true;
-                self.pending_strike_ansi_codes.clear();
+                self.pending_strike_code = Some(AnsiCode::Reset);
             } else if params[0] == 38 {
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_foreground_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_foreground_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_foreground_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_foreground_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_foreground_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 48 {
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_background_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_background_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_background_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_background_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_background_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 1 {
                 // bold
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_bold_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_bold_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_bold_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_bold_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_bold_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 2 {
                 // dim
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_dim_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_bold_dim_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_dim_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_dim_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_dim_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 3 {
                 // italic
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_italic_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_italic_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_italic_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_italic_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_italic_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 4 {
                 // underline
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_underline_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_underline_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_underline_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_underline_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_underline_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 5 {
                 // blink slow
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_blink_slow_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_blink_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_slow_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_slow_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_slow_blink_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 6 {
                 // blink fast
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_blink_fast_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_blink_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_fast_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_fast_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_fast_blink_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 7 {
                 // reverse
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_reverse_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_reverse_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_reverse_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_reverse_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_reverse_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 8 {
                 // hidden
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_hidden_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_hidden_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_hidden_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_hidden_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_hidden_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
             } else if params[0] == 9 {
                 // strike
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_strike_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_strike_ansi_code = false;
+                match (params.get(1), params.get(2)) {
+                    (Some(param1), Some(param2)) => {
+                        self.pending_strike_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                    },
+                    (Some(param1), None) => {
+                        self.pending_strike_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                    }
+                    (_, _) => {
+                        self.pending_strike_code = Some(AnsiCode::Code((None, None)));
+                    }
+                };
+            } else if params[0] == 30 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Black));
+            } else if params[0] == 31 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Red));
+            } else if params[0] == 32 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Green));
+            } else if params[0] == 33 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Yellow));
+            } else if params[0] == 34 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Blue));
+            } else if params[0] == 35 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Magenta));
+            } else if params[0] == 36 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Cyan));
+            } else if params[0] == 37 {
+                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::White));
+            } else if params[0] == 40 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Black));
+            } else if params[0] == 41 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Red));
+            } else if params[0] == 42 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Green));
+            } else if params[0] == 43 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Yellow));
+            } else if params[0] == 44 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Blue));
+            } else if params[0] == 45 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Magenta));
+            } else if params[0] == 46 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Cyan));
+            } else if params[0] == 47 {
+                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::White));
             } else {
-                let param_string = params.iter().map(|p| p.to_string()).collect::<Vec<String>>().join(";");
-                self.pending_misc_ansi_codes.push(format!("\u{1b}[{}m", param_string));
-                self.reset_misc_ansi_code = false;
+                debug_log_to_file(format!("unhandled csi m code {:?}", params), self.pid);
             }
         } else if c == 'C' { // move cursor forward
             let move_by = params[0] as usize;

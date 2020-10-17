@@ -33,8 +33,8 @@ impl Read for FakeStdinReader {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         // ideally, we shouldn't have to sleep here
         // stdin should be buffered and handled in the app itself
-        // ::std::thread::sleep(Duration::from_millis(50));
-        ::std::thread::sleep(Duration::from_millis(100));
+        ::std::thread::sleep(Duration::from_millis(50));
+        // ::std::thread::sleep(Duration::from_millis(100));
         let read_position = self.input_chars.read_position;
         buf[0] = self.input_chars.content[read_position];
         self.input_chars.set_read_position(read_position + 1);
