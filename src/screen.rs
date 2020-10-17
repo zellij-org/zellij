@@ -3,6 +3,7 @@ use std::collections::{HashSet, BTreeMap};
 use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use std::time::{Instant, Duration};
 
 use crate::os_input_output::OsApi;
 use crate::terminal_pane::TerminalOutput;
