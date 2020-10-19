@@ -21,6 +21,14 @@ use ::signal_hook::iterator::Signals;
 pub type OnSigWinch = dyn Fn(Box<dyn Fn()>) + Send;
 pub type SigCleanup = dyn Fn() + Send;
 
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
 pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
     let signals = Signals::new(&[signal_hook::SIGWINCH]).unwrap();
     let on_winch = {

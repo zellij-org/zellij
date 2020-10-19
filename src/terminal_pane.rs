@@ -10,17 +10,19 @@ use crate::boundaries::Rect;
 
 const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
-    foreground: Some(AnsiCode::Reset),
-    background: Some(AnsiCode::Reset),
-    strike: Some(AnsiCode::Reset),
-    hidden: Some(AnsiCode::Reset),
-    reverse: Some(AnsiCode::Reset),
-    slow_blink: Some(AnsiCode::Reset),
-    fast_blink: Some(AnsiCode::Reset),
-    underline: Some(AnsiCode::Reset),
-    bold: Some(AnsiCode::Reset),
-    dim: Some(AnsiCode::Reset),
-    italic: Some(AnsiCode::Reset),
+    styles: CharacterStyles {
+        foreground: Some(AnsiCode::Reset),
+        background: Some(AnsiCode::Reset),
+        strike: Some(AnsiCode::Reset),
+        hidden: Some(AnsiCode::Reset),
+        reverse: Some(AnsiCode::Reset),
+        slow_blink: Some(AnsiCode::Reset),
+        fast_blink: Some(AnsiCode::Reset),
+        underline: Some(AnsiCode::Reset),
+        bold: Some(AnsiCode::Reset),
+        dim: Some(AnsiCode::Reset),
+        italic: Some(AnsiCode::Reset),
+    }
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,7 +159,7 @@ impl CharacterStyles {
         self.dim = None;
         self.italic = None;
     }
-    pub fn update_and_return_diff(&mut self, new_styles: &TerminalCharacter) -> Option<CharacterStyles> {
+    pub fn update_and_return_diff(&mut self, new_styles: &CharacterStyles) -> Option<CharacterStyles> {
         let mut diff: Option<CharacterStyles> = None;
         if self.foreground != new_styles.foreground {
             if let Some(new_diff) = diff.as_mut() {
@@ -535,356 +537,7 @@ impl Display for CharacterStyles {
 #[derive(Clone, Copy)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub foreground: Option<AnsiCode>,
-    pub background: Option<AnsiCode>,
-    pub strike: Option<AnsiCode>,
-    pub hidden: Option<AnsiCode>,
-    pub reverse: Option<AnsiCode>,
-    pub slow_blink: Option<AnsiCode>,
-    pub fast_blink: Option<AnsiCode>,
-    pub underline: Option<AnsiCode>,
-    pub bold: Option<AnsiCode>,
-    pub dim: Option<AnsiCode>,
-    pub italic: Option<AnsiCode>,
-}
-
-impl TerminalCharacter {
-    pub fn new (character: char) -> Self {
-        TerminalCharacter {
-            character,
-            foreground: None,
-            background: None,
-            strike: None,
-            hidden: None,
-            reverse: None,
-            slow_blink: None,
-            fast_blink: None,
-            underline: None,
-            bold: None,
-            dim: None,
-            italic: None,
-        }
-    }
-    pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
-        self.foreground = foreground_code;
-        self
-    }
-    pub fn background(mut self, background_code: Option<AnsiCode>) -> Self {
-        self.background = background_code;
-        self
-    }
-    pub fn bold(mut self, bold_code: Option<AnsiCode>) -> Self {
-        self.bold = bold_code;
-        self
-    }
-    pub fn dim(mut self, dim_code: Option<AnsiCode>) -> Self {
-        self.dim = dim_code;
-        self
-    }
-    pub fn italic(mut self, italic_code: Option<AnsiCode>) -> Self {
-        self.italic = italic_code;
-        self
-    }
-    pub fn underline(mut self, underline_code: Option<AnsiCode>) -> Self {
-        self.underline = underline_code;
-        self
-    }
-    pub fn blink_slow(mut self, slow_blink_code: Option<AnsiCode>) -> Self {
-        self.slow_blink = slow_blink_code;
-        self
-    }
-    pub fn blink_fast(mut self, fast_blink_code: Option<AnsiCode>) -> Self {
-        self.fast_blink = fast_blink_code;
-        self
-    }
-    pub fn reverse(mut self, reverse_code: Option<AnsiCode>) -> Self {
-        self.reverse = reverse_code;
-        self
-    }
-    pub fn hidden(mut self, hidden_code: Option<AnsiCode>) -> Self {
-        self.hidden = hidden_code;
-        self
-    }
-    pub fn strike(mut self, strike_code: Option<AnsiCode>) -> Self {
-        self.strike = strike_code;
-        self
-    }
-}
-
-impl Display for TerminalCharacter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut character_ansi_codes = String::new(); // TODO: better
-
-        if let Some(ansi_code) = self.foreground {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[38;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[38;{}m", param1));
-                        },
-                        (_, _) => {
-                            // TODO: can this happen?
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[39m"));
-                },
-                AnsiCode::NamedColor(named_color) => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[{}m", named_color.to_foreground_ansi_code()));
-                }
-            }
-        }
-        if let Some(ansi_code) = self.background {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[48;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[48;{}m", param1));
-                        },
-                        (_, _) => {
-                            // TODO: can this happen?
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[49m"));
-                }
-                AnsiCode::NamedColor(named_color) => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[{}m", named_color.to_background_ansi_code()));
-                }
-            }
-        }
-        if let Some(ansi_code) = self.strike {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[9;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[9;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[9m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[29m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.hidden {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[8;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[8;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[8m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[28m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.reverse {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[7;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[7;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[7m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[27m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.fast_blink {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[6;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[6;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[6m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[25m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.slow_blink {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[5;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[5;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[5m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[25m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.underline {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[4;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[4;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[4m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[24m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.bold {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[1;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[1;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[1m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[22m\u{1b}[24m"));
-                    // character_ansi_codes.push_str(&format!("\u{1b}[22m"));
-                    // TODO: this cancels bold + underline, if this behaviour is indeed correct, we
-                    // need to properly handle it in the struct methods etc like dim
-                },
-                _ => {}
-            }
-        }
-        // notice the order is important here, bold must be before underline
-        // because the bold reset also resets underline, and would override it
-        // otherwise
-        if let Some(ansi_code) = self.underline {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[4;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[4;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[4m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[24m"));
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.dim {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[2;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[2;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[2m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    if let Some(bold) = self.bold {
-                        // we only reset dim if both dim and bold should be reset
-                        match bold {
-                            AnsiCode::Reset => character_ansi_codes.push_str(&format!("\u{1b}[22m")), // TODO: better
-                            _ => {}
-                        }
-                    }
-                },
-                _ => {}
-            }
-        }
-        if let Some(ansi_code) = self.italic {
-            match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[3;{};{}m", param1, param2));
-                        },
-                        (Some(param1), None) => {
-                            character_ansi_codes.push_str(&format!("\u{1b}[3;{}m", param1));
-                        },
-                        (_, _) => {
-                            character_ansi_codes.push_str("\u{1b}[3m");
-                        }
-                    }
-                },
-                AnsiCode::Reset => {
-                    character_ansi_codes.push_str(&format!("\u{1b}[23m"));
-                },
-                _ => {}
-            }
-        };
-        write!(f, "{}", character_ansi_codes)
-    }
+    pub styles: CharacterStyles,
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
@@ -978,7 +631,7 @@ impl<'a> Grid <'a>{
         let mut newline_indices: Vec<usize> = vec![];
         for line in &self.cells {
             for character in line.iter().copied() {
-                characters.push(character.clone());
+                characters.push(*character);
             }
             let last_newline_index = newline_indices.last().copied().unwrap_or(0);
             newline_indices.push(last_newline_index + line.len());
@@ -1046,9 +699,10 @@ impl Rect for &mut TerminalOutput {
 
 impl TerminalOutput {
     pub fn new (pid: RawFd, ws: Winsize, x_coords: u16, y_coords: u16) -> TerminalOutput {
+        let characters = Vec::with_capacity(100000);
         TerminalOutput {
             pid,
-            characters: vec![],
+            characters,
             cursor_position: 0,
             newline_indices: Vec::new(),
             linebreak_indices: Vec::new(),
@@ -1073,10 +727,11 @@ impl TerminalOutput {
         }
     }
     pub fn handle_event(&mut self, event: VteEvent) {
-        self.should_render = true; // TODO: more accurately
+        // self.should_render = true; // TODO: more accurately
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
+                self.should_render = true; // TODO: more accurately
             },
             VteEvent::Execute(byte) => {
                 self.execute(byte);
@@ -1188,7 +843,7 @@ impl TerminalOutput {
                         // in some cases (eg. while resizing) some characters will spill over
                         // before they are corrected by the shell (for the prompt) or by reflowing
                         // lines
-                        if let Some(new_styles) = character_styles.update_and_return_diff(&t_character) {
+                        if let Some(new_styles) = character_styles.update_and_return_diff(&t_character.styles) {
                             vte_output = format!("{}{}", vte_output, new_styles);
                         }
                         vte_output.push(t_character.character);
@@ -1495,36 +1150,47 @@ fn debug_log_to_file (message: String, pid: RawFd) {
 
 impl vte::Perform for TerminalOutput {
     fn print(&mut self, c: char) {
-        // while not ideal that we separate the reset and actual code logic here,
-        // combining them is a question of rendering performance and not refactoring,
-        // so will be addressed separately
-        let terminal_character = TerminalCharacter::new(c)
-            .foreground(self.pending_foreground_code)
-            .background(self.pending_background_code)
-            .bold(self.pending_bold_code)
-            .dim(self.pending_dim_code)
-            .italic(self.pending_italic_code)
-            .underline(self.pending_underline_code)
-            .blink_slow(self.pending_slow_blink_code)
-            .blink_fast(self.pending_fast_blink_code)
-            .reverse(self.pending_reverse_code)
-            .hidden(self.pending_hidden_code)
-            .strike(self.pending_strike_code);
+        // apparently, building TerminalCharacter like this without a "new" method
+        // is a little faster
+        let terminal_character = TerminalCharacter {
+            character: c,
+            styles: CharacterStyles {
+                foreground: self.pending_foreground_code,
+                background: self.pending_background_code,
+                bold: self.pending_bold_code,
+                dim: self.pending_dim_code,
+                italic: self.pending_italic_code,
+                underline: self.pending_underline_code,
+                slow_blink: self.pending_slow_blink_code,
+                fast_blink: self.pending_fast_blink_code,
+                reverse: self.pending_reverse_code,
+                hidden: self.pending_hidden_code,
+                strike: self.pending_strike_code,
+            }
+        };
 
-        if self.characters.len() > self.cursor_position {
-            self.characters.remove(self.cursor_position);
-            self.characters.insert(self.cursor_position, terminal_character);
+        let length_of_characters = self.characters.len();
+        let current_character_capacity = self.characters.capacity();
+
+        if current_character_capacity <= self.characters.len() {
+            self.characters.reserve(current_character_capacity);
+        }
+
+        if length_of_characters > self.cursor_position {
+            // this is a little hacky but significantly more performant
+            // than removing self.cursor_position and then inserting terminal_character
+            self.characters.push(terminal_character);
+            self.characters.swap_remove(self.cursor_position);
             if !self.newline_indices.contains(&(self.cursor_position + 1)) {
                 // advancing the cursor beyond the borders of the line has to be done explicitly
                 self.cursor_position += 1;
             }
         } else {
-            for _ in self.characters.len()..self.cursor_position {
-                self.characters.push(EMPTY_TERMINAL_CHARACTER.clone());
+            for _ in length_of_characters..self.cursor_position {
+                self.characters.push(EMPTY_TERMINAL_CHARACTER);
             };
             self.characters.push(terminal_character);
-
-            let start_of_last_line = self.index_of_beginning_of_line(self.cursor_position);
+            let start_of_last_line = max(self.newline_indices.last(), self.linebreak_indices.last()).unwrap_or(&0);
             let difference_from_last_newline = self.cursor_position - start_of_last_line;
             if difference_from_last_newline == self.display_cols as usize && self.scroll_region.is_none() {
                 self.linebreak_indices.push(self.cursor_position);

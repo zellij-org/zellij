@@ -4,6 +4,7 @@ use ::async_std::task;
 use ::async_std::task::*;
 use ::std::pin::*;
 use ::std::sync::mpsc::{channel, Sender, Receiver};
+use ::std::time::{Instant, Duration};
 use ::vte;
 
 use crate::os_input_output::OsApi;
@@ -23,10 +24,18 @@ impl ReadFromPid {
     }
 }
 
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut read_buffer = [0; 115200];
+        let mut read_buffer = [0; 65535];
         let pid = self.pid;
         let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
         match read_result {
@@ -136,6 +145,60 @@ pub struct PtyBus {
     os_input: Box<dyn OsApi>,
 }
 
+fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) {
+    task::spawn({
+        async move {
+            let mut vte_parser = vte::Parser::new();
+            let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
+            let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
+
+            let mut last_byte_receive_time: Option<Instant> = None;
+            let mut pending_render = false;
+            let max_render_pause = Duration::from_millis(30);
+
+            while let Some(bytes) = terminal_bytes.next().await {
+                let bytes_is_empty = bytes.is_empty();
+                for byte in bytes {
+                    vte_parser.advance(&mut vte_event_sender, byte);
+                }
+                if !bytes_is_empty {
+                    // for UX reasons, if we got something on the wire, we only send the render notice if:
+                    // 1. there aren't any more bytes on the wire afterwards
+                    // 2. a certain period (currently 30ms) has elapsed since the last render
+                    //    (otherwise if we get a large amount of data, the display would hang
+                    //    until it's done)
+                    // 3. the stream has ended, and so we render 1 last time
+                    match last_byte_receive_time.as_mut() {
+                        Some(receive_time) => {
+                            // if receive_time.elapsed() > Duration::from_millis(30) {
+                            if receive_time.elapsed() > max_render_pause {
+                                pending_render = false;
+                                send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                                last_byte_receive_time = Some(Instant::now());
+                            } else {
+                                pending_render = true;
+                            }
+                        },
+                        None => {
+                            last_byte_receive_time = Some(Instant::now());
+                            pending_render = true;
+
+                        }
+                    };
+                } else {
+                    if pending_render {
+                        pending_render = false;
+                        send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                    }
+                    last_byte_receive_time = None;
+                    task::sleep(::std::time::Duration::from_millis(10)).await;
+                }
+            }
+            send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+        }
+    });
+}
+
 impl PtyBus {
     pub fn new (send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
         let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
@@ -148,50 +211,12 @@ impl PtyBus {
     }
     pub fn spawn_terminal_vertically(&mut self) {
         let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
-        task::spawn({
-            let send_screen_instructions = self.send_screen_instructions.clone();
-            let os_input = self.os_input.clone();
-            async move {
-                let mut vte_parser = vte::Parser::new();
-                let mut vte_event_sender = VteEventSender::new(pid_primary, send_screen_instructions.clone());
-                let mut first_terminal_bytes = ReadFromPid::new(&pid_primary, os_input);
-                while let Some(bytes) = first_terminal_bytes.next().await {
-                    let bytes_is_empty = bytes.is_empty();
-                    for byte in bytes {
-                        vte_parser.advance(&mut vte_event_sender, byte);
-                    }
-                    if !bytes_is_empty {
-                        send_screen_instructions.send(ScreenInstruction::Render).unwrap();
-                    } else {
-                        task::sleep(::std::time::Duration::from_millis(10)).await;
-                    }
-                }
-            }
-        });
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
         self.send_screen_instructions.send(ScreenInstruction::VerticalSplit(pid_primary)).unwrap();
     }
     pub fn spawn_terminal_horizontally(&mut self) {
         let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
-        task::spawn({
-            let send_screen_instructions = self.send_screen_instructions.clone();
-            let os_input = self.os_input.clone();
-            async move {
-                let mut vte_parser = vte::Parser::new();
-                let mut vte_event_sender = VteEventSender::new(pid_primary, send_screen_instructions.clone());
-                let mut first_terminal_bytes = ReadFromPid::new(&pid_primary, os_input);
-                while let Some(bytes) = first_terminal_bytes.next().await {
-                    let bytes_is_empty = bytes.is_empty();
-                    for byte in bytes {
-                        vte_parser.advance(&mut vte_event_sender, byte);
-                    }
-                    if !bytes_is_empty {
-                        send_screen_instructions.send(ScreenInstruction::Render).unwrap();
-                    } else {
-                        task::sleep(::std::time::Duration::from_millis(10)).await;
-                    }
-                }
-            }
-        });
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
         self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
     }
 }
