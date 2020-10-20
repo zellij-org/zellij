@@ -12,6 +12,7 @@ use nix::pty::{forkpty, Winsize};
 use std::os::unix::io::RawFd;
 use std::process::Command;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 
 use std::env;
 
@@ -55,7 +56,7 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
 }
 
-fn spawn_terminal () -> (RawFd, RawFd) {
+fn spawn_terminal (file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, None) {
             Ok(fork_pty_res) => {
@@ -67,9 +68,22 @@ fn spawn_terminal () -> (RawFd, RawFd) {
                         child
                     },
                     ForkResult::Child => {
-                        Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
-                        ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
-                        Pid::from_raw(0) // TODO: better
+                        match file_to_open {
+                            Some(file_to_open) => {
+                                if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
+                                    panic!("Can't edit files if an editor is not define. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
+                                }
+                                let editor = env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
+                                Command::new(editor).args(&[file_to_open]).spawn().expect("failed to spawn");
+                                ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
+                                Pid::from_raw(0) // TODO: better
+                            },
+                            None => {
+                                Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
+                                ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
+                                Pid::from_raw(0) // TODO: better
+                            }
+                        }
                     },
                 };
                 (pid_primary, pid_secondary.as_raw())
@@ -89,7 +103,7 @@ pub trait OsApi: Send + Sync {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize;
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
     fn into_raw_mode(&mut self, pid: RawFd);
-    fn spawn_terminal(&mut self) -> (RawFd, RawFd);
+    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
@@ -109,8 +123,8 @@ impl OsApi for OsInputOutput {
     fn into_raw_mode(&mut self, pid: RawFd) {
         into_raw_mode(pid);
     }
-    fn spawn_terminal(&mut self) -> (RawFd, RawFd) {
-        spawn_terminal()
+    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+        spawn_terminal(file_to_open)
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         read(pid, buf)

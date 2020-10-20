@@ -5,6 +5,7 @@ use ::async_std::task::*;
 use ::std::pin::*;
 use ::std::sync::mpsc::{channel, Sender, Receiver};
 use ::std::time::{Instant, Duration};
+use std::path::{Path, PathBuf};
 use ::vte;
 
 use crate::os_input_output::OsApi;
@@ -133,8 +134,8 @@ impl vte::Perform for VteEventSender {
 }
 
 pub enum PtyInstruction {
-    SpawnTerminalVertically,
-    SpawnTerminalHorizontally,
+    SpawnTerminalVertically(Option<PathBuf>),
+    SpawnTerminalHorizontally(Option<PathBuf>),
     Quit
 }
 
@@ -209,13 +210,13 @@ impl PtyBus {
             os_input,
         }
     }
-    pub fn spawn_terminal_vertically(&mut self) {
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
+    pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
+        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
         self.send_screen_instructions.send(ScreenInstruction::VerticalSplit(pid_primary)).unwrap();
     }
-    pub fn spawn_terminal_horizontally(&mut self) {
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal();
+    pub fn spawn_terminal_horizontally(&mut self, file_to_open: Option<PathBuf>) {
+        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
         self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
     }

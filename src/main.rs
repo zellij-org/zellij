@@ -10,16 +10,30 @@ mod boundaries;
 use std::io::{Read, Write};
 use ::std::thread;
 
+use std::os::unix::net::{UnixStream, UnixListener};
+use std::io::prelude::*;
+use serde::{Serialize, Deserialize};
+
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::terminal_pane::TerminalOutput;
 use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
 use crate::screen::{Screen, ScreenInstruction};
+use std::path::{Path, PathBuf};
+use std::fs::remove_file;
 
 // sigwinch stuff
 use ::signal_hook::iterator::Signals;
 
 pub type OnSigWinch = dyn Fn(Box<dyn Fn()>) + Send;
 pub type SigCleanup = dyn Fn() + Send;
+
+#[derive(Serialize, Deserialize, Debug)]
+enum ApiCommand {
+    OpenFile(String),
+    SplitHorizontally,
+    SplitVertically,
+    MoveFocus,
+}
 
 fn debug_log_to_file (message: String) {
     use std::fs::OpenOptions;
@@ -68,17 +82,17 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             .name("pty".to_string())
             .spawn({
                 move || {
-                    pty_bus.spawn_terminal_vertically();
+                    pty_bus.spawn_terminal_vertically(None);
                     loop {
                         let event = pty_bus.receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
                         match event {
-                            PtyInstruction::SpawnTerminalVertically => {
-                                pty_bus.spawn_terminal_vertically();
+                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                                pty_bus.spawn_terminal_vertically(file_to_open);
                             }
-                            PtyInstruction::SpawnTerminalHorizontally => {
-                                pty_bus.spawn_terminal_horizontally();
+                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                                pty_bus.spawn_terminal_horizontally(file_to_open);
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -147,6 +161,50 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             }).unwrap()
     );
 
+    // TODO: currently we don't push this into active_threads
+    // because otherwise the app will hang. Need to fix this so it both
+    // listens to the ipc-bus and is able to quit cleanly
+    #[cfg(not(test))]
+    let ipc_thread = thread::Builder::new()
+        .name("ipc_server".to_string())
+        .spawn({
+            let send_pty_instructions = send_pty_instructions.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            move || {
+                remove_file("/tmp/mosaic").ok();
+                let listener = UnixListener::bind("/tmp/mosaic").expect("could not listen on ipc socket");
+
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(mut stream) => {
+                            let mut buffer = [0; 65535]; // TODO: more accurate
+                            stream.read(&mut buffer).expect("failed to parse ipc message");
+                            let decoded: ApiCommand = bincode::deserialize(&buffer).expect("failed to deserialize ipc message");
+                            match &decoded {
+                                ApiCommand::OpenFile(file_name) => {
+                                    let path = PathBuf::from(file_name);
+                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(Some(path))).unwrap();
+                                }
+                                ApiCommand::SplitHorizontally => {
+                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
+                                }
+                                ApiCommand::SplitVertically => {
+                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
+                                }
+                                ApiCommand::MoveFocus => {
+                                    send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            panic!("err {:?}", err);
+                            break;
+                        }
+                    }
+                }
+            }
+        }).unwrap();
+
     let mut stdin = os_input.get_stdin_reader();
     loop {
 		let mut buffer = [0; 1];
@@ -162,9 +220,9 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
         } else if buffer[0] == 12 { // ctrl-l
             send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
         } else if buffer[0] == 14 { // ctrl-n
-            send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically).unwrap();
+            send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
         } else if buffer[0] == 2 { // ctrl-b
-            send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally).unwrap();
+            send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
         } else if buffer[0] == 17 { // ctrl-q
             send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
             send_pty_instructions.send(PtyInstruction::Quit).unwrap();

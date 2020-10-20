@@ -4,6 +4,7 @@ use ::std::os::unix::io::RawFd;
 use ::std::io::{Read, Write};
 use ::std::collections::HashMap;
 use ::std::sync::{Arc, Mutex};
+use ::std::path::PathBuf;
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{Bytes, get_possible_tty_inputs};
@@ -118,7 +119,7 @@ impl OsApi for FakeInputOutput {
     fn into_raw_mode(&mut self, pid: RawFd) {
         self.io_events.lock().unwrap().push(IoEvent::IntoRawMode(pid));
     }
-    fn spawn_terminal(&mut self) -> (RawFd, RawFd) {
+    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let next_terminal_id = { self.read_buffers.lock().unwrap().keys().len() as RawFd + 1 };
         self.add_terminal(next_terminal_id);
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
