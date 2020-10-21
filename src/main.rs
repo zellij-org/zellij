@@ -21,6 +21,8 @@ use crate::screen::{Screen, ScreenInstruction};
 use std::path::{Path, PathBuf};
 use std::fs::remove_file;
 
+use structopt::StructOpt;
+
 // sigwinch stuff
 use ::signal_hook::iterator::Signals;
 
@@ -29,10 +31,24 @@ pub type SigCleanup = dyn Fn() + Send;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
-    OpenFile(String),
+    OpenFile(PathBuf),
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "mosaic")]
+pub struct Opt {
+    #[structopt(short, long)]
+    /// Send "split (direction h == horizontal / v == vertical)" to active mosaic session
+    split: Option<char>,
+    #[structopt(short, long)]
+    /// Send "move focused pane" to active mosaic session
+    move_focus: bool,
+    #[structopt(short, long)]
+    /// Send "open file in new pane" to active mosaic session
+    open_file: Option<PathBuf>
 }
 
 fn debug_log_to_file (message: String) {
@@ -64,7 +80,33 @@ pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
 
 pub fn main() {
     let os_input = get_os_input();
-    start(Box::new(os_input));
+    let opts = Opt::from_args();
+    if opts.split.is_some() {
+        match opts.split {
+            Some('h') => {
+                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
+                stream.write_all(&api_command).unwrap();
+            },
+            Some('v') => {
+                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
+                stream.write_all(&api_command).unwrap();
+            },
+            _ => {}
+        };
+    } else if opts.move_focus {
+        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
+        stream.write_all(&api_command).unwrap();
+    } else if opts.open_file.is_some() {
+        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let file_to_open = opts.open_file.unwrap();
+        let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
+        stream.write_all(&api_command).unwrap();
+    } else {
+        start(Box::new(os_input));
+    }
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>) {
