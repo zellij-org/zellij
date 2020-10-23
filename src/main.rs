@@ -20,6 +20,7 @@ use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
 use crate::screen::{Screen, ScreenInstruction};
 use std::path::{Path, PathBuf};
 use std::fs::remove_file;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
 use structopt::StructOpt;
 
@@ -114,10 +115,10 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
-    let mut screen = Screen::new(&full_screen_ws, os_input.clone());
-    let send_screen_instructions = screen.send_screen_instructions.clone();
-    let mut pty_bus = PtyBus::new(send_screen_instructions.clone(), os_input.clone());
-    let send_pty_instructions = pty_bus.send_pty_instructions.clone();
+    let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
+    let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
+    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), &full_screen_ws, os_input.clone());
+    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone());
 
     active_threads.push(
         thread::Builder::new()
@@ -135,6 +136,9 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                                 pty_bus.spawn_terminal_horizontally(file_to_open);
+                            }
+                            PtyInstruction::ClosePane(id) => {
+                                pty_bus.close_pane(id);
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -193,6 +197,12 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             }
                             ScreenInstruction::ClearScroll => {
                                 screen.clear_active_terminal_scroll();
+                            }
+                            ScreenInstruction::CloseFocusedPane => {
+                                screen.close_focused_pane();
+                            }
+                            ScreenInstruction::ClosePane(id) => {
+                                screen.close_pane(id);
                             }
                             ScreenInstruction::Quit => {
                                 break;
@@ -273,6 +283,8 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
         } else if buffer[0] == 29 { // ctrl-]
             send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
+        } else if buffer[0] == 24 { // ctrl-x
+            send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
         } else {
             // println!("\r buffer {:?}   ", buffer[0]);
             send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();

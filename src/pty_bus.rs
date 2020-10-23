@@ -3,9 +3,10 @@ use ::async_std::stream::*;
 use ::async_std::task;
 use ::async_std::task::*;
 use ::std::pin::*;
-use ::std::sync::mpsc::{channel, Sender, Receiver};
+use ::std::sync::mpsc::{Sender, Receiver};
 use ::std::time::{Instant, Duration};
-use std::path::{Path, PathBuf};
+use ::std::collections::HashMap;
+use std::path::PathBuf;
 use ::vte;
 
 use crate::os_input_output::OsApi;
@@ -136,13 +137,14 @@ impl vte::Perform for VteEventSender {
 pub enum PtyInstruction {
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
+    ClosePane(RawFd),
     Quit
 }
 
 pub struct PtyBus {
-    pub send_pty_instructions: Sender<PtyInstruction>,
     pub send_screen_instructions: Sender<ScreenInstruction>,
     pub receive_pty_instructions: Receiver<PtyInstruction>,
+    pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
 }
 
@@ -171,7 +173,6 @@ fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInst
                     // 3. the stream has ended, and so we render 1 last time
                     match last_byte_receive_time.as_mut() {
                         Some(receive_time) => {
-                            // if receive_time.elapsed() > Duration::from_millis(30) {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
                                 send_screen_instructions.send(ScreenInstruction::Render).unwrap();
@@ -196,28 +197,38 @@ fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInst
                 }
             }
             send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+            #[cfg(not(test))]
+            // this is a little hacky, and is because the tests end the file as soon as
+            // we read everything, rather than hanging until there is new data
+            // a better solution would be to fix the test fakes, but this will do for now
+            send_screen_instructions.send(ScreenInstruction::ClosePane(pid)).unwrap();
         }
     });
 }
 
 impl PtyBus {
-    pub fn new (send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
-        let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
+    pub fn new (receive_pty_instructions: Receiver<PtyInstruction>, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
         PtyBus {
-            send_pty_instructions,
             send_screen_instructions,
             receive_pty_instructions,
             os_input,
+            id_to_child_pid: HashMap::new(),
         }
     }
     pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::VerticalSplit(pid_primary)).unwrap();
     }
     pub fn spawn_terminal_horizontally(&mut self, file_to_open: Option<PathBuf>) {
-        let (pid_primary, _pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
+    }
+    pub fn close_pane(&mut self, id: RawFd) {
+        let child_pid = self.id_to_child_pid.get(&id).unwrap();
+        self.os_input.kill(*child_pid).unwrap();
     }
 }

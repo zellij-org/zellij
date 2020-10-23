@@ -7,10 +7,11 @@ use nix::sys::termios::{
     SetArg,
     tcdrain,
 };
-use nix::sys::signal::kill;
+use nix::sys::wait::waitpid;
+use nix::sys::signal::{kill, Signal};
 use nix::pty::{forkpty, Winsize};
 use std::os::unix::io::RawFd;
-use std::process::Command;
+use std::process::{Command, Child};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -56,6 +57,41 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
 }
 
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
+fn handle_command_exit(mut child: Child) {
+    let signals = ::signal_hook::iterator::Signals::new(&[::signal_hook::SIGINT]).unwrap();
+    'handle_exit: loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                // TODO: handle errors?
+                break;
+            }
+            Ok(None) => {
+                ::std::thread::sleep(::std::time::Duration::from_millis(100));
+            }
+            Err(e) => panic!("error attempting to wait: {}", e),
+        }
+
+        for signal in signals.pending() {
+            match signal {
+                signal_hook::SIGINT => {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    break 'handle_exit;
+                }
+                _ => {}
+            }
+        };
+    }
+}
+
 fn spawn_terminal (file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, None) {
@@ -71,17 +107,18 @@ fn spawn_terminal (file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
                         match file_to_open {
                             Some(file_to_open) => {
                                 if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                                    panic!("Can't edit files if an editor is not define. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
+                                    panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
                                 }
                                 let editor = env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
-                                Command::new(editor).args(&[file_to_open]).spawn().expect("failed to spawn");
-                                ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
-                                Pid::from_raw(0) // TODO: better
+
+                                let child = Command::new(editor).args(&[file_to_open]).spawn().expect("failed to spawn");
+                                handle_command_exit(child);
+                                ::std::process::exit(0);
                             },
                             None => {
-                                Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
-                                ::std::thread::park(); // TODO: if we remove this, we seem to lose bytes from stdin - find out why
-                                Pid::from_raw(0) // TODO: better
+                                let child = Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
+                                handle_command_exit(child);
+                                ::std::process::exit(0);
                             }
                         }
                     },
@@ -150,7 +187,9 @@ impl OsApi for OsInputOutput {
         Box::new(stdout)
     }
     fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        kill(Pid::from_raw(fd), None)
+        kill(Pid::from_raw(fd), Some(Signal::SIGINT)).unwrap();
+        waitpid(Pid::from_raw(fd), None).unwrap();
+        Ok(())
     }
 }
 

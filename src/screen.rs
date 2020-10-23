@@ -2,12 +2,11 @@ use std::io::Write;
 use std::collections::{HashSet, BTreeMap};
 use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::time::{Instant, Duration};
+use std::sync::mpsc::{Sender, Receiver};
 
 use crate::os_input_output::OsApi;
 use crate::terminal_pane::TerminalOutput;
-use crate::pty_bus::VteEvent;
+use crate::pty_bus::{VteEvent, PtyInstruction};
 use crate::boundaries::Boundaries;
 
 fn debug_log_to_file (message: String) {
@@ -62,11 +61,13 @@ pub enum ScreenInstruction {
     ScrollUp,
     ScrollDown,
     ClearScroll,
+    CloseFocusedPane,
+    ClosePane(RawFd),
 }
 
 pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
-    pub send_screen_instructions: Sender<ScreenInstruction>,
+    send_pty_instructions: Sender<PtyInstruction>,
     full_screen_ws: Winsize,
     terminals: BTreeMap<RawFd, TerminalOutput>, // BTreeMap because we need a predictable order when changing focus
     active_terminal: Option<RawFd>,
@@ -74,11 +75,10 @@ pub struct Screen {
 }
 
 impl Screen {
-    pub fn new (full_screen_ws: &Winsize, os_api: Box<dyn OsApi>) -> Self {
-        let (sender, receiver): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
+    pub fn new (receive_screen_instructions: Receiver<ScreenInstruction>, send_pty_instructions: Sender<PtyInstruction>, full_screen_ws: &Winsize, os_api: Box<dyn OsApi>) -> Self {
         Screen {
-            receiver,
-            send_screen_instructions: sender,
+            receiver: receive_screen_instructions,
+            send_pty_instructions,
             full_screen_ws: full_screen_ws.clone(),
             terminals: BTreeMap::new(),
             active_terminal: None,
@@ -826,6 +826,127 @@ impl Screen {
             self.active_terminal = Some(*first_terminal);
         }
         self.render();
+    }
+    fn horizontal_borders(&self, terminals: &[RawFd]) -> HashSet<u16> {
+        terminals.iter().fold(HashSet::new(), |mut borders, t| {
+            let terminal = self.terminals.get(t).unwrap();
+            borders.insert(terminal.y_coords);
+            borders.insert(terminal.y_coords + terminal.display_rows + 1); // 1 for the border width
+            borders
+        })
+    }
+    fn vertical_borders(&self, terminals: &[RawFd]) -> HashSet<u16> {
+        terminals.iter().fold(HashSet::new(), |mut borders, t| {
+            let terminal = self.terminals.get(t).unwrap();
+            borders.insert(terminal.x_coords);
+            borders.insert(terminal.x_coords + terminal.display_cols + 1); // 1 for the border width
+            borders
+        })
+    }
+    fn terminals_to_the_left_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
+        if let Some(terminal) = &self.terminals.get(&id) {
+            let upper_close_border = terminal.y_coords;
+            let lower_close_border = terminal.y_coords + terminal.display_rows + 1;
+
+            if let Some(mut terminals_to_the_left) = self.terminal_ids_directly_left_of(&id) {
+                let terminal_borders_to_the_left = self.horizontal_borders(&terminals_to_the_left);
+                if terminal_borders_to_the_left.contains(&upper_close_border) && terminal_borders_to_the_left.contains(&lower_close_border) {
+                    terminals_to_the_left.retain(|t| self.pane_is_between_horizontal_borders(t, upper_close_border, lower_close_border));
+                    return Some(terminals_to_the_left);
+                }
+            }
+        }
+        None
+    }
+    fn terminals_to_the_right_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
+        if let Some(terminal) = &self.terminals.get(&id) {
+            let upper_close_border = terminal.y_coords;
+            let lower_close_border = terminal.y_coords + terminal.display_rows + 1;
+
+            if let Some(mut terminals_to_the_right) = self.terminal_ids_directly_right_of(&id) {
+                let terminal_borders_to_the_right = self.horizontal_borders(&terminals_to_the_right);
+                if terminal_borders_to_the_right.contains(&upper_close_border) && terminal_borders_to_the_right.contains(&lower_close_border) {
+                    terminals_to_the_right.retain(|t| self.pane_is_between_horizontal_borders(t, upper_close_border, lower_close_border));
+                    return Some(terminals_to_the_right);
+                }
+            }
+        }
+        None
+    }
+    fn terminals_above_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
+        if let Some(terminal) = &self.terminals.get(&id) {
+            let left_close_border = terminal.x_coords;
+            let right_close_border = terminal.x_coords + terminal.display_cols + 1;
+
+            if let Some(mut terminals_above) = self.terminal_ids_directly_above(&id) {
+                let terminal_borders_above = self.vertical_borders(&terminals_above);
+                if terminal_borders_above.contains(&left_close_border) && terminal_borders_above.contains(&right_close_border) {
+                    terminals_above.retain(|t| self.pane_is_between_vertical_borders(t, left_close_border, right_close_border));
+                    return Some(terminals_above);
+                }
+            }
+        }
+        None
+    }
+    fn terminals_below_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
+        if let Some(terminal) = &self.terminals.get(&id) {
+            let left_close_border = terminal.x_coords;
+            let right_close_border = terminal.x_coords + terminal.display_cols + 1;
+
+            if let Some(mut terminals_below) = self.terminal_ids_directly_below(&id) {
+                let terminal_borders_below = self.vertical_borders(&terminals_below);
+                if terminal_borders_below.contains(&left_close_border) && terminal_borders_below.contains(&right_close_border) {
+                    terminals_below.retain(|t| self.pane_is_between_vertical_borders(t, left_close_border, right_close_border));
+                    return Some(terminals_below);
+                }
+            }
+        }
+        None
+    }
+    pub fn close_pane(&mut self, id: RawFd) {
+        if let Some(terminal_to_close) = &self.terminals.get(&id) {
+            let terminal_to_close_width = terminal_to_close.display_cols;
+            let terminal_to_close_height = terminal_to_close.display_rows;
+            if let Some(terminals) = self.terminals_to_the_left_between_aligning_borders(id) {
+                for terminal_id in terminals.iter() {
+                    &self.increase_pane_width_right(&terminal_id, terminal_to_close_width + 1); // 1 for the border
+                }
+                if self.active_terminal == Some(id) {
+                    self.active_terminal = Some(*terminals.last().unwrap());
+                }
+            } else if let Some(terminals) = self.terminals_to_the_right_between_aligning_borders(id) {
+                for terminal_id in terminals.iter() {
+                    &self.increase_pane_width_left(&terminal_id, terminal_to_close_width + 1); // 1 for the border
+                }
+                if self.active_terminal == Some(id) {
+                    self.active_terminal = Some(*terminals.last().unwrap());
+                }
+            } else if let Some(terminals) = self.terminals_above_between_aligning_borders(id) {
+                for terminal_id in terminals.iter() {
+                    &self.increase_pane_height_down(&terminal_id, terminal_to_close_height + 1); // 1 for the border
+                }
+                if self.active_terminal == Some(id) {
+                    self.active_terminal = Some(*terminals.last().unwrap());
+                }
+            } else if let Some(terminals) = self.terminals_below_between_aligning_borders(id) {
+                for terminal_id in terminals.iter() {
+                    &self.increase_pane_height_up(&terminal_id, terminal_to_close_height + 1); // 1 for the border
+                }
+                if self.active_terminal == Some(id) {
+                    self.active_terminal = Some(*terminals.last().unwrap());
+                }
+            } else {
+                return; // TODO: exit app? here we're trying to close the last pane on screen
+            }
+            self.terminals.remove(&id);
+            self.render();
+        }
+    }
+    pub fn close_focused_pane(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            self.send_pty_instructions.send(PtyInstruction::ClosePane(active_terminal_id)).unwrap();
+            self.close_pane(active_terminal_id);
+        }
     }
     pub fn scroll_active_terminal_up(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
