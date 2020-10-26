@@ -30,6 +30,8 @@ Work is being done on compatibility to make it at least as VTE compatible as mos
 * Clone the project
 * In the project folder, run: `cargo run`
 
+(note that right now Mosaic only supports linux and maybe mac)
+
 Some temporary controls (these will be changed to something more convenient when the project matures a little):
   * ctrl-n - split focused pane vertically
   * ctrl-b - split focused pane horizontally
