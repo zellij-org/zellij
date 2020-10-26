@@ -1,4 +1,12 @@
-# mosaic
+<h1 align="center">
+  <br>
+  <img src="mosaic-logo-hexagon.png" alt="logo" width="200">
+  <br>
+  Mosaic
+  <br>
+  <br>
+</h1>
+
 # What is this?
 
 Mosaic is a workspace aimed at developers and ops-oriented people who love the terminal.
