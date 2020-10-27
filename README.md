@@ -7,7 +7,9 @@
   <br>
 </h1>
 
-<img align="center" src="demo.gif" alt="demo">
+<p align="center">
+  <img src="demo.gif" alt="demo">
+</p>
 
 # What is this?
 
