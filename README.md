@@ -7,6 +7,8 @@
   <br>
 </h1>
 
+<img align="center" src="demo.gif" alt="demo">
+
 # What is this?
 
 Mosaic is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
