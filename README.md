@@ -63,7 +63,7 @@ Please drop us a line (TODO: team email? gitter? irc?)
 
 We respectfully ask that you do your best to stand by any commitments you make.
 
-And most importantly, please read our code of conduct.
+And most importantly, please read our [code of conduct](CODE_OF_CONDUCT.md).
 
 # License
 
