@@ -1604,7 +1604,7 @@ impl vte::Perform for TerminalOutput {
                 self.newline_indices = newline_indices;
                 self.reflow_lines();
             }
-        } else if c == 'q' {
+        } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
         } else {
             println!("unhandled csi: {:?}->{:?}", c, params);
