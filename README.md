@@ -11,6 +11,11 @@
   <img src="demo.gif" alt="demo">
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073"></a>
+</p>
+
+
 # What is this?
 
 Mosaic is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
@@ -63,7 +68,7 @@ We're a small team of enthusiasts, and we eagerly welcome people who would like 
 
 Because of the above, it's not trivial for us to have issues tagged "Help Wanted" or "Good First Issue", as all work would likely need some prior discussion.
 That said, we would absolutely love to have these discussions and to bring more people on. Even if you are unsure of your abilities or have never contributed to open source before.
-Please drop us a line (TODO: team email? gitter? irc?)
+To get started, join our chat and let us know you're interested in contributing: https://discord.gg/CrUAFH3
 
 We respectfully ask that you do your best to stand by any commitments you make.
 
