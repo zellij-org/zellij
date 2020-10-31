@@ -1532,9 +1532,10 @@ impl vte::Perform for TerminalOutput {
             // insert blank lines if inside scroll region
             let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
             self.scroll.add_empty_lines_in_scroll_region(line_count_to_add);
+        } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
+            // ignore for now to run on mac
         } else {
-            println!("unhandled csi: {:?}->{:?}", c, params);
-            panic!("aaa!!!");
+            panic!("unhandled csi: {:?}->{:?}", c, params);
         }
     }
 
