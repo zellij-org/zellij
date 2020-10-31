@@ -1,5 +1,4 @@
 use ::std::fmt::{self, Display, Debug, Formatter};
-use ::std::cmp::max;
 use ::std::collections::VecDeque;
 use ::std::os::unix::io::RawFd;
 use ::nix::pty::Winsize;
@@ -546,110 +545,432 @@ impl ::std::fmt::Debug for TerminalCharacter {
     }
 }
 
-struct Grid <'a>{
-    pub cells: Vec<Vec<&'a TerminalCharacter>>, // TODO: use references
-    columns: usize,
-    rows: usize,
+#[derive(Clone)]
+pub struct CanonicalLine {
+    pub wrapped_fragments: Vec<WrappedFragment>
 }
 
-impl<'a> Grid <'a>{
-    pub fn new(characters: &'a [TerminalCharacter], newlines: &[usize], columns: usize, rows: usize) -> Self {
-
-        let mut output: VecDeque<Vec<&TerminalCharacter>> = VecDeque::new();
-        let mut i = characters.len();
-        let mut current_line: VecDeque<&TerminalCharacter> = VecDeque::new();
-
-        let mut newlines = newlines.iter().rev();
-
-        let mut next_newline_index = newlines.next();
-
-        loop {
-            if let Some(newline_index) = next_newline_index {
-                if *newline_index == i {
-                    // pad line
-                    for _ in current_line.len()..columns {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                    next_newline_index = newlines.next();
-                    continue; // we continue here in case there's another new line in this index
-                }
-            }
-            if output.len() == rows as usize {
-                if current_line.len() > 0 {
-                    for _ in current_line.len()..columns as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                }
-                break;
-            }
-            i -= 1;
-            let terminal_character = characters.get(i).unwrap();
-            current_line.push_front(terminal_character);
-            if i == 0 {
-                if current_line.len() > 0 {
-                    for _ in current_line.len()..columns as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                }
-                break;
-            }
-        }
-        if output.len() < rows {
-            let mut empty_line = vec![];
-            for _ in 0..columns {
-                empty_line.push(&EMPTY_TERMINAL_CHARACTER);
-            }
-            for _ in output.len()..rows as usize {
-                output.push_back(Vec::from(empty_line.clone()));
-            }
-        }
-
-        let cells = Vec::from(output);
-
-        Grid {
-            cells,
-            columns,
-            rows,
+impl CanonicalLine {
+    pub fn new() -> Self {
+        CanonicalLine {
+            wrapped_fragments: vec![WrappedFragment::new()],
         }
     }
-    pub fn add_empty_lines(&mut self, at_index: usize, count: usize) {
-        let empty_line = self.create_empty_line();
-        for i in 0..count {
-            self.cells.insert(at_index + i, empty_line.clone());
-        }
+    pub fn add_new_wrap(&mut self, terminal_character: TerminalCharacter) {
+        let mut new_fragment = WrappedFragment::new();
+        new_fragment.add_character(terminal_character, 0);
+        self.wrapped_fragments.push(new_fragment);
     }
-    pub fn delete_lines(&mut self, at_index: usize, count: usize) {
-        for _ in 0..count {
-            self.cells.remove(at_index);
-        }
-    }
-    pub fn serialize(&self) -> (Vec<TerminalCharacter>, Vec<usize>) {
-        let mut characters: Vec<TerminalCharacter> = vec![];
-        let mut newline_indices: Vec<usize> = vec![];
-        for line in &self.cells {
-            for character in line.iter().copied() {
-                characters.push(*character);
+    pub fn change_width(&mut self, new_width: usize) {
+        let mut characters: Vec<TerminalCharacter> = self.wrapped_fragments
+            .iter()
+            .fold(Vec::with_capacity(self.wrapped_fragments.len()), |mut characters, wrapped_fragment| {
+                characters.push(wrapped_fragment.characters.iter().copied());
+                characters
+            })
+            .into_iter()
+            .flatten()
+            .collect();
+        let mut wrapped_fragments = Vec::with_capacity(characters.len() / new_width);
+
+        while characters.len() > 0 {
+            if characters.len() > new_width {
+                wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..new_width).collect()));
+            } else {
+                wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
             }
-            let last_newline_index = newline_indices.last().copied().unwrap_or(0);
-            newline_indices.push(last_newline_index + line.len());
         }
-        newline_indices.pop(); // no newline at the end of the grid, TODO: better
-        (characters, newline_indices)
+        self.wrapped_fragments = wrapped_fragments;
     }
-    fn create_empty_line(&self) -> Vec<&'a TerminalCharacter> {
-        let mut empty_line = vec![];
-        for _ in 0..self.columns {
-            empty_line.push(&EMPTY_TERMINAL_CHARACTER);
-        }
-        empty_line
+    pub fn clear_after(&mut self, fragment_index: usize, column_index: usize) {
+        let fragment_to_clear = self.wrapped_fragments.get_mut(fragment_index).expect("fragment out of bounds");
+        fragment_to_clear.clear_after_and_including(column_index);
+        self.wrapped_fragments.truncate(fragment_index + 1);
     }
 }
-impl<'a> Debug for Grid <'a>{
+
+impl Debug for CanonicalLine {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for line in &self.cells {
+        for wrapped_fragment in &self.wrapped_fragments {
+            writeln!(f, "{:?}", wrapped_fragment)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct WrappedFragment {
+    pub characters: Vec<TerminalCharacter>
+}
+
+impl WrappedFragment {
+    pub fn new() -> Self {
+        WrappedFragment {
+            characters: vec![]
+        }
+    }
+    pub fn add_character(&mut self, terminal_character: TerminalCharacter, position_in_line: usize) {
+        if position_in_line == self.characters.len() {
+            self.characters.push(terminal_character);
+        } else {
+            // this is much more performant than remove/insert
+            self.characters.push(terminal_character);
+            self.characters.swap_remove(position_in_line);
+        }
+    }
+    pub fn from_vec(characters: Vec<TerminalCharacter>) -> Self {
+        WrappedFragment {
+            characters
+        }
+    }
+    pub fn clear_after_and_including(&mut self, character_index: usize) {
+        self.characters.truncate(character_index);
+    }
+}
+
+impl Debug for WrappedFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for character in &self.characters {
+            write!(f, "{:?}", character)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct CursorPosition {
+    line_index: (usize, usize), // (canonical line index, fragment index in line)
+    column_index: usize // 0 is the first character from the pane edge 
+}
+
+impl CursorPosition {
+    pub fn new() -> Self {
+        CursorPosition {
+            line_index: (0, 0),
+            column_index: 0
+        }
+    }
+    pub fn move_forward (&mut self, count: usize) {
+        // TODO: panic if out of bounds?
+        self.column_index += count;
+    }
+    pub fn move_backwards(&mut self, count: usize) {
+        self.column_index -= count;
+    }
+    pub fn move_to_next_linewrap(&mut self) {
+        self.line_index.1 += 1;
+    }
+    pub fn move_to_next_canonical_line(&mut self) {
+        self.line_index.0 += 1;
+    }
+    pub fn move_to_beginning_of_linewrap (&mut self) {
+        self.column_index = 0;
+    }
+    pub fn move_to_beginning_of_canonical_line(&mut self) {
+        self.column_index = 0;
+        self.line_index.1 = 0;
+    }
+    pub fn move_up_by_canonical_lines(&mut self, count: usize) {
+        let current_canonical_line_position = self.line_index.0;
+        if count > current_canonical_line_position {
+            self.line_index = (0, 0);
+        } else {
+            self.line_index = (current_canonical_line_position - count, 0);
+        }
+    }
+    pub fn move_to_canonical_line(&mut self, index: usize) {
+        self.line_index = (index, 0);
+    }
+    pub fn move_to_column(&mut self, col: usize) {
+        self.column_index = col;
+    }
+    pub fn reset(&mut self) {
+        self.column_index = 0;
+        self.line_index = (0, 0);
+    }
+}
+
+pub struct Scroll {
+    pub canonical_lines: Vec<CanonicalLine>, // TODO: unpubify
+    cursor_position: CursorPosition,
+    total_columns: usize,
+    lines_in_view: usize,
+    viewport_bottom_offset: Option<usize>,
+    scroll_region: Option<(usize, usize)> // start line, end line (if set, this is the area the will scroll)
+}
+
+impl Scroll {
+    pub fn new (total_columns: usize, lines_in_view: usize) -> Self {
+        let mut canonical_lines = vec![];
+        canonical_lines.push(CanonicalLine::new());
+        let cursor_position = CursorPosition::new();
+        Scroll {
+            canonical_lines: vec![CanonicalLine::new()], // The rest will be created by newlines explicitly
+            total_columns,
+            lines_in_view,
+            cursor_position, 
+            viewport_bottom_offset: None,
+            scroll_region: None,
+        }
+    }
+    pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
+        let mut lines: VecDeque<Vec<TerminalCharacter>> = VecDeque::new(); // TODO: with capacity lines_from_end?
+        let mut canonical_lines = self.canonical_lines.iter().rev();
+        let mut lines_to_skip = self.viewport_bottom_offset.unwrap_or(0);
+        'gather_lines: loop {
+            match canonical_lines.next() {
+                Some(current_canonical_line) => {
+                    for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
+                        let mut line: Vec<TerminalCharacter> = wrapped_fragment.characters.iter().copied().collect();
+                        if lines_to_skip > 0 {
+                            lines_to_skip -= 1;
+                        } else {
+                            for _ in line.len()..self.total_columns {
+                                // pad line if needed
+                                line.push(EMPTY_TERMINAL_CHARACTER);
+                            }
+                            lines.push_front(line);
+                        }
+                        if lines.len() == self.lines_in_view {
+                            break 'gather_lines;
+                        }
+                    }
+                },
+                None => break, // no more lines
+            }
+        }
+        if lines.len() < self.lines_in_view {
+            // pad lines in case we don't have enough scrollback to fill the view
+            let mut empty_line = vec![];
+            for _ in 0..self.total_columns {
+                empty_line.push(EMPTY_TERMINAL_CHARACTER);
+            }
+            for _ in lines.len()..self.lines_in_view {
+                // pad lines in case we didn't have enough
+                lines.push_back(empty_line.clone());
+            }
+        }
+        Vec::from(lines)
+    }
+    pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
+        let (canonical_line_position, wrapped_fragment_index_in_line) = self.cursor_position.line_index;
+        let cursor_position_in_line = self.cursor_position.column_index;
+        let current_line = self.canonical_lines.get_mut(canonical_line_position).expect("cursor out of bounds");
+        let current_wrapped_fragment = current_line.wrapped_fragments.get_mut(wrapped_fragment_index_in_line).expect("cursor out of bounds");
+
+        if cursor_position_in_line <= self.total_columns {
+            current_wrapped_fragment.add_character(terminal_character, cursor_position_in_line);
+            self.cursor_position.move_forward(1);
+        } else {
+            current_line.add_new_wrap(terminal_character);
+            self.cursor_position.move_to_next_linewrap();
+            self.cursor_position.move_to_beginning_of_linewrap();
+        }
+    }
+    pub fn add_canonical_line(&mut self) {
+        let current_canonical_line_index = self.cursor_position.line_index.0;
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            // the scroll region indices start at 1, so we need to adjust them
+            let scroll_region_top_index = scroll_region_top - 1;
+            let scroll_region_bottom_index = scroll_region_bottom - 1;
+            if current_canonical_line_index == scroll_region_bottom_index { // end of scroll region
+                // when we have a scroll region set and we're at its bottom
+                // we need to delete its first line, thus shifting all lines in it upwards
+                // then we add an empty line at its end which will be filled by the application
+                // controlling the scroll region (presumably filled by whatever comes next in the
+                // scroll buffer, but that's not something we control)
+                self.canonical_lines.remove(scroll_region_top_index);
+                self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
+                return;
+            }
+        }
+        if current_canonical_line_index == self.canonical_lines.len() - 1 {
+            let new_canonical_line = CanonicalLine::new();
+            self.canonical_lines.push(new_canonical_line);
+            self.cursor_position.move_to_next_canonical_line();
+            self.cursor_position.move_to_beginning_of_canonical_line();
+        } else if current_canonical_line_index < self.canonical_lines.len() - 1 {
+            self.cursor_position.move_to_next_canonical_line();
+            self.cursor_position.move_to_beginning_of_canonical_line();
+        } else {
+            panic!("cursor out of bounds, cannot add_canonical_line");
+        }
+    }
+    pub fn cursor_coordinates_on_screen(&self) -> (usize, usize) { // (x, y)
+        let (canonical_line_cursor_position, line_wrap_cursor_position) = self.cursor_position.line_index;
+        let x = self.cursor_position.column_index;
+        let mut y = 0;
+        let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
+        loop {
+            match indices_and_canonical_lines.next() {
+                Some((current_index, current_line)) => {
+                    if current_index == canonical_line_cursor_position {
+                        y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
+                        break;
+                    } else {
+                        y += current_line.wrapped_fragments.len();
+                    }
+
+                },
+                None => break,
+            }
+        }
+        let total_lines = self.canonical_lines.iter().fold(0, |total_lines, current_line| total_lines + current_line.wrapped_fragments.len()); // TODO: is this performant enough? should it be cached or kept track of?
+        let y = if total_lines < self.lines_in_view {
+            total_lines - y
+        } else {
+            self.lines_in_view - y
+        };
+        (x, y)
+    }
+    pub fn move_cursor_forward(&mut self, count: usize) {
+        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let current_cursor_column_position = self.cursor_position.column_index;
+        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
+        let current_fragment = current_canonical_line.wrapped_fragments.get_mut(current_line_wrap_position).expect("cursor out of bounds");
+        let move_count = if current_cursor_column_position + count > self.total_columns {
+            // move to last column in the current line wrap
+            self.total_columns - current_cursor_column_position
+        } else {
+            count
+        };
+        for _ in current_fragment.characters.len()..current_cursor_column_position + move_count {
+            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        self.cursor_position.move_forward(move_count);
+    }
+    pub fn move_cursor_back(&mut self, count: usize) {
+        let current_cursor_column_position = self.cursor_position.column_index;
+        if current_cursor_column_position < count {
+            self.cursor_position.move_to_beginning_of_linewrap();
+        } else {
+            self.cursor_position.move_backwards(count);
+        }
+    }
+    pub fn move_cursor_to_beginning_of_canonical_line(&mut self) {
+        self.cursor_position.move_to_beginning_of_canonical_line();
+    }
+    pub fn move_cursor_backwards(&mut self, count: usize) {
+        self.cursor_position.move_backwards(count);
+    }
+    pub fn move_cursor_up(&mut self, count: usize) {
+        self.cursor_position.move_up_by_canonical_lines(count);
+    }
+    pub fn change_size(&mut self, columns: usize, lines: usize) {
+        if self.scroll_region.is_none() {
+            for canonical_line in self.canonical_lines.iter_mut() {
+                canonical_line.change_width(columns);
+            }
+            let cursor_line = self.canonical_lines.get(self.cursor_position.line_index.0).expect("cursor out of bounds");
+            if cursor_line.wrapped_fragments.len() < self.cursor_position.line_index.1 {
+                self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len();
+            }
+        }
+        self.lines_in_view = lines;
+        self.total_columns = columns;
+    }
+    pub fn clear_canonical_line_right_of_cursor(&mut self) {
+        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let current_cursor_column_position = self.cursor_position.column_index;
+        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
+        current_canonical_line.clear_after(current_line_wrap_position, current_cursor_column_position);
+    }
+    pub fn clear_all_after_cursor(&mut self) {
+        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let current_cursor_column_position = self.cursor_position.column_index;
+        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
+        current_canonical_line.clear_after(current_line_wrap_position, current_cursor_column_position);
+        self.canonical_lines.truncate(current_canonical_line_index + 1);
+    }
+    pub fn clear_all(&mut self) {
+        self.canonical_lines.clear();
+        self.canonical_lines.push(CanonicalLine::new());
+        self.cursor_position.reset();
+    }
+    pub fn move_cursor_to(&mut self, line: usize, col: usize) {
+        if self.canonical_lines.len() > line {
+            self.cursor_position.move_to_canonical_line(line);
+        } else {
+            for _ in self.canonical_lines.len()..=line {
+                self.canonical_lines.push(CanonicalLine::new());
+            }
+            self.cursor_position.move_to_canonical_line(line);
+        }
+        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
+        let current_fragment = current_canonical_line.wrapped_fragments.get_mut(current_line_wrap_position).expect("cursor out of bounds");
+        for _ in current_fragment.characters.len()..col {
+            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        self.cursor_position.move_to_column(col);
+    }
+    pub fn set_scroll_region(&mut self, top_line: usize, bottom_line: usize) {
+        self.scroll_region = Some((top_line, bottom_line));
+        // TODO: clear linewraps in scroll region?
+    }
+    pub fn clear_scroll_region(&mut self) {
+        self.scroll_region = None;
+    }
+    pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            // the scroll region indices start at 1, so we need to adjust them
+            let scroll_region_top_index = scroll_region_top - 1;
+            let scroll_region_bottom_index = scroll_region_bottom - 1;
+            let current_canonical_line_index = self.cursor_position.line_index.0;
+            if current_canonical_line_index >= scroll_region_top_index &&
+                current_canonical_line_index <= scroll_region_bottom_index {
+                // when deleting lines inside the scroll region, we must make sure it stays the
+                // same size (and that other lines below it aren't shifted inside it)
+                // so we delete the current line(s) and add an empty line at the end of the scroll
+                // region
+                for _ in 0..count {
+                    self.canonical_lines.remove(current_canonical_line_index);
+                    self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
+                }
+            }
+        }
+    }
+    pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            // the scroll region indices start at 1, so we need to adjust them
+            let scroll_region_top_index = scroll_region_top - 1;
+            let scroll_region_bottom_index = scroll_region_bottom - 1;
+            let current_canonical_line_index = self.cursor_position.line_index.0;
+            if current_canonical_line_index >= scroll_region_top_index &&
+                current_canonical_line_index <= scroll_region_bottom_index {
+                // when adding empty lines inside the scroll region, we must make sure it stays the
+                // same size and that lines don't "leak" outside of it
+                // so we add an empty line where the cursor currently is, and delete the last line
+                // of the scroll region
+                for _ in 0..count {
+                    self.canonical_lines.remove(scroll_region_bottom_index);
+                    self.canonical_lines.insert(current_canonical_line_index, CanonicalLine::new());
+                }
+            }
+        }
+    }
+    pub fn move_viewport_up (&mut self, count: usize) {
+        if let Some(current_offset) = self.viewport_bottom_offset.as_mut() {
+            *current_offset += count;
+        } else {
+            self.viewport_bottom_offset = Some(count);
+        }
+
+    }
+    pub fn move_viewport_down (&mut self, count: usize) {
+        if let Some(current_offset) = self.viewport_bottom_offset.as_mut() {
+            if *current_offset > count {
+                *current_offset -= count;
+            } else {
+                self.viewport_bottom_offset = None;
+            }
+        }
+    }
+}
+
+impl Debug for Scroll {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for line in &self.canonical_lines {
             writeln!(f, "{:?}", line)?;
         }
         Ok(())
@@ -658,17 +979,13 @@ impl<'a> Debug for Grid <'a>{
 
 pub struct TerminalOutput {
     pub pid: RawFd,
-    pub characters: Vec<TerminalCharacter>,
+    pub scroll: Scroll,
     pub display_rows: u16,
     pub display_cols: u16,
     pub should_render: bool,
     pub scroll_up_count: Option<usize>,
     pub x_coords: u16,
     pub y_coords: u16,
-    cursor_position: usize,
-    newline_indices: Vec<usize>, // canonical line breaks we get from the vt interpreter
-    linebreak_indices: Vec<usize>, // linebreaks from line wrapping
-    scroll_region: Option<(usize, usize)>, // top line index / bottom line index
     pending_foreground_code: Option<AnsiCode>,
     pending_background_code: Option<AnsiCode>,
     pending_bold_code: Option<AnsiCode>,
@@ -699,14 +1016,10 @@ impl Rect for &mut TerminalOutput {
 
 impl TerminalOutput {
     pub fn new (pid: RawFd, ws: Winsize, x_coords: u16, y_coords: u16) -> TerminalOutput {
-        let characters = Vec::with_capacity(100000);
+        let scroll = Scroll::new(ws.ws_col as usize, ws.ws_row as usize);
         TerminalOutput {
             pid,
-            characters,
-            cursor_position: 0,
-            newline_indices: Vec::new(),
-            linebreak_indices: Vec::new(),
-            scroll_region: None,
+            scroll,
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
@@ -727,11 +1040,10 @@ impl TerminalOutput {
         }
     }
     pub fn handle_event(&mut self, event: VteEvent) {
-        // self.should_render = true; // TODO: more accurately
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
-                self.should_render = true; // TODO: more accurately
+                self.should_render = true;
             },
             VteEvent::Execute(byte) => {
                 self.execute(byte);
@@ -808,27 +1120,7 @@ impl TerminalOutput {
         self.should_render = true;
     }
     fn reflow_lines (&mut self) {
-        self.linebreak_indices.clear();
-        if self.scroll_region.is_some() {
-            // TODO: still do this for lines outside the scroll region?
-            return;
-        }
-
-        let mut newline_indices = self.newline_indices.iter();
-        let mut next_newline_index = newline_indices.next();
-
-        let mut x: u64 = 0;
-        for (i, _c) in self.characters.iter().enumerate() {
-            if next_newline_index == Some(&i) {
-                x = 0;
-                next_newline_index = newline_indices.next();
-            } else if x == self.display_cols as u64 && i <= self.cursor_position {
-                // TODO: maybe remove <= self.cursor_position? why not reflow lines after cursor?
-                self.linebreak_indices.push(i);
-                x = 0;
-            }
-            x += 1;
-        }
+        self.scroll.change_size(self.display_cols as usize, self.display_rows as usize);
     }
     pub fn buffer_as_vte_output(&mut self) -> Option<String> {
         if self.should_render {
@@ -844,6 +1136,9 @@ impl TerminalOutput {
                         // before they are corrected by the shell (for the prompt) or by reflowing
                         // lines
                         if let Some(new_styles) = character_styles.update_and_return_diff(&t_character.styles) {
+                            // the terminal keeps the previous styles as long as we're in the same
+                            // line, so we only want to update the new styles here (this also
+                            // includes resetting previous styles as needed)
                             vte_output = format!("{}{}", vte_output, new_styles);
                         }
                         vte_output.push(t_character.character);
@@ -857,170 +1152,19 @@ impl TerminalOutput {
             None
         }
     }
-    pub fn read_buffer_as_lines (&self) -> Vec<Vec<&TerminalCharacter>> {
-        if self.characters.len() == 0 {
-            let mut output = vec![];
-            let mut empty_line = vec![];
-            for _ in 0..self.display_cols {
-                empty_line.push(&EMPTY_TERMINAL_CHARACTER);
-            }
-            for _ in 0..self.display_rows as usize {
-                output.push(Vec::from(empty_line.clone()));
-            }
-            return output
-        }
-        let mut output: VecDeque<Vec<&TerminalCharacter>> = VecDeque::new();
-        let mut i = self.characters.len();
-        let mut current_line: VecDeque<&TerminalCharacter> = VecDeque::new();
-
-        let mut newline_indices = self.newline_indices.iter().rev();
-        let mut linebreak_indices = self.linebreak_indices.iter().rev();
-
-        let mut next_newline_index = newline_indices.next();
-        let mut next_linebreak_index = linebreak_indices.next();
-
-        let mut scroll_up_count = self.scroll_up_count.unwrap_or(0);
-
-        loop {
-            if let Some(newline_index) = next_newline_index {
-                if *newline_index == i {
-                    // pad line
-                    for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    if scroll_up_count > 0 {
-                        scroll_up_count -= 1;
-                        current_line.clear();
-                    } else {
-                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                    }
-                    next_newline_index = newline_indices.next();
-                    continue; // we continue here in case there's another new line in this index
-                }
-            }
-            if let Some(linebreak_index) = next_linebreak_index {
-                if *linebreak_index == i {
-                    // pad line
-                    if current_line.len() > 0 {
-                        for _ in current_line.len()..self.display_cols as usize {
-                            current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                        }
-                        if scroll_up_count > 0 {
-                            scroll_up_count -= 1;
-                            current_line.clear();
-                        } else {
-                            output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                        }
-                    }
-                    next_linebreak_index = linebreak_indices.next();
-                    continue; // we continue here in case there's another new line in this index
-                }
-            }
-            if output.len() == self.display_rows as usize {
-                if current_line.len() > 0 {
-                    for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    if scroll_up_count > 0 {
-                        scroll_up_count -= 1;
-                        current_line.clear();
-                    } else {
-                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                    }
-                }
-                break;
-            }
-            i -= 1;
-            let terminal_character = self.characters.get(i).unwrap();
-            current_line.push_front(terminal_character);
-            if i == 0 {
-                if current_line.len() > 0 {
-                    for _ in current_line.len()..self.display_cols as usize {
-                        current_line.push_back(&EMPTY_TERMINAL_CHARACTER);
-                    }
-                    if scroll_up_count > 0 {
-                        scroll_up_count -= 1;
-                        current_line.clear();
-                    } else {
-                        output.push_front(Vec::from(current_line.drain(..).collect::<Vec<&TerminalCharacter>>()));
-                    }
-                }
-                break;
-            }
-        }
-        if output.len() < self.display_rows as usize {
-            // pad lines at the bottom
-            let mut empty_line = vec![];
-            for _ in 0..self.display_cols {
-                empty_line.push(&EMPTY_TERMINAL_CHARACTER);
-            }
-            for _ in output.len()..self.display_rows as usize {
-                if scroll_up_count > 0 {
-                    scroll_up_count -= 1;
-                    empty_line.clear(); // TODO: better
-                } else {
-                    output.push_back(Vec::from(empty_line.clone()));
-                }
-            }
-        }
-        Vec::from(output)
+    pub fn read_buffer_as_lines (&self) -> Vec<Vec<TerminalCharacter>> {
+        self.scroll.as_character_lines()
     }
     pub fn cursor_coordinates (&self) -> (usize, usize) { // (x, y)
-        let mut newline_indices = self.newline_indices.iter().rev();
-        let mut linebreak_indices = self.linebreak_indices.iter().rev();
-
-        let mut next_newline = newline_indices.next();
-        let mut next_linebreak = linebreak_indices.next();
-
-        let mut lines_from_end = 0;
-        let mut current_line_start_index = 0;
-        loop {
-            match max(next_newline, next_linebreak) {
-                Some(next_line_index) => {
-                    if next_line_index <= &self.cursor_position {
-                        current_line_start_index = *next_line_index;
-                        break;
-                    } else {
-                        lines_from_end += 1;
-                        if Some(next_line_index) == next_newline {
-                            next_newline = newline_indices.next();
-                        } else if Some(next_line_index) == next_linebreak {
-                            next_linebreak = linebreak_indices.next();
-                        }
-                    }
-                },
-                None => break,
-            }
-        }
-        let total_rows = self.newline_indices.len() + self.linebreak_indices.len();
-        let index_of_last_row = if total_rows < self.display_rows as usize {
-            total_rows
-        } else {
-            self.display_rows as usize - 1
-        };
-        let y = index_of_last_row - lines_from_end;
-        let x = self.cursor_position - current_line_start_index;
-        (x, y)
+        self.scroll.cursor_coordinates_on_screen()
     }
     pub fn scroll_up(&mut self, count: usize) {
-        if let Some(scroll_up_count) = self.scroll_up_count.as_mut() {
-            *scroll_up_count += count;
-        } else {
-            self.scroll_up_count = Some(count);
-        }
-        // TODO: do not render if we're at the top line
+        self.scroll.move_viewport_up(count);
         self.should_render = true;
     }
     pub fn scroll_down(&mut self, count: usize) {
-        if let Some(scroll_up_count) = self.scroll_up_count.as_mut() {
-            if *scroll_up_count > count {
-                *scroll_up_count -= count;
-                self.should_render = true;
-            } else {
-                self.scroll_up_count = None;
-                self.should_render = true;
-            }
-        }
+        self.scroll.move_viewport_down(count);
+        self.should_render = true;
     }
     pub fn clear_scroll(&mut self) {
         if self.scroll_up_count.is_some() {
@@ -1028,100 +1172,16 @@ impl TerminalOutput {
         }
         self.scroll_up_count = None;
     }
-    fn index_of_end_of_canonical_line(&self, index_in_line: usize) -> usize {
-        let newlines = self.newline_indices.iter().rev();
-        let mut index_of_end_of_canonical_line = self.characters.len();
-        for line_index in newlines {
-            if *line_index <= index_in_line {
-                break
-            }
-            if index_of_end_of_canonical_line > *line_index {
-                index_of_end_of_canonical_line = *line_index;
-            }
-        }
-        index_of_end_of_canonical_line
-    }
-    fn index_of_beginning_of_line (&self, index_in_line: usize) -> usize {
-        let last_newline_index = self.newline_indices.iter().rev().find(|&&n_i| n_i <= index_in_line).unwrap_or(&0);
-        let last_linebreak_index = self.linebreak_indices.iter().rev().find(|&&l_i| l_i <= index_in_line).unwrap_or(&0);
-        max(*last_newline_index, *last_linebreak_index)
-    }
-    fn canonical_line_position_of(&self, index_in_line: usize) -> usize {
-        // the canonical line position, 0 being the first line in the buffer, 1 the second, etc.
-        let position_from_end = self.newline_indices.iter().rev().position(|n_i| *n_i <= index_in_line).unwrap_or(self.newline_indices.len());
-        self.newline_indices.len() - position_from_end
-    }
-    fn get_line_index_on_screen (&self, position_in_characters: usize) -> Option<usize> {
-        let mut newline_indices = self.newline_indices.iter().rev();
-        let mut linebreak_indices = self.linebreak_indices.iter().rev();
-
-        let mut next_newline = newline_indices.next();
-        let mut next_linebreak = linebreak_indices.next();
-
-        let mut lines_from_end = 0;
-        loop {
-            match max(next_newline, next_linebreak) {
-                Some(next_line_index) => {
-                    if *next_line_index <= position_in_characters {
-                        break;
-                    } else {
-                        lines_from_end += 1;
-                        if Some(next_line_index) == next_newline {
-                            next_newline = newline_indices.next();
-                        } else if Some(next_line_index) == next_linebreak {
-                            next_linebreak = linebreak_indices.next();
-                        }
-                    }
-                },
-                None => break,
-            }
-        }
-
-        let total_rows = self.newline_indices.len() + self.linebreak_indices.len();
-        let row_count_on_screen = if total_rows < self.display_rows as usize {
-            total_rows
-        } else {
-            self.display_rows as usize
-        };
-
-        if lines_from_end > row_count_on_screen {
-            None
-        } else {
-            Some(row_count_on_screen - lines_from_end)
-        }
-    }
     fn add_newline (&mut self) {
-        let nearest_line_end = self.index_of_end_of_canonical_line(self.cursor_position);
-        let current_line_index_on_screen = self.get_line_index_on_screen(self.cursor_position);
-        if nearest_line_end == self.characters.len() {
-            self.newline_indices.push(nearest_line_end);
-            self.cursor_position = nearest_line_end;
-        } else if let Some(scroll_region) = self.scroll_region {
-            if current_line_index_on_screen == Some(scroll_region.1 - 1) { // end of scroll region
-                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-                grid.delete_lines(scroll_region.0 as usize - 1, 1); // -1 because scroll_region is indexed at 1
-                grid.add_empty_lines(scroll_region.1 as usize - 1, 1); // -1 because scroll_region is indexed at 1
-                let (characters, newline_indices) = grid.serialize();
-                self.newline_indices = newline_indices;
-                self.characters = characters;
-                self.reflow_lines();
-            } else {
-                self.cursor_position = nearest_line_end;
-            }
-        } else {
-            // we shouldn't add a new line in the middle of the text
-            // in this case, we'll move to the next existing line and it
-            // will be overriden as we print on it
-            self.cursor_position = nearest_line_end;
-        }
+        self.scroll.add_canonical_line(); // TODO: handle scroll region
         self.reset_all_ansi_codes();
-
         self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
-        let last_newline_index = self.index_of_beginning_of_line(self.cursor_position);
-        self.cursor_position = last_newline_index;
-        self.should_render = true;
+        self.scroll.move_cursor_to_beginning_of_canonical_line();
+    }
+    fn move_cursor_backwards(&mut self, count: usize) {
+        self.scroll.move_cursor_backwards(count);
     }
     fn reset_all_ansi_codes(&mut self) {
         self.pending_foreground_code = None;
@@ -1139,7 +1199,7 @@ impl TerminalOutput {
 }
 
 fn debug_log_to_file (message: String, pid: RawFd) {
-    if pid == 3 {
+    if pid == 0 {
         use std::fs::OpenOptions;
         use std::io::prelude::*;
         let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
@@ -1168,42 +1228,14 @@ impl vte::Perform for TerminalOutput {
                 strike: self.pending_strike_code,
             }
         };
-
-        let length_of_characters = self.characters.len();
-        let current_character_capacity = self.characters.capacity();
-
-        if current_character_capacity <= self.characters.len() {
-            self.characters.reserve(current_character_capacity);
-        }
-
-        if length_of_characters > self.cursor_position {
-            // this is a little hacky but significantly more performant
-            // than removing self.cursor_position and then inserting terminal_character
-            self.characters.push(terminal_character);
-            self.characters.swap_remove(self.cursor_position);
-            if !self.newline_indices.contains(&(self.cursor_position + 1)) {
-                // advancing the cursor beyond the borders of the line has to be done explicitly
-                self.cursor_position += 1;
-            }
-        } else {
-            for _ in length_of_characters..self.cursor_position {
-                self.characters.push(EMPTY_TERMINAL_CHARACTER);
-            };
-            self.characters.push(terminal_character);
-            let start_of_last_line = max(self.newline_indices.last(), self.linebreak_indices.last()).unwrap_or(&0);
-            let difference_from_last_newline = self.cursor_position - start_of_last_line;
-            if difference_from_last_newline == self.display_cols as usize && self.scroll_region.is_none() {
-                self.linebreak_indices.push(self.cursor_position);
-            }
-            self.cursor_position += 1;
-        }
+        self.scroll.add_character(terminal_character);
     }
 
     fn execute(&mut self, byte: u8) {
         if byte == 13 { // 0d, carriage return
             self.move_to_beginning_of_line();
         } else if byte == 08 { // backspace
-            self.cursor_position -= 1;
+            self.move_cursor_backwards(1);
         } else if byte == 10 { // 0a, newline
             self.add_newline();
         }
@@ -1448,129 +1480,43 @@ impl vte::Perform for TerminalOutput {
             }
         } else if c == 'C' { // move cursor forward
             let move_by = params[0] as usize;
-            let closest_newline = self.newline_indices.iter().find(|x| x > &&self.cursor_position).copied();
-            let closest_linebreak = self.linebreak_indices.iter().find(|x| x > &&self.cursor_position).copied();
-            let max_move_position = match (closest_newline, closest_linebreak) {
-                (Some(closest_newline), Some(closest_linebreak)) => {
-                    ::std::cmp::min(
-                        closest_newline,
-                        closest_linebreak
-                    )
-                },
-                (Some(closest_newline), None) => {
-                    closest_newline
-                },
-                (None, Some(closest_linebreak)) => {
-                    closest_linebreak
-                },
-                (None, None) => {
-                    let last_line_start = ::std::cmp::max(self.newline_indices.last(), self.linebreak_indices.last()).unwrap_or(&0);
-                    let position_in_last_line = self.cursor_position - last_line_start;
-                    let columns_from_last_line_end = self.display_cols as usize - position_in_last_line;
-                    self.cursor_position + columns_from_last_line_end
-                }
-            };
-            if self.cursor_position + move_by < max_move_position {
-                self.cursor_position += move_by;
-            } else {
-                self.cursor_position = max_move_position;
-            }
-
+            self.scroll.move_cursor_forward(move_by);
         } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
-                let newlines = self.newline_indices.iter().rev();
-                let mut delete_until = self.characters.len();
-                for newline_index in newlines {
-                    if newline_index <= &self.cursor_position {
-                        break;
-                    }
-                    delete_until = *newline_index;
-                }
-                // TODO: better
-                for i in self.cursor_position..delete_until {
-                    self.characters[i] = EMPTY_TERMINAL_CHARACTER.clone();
-                }
+                self.scroll.clear_canonical_line_right_of_cursor();
             }
             // TODO: implement 1 and 2
         } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
-                if let Some(position_of_first_newline_index_to_delete) = self.newline_indices.iter().position(|&ni| ni > self.cursor_position) {
-                    self.newline_indices.truncate(position_of_first_newline_index_to_delete);
-                }
-                if let Some(position_of_first_linebreak_index_to_delete) = self.linebreak_indices.iter().position(|&li| li > self.cursor_position) {
-                    self.newline_indices.truncate(position_of_first_linebreak_index_to_delete);
-                }
-                self.characters.truncate(self.cursor_position + 1);
+                self.scroll.clear_all_after_cursor();
             } else if params[0] == 2 {
-                // TODO: this also deletes all the scrollback buffer, it needs to be adjusted
-                // for scrolling
-                self.characters.clear();
-                self.linebreak_indices.clear();
-                self.newline_indices.clear();
+                self.scroll.clear_all();
             }
+            // TODO: implement 1
         } else if c == 'H' { // goto row/col
             let (row, col) = if params.len() == 1 {
                 (params[0] as usize, 0) // TODO: is this always correct ?
             } else {
                 (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
             };
-            if row == 0 {
-                self.cursor_position = col;
-            } else if let Some(index_of_start_of_row) = self.newline_indices.get(row - 1) {
-                self.cursor_position = index_of_start_of_row + col;
-            } else {
-                let start_of_last_line = *self.newline_indices.last().unwrap_or(&0);
-                let num_of_lines_to_add = row - self.newline_indices.len();
-                for i in 0..num_of_lines_to_add {
-                    self.newline_indices.push(start_of_last_line + ((i + 1) * self.display_cols as usize));
-                }
-                let index_of_start_of_row = self.newline_indices.get(row - 1).unwrap();
-                self.cursor_position = index_of_start_of_row + col;
-            }
+            self.scroll.move_cursor_to(row, col);
         } else if c == 'A' { // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
-            let newlines = self.newline_indices.iter().rev();
-            let mut position_in_line = None;
-            let mut lines_traversed = 0;
-            for newline_index in newlines {
-                if position_in_line.is_some() {
-                    lines_traversed += 1;
-                }
-                if newline_index < &self.cursor_position && position_in_line.is_none() {
-                    // this is the current cursor line
-                    position_in_line = Some(self.cursor_position - newline_index);
-                }
-                if lines_traversed == move_up_count {
-                    self.cursor_position = newline_index + position_in_line.unwrap();
-                    return;
-                    // break;
-                }
-            }
-            // if we reached this point, we were asked to move more lines than we have
-            // so let's move the maximum before slipping off-screen
-            // TODO: this is buggy and moves to the first line rather than the first line on screen
-            // fix this
-            self.cursor_position = self.newline_indices.iter().next().unwrap_or(&0) + position_in_line.unwrap_or(0);
+            self.scroll.move_cursor_up(move_up_count as usize);
         } else if c == 'D' {
-            // move cursor backwards, stop at left edge of screen
-            let reduce_by = if params[0] == 0 { 1 } else { params[0] as usize };
-            let beginning_of_current_line = self.index_of_beginning_of_line(self.cursor_position);
-            let max_reduce = self.cursor_position - beginning_of_current_line;
-            if reduce_by > max_reduce {
-                self.cursor_position -= max_reduce;
-            } else {
-                self.cursor_position -= reduce_by;
-            }
+            let move_back_count = if params[0] == 0 { 1 } else { params[0] as usize };
+            self.scroll.move_cursor_back(move_back_count);
         } else if c == 'l' {
             // TBD
         } else if c == 'h' {
             // TBD
         } else if c == 'r' {
             if params.len() > 1 {
-                self.scroll_region = Some((params[0] as usize, params[1] as usize));
-                self.reflow_lines(); // TODO: this clears the linebreaks, what about stuff outside the scroll region?
+                let top_line_index = params[0] as usize;
+                let bottom_line_index = params[1] as usize;
+                self.scroll.set_scroll_region(top_line_index, bottom_line_index);
             } else {
-                self.scroll_region = None;
+                self.scroll.clear_scroll_region();
             }
         } else if c == 't' {
             // TBD - title?
@@ -1580,30 +1526,12 @@ impl vte::Perform for TerminalOutput {
             // TBD - identify terminal
         } else if c == 'M' {
             // delete lines if currently inside scroll region
-            if let Some(scroll_region) = self.scroll_region {
-                let line_count_to_delete = if params[0] == 0 { 1 } else { params[0] as usize };
-                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-                let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
-                grid.add_empty_lines(scroll_region.1, line_count_to_delete);
-                grid.delete_lines(position_of_current_line, line_count_to_delete);
-                let (characters, newline_indices) = grid.serialize();
-                self.characters = characters;
-                self.newline_indices = newline_indices;
-                self.reflow_lines();
-            }
+            let line_count_to_delete = if params[0] == 0 { 1 } else { params[0] as usize };
+            self.scroll.delete_lines_in_scroll_region(line_count_to_delete);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
-            if let Some(scroll_region) = self.scroll_region {
-                let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
-                let mut grid = Grid::new(&self.characters, &self.newline_indices, self.display_cols as usize, self.display_rows as usize);
-                let position_of_current_line = self.canonical_line_position_of(self.cursor_position);
-                grid.add_empty_lines(position_of_current_line, line_count_to_add as usize);
-                grid.delete_lines(scroll_region.1, line_count_to_add);
-                let (characters, newline_indices) = grid.serialize();
-                self.characters = characters;
-                self.newline_indices = newline_indices;
-                self.reflow_lines();
-            }
+            let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
+            self.scroll.add_empty_lines_in_scroll_region(line_count_to_add);
         } else {
             println!("unhandled csi: {:?}->{:?}", c, params);
             panic!("aaa!!!");
