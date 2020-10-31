@@ -17,7 +17,7 @@ Some decisions that should always be brought to the quorum of members:
 
 ## Role of the Arbiter
 The Arbiter is a member of the quorum who serves as a tie breaker in votes and also has veto privileges for the votes themselves. Both of these should be used as seldom as possible and preferably not at all.
-Once the organization reaches 10 members, a reasonable and achievable process must be established in order to replace the Arbiter if the need arises (for example: a majority vote of members can replace the Arbiter with another candidate).
+Once the organization reaches 10 members, a reasonable and achievable process must be established in order to replace the Arbiter if the need arises (for example: a majority vote of members can replace the Arbiter with another candidate). In any case, the Arbiter has to be an organization member.
 
 ## Current Organization Members
 * Aram Drevekenin <aram@poor.dev> (Arbiter)
