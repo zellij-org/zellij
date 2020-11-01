@@ -261,6 +261,19 @@ impl CharacterStyles {
         }
         diff
     }
+    pub fn reset_all(&mut self) {
+        self.foreground = Some(AnsiCode::Reset);
+        self.background = Some(AnsiCode::Reset);
+        self.bold = Some(AnsiCode::Reset);
+        self.dim = Some(AnsiCode::Reset);
+        self.italic = Some(AnsiCode::Reset);
+        self.underline = Some(AnsiCode::Reset);
+        self.slow_blink = Some(AnsiCode::Reset);
+        self.fast_blink = Some(AnsiCode::Reset);
+        self.reverse = Some(AnsiCode::Reset);
+        self.hidden = Some(AnsiCode::Reset);
+        self.strike = Some(AnsiCode::Reset);
+    }
 }
 
 impl Display for CharacterStyles {
@@ -691,7 +704,7 @@ impl CursorPosition {
 }
 
 pub struct Scroll {
-    pub canonical_lines: Vec<CanonicalLine>, // TODO: unpubify
+    canonical_lines: Vec<CanonicalLine>,
     cursor_position: CursorPosition,
     total_columns: usize,
     lines_in_view: usize,
@@ -988,17 +1001,7 @@ pub struct TerminalOutput {
     pub should_render: bool,
     pub x_coords: u16,
     pub y_coords: u16,
-    pending_foreground_code: Option<AnsiCode>,
-    pending_background_code: Option<AnsiCode>,
-    pending_bold_code: Option<AnsiCode>,
-    pending_dim_code: Option<AnsiCode>,
-    pending_italic_code: Option<AnsiCode>,
-    pending_underline_code: Option<AnsiCode>,
-    pending_slow_blink_code: Option<AnsiCode>,
-    pending_fast_blink_code: Option<AnsiCode>,
-    pending_reverse_code: Option<AnsiCode>,
-    pending_hidden_code: Option<AnsiCode>,
-    pending_strike_code: Option<AnsiCode>,
+    pending_styles: CharacterStyles,
 }
 
 impl Rect for &mut TerminalOutput {
@@ -1019,23 +1022,14 @@ impl Rect for &mut TerminalOutput {
 impl TerminalOutput {
     pub fn new (pid: RawFd, ws: Winsize, x_coords: u16, y_coords: u16) -> TerminalOutput {
         let scroll = Scroll::new(ws.ws_col as usize, ws.ws_row as usize);
+        let pending_styles = CharacterStyles::new();
         TerminalOutput {
             pid,
             scroll,
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
-            pending_foreground_code: None,
-            pending_background_code: None,
-            pending_bold_code: None,
-            pending_dim_code: None,
-            pending_italic_code: None,
-            pending_underline_code: None,
-            pending_slow_blink_code: None,
-            pending_fast_blink_code: None,
-            pending_reverse_code: None,
-            pending_hidden_code: None,
-            pending_strike_code: None,
+            pending_styles,
             x_coords,
             y_coords,
         }
@@ -1130,7 +1124,7 @@ impl TerminalOutput {
             let display_cols = &self.display_cols;
             let mut character_styles = CharacterStyles::new();
             for (row, line) in buffer_lines.iter().enumerate() {
-                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, self.y_coords as usize + row + 1, self.x_coords + 1); // goto row/col
+                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, self.y_coords as usize + row + 1, self.x_coords + 1); // goto row/col and reset styles
                 for (col, t_character) in line.iter().enumerate() {
                     if (col as u16) < *display_cols {
                         // in some cases (eg. while resizing) some characters will spill over
@@ -1183,17 +1177,7 @@ impl TerminalOutput {
         self.scroll.move_cursor_backwards(count);
     }
     fn reset_all_ansi_codes(&mut self) {
-        self.pending_foreground_code = None;
-        self.pending_background_code = None;
-        self.pending_bold_code = None;
-        self.pending_dim_code = None;
-        self.pending_italic_code = None;
-        self.pending_underline_code = None;
-        self.pending_slow_blink_code = None;
-        self.pending_fast_blink_code = None;
-        self.pending_reverse_code = None;
-        self.pending_hidden_code = None;
-        self.pending_strike_code = None;
+        self.pending_styles.clear();
     }
 }
 
@@ -1213,19 +1197,7 @@ impl vte::Perform for TerminalOutput {
         // is a little faster
         let terminal_character = TerminalCharacter {
             character: c,
-            styles: CharacterStyles {
-                foreground: self.pending_foreground_code,
-                background: self.pending_background_code,
-                bold: self.pending_bold_code,
-                dim: self.pending_dim_code,
-                italic: self.pending_italic_code,
-                underline: self.pending_underline_code,
-                slow_blink: self.pending_slow_blink_code,
-                fast_blink: self.pending_fast_blink_code,
-                reverse: self.pending_reverse_code,
-                hidden: self.pending_hidden_code,
-                strike: self.pending_strike_code,
-            }
+            styles: self.pending_styles,
         };
         self.scroll.add_character(terminal_character);
     }
@@ -1260,220 +1232,210 @@ impl vte::Perform for TerminalOutput {
         if c == 'm' {
             if params.is_empty() || params[0] == 0 {
                 // reset all
-                self.pending_foreground_code = Some(AnsiCode::Reset);
-                self.pending_background_code = Some(AnsiCode::Reset);
-                self.pending_bold_code = Some(AnsiCode::Reset);
-                self.pending_dim_code = Some(AnsiCode::Reset);
-                self.pending_italic_code = Some(AnsiCode::Reset);
-                self.pending_underline_code = Some(AnsiCode::Reset);
-                self.pending_slow_blink_code = Some(AnsiCode::Reset);
-                self.pending_fast_blink_code = Some(AnsiCode::Reset);
-                self.pending_reverse_code = Some(AnsiCode::Reset);
-                self.pending_hidden_code = Some(AnsiCode::Reset);
-                self.pending_strike_code = Some(AnsiCode::Reset);
+                self.pending_styles.reset_all();
             } else if params[0] == 39 {
-                self.pending_foreground_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Reset));
             } else if params[0] == 49 {
-                self.pending_background_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::Reset));
             } else if params[0] == 21 {
                 // reset bold
-                self.pending_bold_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Reset));
             } else if params[0] == 22 {
                 // reset bold and dim
-                self.pending_bold_code = Some(AnsiCode::Reset);
-                self.pending_dim_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Reset));
+                self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Reset));
             } else if params[0] == 23 {
                 // reset italic
-                self.pending_italic_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Reset));
             } else if params[0] == 24 {
                 // reset underline
-                self.pending_underline_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Reset));
             } else if params[0] == 25 {
                 // reset blink
-                self.pending_slow_blink_code = Some(AnsiCode::Reset);
-                self.pending_fast_blink_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Reset));
+                self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Reset));
             } else if params[0] == 27 {
                 // reset reverse
-                self.pending_reverse_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Reset));
             } else if params[0] == 28 {
                 // reset hidden
-                self.pending_hidden_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Reset));
             } else if params[0] == 29 {
                 // reset strike
-                self.pending_strike_code = Some(AnsiCode::Reset);
+                self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Reset));
             } else if params[0] == 38 {
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_foreground_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_foreground_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_foreground_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 48 {
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_background_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_background_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_background_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 1 {
                 // bold
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_bold_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_bold_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_bold_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 2 {
                 // dim
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_dim_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_dim_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_dim_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 3 {
                 // italic
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_italic_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_italic_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_italic_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 4 {
                 // underline
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_underline_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_underline_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_underline_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 5 {
                 // blink slow
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_slow_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_slow_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_slow_blink_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 6 {
                 // blink fast
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_fast_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_fast_blink_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_fast_blink_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 7 {
                 // reverse
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_reverse_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_reverse_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_reverse_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 8 {
                 // hidden
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_hidden_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_hidden_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_hidden_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 9 {
                 // strike
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_strike_code = Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16))));
+                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
                     },
                     (Some(param1), None) => {
-                        self.pending_strike_code = Some(AnsiCode::Code((Some(*param1 as u16), None)));
+                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_strike_code = Some(AnsiCode::Code((None, None)));
+                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 30 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Black));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Black)));
             } else if params[0] == 31 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Red));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Red)));
             } else if params[0] == 32 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Green));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Green)));
             } else if params[0] == 33 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Yellow));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
             } else if params[0] == 34 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Blue));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue)));
             } else if params[0] == 35 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Magenta));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
             } else if params[0] == 36 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::Cyan));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
             } else if params[0] == 37 {
-                self.pending_foreground_code = Some(AnsiCode::NamedColor(NamedColor::White));
+                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else if params[0] == 40 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Black));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Black)));
             } else if params[0] == 41 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Red));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Red)));
             } else if params[0] == 42 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Green));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Green)));
             } else if params[0] == 43 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Yellow));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
             } else if params[0] == 44 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Blue));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
             } else if params[0] == 45 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Magenta));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
             } else if params[0] == 46 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::Cyan));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
             } else if params[0] == 47 {
-                self.pending_background_code = Some(AnsiCode::NamedColor(NamedColor::White));
+                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
                 debug_log_to_file(format!("unhandled csi m code {:?}", params), self.pid);
             }
