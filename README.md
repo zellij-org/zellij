@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="mosaic-logo-hexagon.png" alt="logo" width="200">
+  <img src="logo.png" alt="logo" width="200">
   <br>
   Mosaic
   <br>
