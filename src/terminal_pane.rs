@@ -966,6 +966,9 @@ impl Scroll {
             }
         }
     }
+    pub fn reset_viewport (&mut self) {
+        self.viewport_bottom_offset = None;
+    }
 }
 
 impl Debug for Scroll {
@@ -983,7 +986,6 @@ pub struct TerminalOutput {
     pub display_rows: u16,
     pub display_cols: u16,
     pub should_render: bool,
-    pub scroll_up_count: Option<usize>,
     pub x_coords: u16,
     pub y_coords: u16,
     pending_foreground_code: Option<AnsiCode>,
@@ -1023,7 +1025,6 @@ impl TerminalOutput {
             display_rows: ws.ws_row,
             display_cols: ws.ws_col,
             should_render: true,
-            scroll_up_count: None,
             pending_foreground_code: None,
             pending_background_code: None,
             pending_bold_code: None,
@@ -1167,10 +1168,8 @@ impl TerminalOutput {
         self.should_render = true;
     }
     pub fn clear_scroll(&mut self) {
-        if self.scroll_up_count.is_some() {
-            self.should_render = true;
-        }
-        self.scroll_up_count = None;
+        self.scroll.reset_viewport();
+        self.should_render = true;
     }
     fn add_newline (&mut self) {
         self.scroll.add_canonical_line(); // TODO: handle scroll region
