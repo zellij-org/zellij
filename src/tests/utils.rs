@@ -1,12 +1,12 @@
 use ::nix::pty::Winsize;
-use crate::TerminalOutput;
+use crate::terminal_pane::TerminalPane;
 
 pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize) -> Vec<String> {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
     let x = 0;
     let y = 0;
-    let mut terminal_output = TerminalOutput::new(main_pid, *win_size, x, y);
+    let mut terminal_output = TerminalPane::new(main_pid, *win_size, x, y);
 
     let mut snapshots = vec![];
     for frame in output_frames.iter() {

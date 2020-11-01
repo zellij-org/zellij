@@ -8,27 +8,17 @@ mod screen;
 mod boundaries;
 
 use std::io::{Read, Write};
-use ::std::thread;
-
-use std::os::unix::net::{UnixStream, UnixListener};
-use std::io::prelude::*;
-use serde::{Serialize, Deserialize};
-
-use crate::os_input_output::{get_os_input, OsApi};
-use crate::terminal_pane::TerminalOutput;
-use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
-use crate::screen::{Screen, ScreenInstruction};
-use std::path::{Path, PathBuf};
-use std::fs::remove_file;
+use std::thread;
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
+use serde::{Serialize, Deserialize};
 use structopt::StructOpt;
 
-// sigwinch stuff
-use ::signal_hook::iterator::Signals;
-
-pub type OnSigWinch = dyn Fn(Box<dyn Fn()>) + Send;
-pub type SigCleanup = dyn Fn() + Send;
+use crate::os_input_output::{get_os_input, OsApi};
+use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
+use crate::screen::{Screen, ScreenInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -52,31 +42,12 @@ pub struct Opt {
     open_file: Option<PathBuf>
 }
 
-fn debug_log_to_file (message: String) {
+fn _debug_log_to_file (message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
     let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
-}
-
-pub fn sigwinch() -> (Box<OnSigWinch>, Box<SigCleanup>) {
-    let signals = Signals::new(&[signal_hook::SIGWINCH]).unwrap();
-    let on_winch = {
-        let signals = signals.clone();
-        move |cb: Box<dyn Fn()>| {
-            for signal in signals.forever() {
-                match signal {
-                    signal_hook::SIGWINCH => cb(),
-                    _ => unreachable!(),
-                }
-            }
-        }
-    };
-    let cleanup = move || {
-        signals.close();
-    };
-    (Box::new(on_winch), Box::new(cleanup))
 }
 
 pub fn main() {
@@ -217,14 +188,14 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
     // because otherwise the app will hang. Need to fix this so it both
     // listens to the ipc-bus and is able to quit cleanly
     #[cfg(not(test))]
-    let ipc_thread = thread::Builder::new()
+    let _ipc_thread = thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             move || {
-                remove_file("/tmp/mosaic").ok();
-                let listener = UnixListener::bind("/tmp/mosaic").expect("could not listen on ipc socket");
+                ::std::fs::remove_file("/tmp/mosaic").ok();
+                let listener = ::std::os::unix::net::UnixListener::bind("/tmp/mosaic").expect("could not listen on ipc socket");
 
                 for stream in listener.incoming() {
                     match stream {
@@ -250,7 +221,6 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                         }
                         Err(err) => {
                             panic!("err {:?}", err);
-                            break;
                         }
                     }
                 }

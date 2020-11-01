@@ -5,11 +5,19 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Sender, Receiver};
 
 use crate::os_input_output::OsApi;
-use crate::terminal_pane::TerminalOutput;
+use crate::terminal_pane::TerminalPane;
 use crate::pty_bus::{VteEvent, PtyInstruction};
 use crate::boundaries::Boundaries;
 
-fn debug_log_to_file (message: String) {
+/*
+ * Screen
+ *
+ * this holds multiple panes (currently terminal panes) which are currently displayed on screen
+ * it tracks their coordinates (x/y) and size, as well as how they should be resized
+ *
+ */
+
+fn _debug_log_to_file (message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
     let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
@@ -69,7 +77,7 @@ pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
     full_screen_ws: Winsize,
-    terminals: BTreeMap<RawFd, TerminalOutput>, // BTreeMap because we need a predictable order when changing focus
+    terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
 }
@@ -89,7 +97,7 @@ impl Screen {
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
-            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x, y);
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
@@ -110,7 +118,7 @@ impl Screen {
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&active_terminal_ws);
             let bottom_half_y = active_terminal_y_coords + top_winsize.ws_row + 1;
-            let new_terminal = TerminalOutput::new(pid, bottom_winsize, active_terminal_x_coords, bottom_half_y);
+            let new_terminal = TerminalPane::new(pid, bottom_winsize, active_terminal_x_coords, bottom_half_y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, bottom_winsize.ws_col, bottom_winsize.ws_row);
 
             {
@@ -130,7 +138,7 @@ impl Screen {
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
-            let new_terminal = TerminalOutput::new(pid, self.full_screen_ws.clone(), x, y);
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
@@ -151,7 +159,7 @@ impl Screen {
             };
             let (left_winszie, right_winsize) = split_vertically_with_gap(&active_terminal_ws);
             let right_side_x = active_terminal_x_coords + left_winszie.ws_col + 1;
-            let new_terminal = TerminalOutput::new(pid, right_winsize, right_side_x, active_terminal_y_coords);
+            let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, active_terminal_y_coords);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
 
             {
@@ -167,7 +175,7 @@ impl Screen {
             self.render();
         }
     }
-    fn get_active_terminal (&self) -> Option<&TerminalOutput> {
+    fn get_active_terminal (&self) -> Option<&TerminalPane> {
         match self.active_terminal {
             Some(active_terminal) => self.terminals.get(&active_terminal),
             None => None
@@ -276,28 +284,28 @@ impl Screen {
             Some(ids)
         }
     }
-    fn panes_top_aligned_with_pane(&self, pane: &TerminalOutput) -> Vec<&TerminalOutput> {
+    fn panes_top_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
             .filter(|terminal| terminal.pid != pane.pid && terminal.y_coords == pane.y_coords)
             .collect()
     }
-    fn panes_bottom_aligned_with_pane(&self, pane: &TerminalOutput) -> Vec<&TerminalOutput> {
+    fn panes_bottom_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
             .filter(|terminal| terminal.pid != pane.pid && terminal.y_coords + terminal.display_rows == pane.y_coords + pane.display_rows)
             .collect()
     }
-    fn panes_right_aligned_with_pane(&self, pane: &TerminalOutput) -> Vec<&TerminalOutput> {
+    fn panes_right_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
             .filter(|terminal| terminal.pid != pane.pid && terminal.x_coords + terminal.display_cols == pane.x_coords + pane.display_cols)
             .collect()
     }
-    fn panes_left_aligned_with_pane(&self, pane: &TerminalOutput) -> Vec<&TerminalOutput> {
+    fn panes_left_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())

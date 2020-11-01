@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-fn debug_log_to_file (message: String) {
+fn _debug_log_to_file (message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
     let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
