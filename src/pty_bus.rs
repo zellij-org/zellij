@@ -135,6 +135,7 @@ impl vte::Perform for VteEventSender {
 }
 
 pub enum PtyInstruction {
+    SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
     ClosePane(RawFd),
@@ -214,6 +215,12 @@ impl PtyBus {
             os_input,
             id_to_child_pid: HashMap::new(),
         }
+    }
+    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) {
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        self.id_to_child_pid.insert(pid_primary, pid_secondary);
+        self.send_screen_instructions.send(ScreenInstruction::NewPane(pid_primary)).unwrap();
     }
     pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
         let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);

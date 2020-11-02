@@ -64,6 +64,25 @@ pub fn split_terminals_horizontally() {
 }
 
 #[test]
+pub fn split_largest_terminal () {
+    // this finds the largest pane and splits along its longest edge (vertically or horizontally)
+    let fake_win_size = Winsize { // TODO: combine with above
+        ws_col: 121,
+        ws_row: 20,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[13, 13, 13, 17]); // split-largest_terminal * 4 and quit (ctrl-m + ctrl-m + ctrl-m + ctrl-m + ctrl-q)
+    start(Box::new(fake_input_output.clone()));
+    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
 pub fn resize_right_and_up_on_the_same_axis() {
     // this is a specific test to explicitly ensure that a tmux-like pane-container algorithm is not
     // implemented (this test can never pass with such an algorithm)

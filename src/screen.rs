@@ -25,6 +25,8 @@ fn _debug_log_to_file (message: String) {
     file.write_all("\n".as_bytes()).unwrap();
 }
 
+const CURSOR_HEIGHT_WIDGH_RATIO: u16 = 4; // this is not accurate and kind of a magic number, TODO: look into this
+
 type BorderAndPaneIds = (u16, Vec<RawFd>);
 
 fn split_vertically_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
@@ -57,6 +59,7 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
+    NewPane(RawFd),
     HorizontalSplit(RawFd),
     VerticalSplit(RawFd),
     WriteCharacter(u8),
@@ -91,6 +94,55 @@ impl Screen {
             terminals: BTreeMap::new(),
             active_terminal: None,
             os_api,
+        }
+    }
+    pub fn new_pane(&mut self, pid: RawFd) {
+        if self.terminals.is_empty() {
+            let x = 0;
+            let y = 0;
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.terminals.insert(pid, new_terminal);
+            self.active_terminal = Some(pid);
+        } else {
+            // TODO: check minimum size of active terminal
+
+            let (_longest_edge, terminal_id_to_split) = self.terminals.iter().fold((0, 0), |(current_longest_edge, current_terminal_id_to_split), id_and_terminal_to_check| {
+                let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
+                let terminal_size = (terminal_to_check.display_rows * CURSOR_HEIGHT_WIDGH_RATIO) * terminal_to_check.display_cols;
+                if terminal_size > current_longest_edge {
+                    (terminal_size, *id_of_terminal_to_check)
+                } else {
+                    (current_longest_edge, current_terminal_id_to_split)
+                }
+            });
+            let terminal_to_split = self.terminals.get_mut(&terminal_id_to_split).unwrap();
+            let terminal_ws = Winsize {
+                ws_row: terminal_to_split.display_rows,
+                ws_col: terminal_to_split.display_cols,
+                ws_xpixel: terminal_to_split.x_coords,
+                ws_ypixel: terminal_to_split.y_coords,
+            };
+            if terminal_to_split.display_rows * CURSOR_HEIGHT_WIDGH_RATIO > terminal_to_split.display_cols {
+                let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+                let bottom_half_y = terminal_ws.ws_ypixel + top_winsize.ws_row + 1;
+                let new_terminal = TerminalPane::new(pid, bottom_winsize, terminal_ws.ws_xpixel, bottom_half_y);
+                self.os_api.set_terminal_size_using_fd(new_terminal.pid, bottom_winsize.ws_col, bottom_winsize.ws_row);
+                terminal_to_split.change_size(&top_winsize);
+                self.terminals.insert(pid, new_terminal);
+                self.os_api.set_terminal_size_using_fd(terminal_id_to_split, top_winsize.ws_col, top_winsize.ws_row);
+                self.active_terminal = Some(pid);
+            } else {
+                let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
+                let right_side_x = terminal_ws.ws_xpixel + left_winszie.ws_col + 1;
+                let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, terminal_ws.ws_ypixel);
+                self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
+                terminal_to_split.change_size(&left_winszie);
+                self.terminals.insert(pid, new_terminal);
+                self.os_api.set_terminal_size_using_fd(terminal_id_to_split, left_winszie.ws_col, left_winszie.ws_row);
+            }
+            self.active_terminal = Some(pid);
+            self.render();
         }
     }
     pub fn horizontal_split(&mut self, pid: RawFd) {

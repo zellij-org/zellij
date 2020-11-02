@@ -102,6 +102,9 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             .recv()
                             .expect("failed to receive event on channel");
                         match event {
+                            PtyInstruction::SpawnTerminal(file_to_open) => {
+                                pty_bus.spawn_terminal(file_to_open);
+                            }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                                 pty_bus.spawn_terminal_vertically(file_to_open);
                             }
@@ -136,6 +139,9 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             ScreenInstruction::Render => {
                                 screen.render();
                             },
+                            ScreenInstruction::NewPane(pid) => {
+                                screen.new_pane(pid);
+                            }
                             ScreenInstruction::HorizontalSplit(pid) => {
                                 screen.horizontal_split(pid);
                             }
@@ -241,6 +247,8 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
             send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
         } else if buffer[0] == 12 { // ctrl-l
             send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
+        } else if buffer[0] == 13 { // ctrl-m
+            send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
         } else if buffer[0] == 14 { // ctrl-n
             send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
         } else if buffer[0] == 2 { // ctrl-b
