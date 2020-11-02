@@ -35,6 +35,7 @@ If you're interested, watch this space or better yet - get involved!
 Some temporary controls (these will be changed to something more convenient when the project matures a little):
   * ctrl-n - split focused pane vertically
   * ctrl-b - split focused pane horizontally
+  * ctrl-m - split largest terminal on screen (vertically or horizontally)
   * ctrl-j - resize focused pane down
   * ctrl-k - resize focused pane up 
   * ctrl-h - resize focused pane left
