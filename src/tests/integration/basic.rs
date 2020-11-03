@@ -73,7 +73,7 @@ pub fn split_largest_terminal () {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[13, 13, 13, 17]); // split-largest_terminal * 3 and quit (ctrl-m + ctrl-m + ctrl-m + ctrl-m + ctrl-q)
+    fake_input_output.add_terminal_input(&[26, 26, 26, 17]); // split-largest_terminal * 3 and quit (ctrl-z + ctrl-z + ctrl-z + ctrl-z + ctrl-q)
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -147,7 +147,7 @@ pub fn max_panes () {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[13, 13, 13, 13, 17]); // split-largest_terminal * 4 and quit (ctrl-m + ctrl-m + ctrl-m + ctrl-m + ctrl-q)
+    fake_input_output.add_terminal_input(&[26, 26, 26, 26, 17]); // split-largest_terminal * 4 and quit (ctrl-z + ctrl-z + ctrl-z + ctrl-z + ctrl-q)
     let mut opts = Opt::default();
     opts.max_panes = Some(4);
     start(Box::new(fake_input_output.clone()), opts);

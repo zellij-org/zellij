@@ -250,7 +250,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
         } else if buffer[0] == 12 { // ctrl-l
             send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
-        } else if buffer[0] == 13 { // ctrl-m
+        } else if buffer[0] == 26 { // ctrl-z
             send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
         } else if buffer[0] == 14 { // ctrl-n
             send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
