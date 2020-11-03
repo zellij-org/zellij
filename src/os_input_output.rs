@@ -14,7 +14,6 @@ use std::os::unix::io::RawFd;
 use std::process::{Command, Child};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-
 use std::env;
 
 fn into_raw_mode(pid: RawFd) {
@@ -55,14 +54,6 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
         ws_ypixel: 0,
     };
     unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
-}
-
-fn _debug_log_to_file (message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
 }
 
 fn handle_command_exit(mut child: Child) {

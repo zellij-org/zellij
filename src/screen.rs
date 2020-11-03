@@ -16,15 +16,6 @@ use crate::boundaries::Boundaries;
  * it tracks their coordinates (x/y) and size, as well as how they should be resized
  *
  */
-
-fn _debug_log_to_file (message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
 const CURSOR_HEIGHT_WIDGH_RATIO: u16 = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 type BorderAndPaneIds = (u16, Vec<RawFd>);

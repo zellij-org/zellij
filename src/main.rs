@@ -6,6 +6,7 @@ mod terminal_pane;
 mod pty_bus;
 mod screen;
 mod boundaries;
+mod utils;
 
 use std::io::{Read, Write};
 use std::thread;
@@ -43,14 +44,6 @@ pub struct Opt {
     #[structopt(long)]
     /// Maximum panes on screen, caution: opening more panes will close old ones
     max_panes: Option<usize>
-}
-
-fn _debug_log_to_file (message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
 }
 
 pub fn main() {

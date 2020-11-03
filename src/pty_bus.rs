@@ -11,6 +11,7 @@ use ::vte;
 
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
+use crate::utils::logging::_debug_log_to_file;
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -26,20 +27,13 @@ impl ReadFromPid {
     }
 }
 
-fn _debug_log_to_file (message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut read_buffer = [0; 65535];
         let pid = self.pid;
         let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
+        _debug_log_to_file(format!("read input: {:?}", read_result));
         match read_result {
             Ok(res) => {
                 if *res == 0 {
