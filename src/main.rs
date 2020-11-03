@@ -28,7 +28,7 @@ enum ApiCommand {
     MoveFocus,
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Debug, Default)]
 #[structopt(name = "mosaic")]
 pub struct Opt {
     #[structopt(short, long)]
@@ -39,7 +39,10 @@ pub struct Opt {
     move_focus: bool,
     #[structopt(short, long)]
     /// Send "open file in new pane" to active mosaic session
-    open_file: Option<PathBuf>
+    open_file: Option<PathBuf>,
+    #[structopt(long)]
+    /// Maximum panes on screen, caution: opening more panes will close old ones
+    max_panes: Option<usize>
 }
 
 fn _debug_log_to_file (message: String) {
@@ -77,18 +80,18 @@ pub fn main() {
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
-        start(Box::new(os_input));
+        start(Box::new(os_input), opts);
     }
 }
 
-pub fn start(mut os_input: Box<dyn OsApi>) {
+pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
     let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
-    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), &full_screen_ws, os_input.clone());
+    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
     let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone());
 
     active_threads.push(
@@ -212,7 +215,7 @@ pub fn start(mut os_input: Box<dyn OsApi>) {
                             match &decoded {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
-                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(Some(path))).unwrap();
+                                    send_pty_instructions.send(PtyInstruction::SpawnTerminal(Some(path))).unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
                                     send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();

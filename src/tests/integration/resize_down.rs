@@ -1,7 +1,7 @@
 use ::nix::pty::Winsize;
 use ::insta::assert_snapshot;
 
-use crate::start;
+use crate::{start, Opt};
 use crate::tests::fakes::{FakeInputOutput};
 use crate::tests::utils::get_output_frame_snapshots;
 
@@ -28,7 +28,7 @@ pub fn resize_down_with_pane_above() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[2, 10, 17]); // split-horizontally, resize-down and quit (ctrl-b + ctrl-j + ctrl-q)
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -55,7 +55,7 @@ pub fn resize_down_with_pane_below() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[2, 16, 10, 17]); // split-horizontally, change-focus, resize-down and quit (ctrl-b + ctrl-p + ctrl-j + ctrl-q)
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -86,7 +86,7 @@ pub fn resize_down_with_panes_above_and_below() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     // split-horizontally * 2, change-focus * 2, resize-down and quit (ctrl-n * 2 + ctrl-p * 2 + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[2, 2, 16, 16, 10, 17]);
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -116,7 +116,7 @@ pub fn resize_down_with_multiple_panes_above() {
     // (ctrl-b + ctrl-p + ctrl-n + ctrl-p * 2 + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[2, 16, 14, 16, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -146,7 +146,7 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 3, ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 16, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -176,7 +176,7 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p + ctrl-p + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -206,7 +206,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 2, 16, 2, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -237,7 +237,7 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p, ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -267,7 +267,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     // (ctrl-n * 2 + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 2 + ctrl-b + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 14, 2, 16, 2, 16, 16, 2, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -297,7 +297,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     // (ctrl-n * 2 + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 2 + ctrl-b + ctrl-p * 2 + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 14, 2, 16, 2, 16, 16, 2, 16, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -328,7 +328,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     // ctrl-n * 2 + ctrl-p * 6 + ctrl-h * 2 + ctrl-p + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 14, 16, 8, 8, 8, 2, 16, 16, 16, 2, 16, 16, 2, 14, 14, 16, 16, 16, 16, 16, 16, 8, 8, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
@@ -360,7 +360,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // ctrl-n * 2 + ctrl-p * 2 + ctrl-h * 2 + ctrl-p * 5 + ctrl-j + ctrl-q)
     fake_input_output.add_terminal_input(&[14, 14, 16, 8, 8, 8, 2, 16, 16, 16, 2, 16, 16, 2, 16, 16, 14, 14, 16, 16, 8, 8, 16, 16, 16, 16, 16, 10, 17]);
 
-    start(Box::new(fake_input_output.clone()));
+    start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
