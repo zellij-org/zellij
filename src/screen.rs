@@ -78,6 +78,7 @@ pub enum ScreenInstruction {
 
 pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
+    max_panes: Option<usize>,
     send_pty_instructions: Sender<PtyInstruction>,
     full_screen_ws: Winsize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
@@ -86,9 +87,16 @@ pub struct Screen {
 }
 
 impl Screen {
-    pub fn new (receive_screen_instructions: Receiver<ScreenInstruction>, send_pty_instructions: Sender<PtyInstruction>, full_screen_ws: &Winsize, os_api: Box<dyn OsApi>) -> Self {
+    pub fn new (
+        receive_screen_instructions: Receiver<ScreenInstruction>,
+        send_pty_instructions: Sender<PtyInstruction>,
+        full_screen_ws: &Winsize,
+        os_api: Box<dyn OsApi>,
+        max_panes: Option<usize>,
+    ) -> Self {
         Screen {
             receiver: receive_screen_instructions,
+            max_panes,
             send_pty_instructions,
             full_screen_ws: full_screen_ws.clone(),
             terminals: BTreeMap::new(),
@@ -97,6 +105,7 @@ impl Screen {
         }
     }
     pub fn new_pane(&mut self, pid: RawFd) {
+        self.close_down_to_max_terminals();
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -146,6 +155,7 @@ impl Screen {
         }
     }
     pub fn horizontal_split(&mut self, pid: RawFd) {
+        self.close_down_to_max_terminals();
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -187,6 +197,7 @@ impl Screen {
         }
     }
     pub fn vertical_split(&mut self, pid: RawFd) {
+        self.close_down_to_max_terminals();
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -963,7 +974,24 @@ impl Screen {
         }
         None
     }
+    fn close_down_to_max_terminals (&mut self) {
+        if let Some(max_panes) = self.max_panes {
+            if self.terminals.len() >= max_panes {
+                for _ in max_panes..=self.terminals.len() {
+                    let first_pid = *self.terminals.iter().next().unwrap().0;
+                    self.send_pty_instructions.send(PtyInstruction::ClosePane(first_pid)).unwrap();
+                    self.close_pane_without_rerender(first_pid); // TODO: do not render yet
+                }
+            }
+        }
+    }
     pub fn close_pane(&mut self, id: RawFd) {
+        if self.terminals.get(&id).is_some() {
+            self.close_pane_without_rerender(id);
+            self.render();
+        }
+    }
+    pub fn close_pane_without_rerender(&mut self, id: RawFd) {
         if let Some(terminal_to_close) = &self.terminals.get(&id) {
             let terminal_to_close_width = terminal_to_close.display_cols;
             let terminal_to_close_height = terminal_to_close.display_rows;
@@ -999,7 +1027,6 @@ impl Screen {
                 return; // TODO: exit app? here we're trying to close the last pane on screen
             }
             self.terminals.remove(&id);
-            self.render();
         }
     }
     pub fn close_focused_pane(&mut self) {
