@@ -76,7 +76,7 @@ We respectfully ask that you do your best to stand by any commitments you make.
 And most importantly, please read our [code of conduct](CODE_OF_CONDUCT.md).
 
 # Roadmap
-This file contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.
+This section contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.
 
   * <b>A layout engine</b> that would allow you to define how your panes will be (re)arranged when you open or close them. As well as when you change the terminal window size.
   * <b>Pane types beyond a simple shell prompt</b>, for example:
