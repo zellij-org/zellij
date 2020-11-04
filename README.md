@@ -21,7 +21,7 @@
 Mosaic is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
 At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
 
-For more details, read about upcoming features in our [roadmap](roadmap.md).
+For more details, read about upcoming features in our [roadmap](#roadmap).
 
 Right now Mosaic is in its early development stages and is not yet ready for everyday usage.
 If you're interested, watch this space or better yet - get involved!
