@@ -11,7 +11,7 @@ use ::vte;
 
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
-use crate::utils::logging::_debug_log_to_file;
+#[allow(unused_imports)] use crate::utils::logging::_debug_log_to_file;
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -33,7 +33,6 @@ impl Stream for ReadFromPid {
         let mut read_buffer = [0; 65535];
         let pid = self.pid;
         let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
-        _debug_log_to_file(format!("read input: {:?}", read_result));
         match read_result {
             Ok(res) => {
                 if *res == 0 {
