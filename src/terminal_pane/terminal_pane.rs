@@ -508,14 +508,15 @@ impl vte::Perform for TerminalPane {
         } else if c == 'T' {
             _debug_log_to_file(format!("htop(?) linux csi: {:?}->{:?}", c, params));
             /*
-             * 124  54  T   SD - Scroll down, new lines inserted at top of screen
+             * 124  54  T   SD
+             * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
             if let Some(line_count) = params.get(0) {
                 let line_count: i64 = *line_count;
 
                 if line_count >= 0 {
-                    self.scroll.move_viewport_down(line_count as usize);
+                    self.scroll_down(line_count as usize);
                 } else {
                     _debug_log_to_file(format!("Illegal number of lines to scroll down: {:?} in {:?}", line_count, self.scroll));
                 }
