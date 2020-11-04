@@ -11,7 +11,6 @@ use ::vte;
 
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
-#[allow(unused_imports)] use crate::utils::logging::_debug_log_to_file;
 
 pub struct ReadFromPid {
     pid: RawFd,

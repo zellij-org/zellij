@@ -11,6 +11,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode,
     NamedColor
 };
+use crate::utils::logging::{_debug_log_to_file, _debug_log_to_file_pid_0};
 
 pub struct TerminalPane {
     pub pid: RawFd,
@@ -197,16 +198,6 @@ impl TerminalPane {
     }
     fn reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
-    }
-}
-
-fn debug_log_to_file (message: String, pid: RawFd) {
-    if pid == 0 {
-        use std::fs::OpenOptions;
-        use std::io::prelude::*;
-        let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
-        file.write_all(message.as_bytes()).unwrap();
-        file.write_all("\n".as_bytes()).unwrap();
     }
 }
 
@@ -456,7 +447,7 @@ impl vte::Perform for TerminalPane {
             } else if params[0] == 47 {
                 self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
-                debug_log_to_file(format!("unhandled csi m code {:?}", params), self.pid);
+                _debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid);
             }
         } else if c == 'C' { // move cursor forward
             let move_by = params[0] as usize;
@@ -514,6 +505,8 @@ impl vte::Perform for TerminalPane {
             self.scroll.add_empty_lines_in_scroll_region(line_count_to_add);
         } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
+        } else if c == 'T' {
+            _debug_log_to_file(format!("Unhandled htop linux csi: {:?}->{:?}", c, params));
         } else {
             panic!("unhandled csi: {:?}->{:?}", c, params);
         }

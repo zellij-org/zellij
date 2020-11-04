@@ -20,6 +20,7 @@ use structopt::StructOpt;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::utils::consts::MOSAIC_TMP_FOLDER;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -52,23 +53,23 @@ pub fn main() {
     if opts.split.is_some() {
         match opts.split {
             Some('h') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             },
             Some('v') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
             },
             _ => {}
         };
     } else if opts.move_focus {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
     } else if opts.open_file.is_some() {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
