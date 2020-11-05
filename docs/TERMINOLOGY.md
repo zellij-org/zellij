@@ -1,6 +1,7 @@
 ## ANSI/VT
 This refers to the stream of text one receives when listening to the primary side of the pty.
 For example `[31mHi [5mthere!` would print the word "Hi" in red and then the word "there!" in a blinking red. You can try this in your terminal with the echo command:
+
 `echo -e "\033[31mHi \033[5mthere!"` (`\033` is an escape character).
 
 ## CSI (Control Sequence Identifier)
