@@ -184,6 +184,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             ScreenInstruction::ClosePane(id) => {
                                 screen.close_pane(id);
                             }
+                            ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                                screen.toggle_active_terminal_fullscreen();
+                            }
                             ScreenInstruction::Quit => {
                                 break;
                             }
@@ -266,6 +269,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
         } else if buffer[0] == 24 { // ctrl-x
             send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
+        } else if buffer[0] == 6 { // ctrl-f
+            send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
         } else {
             // println!("\r buffer {:?}   ", buffer[0]);
             send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
