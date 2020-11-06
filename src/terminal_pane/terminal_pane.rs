@@ -223,7 +223,7 @@ impl TerminalPane {
     pub fn read_buffer_as_lines (&self) -> Vec<Vec<TerminalCharacter>> {
         self.scroll.as_character_lines()
     }
-    pub fn cursor_coordinates (&self) -> (usize, usize) { // (x, y)
+    pub fn cursor_coordinates (&self) -> Option<(usize, usize)> { // (x, y)
         self.scroll.cursor_coordinates_on_screen()
     }
     pub fn scroll_up(&mut self, count: usize) {
@@ -255,8 +255,8 @@ impl TerminalPane {
         self.should_render = true;
     }
     fn add_newline (&mut self) {
-        self.scroll.add_canonical_line(); // TODO: handle scroll region
-        self.reset_all_ansi_codes();
+        self.scroll.add_canonical_line();
+        // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
         self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
@@ -557,14 +557,41 @@ impl vte::Perform for TerminalPane {
             let move_back_count = if params[0] == 0 { 1 } else { params[0] as usize };
             self.scroll.move_cursor_back(move_back_count);
         } else if c == 'l' {
-            // TBD
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(25) => {
+                        self.scroll.hide_cursor();
+                        self.should_render = true;
+                    },
+                    _ => {}
+                };
+            }
         } else if c == 'h' {
-            // TBD
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(25) => {
+                        self.scroll.show_cursor();
+                        self.should_render = true;
+                    },
+                    _ => {}
+                };
+            }
         } else if c == 'r' {
             if params.len() > 1 {
                 let top_line_index = params[0] as usize;
                 let bottom_line_index = params[1] as usize;
                 self.scroll.set_scroll_region(top_line_index, bottom_line_index);
+                self.scroll.show_cursor();
             } else {
                 self.scroll.clear_scroll_region();
             }

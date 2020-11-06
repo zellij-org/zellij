@@ -172,7 +172,8 @@ pub struct Scroll {
     total_columns: usize,
     lines_in_view: usize,
     viewport_bottom_offset: Option<usize>,
-    scroll_region: Option<(usize, usize)> // start line, end line (if set, this is the area the will scroll)
+    scroll_region: Option<(usize, usize)>, // start line, end line (if set, this is the area the will scroll)
+    show_cursor: bool,
 }
 
 impl Scroll {
@@ -187,6 +188,7 @@ impl Scroll {
             cursor_position, 
             viewport_bottom_offset: None,
             scroll_region: None,
+            show_cursor: true,
         }
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -243,21 +245,29 @@ impl Scroll {
             self.cursor_position.move_to_beginning_of_linewrap();
         }
     }
+    pub fn show_cursor (&mut self) {
+        self.show_cursor = true;
+    }
+    pub fn hide_cursor (&mut self) {
+        self.show_cursor = false;
+    }
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             // the scroll region indices start at 1, so we need to adjust them
-            let scroll_region_top_index = scroll_region_top - 1;
-            let scroll_region_bottom_index = scroll_region_bottom - 1;
-            if current_canonical_line_index == scroll_region_bottom_index { // end of scroll region
-                // when we have a scroll region set and we're at its bottom
-                // we need to delete its first line, thus shifting all lines in it upwards
-                // then we add an empty line at its end which will be filled by the application
-                // controlling the scroll region (presumably filled by whatever comes next in the
-                // scroll buffer, but that's not something we control)
-                self.canonical_lines.remove(scroll_region_top_index);
-                self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
-                return;
+            if self.show_cursor { // scroll region should be ignored if the cursor is hidden
+                let scroll_region_top_index = scroll_region_top - 1;
+                let scroll_region_bottom_index = scroll_region_bottom - 1;
+                if current_canonical_line_index == scroll_region_bottom_index { // end of scroll region
+                    // when we have a scroll region set and we're at its bottom
+                    // we need to delete its first line, thus shifting all lines in it upwards
+                    // then we add an empty line at its end which will be filled by the application
+                    // controlling the scroll region (presumably filled by whatever comes next in the
+                    // scroll buffer, but that's not something we control)
+                    self.canonical_lines.remove(scroll_region_top_index);
+                    self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
+                    return;
+                }
             }
         }
         if current_canonical_line_index == self.canonical_lines.len() - 1 {
@@ -272,7 +282,10 @@ impl Scroll {
             panic!("cursor out of bounds, cannot add_canonical_line");
         }
     }
-    pub fn cursor_coordinates_on_screen(&self) -> (usize, usize) { // (x, y)
+    pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> { // (x, y)
+        if !self.show_cursor {
+            return None
+        }
         let (canonical_line_cursor_position, line_wrap_cursor_position) = self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
@@ -294,10 +307,12 @@ impl Scroll {
         let total_lines = self.canonical_lines.iter().fold(0, |total_lines, current_line| total_lines + current_line.wrapped_fragments.len()); // TODO: is this performant enough? should it be cached or kept track of?
         let y = if total_lines < self.lines_in_view {
             total_lines - y
+        } else if y > self.lines_in_view {
+            self.lines_in_view
         } else {
             self.lines_in_view - y
         };
-        (x, y)
+        Some((x, y))
     }
     pub fn move_cursor_forward(&mut self, count: usize) {
         let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;

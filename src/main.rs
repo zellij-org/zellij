@@ -269,7 +269,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
         } else if buffer[0] == 24 { // ctrl-x
             send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
-        } else if buffer[0] == 6 { // ctrl-f
+        } else if buffer[0] == 5 { // ctrl-e
             send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
         } else {
             // println!("\r buffer {:?}   ", buffer[0]);

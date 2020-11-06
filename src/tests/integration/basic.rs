@@ -170,7 +170,7 @@ pub fn toggle_focused_pane_fullscreen () {
     // split-largest_terminal * 3, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2 and quit
     // (ctrl-z + ctrl-z + ctrl-z + ctrl-z + ctrl-f, ctrl-f, ctrl-p, ctrl-f, ctrl-f, ctrl-p, ctrl-f,
     // ctrl-f, ctrl-p, ctrl-f, ctrl-f, ctrl-q)
-    fake_input_output.add_terminal_input(&[26, 26, 26, 6, 6, 16, 6, 6, 16, 6, 6, 16, 6, 6, 17]);
+    fake_input_output.add_terminal_input(&[26, 26, 26, 5, 5, 16, 5, 5, 16, 5, 5, 16, 5, 5, 17]);
     let mut opts = Opt::default();
     opts.max_panes = Some(4);
     start(Box::new(fake_input_output.clone()), opts);
