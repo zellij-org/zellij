@@ -264,13 +264,13 @@ impl Screen {
             self.os_api.tcdrain(*active_terminal_id).expect("failed to drain terminal");
         }
     }
-    fn get_active_terminal_cursor_position(&self) -> (usize, usize) { // (x, y)
+    fn get_active_terminal_cursor_position(&self) -> Option<(usize, usize)> { // (x, y)
         let active_terminal = &self.get_active_terminal().unwrap();
-        let (x_in_terminal, y_in_terminal) = active_terminal.cursor_coordinates();
-
-        let x = active_terminal.get_x() + x_in_terminal;
-        let y = active_terminal.get_y() + y_in_terminal;
-        (x, y)
+        active_terminal.cursor_coordinates().and_then(|(x_in_terminal, y_in_terminal)| {
+            let x = active_terminal.get_x() + x_in_terminal;
+            let y = active_terminal.get_y() + y_in_terminal;
+            Some((x, y))
+        })
     }
     pub fn toggle_active_terminal_fullscreen(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
@@ -312,10 +312,20 @@ impl Screen {
         let vte_output = boundaries.vte_output();
         stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
 
-        let (cursor_position_x, cursor_position_y) = self.get_active_terminal_cursor_position();
-        let goto_cursor_position = format!("\u{1b}[{};{}H\u{1b}[m", cursor_position_y + 1, cursor_position_x + 1); // goto row/col
-        stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
-        stdout.flush().expect("could not flush");
+        match self.get_active_terminal_cursor_position() {
+            Some((cursor_position_x, cursor_position_y)) => {
+                let show_cursor = "\u{1b}[?25h";
+                let goto_cursor_position = format!("\u{1b}[{};{}H\u{1b}[m", cursor_position_y + 1, cursor_position_x + 1); // goto row/col
+                stdout.write_all(&show_cursor.as_bytes()).expect("cannot write to stdout");
+                stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
+                stdout.flush().expect("could not flush");
+            },
+            None => {
+                let hide_cursor = "\u{1b}[?25l";
+                stdout.write_all(&hide_cursor.as_bytes()).expect("cannot write to stdout");
+                stdout.flush().expect("could not flush");
+            }
+        }
     }
     fn terminal_ids_directly_left_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
         let mut ids = vec![];
