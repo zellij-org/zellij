@@ -151,8 +151,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             ScreenInstruction::VerticalSplit(pid) => {
                                 screen.vertical_split(pid);
                             }
-                            ScreenInstruction::WriteCharacter(byte) => {
-                                screen.write_to_active_terminal(byte);
+                            ScreenInstruction::WriteCharacter(bytes) => {
+                                screen.write_to_active_terminal(bytes);
                             }
                             ScreenInstruction::ResizeLeft => {
                                 screen.resize_left();
@@ -240,41 +240,58 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         }).unwrap();
 
     let mut stdin = os_input.get_stdin_reader();
+
     loop {
-		let mut buffer = [0; 1];
+		let mut buffer = [0; 10]; // TODO: more accurately
         stdin.read(&mut buffer).expect("failed to read stdin");
-        if buffer[0] == 10 { // ctrl-j
-            send_screen_instructions.send(ScreenInstruction::ResizeDown).unwrap();
-        } else if buffer[0] == 11 { // ctrl-k
-            send_screen_instructions.send(ScreenInstruction::ResizeUp).unwrap();
-        } else if buffer[0] == 16 { // ctrl-p
-            send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
-        } else if buffer[0] == 8 { // ctrl-h
-            send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
-        } else if buffer[0] == 12 { // ctrl-l
-            send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
-        } else if buffer[0] == 26 { // ctrl-z
-            send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
-        } else if buffer[0] == 14 { // ctrl-n
-            send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
-        } else if buffer[0] == 2 { // ctrl-b
-            send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
-        } else if buffer[0] == 17 { // ctrl-q
-            send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
-            send_pty_instructions.send(PtyInstruction::Quit).unwrap();
-            break;
-        } else if buffer[0] == 27 { // ctrl-[
-            send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
-        } else if buffer[0] == 29 { // ctrl-]
-            send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
-        } else if buffer[0] == 24 { // ctrl-x
-            send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
-        } else if buffer[0] == 5 { // ctrl-e
-            send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
-        } else {
-            // println!("\r buffer {:?}   ", buffer[0]);
-            send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
-            send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer[0])).unwrap();
+        // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
+        // _debug_log_to_file(format!("buffer {:?}", buffer));
+        match buffer {
+            [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-j
+                send_screen_instructions.send(ScreenInstruction::ResizeDown).unwrap();
+            },
+            [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-k
+                send_screen_instructions.send(ScreenInstruction::ResizeUp).unwrap();
+            },
+            [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-p
+                send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+            },
+            [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-h
+                send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
+            },
+            [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-l
+                send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
+            },
+            [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-z
+                send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
+            },
+            [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-n
+                send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
+            },
+            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-b
+                send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
+            },
+            [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-q
+                send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
+                send_pty_instructions.send(PtyInstruction::Quit).unwrap();
+                break;
+            },
+            [27, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-[
+                send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
+            },
+            [29, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-]
+                send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
+            },
+            [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-x
+                send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
+            },
+            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-e
+                send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
+            },
+            _ => {
+                send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
+                send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer)).unwrap();
+            }
         }
     };
     
