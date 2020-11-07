@@ -62,7 +62,7 @@ pub enum ScreenInstruction {
     NewPane(RawFd),
     HorizontalSplit(RawFd),
     VerticalSplit(RawFd),
-    WriteCharacter(u8),
+    WriteCharacter([u8; 10]),
     ResizeLeft,
     ResizeRight,
     ResizeDown,
@@ -257,10 +257,9 @@ impl Screen {
         let terminal_output = self.terminals.get_mut(&pid).unwrap();
         terminal_output.handle_event(event);
     }
-    pub fn write_to_active_terminal(&mut self, byte: u8) {
+    pub fn write_to_active_terminal(&mut self, mut bytes: [u8; 10]) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
-            let mut buffer = [byte];
-            self.os_api.write_to_tty_stdin(*active_terminal_id, &mut buffer).expect("failed to write to terminal");
+            self.os_api.write_to_tty_stdin(*active_terminal_id, &mut bytes).expect("failed to write to terminal");
             self.os_api.tcdrain(*active_terminal_id).expect("failed to drain terminal");
         }
     }
