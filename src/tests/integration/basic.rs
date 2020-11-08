@@ -157,3 +157,26 @@ pub fn max_panes () {
         assert_snapshot!(snapshot);
     }
 }
+
+#[test]
+pub fn toggle_focused_pane_fullscreen () {
+    let fake_win_size = Winsize { // TODO: combine with above
+        ws_col: 121,
+        ws_row: 20,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    // split-largest_terminal * 3, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2, ctrl-p, toggle-fullscreen * 2 and quit
+    // (ctrl-z + ctrl-z + ctrl-z + ctrl-z + ctrl-f, ctrl-f, ctrl-p, ctrl-f, ctrl-f, ctrl-p, ctrl-f,
+    // ctrl-f, ctrl-p, ctrl-f, ctrl-f, ctrl-q)
+    fake_input_output.add_terminal_input(&[26, 26, 26, 5, 5, 16, 5, 5, 16, 5, 5, 16, 5, 5, 17]);
+    let mut opts = Opt::default();
+    opts.max_panes = Some(4);
+    start(Box::new(fake_input_output.clone()), opts);
+    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}

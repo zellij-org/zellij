@@ -16,9 +16,10 @@ use crate::boundaries::Boundaries;
  * it tracks their coordinates (x/y) and size, as well as how they should be resized
  *
  */
-const CURSOR_HEIGHT_WIDGH_RATIO: u16 = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
-type BorderAndPaneIds = (u16, Vec<RawFd>);
+const CURSOR_HEIGHT_WIDGH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+
+type BorderAndPaneIds = (usize, Vec<RawFd>);
 
 fn split_vertically_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     let width_of_each_half = (rect.ws_col - 1) / 2;
@@ -53,7 +54,7 @@ pub enum ScreenInstruction {
     NewPane(RawFd),
     HorizontalSplit(RawFd),
     VerticalSplit(RawFd),
-    WriteCharacter(u8),
+    WriteCharacter([u8; 10]),
     ResizeLeft,
     ResizeRight,
     ResizeDown,
@@ -64,6 +65,7 @@ pub enum ScreenInstruction {
     ScrollDown,
     ClearScroll,
     CloseFocusedPane,
+    ToggleActiveTerminalFullscreen,
     ClosePane(RawFd),
 }
 
@@ -73,6 +75,7 @@ pub struct Screen {
     send_pty_instructions: Sender<PtyInstruction>,
     full_screen_ws: Winsize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
+    panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
 }
@@ -91,6 +94,7 @@ impl Screen {
             send_pty_instructions,
             full_screen_ws: full_screen_ws.clone(),
             terminals: BTreeMap::new(),
+            panes_to_hide: HashSet::new(),
             active_terminal: None,
             os_api,
         }
@@ -101,7 +105,7 @@ impl Screen {
             let x = 0;
             let y = 0;
             let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
-            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.get_columns() as u16, new_terminal.get_rows() as u16);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
         } else {
@@ -109,7 +113,7 @@ impl Screen {
 
             let (_longest_edge, terminal_id_to_split) = self.terminals.iter().fold((0, 0), |(current_longest_edge, current_terminal_id_to_split), id_and_terminal_to_check| {
                 let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
-                let terminal_size = (terminal_to_check.display_rows * CURSOR_HEIGHT_WIDGH_RATIO) * terminal_to_check.display_cols;
+                let terminal_size = (terminal_to_check.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO) * terminal_to_check.get_columns();
                 if terminal_size > current_longest_edge {
                     (terminal_size, *id_of_terminal_to_check)
                 } else {
@@ -118,15 +122,15 @@ impl Screen {
             });
             let terminal_to_split = self.terminals.get_mut(&terminal_id_to_split).unwrap();
             let terminal_ws = Winsize {
-                ws_row: terminal_to_split.display_rows,
-                ws_col: terminal_to_split.display_cols,
-                ws_xpixel: terminal_to_split.x_coords,
-                ws_ypixel: terminal_to_split.y_coords,
+                ws_row: terminal_to_split.get_rows() as u16,
+                ws_col: terminal_to_split.get_columns() as u16,
+                ws_xpixel: terminal_to_split.get_x() as u16,
+                ws_ypixel: terminal_to_split.get_y() as u16,
             };
-            if terminal_to_split.display_rows * CURSOR_HEIGHT_WIDGH_RATIO > terminal_to_split.display_cols {
+            if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO > terminal_to_split.get_columns() {
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
                 let bottom_half_y = terminal_ws.ws_ypixel + top_winsize.ws_row + 1;
-                let new_terminal = TerminalPane::new(pid, bottom_winsize, terminal_ws.ws_xpixel, bottom_half_y);
+                let new_terminal = TerminalPane::new(pid, bottom_winsize, terminal_ws.ws_xpixel as usize, bottom_half_y as usize);
                 self.os_api.set_terminal_size_using_fd(new_terminal.pid, bottom_winsize.ws_col, bottom_winsize.ws_row);
                 terminal_to_split.change_size(&top_winsize);
                 self.terminals.insert(pid, new_terminal);
@@ -134,8 +138,8 @@ impl Screen {
                 self.active_terminal = Some(pid);
             } else {
                 let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
-                let right_side_x = terminal_ws.ws_xpixel + left_winszie.ws_col + 1;
-                let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, terminal_ws.ws_ypixel);
+                let right_side_x = (terminal_ws.ws_xpixel + left_winszie.ws_col + 1) as usize;
+                let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, terminal_ws.ws_ypixel as usize);
                 self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
                 terminal_to_split.change_size(&left_winszie);
                 self.terminals.insert(pid, new_terminal);
@@ -151,27 +155,27 @@ impl Screen {
             let x = 0;
             let y = 0;
             let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
-            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.get_columns() as u16, new_terminal.get_rows() as u16);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
         } else {
             // TODO: check minimum size of active terminal
-            let (active_terminal_ws, active_terminal_x_coords, active_terminal_y_coords) = {
+            let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
                 let active_terminal = &self.get_active_terminal().unwrap();
                 (
                     Winsize {
-                        ws_row: active_terminal.display_rows,
-                        ws_col: active_terminal.display_cols,
+                        ws_row: active_terminal.get_rows() as u16,
+                        ws_col: active_terminal.get_columns() as u16,
                         ws_xpixel: 0,
                         ws_ypixel: 0,
                     },
-                    active_terminal.x_coords,
-                    active_terminal.y_coords
+                    active_terminal.get_x(),
+                    active_terminal.get_y()
                 )
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&active_terminal_ws);
-            let bottom_half_y = active_terminal_y_coords + top_winsize.ws_row + 1;
-            let new_terminal = TerminalPane::new(pid, bottom_winsize, active_terminal_x_coords, bottom_half_y);
+            let bottom_half_y = active_terminal_y + top_winsize.ws_row as usize + 1;
+            let new_terminal = TerminalPane::new(pid, bottom_winsize, active_terminal_x, bottom_half_y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, bottom_winsize.ws_col, bottom_winsize.ws_row);
 
             {
@@ -193,27 +197,27 @@ impl Screen {
             let x = 0;
             let y = 0;
             let new_terminal = TerminalPane::new(pid, self.full_screen_ws.clone(), x, y);
-            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.display_cols, new_terminal.display_rows);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.get_columns() as u16, new_terminal.get_rows() as u16);
             self.terminals.insert(pid, new_terminal);
             self.active_terminal = Some(pid);
         } else {
             // TODO: check minimum size of active terminal
-            let (active_terminal_ws, active_terminal_x_coords, active_terminal_y_coords) = {
+            let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
                 let active_terminal = &self.get_active_terminal().unwrap();
                 (
                     Winsize {
-                        ws_row: active_terminal.display_rows,
-                        ws_col: active_terminal.display_cols,
+                        ws_row: active_terminal.get_rows() as u16,
+                        ws_col: active_terminal.get_columns() as u16,
                         ws_xpixel: 0,
                         ws_ypixel: 0,
                     },
-                    active_terminal.x_coords,
-                    active_terminal.y_coords
+                    active_terminal.get_x(),
+                    active_terminal.get_y()
                 )
             };
             let (left_winszie, right_winsize) = split_vertically_with_gap(&active_terminal_ws);
-            let right_side_x = active_terminal_x_coords + left_winszie.ws_col + 1;
-            let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, active_terminal_y_coords);
+            let right_side_x = active_terminal_x + left_winszie.ws_col as usize + 1;
+            let new_terminal = TerminalPane::new(pid, right_winsize, right_side_x, active_terminal_y);
             self.os_api.set_terminal_size_using_fd(new_terminal.pid, right_winsize.ws_col, right_winsize.ws_row);
 
             {
@@ -245,28 +249,53 @@ impl Screen {
         let terminal_output = self.terminals.get_mut(&pid).unwrap();
         terminal_output.handle_event(event);
     }
-    pub fn write_to_active_terminal(&mut self, byte: u8) {
+    pub fn write_to_active_terminal(&mut self, mut bytes: [u8; 10]) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
-            let mut buffer = [byte];
-            self.os_api.write_to_tty_stdin(*active_terminal_id, &mut buffer).expect("failed to write to terminal");
+            self.os_api.write_to_tty_stdin(*active_terminal_id, &mut bytes).expect("failed to write to terminal");
             self.os_api.tcdrain(*active_terminal_id).expect("failed to drain terminal");
         }
     }
-    fn get_active_terminal_cursor_position(&self) -> (usize, usize) { // (x, y)
+    fn get_active_terminal_cursor_position(&self) -> Option<(usize, usize)> { // (x, y)
         let active_terminal = &self.get_active_terminal().unwrap();
-        let (x_in_terminal, y_in_terminal) = active_terminal.cursor_coordinates();
-
-        let x = active_terminal.x_coords as usize + x_in_terminal;
-        let y = active_terminal.y_coords as usize + y_in_terminal;
-        (x, y)
+        active_terminal.cursor_coordinates().and_then(|(x_in_terminal, y_in_terminal)| {
+            let x = active_terminal.get_x() + x_in_terminal;
+            let y = active_terminal.get_y() + y_in_terminal;
+            Some((x, y))
+        })
+    }
+    pub fn toggle_active_terminal_fullscreen(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            if self.get_active_terminal().unwrap().position_and_size_override.is_some() {
+                for terminal_id in self.panes_to_hide.iter() {
+                    self.terminals.get_mut(terminal_id).unwrap().should_render = true;
+                }
+                self.panes_to_hide.clear();
+                let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                active_terminal.reset_size_and_position_override();
+            } else {
+                let all_ids_except_current = self.terminals.keys().filter(|id| **id != active_terminal_id);
+                self.panes_to_hide = all_ids_except_current.copied().collect();
+                let active_terminal = self.terminals.get_mut(&active_terminal_id).unwrap();
+                active_terminal.override_size_and_position(0, 0, &self.full_screen_ws);
+            }
+            let active_terminal = self.terminals.get(&active_terminal_id).unwrap();
+            self.os_api.set_terminal_size_using_fd(
+                active_terminal_id,
+                active_terminal.get_columns() as u16,
+                active_terminal.get_rows() as u16,
+            );
+            self.render();
+        }
     }
     pub fn render (&mut self) {
         let mut stdout = self.os_api.get_stdout_writer();
         let mut boundaries = Boundaries::new(self.full_screen_ws.ws_col, self.full_screen_ws.ws_row);
-        for (_pid, terminal) in self.terminals.iter_mut() {
-            boundaries.add_rect(&terminal);
-            if let Some(vte_output) = terminal.buffer_as_vte_output() {
-                stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
+        for (pid, terminal) in self.terminals.iter_mut() {
+            if !self.panes_to_hide.contains(pid) {
+                boundaries.add_rect(&terminal);
+                if let Some(vte_output) = terminal.buffer_as_vte_output() {
+                    stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
+                }
             }
         }
 
@@ -274,19 +303,29 @@ impl Screen {
         let vte_output = boundaries.vte_output();
         stdout.write_all(&vte_output.as_bytes()).expect("cannot write to stdout");
 
-        let (cursor_position_x, cursor_position_y) = self.get_active_terminal_cursor_position();
-        let goto_cursor_position = format!("\u{1b}[{};{}H\u{1b}[m", cursor_position_y + 1, cursor_position_x + 1); // goto row/col
-        stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
-        stdout.flush().expect("could not flush");
+        match self.get_active_terminal_cursor_position() {
+            Some((cursor_position_x, cursor_position_y)) => {
+                let show_cursor = "\u{1b}[?25h";
+                let goto_cursor_position = format!("\u{1b}[{};{}H\u{1b}[m", cursor_position_y + 1, cursor_position_x + 1); // goto row/col
+                stdout.write_all(&show_cursor.as_bytes()).expect("cannot write to stdout");
+                stdout.write_all(&goto_cursor_position.as_bytes()).expect("cannot write to stdout");
+                stdout.flush().expect("could not flush");
+            },
+            None => {
+                let hide_cursor = "\u{1b}[?25l";
+                stdout.write_all(&hide_cursor.as_bytes()).expect("cannot write to stdout");
+                stdout.flush().expect("could not flush");
+            }
+        }
     }
     fn terminal_ids_directly_left_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
         let mut ids = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
-        if terminal_to_check.x_coords == 0 {
+        if terminal_to_check.get_x() == 0 {
             return None;
         }
         for (pid, terminal) in self.terminals.iter() {
-            if terminal.x_coords + terminal.display_cols == terminal_to_check.x_coords - 1 {
+            if terminal.get_x() + terminal.get_columns() == terminal_to_check.get_x() - 1 {
                 ids.push(*pid);
             }
         }
@@ -300,7 +339,7 @@ impl Screen {
         let mut ids = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         for (pid, terminal) in self.terminals.iter() {
-            if terminal.x_coords == terminal_to_check.x_coords + terminal_to_check.display_cols + 1 {
+            if terminal.get_x() == terminal_to_check.get_x() + terminal_to_check.get_columns() + 1 {
                 ids.push(*pid);
             }
         }
@@ -314,7 +353,7 @@ impl Screen {
         let mut ids = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         for (pid, terminal) in self.terminals.iter() {
-            if terminal.y_coords == terminal_to_check.y_coords + terminal_to_check.display_rows + 1 {
+            if terminal.get_y() == terminal_to_check.get_y() + terminal_to_check.get_rows() + 1 {
                 ids.push(*pid);
             }
         }
@@ -328,7 +367,7 @@ impl Screen {
         let mut ids = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         for (pid, terminal) in self.terminals.iter() {
-            if terminal.y_coords + terminal.display_rows + 1 == terminal_to_check.y_coords {
+            if terminal.get_y() + terminal.get_rows() + 1 == terminal_to_check.get_y() {
                 ids.push(*pid);
             }
         }
@@ -342,361 +381,360 @@ impl Screen {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
-            .filter(|terminal| terminal.pid != pane.pid && terminal.y_coords == pane.y_coords)
+            .filter(|terminal| terminal.pid != pane.pid && terminal.get_y() == pane.get_y())
             .collect()
     }
     fn panes_bottom_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
-            .filter(|terminal| terminal.pid != pane.pid && terminal.y_coords + terminal.display_rows == pane.y_coords + pane.display_rows)
+            .filter(|terminal| terminal.pid != pane.pid && terminal.get_y() + terminal.get_rows() == pane.get_y() + pane.get_rows())
             .collect()
     }
     fn panes_right_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
-            .filter(|terminal| terminal.pid != pane.pid && terminal.x_coords + terminal.display_cols == pane.x_coords + pane.display_cols)
+            .filter(|terminal| terminal.pid != pane.pid && terminal.get_x() + terminal.get_columns() == pane.get_x() + pane.get_columns())
             .collect()
     }
     fn panes_left_aligned_with_pane(&self, pane: &TerminalPane) -> Vec<&TerminalPane> {
         self.terminals
             .keys()
             .map(|t_id| self.terminals.get(&t_id).unwrap())
-            .filter(|terminal| terminal.pid != pane.pid && terminal.x_coords == pane.x_coords)
+            .filter(|terminal| terminal.pid != pane.pid && terminal.get_x() == pane.get_x())
             .collect()
     }
-    fn right_aligned_contiguous_panes_above(&self, id: &RawFd, terminal_borders_to_the_right: &HashSet<u16>) -> BorderAndPaneIds {
+    fn right_aligned_contiguous_panes_above(&self, id: &RawFd, terminal_borders_to_the_right: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).expect("terminal id does not exist");
         let mut right_aligned_terminals = self.panes_right_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        right_aligned_terminals.sort_by(|a, b| { b.y_coords.cmp(&a.y_coords)});
+        right_aligned_terminals.sort_by(|a, b| { b.get_y().cmp(&a.get_y())});
         for terminal in right_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.y_coords + terminal.display_rows + 1 == terminal_to_check.y_coords {
+            if terminal.get_y() + terminal.get_rows() + 1 == terminal_to_check.get_y() {
                 terminals.push(terminal);
             }
         }
         // top-most border aligned with a pane border to the right
         let mut top_resize_border = 0;
         for terminal in &terminals {
-            let bottom_terminal_boundary = terminal.y_coords + terminal.display_rows;
+            let bottom_terminal_boundary = terminal.get_y() + terminal.get_rows();
             if terminal_borders_to_the_right.get(&(bottom_terminal_boundary + 1)).is_some() && top_resize_border < bottom_terminal_boundary {
                 top_resize_border = bottom_terminal_boundary + 1;
             }
         }
         terminals.retain(|terminal| {
-            terminal.y_coords >= top_resize_border
+            terminal.get_y() >= top_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let top_resize_border = if terminals.is_empty() { terminal_to_check.y_coords } else { top_resize_border };
+        let top_resize_border = if terminals.is_empty() { terminal_to_check.get_y() } else { top_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (top_resize_border, terminal_ids)
     }
-    fn right_aligned_contiguous_panes_below(&self, id: &RawFd, terminal_borders_to_the_right: &HashSet<u16>) -> BorderAndPaneIds {
+    fn right_aligned_contiguous_panes_below(&self, id: &RawFd, terminal_borders_to_the_right: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).expect("terminal id does not exist");
         let mut right_aligned_terminals = self.panes_right_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        right_aligned_terminals.sort_by(|a, b| { a.y_coords.cmp(&b.y_coords)});
+        right_aligned_terminals.sort_by(|a, b| { a.get_y().cmp(&b.get_y())});
         for terminal in right_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.y_coords == terminal_to_check.y_coords + terminal_to_check.display_rows + 1 {
+            if terminal.get_y() == terminal_to_check.get_y() + terminal_to_check.get_rows() + 1 {
                 terminals.push(terminal);
             }
         }
         // bottom-most border aligned with a pane border to the right
-        let mut bottom_resize_border = self.full_screen_ws.ws_row;
+        let mut bottom_resize_border = self.full_screen_ws.ws_row as usize;
         for terminal in &terminals {
-            let top_terminal_boundary = terminal.y_coords;
+            let top_terminal_boundary = terminal.get_y();
             if terminal_borders_to_the_right.get(&(top_terminal_boundary)).is_some() && top_terminal_boundary < bottom_resize_border {
                 bottom_resize_border = top_terminal_boundary;
             }
         }
         terminals.retain(|terminal| {
-            terminal.y_coords + terminal.display_rows <= bottom_resize_border
+            terminal.get_y() + terminal.get_rows() <= bottom_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let bottom_resize_border = if terminals.is_empty() { terminal_to_check.y_coords + terminal_to_check.display_rows } else { bottom_resize_border };
+        let bottom_resize_border = if terminals.is_empty() { terminal_to_check.get_y() + terminal_to_check.get_rows() } else { bottom_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (bottom_resize_border, terminal_ids)
     }
-    fn left_aligned_contiguous_panes_above(&self, id: &RawFd, terminal_borders_to_the_left: &HashSet<u16>) -> BorderAndPaneIds {
+    fn left_aligned_contiguous_panes_above(&self, id: &RawFd, terminal_borders_to_the_left: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).expect("terminal id does not exist");
         let mut left_aligned_terminals = self.panes_left_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        left_aligned_terminals.sort_by(|a, b| { b.y_coords.cmp(&a.y_coords)});
+        left_aligned_terminals.sort_by(|a, b| { b.get_y().cmp(&a.get_y())});
         for terminal in left_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.y_coords + terminal.display_rows + 1 == terminal_to_check.y_coords {
+            if terminal.get_y() + terminal.get_rows() + 1 == terminal_to_check.get_y() {
                 terminals.push(terminal);
             }
         }
         // top-most border aligned with a pane border to the right
         let mut top_resize_border = 0;
         for terminal in &terminals {
-            let bottom_terminal_boundary = terminal.y_coords + terminal.display_rows;
+            let bottom_terminal_boundary = terminal.get_y() + terminal.get_rows();
             if terminal_borders_to_the_left.get(&(bottom_terminal_boundary + 1)).is_some() && top_resize_border < bottom_terminal_boundary {
                 top_resize_border = bottom_terminal_boundary + 1;
             }
         }
         terminals.retain(|terminal| {
-            terminal.y_coords >= top_resize_border
+            terminal.get_y() >= top_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let top_resize_border = if terminals.is_empty() { terminal_to_check.y_coords } else { top_resize_border };
+        let top_resize_border = if terminals.is_empty() { terminal_to_check.get_y() } else { top_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (top_resize_border, terminal_ids)
     }
-    fn left_aligned_contiguous_panes_below(&self, id: &RawFd, terminal_borders_to_the_left: &HashSet<u16>) -> BorderAndPaneIds {
+    fn left_aligned_contiguous_panes_below(&self, id: &RawFd, terminal_borders_to_the_left: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).expect("terminal id does not exist");
         let mut left_aligned_terminals = self.panes_left_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        left_aligned_terminals.sort_by(|a, b| { a.y_coords.cmp(&b.y_coords)});
+        left_aligned_terminals.sort_by(|a, b| { a.get_y().cmp(&b.get_y())});
         for terminal in left_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.y_coords == terminal_to_check.y_coords + terminal_to_check.display_rows + 1 {
+            if terminal.get_y() == terminal_to_check.get_y() + terminal_to_check.get_rows() + 1 {
                 terminals.push(terminal);
             }
         }
         // bottom-most border aligned with a pane border to the left
-        let mut bottom_resize_border = self.full_screen_ws.ws_row;
+        let mut bottom_resize_border = self.full_screen_ws.ws_row as usize;
         for terminal in &terminals {
-            let top_terminal_boundary = terminal.y_coords;
+            let top_terminal_boundary = terminal.get_y();
             if terminal_borders_to_the_left.get(&(top_terminal_boundary)).is_some() && top_terminal_boundary < bottom_resize_border {
                 bottom_resize_border = top_terminal_boundary;
             }
         }
         terminals.retain(|terminal| {
-            // terminal.y_coords + terminal.display_rows < bottom_resize_border
-            terminal.y_coords + terminal.display_rows <= bottom_resize_border
+            // terminal.get_y() + terminal.get_rows() < bottom_resize_border
+            terminal.get_y() + terminal.get_rows() <= bottom_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let bottom_resize_border = if terminals.is_empty() { terminal_to_check.y_coords + terminal_to_check.display_rows } else { bottom_resize_border };
+        let bottom_resize_border = if terminals.is_empty() { terminal_to_check.get_y() + terminal_to_check.get_rows() } else { bottom_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (bottom_resize_border, terminal_ids)
     }
-    fn top_aligned_contiguous_panes_to_the_left(&self, id: &RawFd, terminal_borders_above: &HashSet<u16>) -> BorderAndPaneIds {
+    fn top_aligned_contiguous_panes_to_the_left(&self, id: &RawFd, terminal_borders_above: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).expect("terminal id does not exist");
         let mut top_aligned_terminals = self.panes_top_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        top_aligned_terminals.sort_by(|a, b| { b.x_coords.cmp(&a.x_coords)});
+        top_aligned_terminals.sort_by(|a, b| { b.get_x().cmp(&a.get_x())});
         for terminal in top_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.x_coords + terminal.display_cols + 1 == terminal_to_check.x_coords {
+            if terminal.get_x() + terminal.get_columns() + 1 == terminal_to_check.get_x() {
                 terminals.push(terminal);
             }
         }
         // leftmost border aligned with a pane border above
         let mut left_resize_border = 0;
         for terminal in &terminals {
-            let right_terminal_boundary = terminal.x_coords + terminal.display_cols;
+            let right_terminal_boundary = terminal.get_x() + terminal.get_columns();
             if terminal_borders_above.get(&(right_terminal_boundary + 1)).is_some() && left_resize_border < right_terminal_boundary {
                 left_resize_border = right_terminal_boundary + 1;
             }
         }
         terminals.retain(|terminal| {
-            terminal.x_coords >= left_resize_border
+            terminal.get_x() >= left_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let left_resize_border = if terminals.is_empty() { terminal_to_check.x_coords } else { left_resize_border };
+        let left_resize_border = if terminals.is_empty() { terminal_to_check.get_x() } else { left_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (left_resize_border, terminal_ids)
     }
-    fn top_aligned_contiguous_panes_to_the_right(&self, id: &RawFd, terminal_borders_above: &HashSet<u16>) -> BorderAndPaneIds {
+    fn top_aligned_contiguous_panes_to_the_right(&self, id: &RawFd, terminal_borders_above: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         let mut top_aligned_terminals = self.panes_top_aligned_with_pane(&terminal_to_check);
         // terminals that are next to each other up to current
-        top_aligned_terminals.sort_by(|a, b| { a.x_coords.cmp(&b.x_coords)});
+        top_aligned_terminals.sort_by(|a, b| { a.get_x().cmp(&b.get_x())});
         for terminal in top_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.x_coords == terminal_to_check.x_coords + terminal_to_check.display_cols + 1 {
+            if terminal.get_x() == terminal_to_check.get_x() + terminal_to_check.get_columns() + 1 {
                 terminals.push(terminal);
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.ws_col;
+        let mut right_resize_border = self.full_screen_ws.ws_col as usize;
         for terminal in &terminals {
-
-            let left_terminal_boundary = terminal.x_coords;
+            let left_terminal_boundary = terminal.get_x();
             if terminal_borders_above.get(&left_terminal_boundary).is_some() && right_resize_border > left_terminal_boundary {
                 right_resize_border = left_terminal_boundary;
             }
         }
         terminals.retain(|terminal| {
-            terminal.x_coords + terminal.display_cols <= right_resize_border 
+            terminal.get_x() + terminal.get_columns() <= right_resize_border 
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let right_resize_border = if terminals.is_empty() { terminal_to_check.x_coords + terminal_to_check.display_cols } else { right_resize_border };
+        let right_resize_border = if terminals.is_empty() { terminal_to_check.get_x() + terminal_to_check.get_columns() } else { right_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (right_resize_border, terminal_ids)
     }
-    fn bottom_aligned_contiguous_panes_to_the_left(&self, id: &RawFd, terminal_borders_below: &HashSet<u16>) -> BorderAndPaneIds {
+    fn bottom_aligned_contiguous_panes_to_the_left(&self, id: &RawFd, terminal_borders_below: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(&terminal_to_check);
-        bottom_aligned_terminals.sort_by(|a, b| { b.x_coords.cmp(&a.x_coords)});
+        bottom_aligned_terminals.sort_by(|a, b| { b.get_x().cmp(&a.get_x())});
         // terminals that are next to each other up to current
         for terminal in bottom_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.x_coords + terminal.display_cols + 1 == terminal_to_check.x_coords {
+            if terminal.get_x() + terminal.get_columns() + 1 == terminal_to_check.get_x() {
                 terminals.push(terminal);
             }
         }
         // leftmost border aligned with a pane border above
         let mut left_resize_border = 0;
         for terminal in &terminals {
-            let right_terminal_boundary = terminal.x_coords + terminal.display_cols;
+            let right_terminal_boundary = terminal.get_x() + terminal.get_columns();
             if terminal_borders_below.get(&(right_terminal_boundary + 1)).is_some() && left_resize_border < right_terminal_boundary {
                 left_resize_border = right_terminal_boundary + 1;
             }
         }
         terminals.retain(|terminal| {
-            terminal.x_coords >= left_resize_border
+            terminal.get_x() >= left_resize_border
         });
         // if there are no adjacent panes to resize, we use the border of the main pane we're
         // resizing
-        let left_resize_border = if terminals.is_empty() { terminal_to_check.x_coords } else { left_resize_border };
+        let left_resize_border = if terminals.is_empty() { terminal_to_check.get_x() } else { left_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (left_resize_border, terminal_ids)
     }
-    fn bottom_aligned_contiguous_panes_to_the_right(&self, id: &RawFd, terminal_borders_below: &HashSet<u16>) -> BorderAndPaneIds {
+    fn bottom_aligned_contiguous_panes_to_the_right(&self, id: &RawFd, terminal_borders_below: &HashSet<usize>) -> BorderAndPaneIds {
         let mut terminals = vec![];
         let terminal_to_check = self.terminals.get(id).unwrap();
         let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(&terminal_to_check);
-        bottom_aligned_terminals.sort_by(|a, b| { a.x_coords.cmp(&b.x_coords)});
+        bottom_aligned_terminals.sort_by(|a, b| { a.get_x().cmp(&b.get_x())});
         // terminals that are next to each other up to current
         for terminal in bottom_aligned_terminals {
             let terminal_to_check = terminals
                 .last()
                 .unwrap_or(&terminal_to_check);
-            if terminal.x_coords == terminal_to_check.x_coords + terminal_to_check.display_cols + 1 {
+            if terminal.get_x() == terminal_to_check.get_x() + terminal_to_check.get_columns() + 1 {
                 terminals.push(terminal);
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.ws_col;
+        let mut right_resize_border = self.full_screen_ws.ws_col as usize;
         for terminal in &terminals {
-            let left_terminal_boundary = terminal.x_coords;
+            let left_terminal_boundary = terminal.get_x();
             if terminal_borders_below.get(&left_terminal_boundary).is_some() && right_resize_border > left_terminal_boundary {
                 right_resize_border = left_terminal_boundary;
             }
         }
         terminals.retain(|terminal| {
-            terminal.x_coords + terminal.display_cols <= right_resize_border 
+            terminal.get_x() + terminal.get_columns() <= right_resize_border 
         });
-        let right_resize_border = if terminals.is_empty() { terminal_to_check.x_coords + terminal_to_check.display_cols } else { right_resize_border };
+        let right_resize_border = if terminals.is_empty() { terminal_to_check.get_x() + terminal_to_check.get_columns() } else { right_resize_border };
         let terminal_ids: Vec<RawFd> = terminals.iter().map(|t| t.pid).collect();
         (right_resize_border, terminal_ids)
     }
-    fn reduce_pane_height_down(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_height_down(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(id).unwrap();
         terminal.reduce_height_down(count);
         self.os_api.set_terminal_size_using_fd(
             *id,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn reduce_pane_height_up(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_height_up(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(id).unwrap();
         terminal.reduce_height_up(count);
         self.os_api.set_terminal_size_using_fd(
             *id,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn increase_pane_height_down(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_height_down(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.increase_height_down(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn increase_pane_height_up(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_height_up(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.increase_height_up(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn increase_pane_width_right(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_width_right(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.increase_width_right(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn increase_pane_width_left(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_width_left(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.increase_width_left(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16
         );
     }
-    fn reduce_pane_width_right(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_width_right(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.reduce_width_right(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn reduce_pane_width_left(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_width_left(&mut self, id: &RawFd, count: usize) {
         let terminal = self.terminals.get_mut(&id).unwrap();
         terminal.reduce_width_left(count);
         self.os_api.set_terminal_size_using_fd(
             terminal.pid,
-            terminal.display_cols,
-            terminal.display_rows
+            terminal.get_columns() as u16,
+            terminal.get_rows() as u16,
         );
     }
-    fn pane_is_between_vertical_borders(&self, id: &RawFd, left_border_x: u16, right_border_x: u16) -> bool {
+    fn pane_is_between_vertical_borders(&self, id: &RawFd, left_border_x: usize, right_border_x: usize) -> bool {
         let terminal = self.terminals.get(id).expect("could not find terminal to check between borders");
-        terminal.x_coords >= left_border_x && terminal.x_coords + terminal.display_cols <= right_border_x
+        terminal.get_x() >= left_border_x && terminal.get_x() + terminal.get_columns() <= right_border_x
     }
-    fn pane_is_between_horizontal_borders(&self, id: &RawFd, top_border_y: u16, bottom_border_y: u16) -> bool {
+    fn pane_is_between_horizontal_borders(&self, id: &RawFd, top_border_y: usize, bottom_border_y: usize) -> bool {
         let terminal = self.terminals.get(id).expect("could not find terminal to check between borders");
-        terminal.y_coords >= top_border_y && terminal.y_coords + terminal.display_rows <= bottom_border_y
+        terminal.get_y() >= top_border_y && terminal.get_y() + terminal.get_rows() <= bottom_border_y
     }
-    fn reduce_pane_and_surroundings_up(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_and_surroundings_up(&mut self, id: &RawFd, count: usize) {
         let mut terminals_below = self.terminal_ids_directly_below(&id).expect("can't reduce pane size up if there are no terminals below");
-        let terminal_borders_below: HashSet<u16> = terminals_below.iter().map(|t| self.terminals.get(t).unwrap().x_coords).collect();
+        let terminal_borders_below: HashSet<usize> = terminals_below.iter().map(|t| self.terminals.get(t).unwrap().get_x()).collect();
         let (left_resize_border, terminals_to_the_left) = self.bottom_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
         let (right_resize_border, terminals_to_the_right) = self.bottom_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
         terminals_below.retain(|t| self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border));
@@ -708,9 +746,9 @@ impl Screen {
             self.reduce_pane_height_up(&terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_down(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_and_surroundings_down(&mut self, id: &RawFd, count: usize) {
         let mut terminals_above = self.terminal_ids_directly_above(&id).expect("can't reduce pane size down if there are no terminals above");
-        let terminal_borders_above: HashSet<u16> = terminals_above.iter().map(|t| self.terminals.get(t).unwrap().x_coords).collect();
+        let terminal_borders_above: HashSet<usize> = terminals_above.iter().map(|t| self.terminals.get(t).unwrap().get_x()).collect();
         let (left_resize_border, terminals_to_the_left) = self.top_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_above);
         let (right_resize_border, terminals_to_the_right) = self.top_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_above);
         terminals_above.retain(|t| self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border));
@@ -722,9 +760,9 @@ impl Screen {
             self.reduce_pane_height_down(&terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_right(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_and_surroundings_right(&mut self, id: &RawFd, count: usize) {
         let mut terminals_to_the_left = self.terminal_ids_directly_left_of(&id).expect("can't reduce pane size right if there are no terminals to the left");
-        let terminal_borders_to_the_left: HashSet<u16> = terminals_to_the_left.iter().map(|t| self.terminals.get(t).unwrap().y_coords).collect();
+        let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left.iter().map(|t| self.terminals.get(t).unwrap().get_y()).collect();
         let (top_resize_border, terminals_above) = self.left_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_left);
         let (bottom_resize_border, terminals_below) = self.left_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_left);
         terminals_to_the_left.retain(|t| self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border));
@@ -736,9 +774,9 @@ impl Screen {
             self.reduce_pane_width_right(&terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_left(&mut self, id: &RawFd, count: u16) {
+    fn reduce_pane_and_surroundings_left(&mut self, id: &RawFd, count: usize) {
         let mut terminals_to_the_right = self.terminal_ids_directly_right_of(&id).expect("can't reduce pane size left if there are no terminals to the right");
-        let terminal_borders_to_the_right: HashSet<u16> = terminals_to_the_right.iter().map(|t| self.terminals.get(t).unwrap().y_coords).collect();
+        let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right.iter().map(|t| self.terminals.get(t).unwrap().get_y()).collect();
         let (top_resize_border, terminals_above) = self.right_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_right);
         let (bottom_resize_border, terminals_below) = self.right_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_right);
         terminals_to_the_right.retain(|t| self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border));
@@ -750,9 +788,9 @@ impl Screen {
             self.reduce_pane_width_left(&terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_up(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_and_surroundings_up(&mut self, id: &RawFd, count: usize) {
         let mut terminals_above = self.terminal_ids_directly_above(&id).expect("can't increase pane size up if there are no terminals above");
-        let terminal_borders_above: HashSet<u16> = terminals_above.iter().map(|t| self.terminals.get(t).unwrap().x_coords).collect();
+        let terminal_borders_above: HashSet<usize> = terminals_above.iter().map(|t| self.terminals.get(t).unwrap().get_x()).collect();
         let (left_resize_border, terminals_to_the_left) = self.top_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_above);
         let (right_resize_border, terminals_to_the_right) = self.top_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_above);
         terminals_above.retain(|t| self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border));
@@ -764,9 +802,9 @@ impl Screen {
             self.increase_pane_height_up(&terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_down(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_and_surroundings_down(&mut self, id: &RawFd, count: usize) {
         let mut terminals_below = self.terminal_ids_directly_below(&id).expect("can't increase pane size down if there are no terminals below");
-        let terminal_borders_below: HashSet<u16> = terminals_below.iter().map(|t| self.terminals.get(t).unwrap().x_coords).collect();
+        let terminal_borders_below: HashSet<usize> = terminals_below.iter().map(|t| self.terminals.get(t).unwrap().get_x()).collect();
         let (left_resize_border, terminals_to_the_left) = self.bottom_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
         let (right_resize_border, terminals_to_the_right) = self.bottom_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
         terminals_below.retain(|t| self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border));
@@ -778,9 +816,9 @@ impl Screen {
             self.increase_pane_height_down(&terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_right(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_and_surroundings_right(&mut self, id: &RawFd, count: usize) {
         let mut terminals_to_the_right = self.terminal_ids_directly_right_of(&id).expect("can't increase pane size right if there are no terminals to the right");
-        let terminal_borders_to_the_right: HashSet<u16> = terminals_to_the_right.iter().map(|t| self.terminals.get(t).unwrap().y_coords).collect();
+        let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right.iter().map(|t| self.terminals.get(t).unwrap().get_y()).collect();
         let (top_resize_border, terminals_above) = self.right_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_right);
         let (bottom_resize_border, terminals_below) = self.right_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_right);
         terminals_to_the_right.retain(|t| self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border));
@@ -792,9 +830,9 @@ impl Screen {
             self.increase_pane_width_right(&terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_left(&mut self, id: &RawFd, count: u16) {
+    fn increase_pane_and_surroundings_left(&mut self, id: &RawFd, count: usize) {
         let mut terminals_to_the_left = self.terminal_ids_directly_left_of(&id).expect("can't increase pane size right if there are no terminals to the right");
-        let terminal_borders_to_the_left: HashSet<u16> = terminals_to_the_left.iter().map(|t| self.terminals.get(t).unwrap().y_coords).collect();
+        let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left.iter().map(|t| self.terminals.get(t).unwrap().get_y()).collect();
         let (top_resize_border, terminals_above) = self.left_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_left);
         let (bottom_resize_border, terminals_below) = self.left_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_left);
         terminals_to_the_left.retain(|t| self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border));
@@ -808,19 +846,19 @@ impl Screen {
     }
     fn panes_exist_above(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.y_coords > 0
+        pane.get_y() > 0
     }
     fn panes_exist_below(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.y_coords + pane.display_rows < self.full_screen_ws.ws_row
+        pane.get_y() + pane.get_rows() < self.full_screen_ws.ws_row as usize
     }
     fn panes_exist_to_the_right(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.x_coords + pane.display_cols < self.full_screen_ws.ws_col
+        pane.get_x() + pane.get_columns() < self.full_screen_ws.ws_col as usize
     }
     fn panes_exist_to_the_left(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.x_coords > 0
+        pane.get_x() > 0
     }
     pub fn resize_right (&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -889,26 +927,26 @@ impl Screen {
         }
         self.render();
     }
-    fn horizontal_borders(&self, terminals: &[RawFd]) -> HashSet<u16> {
+    fn horizontal_borders(&self, terminals: &[RawFd]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
             let terminal = self.terminals.get(t).unwrap();
-            borders.insert(terminal.y_coords);
-            borders.insert(terminal.y_coords + terminal.display_rows + 1); // 1 for the border width
+            borders.insert(terminal.get_y());
+            borders.insert(terminal.get_y() + terminal.get_rows() + 1); // 1 for the border width
             borders
         })
     }
-    fn vertical_borders(&self, terminals: &[RawFd]) -> HashSet<u16> {
+    fn vertical_borders(&self, terminals: &[RawFd]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
             let terminal = self.terminals.get(t).unwrap();
-            borders.insert(terminal.x_coords);
-            borders.insert(terminal.x_coords + terminal.display_cols + 1); // 1 for the border width
+            borders.insert(terminal.get_x());
+            borders.insert(terminal.get_x() + terminal.get_columns() + 1); // 1 for the border width
             borders
         })
     }
     fn terminals_to_the_left_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
         if let Some(terminal) = &self.terminals.get(&id) {
-            let upper_close_border = terminal.y_coords;
-            let lower_close_border = terminal.y_coords + terminal.display_rows + 1;
+            let upper_close_border = terminal.get_y();
+            let lower_close_border = terminal.get_y() + terminal.get_rows() + 1;
 
             if let Some(mut terminals_to_the_left) = self.terminal_ids_directly_left_of(&id) {
                 let terminal_borders_to_the_left = self.horizontal_borders(&terminals_to_the_left);
@@ -922,8 +960,8 @@ impl Screen {
     }
     fn terminals_to_the_right_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
         if let Some(terminal) = &self.terminals.get(&id) {
-            let upper_close_border = terminal.y_coords;
-            let lower_close_border = terminal.y_coords + terminal.display_rows + 1;
+            let upper_close_border = terminal.get_y();
+            let lower_close_border = terminal.get_y() + terminal.get_rows() + 1;
 
             if let Some(mut terminals_to_the_right) = self.terminal_ids_directly_right_of(&id) {
                 let terminal_borders_to_the_right = self.horizontal_borders(&terminals_to_the_right);
@@ -937,8 +975,8 @@ impl Screen {
     }
     fn terminals_above_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
         if let Some(terminal) = &self.terminals.get(&id) {
-            let left_close_border = terminal.x_coords;
-            let right_close_border = terminal.x_coords + terminal.display_cols + 1;
+            let left_close_border = terminal.get_x();
+            let right_close_border = terminal.get_x() + terminal.get_columns() + 1;
 
             if let Some(mut terminals_above) = self.terminal_ids_directly_above(&id) {
                 let terminal_borders_above = self.vertical_borders(&terminals_above);
@@ -952,8 +990,8 @@ impl Screen {
     }
     fn terminals_below_between_aligning_borders(&self, id: RawFd) -> Option<Vec<RawFd>> {
         if let Some(terminal) = &self.terminals.get(&id) {
-            let left_close_border = terminal.x_coords;
-            let right_close_border = terminal.x_coords + terminal.display_cols + 1;
+            let left_close_border = terminal.get_x();
+            let right_close_border = terminal.get_x() + terminal.get_columns() + 1;
 
             if let Some(mut terminals_below) = self.terminal_ids_directly_below(&id) {
                 let terminal_borders_below = self.vertical_borders(&terminals_below);
@@ -984,8 +1022,8 @@ impl Screen {
     }
     pub fn close_pane_without_rerender(&mut self, id: RawFd) {
         if let Some(terminal_to_close) = &self.terminals.get(&id) {
-            let terminal_to_close_width = terminal_to_close.display_cols;
-            let terminal_to_close_height = terminal_to_close.display_rows;
+            let terminal_to_close_width = terminal_to_close.get_columns();
+            let terminal_to_close_height = terminal_to_close.get_rows();
             if let Some(terminals) = self.terminals_to_the_left_between_aligning_borders(id) {
                 for terminal_id in terminals.iter() {
                     &self.increase_pane_width_right(&terminal_id, terminal_to_close_width + 1); // 1 for the border

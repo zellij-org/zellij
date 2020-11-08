@@ -6,7 +6,7 @@ expression: snapshot
 ┌Utilization by process name───────────────────────────────────────────────────────────────────────────────────────┐
 │Process                                              Connections              Up / Down                           │
 │                                                                                                                  │
-│firefox                                              3                        46Bps / 5█Bps                       │
+│firefox                                              3                        46Bps / 57Bps                       │
 │                                                                                                                  │
 │                                                                                                                  │
 │                                                                                                                  │

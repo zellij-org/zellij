@@ -13,45 +13,55 @@ use crate::terminal_pane::terminal_character::{
 };
 use crate::utils::logging::{_debug_log_to_file, _debug_log_to_file_pid_0};
 
+#[derive(Clone, Copy, Debug)]
+pub struct PositionAndSize {
+    pub x: usize,
+    pub y: usize,
+    pub rows: usize,
+    pub columns: usize,
+}
+
 pub struct TerminalPane {
     pub pid: RawFd,
     pub scroll: Scroll,
-    pub display_rows: u16,
-    pub display_cols: u16,
     pub should_render: bool,
-    pub x_coords: u16,
-    pub y_coords: u16,
+    pub position_and_size: PositionAndSize,
+    pub position_and_size_override: Option<PositionAndSize>,
     pending_styles: CharacterStyles,
 }
 
 impl Rect for &mut TerminalPane {
     fn x(&self) -> usize {
-        self.x_coords as usize
+        self.get_x()
     }
     fn y(&self) -> usize {
-        self.y_coords as usize
+        self.get_y()
     }
     fn rows(&self) -> usize {
-        self.display_rows as usize
+        self.get_rows()
     }
     fn columns(&self) -> usize {
-        self.display_cols as usize
+        self.get_columns()
     }
 }
 
 impl TerminalPane {
-    pub fn new (pid: RawFd, ws: Winsize, x_coords: u16, y_coords: u16) -> TerminalPane {
+    pub fn new (pid: RawFd, ws: Winsize, x: usize, y: usize) -> TerminalPane {
         let scroll = Scroll::new(ws.ws_col as usize, ws.ws_row as usize);
         let pending_styles = CharacterStyles::new();
+        let position_and_size = PositionAndSize {
+            x,
+            y,
+            rows: ws.ws_row as usize,
+            columns: ws.ws_col as usize,
+        };
         TerminalPane {
             pid,
             scroll,
-            display_rows: ws.ws_row,
-            display_cols: ws.ws_col,
             should_render: true,
             pending_styles,
-            x_coords,
-            y_coords,
+            position_and_size,
+            position_and_size_override: None,
         }
     }
     pub fn handle_event(&mut self, event: VteEvent) {
@@ -84,69 +94,113 @@ impl TerminalPane {
             }
         }
     }
-    pub fn reduce_width_right(&mut self, count: u16) {
-        self.x_coords += count;
-        self.display_cols -= count;
+    pub fn reduce_width_right(&mut self, count: usize) {
+        self.position_and_size.x += count;
+        self.position_and_size.columns -= count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn reduce_width_left(&mut self, count: u16) {
-        self.display_cols -= count;
+    pub fn reduce_width_left(&mut self, count: usize) {
+        self.position_and_size.columns -= count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn increase_width_left(&mut self, count: u16) {
-        self.x_coords -= count;
-        self.display_cols += count;
+    pub fn increase_width_left(&mut self, count: usize) {
+        self.position_and_size.x -= count;
+        self.position_and_size.columns += count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn increase_width_right(&mut self, count: u16) {
-        self.display_cols += count;
+    pub fn increase_width_right(&mut self, count: usize) {
+        self.position_and_size.columns += count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn reduce_height_down(&mut self, count: u16) {
-        self.y_coords += count;
-        self.display_rows -= count;
+    pub fn reduce_height_down(&mut self, count: usize) {
+        self.position_and_size.y += count;
+        self.position_and_size.rows -= count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn increase_height_down(&mut self, count: u16) {
-        self.display_rows += count;
+    pub fn increase_height_down(&mut self, count: usize) {
+        self.position_and_size.rows += count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn increase_height_up(&mut self, count: u16) {
-        self.y_coords -= count;
-        self.display_rows += count;
+    pub fn increase_height_up(&mut self, count: usize) {
+        self.position_and_size.y -= count;
+        self.position_and_size.rows += count;
         self.reflow_lines();
         self.should_render = true;
     }
-    pub fn reduce_height_up(&mut self, count: u16) {
-        self.display_rows -= count;
+    pub fn reduce_height_up(&mut self, count: usize) {
+        self.position_and_size.rows -= count;
         self.reflow_lines();
         self.should_render = true;
     }
     pub fn change_size(&mut self, ws: &Winsize) {
-        self.display_cols = ws.ws_col;
-        self.display_rows = ws.ws_row;
+        self.position_and_size.columns = ws.ws_col as usize;
+        self.position_and_size.rows = ws.ws_row as usize;
         self.reflow_lines();
         self.should_render = true;
     }
-    fn reflow_lines (&mut self) {
-        self.scroll.change_size(self.display_cols as usize, self.display_rows as usize);
+    pub fn get_x(&self) -> usize {
+        match self.position_and_size_override {
+            Some(position_and_size_override) => {
+                position_and_size_override.x
+            },
+            None => {
+                self.position_and_size.x as usize
+            }
+        }
     }
-    pub fn buffer_as_vte_output(&mut self) -> Option<String> {
+    pub fn get_y(&self) -> usize {
+        match self.position_and_size_override {
+            Some(position_and_size_override) => {
+                position_and_size_override.y
+            },
+            None => {
+                self.position_and_size.y as usize
+            }
+        }
+    }
+    pub fn get_columns(&self) -> usize {
+        match &self.position_and_size_override.as_ref() {
+            Some(position_and_size_override) => {
+                position_and_size_override.columns
+            },
+            None => {
+                self.position_and_size.columns as usize
+            }
+        }
+    }
+    pub fn get_rows(&self) -> usize {
+        match &self.position_and_size_override.as_ref() {
+            Some(position_and_size_override) => {
+                position_and_size_override.rows
+            },
+            None => {
+                self.position_and_size.rows as usize
+            }
+        }
+    }
+    fn reflow_lines (&mut self) {
+        let rows = self.get_rows();
+        let columns = self.get_columns();
+        self.scroll.change_size(columns, rows);
+    }
+    pub fn buffer_as_vte_output(&mut self) -> Option<String> { // TODO: rename to render
         if self.should_render {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
-            let display_cols = &self.display_cols;
+            let display_cols = self.get_columns();
             let mut character_styles = CharacterStyles::new();
             for (row, line) in buffer_lines.iter().enumerate() {
-                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, self.y_coords as usize + row + 1, self.x_coords + 1); // goto row/col and reset styles
+                let x = self.get_x();
+                let y = self.get_y();
+                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, y + row + 1, x + 1); // goto row/col and reset styles
                 for (col, t_character) in line.iter().enumerate() {
-                    if (col as u16) < *display_cols {
+                    if col < display_cols {
                         // in some cases (eg. while resizing) some characters will spill over
                         // before they are corrected by the shell (for the prompt) or by reflowing
                         // lines
@@ -170,7 +224,7 @@ impl TerminalPane {
     pub fn read_buffer_as_lines (&self) -> Vec<Vec<TerminalCharacter>> {
         self.scroll.as_character_lines()
     }
-    pub fn cursor_coordinates (&self) -> (usize, usize) { // (x, y)
+    pub fn cursor_coordinates (&self) -> Option<(usize, usize)> { // (x, y)
         self.scroll.cursor_coordinates_on_screen()
     }
     pub fn scroll_up(&mut self, count: usize) {
@@ -185,9 +239,25 @@ impl TerminalPane {
         self.scroll.reset_viewport();
         self.should_render = true;
     }
+    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &Winsize) {
+        let position_and_size_override = PositionAndSize {
+            x,
+            y,
+            rows: size.ws_row as usize,
+            columns: size.ws_col as usize,
+        };
+        self.position_and_size_override = Some(position_and_size_override);
+        self.reflow_lines();
+        self.should_render = true;
+    }
+    pub fn reset_size_and_position_override(&mut self) {
+        self.position_and_size_override = None;
+        self.reflow_lines();
+        self.should_render = true;
+    }
     fn add_newline (&mut self) {
-        self.scroll.add_canonical_line(); // TODO: handle scroll region
-        self.reset_all_ansi_codes();
+        self.scroll.add_canonical_line();
+        // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
         self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
@@ -478,14 +548,41 @@ impl vte::Perform for TerminalPane {
             let move_back_count = if params[0] == 0 { 1 } else { params[0] as usize };
             self.scroll.move_cursor_back(move_back_count);
         } else if c == 'l' {
-            // TBD
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(25) => {
+                        self.scroll.hide_cursor();
+                        self.should_render = true;
+                    },
+                    _ => {}
+                };
+            }
         } else if c == 'h' {
-            // TBD
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(25) => {
+                        self.scroll.show_cursor();
+                        self.should_render = true;
+                    },
+                    _ => {}
+                };
+            }
         } else if c == 'r' {
             if params.len() > 1 {
                 let top_line_index = params[0] as usize;
                 let bottom_line_index = params[1] as usize;
                 self.scroll.set_scroll_region(top_line_index, bottom_line_index);
+                self.scroll.show_cursor();
             } else {
                 self.scroll.clear_scroll_region();
             }

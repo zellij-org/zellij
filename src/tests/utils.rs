@@ -14,15 +14,17 @@ pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize)
             vte_parser.advance(&mut terminal_output, *byte);
         }
         let output_lines = terminal_output.read_buffer_as_lines();
-        let (cursor_x, cursor_y) = terminal_output.cursor_coordinates();
+        let cursor_coordinates = terminal_output.cursor_coordinates();
         let mut snapshot = String::new();
         for (line_index, line) in output_lines.iter().enumerate() {
             for (character_index, terminal_character) in line.iter().enumerate() {
-                if line_index == cursor_y && character_index == cursor_x {
-                    snapshot.push('█');
-                } else {
-                    snapshot.push(terminal_character.character);
+                if let Some((cursor_x, cursor_y)) = cursor_coordinates {
+                    if line_index == cursor_y && character_index == cursor_x {
+                        snapshot.push('█');
+                        continue;
+                    }
                 }
+                snapshot.push(terminal_character.character);
             }
             if line_index != output_lines.len() - 1 {
                 snapshot.push('\n');

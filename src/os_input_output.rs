@@ -23,7 +23,6 @@ fn into_raw_mode(pid: RawFd) {
         Ok(_) => {},
         Err(e) => panic!("error {:?}", e)
     };
-
 }
 
 pub fn get_terminal_size_using_fd(fd: RawFd) -> Winsize {
@@ -85,7 +84,8 @@ fn handle_command_exit(mut child: Child) {
 
 fn spawn_terminal (file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
-        match forkpty(None, None) {
+        let current_termios = tcgetattr(0).unwrap();
+        match forkpty(None, Some(&current_termios)) {
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
