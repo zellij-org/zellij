@@ -284,33 +284,33 @@ impl Scroll {
             panic!("cursor out of bounds, cannot add_canonical_line");
         }
     }
-    /// [Alacritty functionality description](https://github.com/alacritty/alacritty/blob/9028fb451a967d69a9e258a083ba64b052a9a5dd/docs/ansicode.txt#L382)
-    /// This function takes the first line of the scroll region and moves it to the bottom
+    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
+    /// This function takes the first line of the scroll region and moves it to the bottom (count times)
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((_, scroll_region_bottom)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_bottom_index = scroll_region_bottom - 1;
-                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index);
+                let new_lines = vec![CanonicalLine::new(); count];
 
-                for _ in 0..=count {
-                    self.canonical_lines.push(CanonicalLine::new());
-                    self.cursor_position.move_to_next_canonical_line();
-                    self.cursor_position.move_to_beginning_of_canonical_line();
-                }
+                self.canonical_lines.splice(scroll_region_bottom_index..scroll_region_bottom_index, new_lines);
+                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index + count);
+                self.cursor_position.move_to_beginning_of_canonical_line();
             }
         }
     }
+    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
+    /// This function takes the last line of the scroll region and moves it to the top (count times)
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         if let Some((scroll_region_top, _)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_top_index = scroll_region_top - 1;
+                let new_lines = vec![CanonicalLine::new(); count];
+
                 self.cursor_position.move_to_canonical_line(scroll_region_top_index);
 
-                for _ in 0..=count {
-                    self.canonical_lines.push(CanonicalLine::new());
-                    self.cursor_position.move_to_prev_canonical_line();
-                    self.cursor_position.move_to_beginning_of_canonical_line();
-                }
+                self.canonical_lines.splice(scroll_region_top_index..scroll_region_top_index, new_lines);
+                self.cursor_position.move_to_canonical_line(scroll_region_top_index + count);
+                self.cursor_position.move_to_beginning_of_canonical_line();
             }
         }
     }
