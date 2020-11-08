@@ -616,6 +616,12 @@ impl vte::Perform for TerminalPane {
             } else {
                 self.rotate_scroll_region_down(line_count.abs() as usize);
             }
+        } else if c == 'P' {
+            /*
+             * 120 50 P * DCH
+             * Delete Character, from current position to end of field
+		     * [4P = Delete 4 characters, VT102 series
+             */
         } else {
             panic!("unhandled csi: {}->{:?}", c, params);
         }
