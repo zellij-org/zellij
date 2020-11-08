@@ -91,29 +91,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
-            .spawn({
-                move || {
-                    pty_bus.spawn_terminal_vertically(None);
-                    loop {
-                        let event = pty_bus.receive_pty_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        match event {
-                            PtyInstruction::SpawnTerminal(file_to_open) => {
-                                pty_bus.spawn_terminal(file_to_open);
-                            }
-                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                pty_bus.spawn_terminal_vertically(file_to_open);
-                            }
-                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                pty_bus.spawn_terminal_horizontally(file_to_open);
-                            }
-                            PtyInstruction::ClosePane(id) => {
-                                pty_bus.close_pane(id);
-                            }
-                            PtyInstruction::Quit => {
-                                break;
-                            }
+            .spawn(move || {
+                pty_bus.spawn_terminal_vertically(None);
+                loop {
+                    let event = pty_bus.receive_pty_instructions
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        PtyInstruction::SpawnTerminal(file_to_open) => {
+                            pty_bus.spawn_terminal(file_to_open);
+                        }
+                        PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                            pty_bus.spawn_terminal_vertically(file_to_open);
+                        }
+                        PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                            pty_bus.spawn_terminal_horizontally(file_to_open);
+                        }
+                        PtyInstruction::ClosePane(id) => {
+                            pty_bus.close_pane(id);
+                        }
+                        PtyInstruction::Quit => {
+                            break;
                         }
                     }
                 }
@@ -123,67 +121,65 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     active_threads.push(
         thread::Builder::new()
             .name("screen".to_string())
-            .spawn({
-                move || {
-                    loop {
-                        let event = screen.receiver
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        match event {
-                            ScreenInstruction::Pty(pid, vte_event) => {
-                                screen.handle_pty_event(pid, vte_event);
-                            },
-                            ScreenInstruction::Render => {
-                                screen.render();
-                            },
-                            ScreenInstruction::NewPane(pid) => {
-                                screen.new_pane(pid);
-                            }
-                            ScreenInstruction::HorizontalSplit(pid) => {
-                                screen.horizontal_split(pid);
-                            }
-                            ScreenInstruction::VerticalSplit(pid) => {
-                                screen.vertical_split(pid);
-                            }
-                            ScreenInstruction::WriteCharacter(bytes) => {
-                                screen.write_to_active_terminal(bytes);
-                            }
-                            ScreenInstruction::ResizeLeft => {
-                                screen.resize_left();
-                            }
-                            ScreenInstruction::ResizeRight => {
-                                screen.resize_right();
-                            }
-                            ScreenInstruction::ResizeDown => {
-                                screen.resize_down();
-                            }
-                            ScreenInstruction::ResizeUp => {
-                                screen.resize_up();
-                            }
-                            ScreenInstruction::MoveFocus => {
-                                screen.move_focus();
-                            }
-                            ScreenInstruction::ScrollUp => {
-                                screen.scroll_active_terminal_up();
-                            }
-                            ScreenInstruction::ScrollDown => {
-                                screen.scroll_active_terminal_down();
-                            }
-                            ScreenInstruction::ClearScroll => {
-                                screen.clear_active_terminal_scroll();
-                            }
-                            ScreenInstruction::CloseFocusedPane => {
-                                screen.close_focused_pane();
-                            }
-                            ScreenInstruction::ClosePane(id) => {
-                                screen.close_pane(id);
-                            }
-                            ScreenInstruction::ToggleActiveTerminalFullscreen => {
-                                screen.toggle_active_terminal_fullscreen();
-                            }
-                            ScreenInstruction::Quit => {
-                                break;
-                            }
+            .spawn(move || {
+                loop {
+                    let event = screen.receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        ScreenInstruction::Pty(pid, vte_event) => {
+                            screen.handle_pty_event(pid, vte_event);
+                        },
+                        ScreenInstruction::Render => {
+                            screen.render();
+                        },
+                        ScreenInstruction::NewPane(pid) => {
+                            screen.new_pane(pid);
+                        }
+                        ScreenInstruction::HorizontalSplit(pid) => {
+                            screen.horizontal_split(pid);
+                        }
+                        ScreenInstruction::VerticalSplit(pid) => {
+                            screen.vertical_split(pid);
+                        }
+                        ScreenInstruction::WriteCharacter(bytes) => {
+                            screen.write_to_active_terminal(bytes);
+                        }
+                        ScreenInstruction::ResizeLeft => {
+                            screen.resize_left();
+                        }
+                        ScreenInstruction::ResizeRight => {
+                            screen.resize_right();
+                        }
+                        ScreenInstruction::ResizeDown => {
+                            screen.resize_down();
+                        }
+                        ScreenInstruction::ResizeUp => {
+                            screen.resize_up();
+                        }
+                        ScreenInstruction::MoveFocus => {
+                            screen.move_focus();
+                        }
+                        ScreenInstruction::ScrollUp => {
+                            screen.scroll_active_terminal_up();
+                        }
+                        ScreenInstruction::ScrollDown => {
+                            screen.scroll_active_terminal_down();
+                        }
+                        ScreenInstruction::ClearScroll => {
+                            screen.clear_active_terminal_scroll();
+                        }
+                        ScreenInstruction::CloseFocusedPane => {
+                            screen.close_focused_pane();
+                        }
+                        ScreenInstruction::ClosePane(id) => {
+                            screen.close_pane(id);
+                        }
+                        ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                            screen.toggle_active_terminal_fullscreen();
+                        }
+                        ScreenInstruction::Quit => {
+                            break;
                         }
                     }
                 }
@@ -239,7 +235,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 		let mut buffer = [0; 10]; // TODO: more accurately
         stdin.read(&mut buffer).expect("failed to read stdin");
         // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-        // _debug_log_to_file(format!("buffer {:?}", buffer));
+        // crate::utils::logging::_debug_log_to_file(format!("buffer {:?}", buffer));
         match buffer {
             [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-j
                 send_screen_instructions.send(ScreenInstruction::ResizeDown).unwrap();

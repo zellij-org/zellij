@@ -282,6 +282,16 @@ impl Scroll {
             panic!("cursor out of bounds, cannot add_canonical_line");
         }
     }
+    /// [Alacritty functionality description](https://github.com/alacritty/alacritty/blob/9028fb451a967d69a9e258a083ba64b052a9a5dd/docs/ansicode.txt#L382)
+    /// This function takes the first line of the scroll region and moves it to the bottom
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            if self.show_cursor {
+                
+            }
+        }
+    }
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {}
     pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> { // (x, y)
         if !self.show_cursor {
             return None

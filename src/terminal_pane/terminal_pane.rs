@@ -64,11 +64,14 @@ impl TerminalPane {
             position_and_size_override: None,
         }
     }
+    pub fn mark_for_rerender(&mut self) {
+        self.should_render = true;
+    }
     pub fn handle_event(&mut self, event: VteEvent) {
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
-                self.should_render = true;
+                self.mark_for_rerender();
             },
             VteEvent::Execute(byte) => {
                 self.execute(byte);
@@ -98,51 +101,51 @@ impl TerminalPane {
         self.position_and_size.x += count;
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_height_down(&mut self, count: usize) {
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_height_up(&mut self, count: usize) {
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn change_size(&mut self, ws: &Winsize) {
         self.position_and_size.columns = ws.ws_col as usize;
         self.position_and_size.rows = ws.ws_row as usize;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
@@ -229,15 +232,15 @@ impl TerminalPane {
     }
     pub fn scroll_up(&mut self, count: usize) {
         self.scroll.move_viewport_up(count);
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn scroll_down(&mut self, count: usize) {
         self.scroll.move_viewport_down(count);
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn clear_scroll(&mut self) {
         self.scroll.reset_viewport();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &Winsize) {
         let position_and_size_override = PositionAndSize {
@@ -248,17 +251,17 @@ impl TerminalPane {
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     fn add_newline (&mut self) {
         self.scroll.add_canonical_line();
         // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     fn move_to_beginning_of_line (&mut self) {
         self.scroll.move_cursor_to_beginning_of_canonical_line();
@@ -309,6 +312,10 @@ impl vte::Perform for TerminalPane {
     }
 
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
+        if c != 'm' {
+            _debug_log_to_file(format!("htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})", c, params, _intermediates, _ignore));
+        }
+
         if c == 'm' {
             if params.is_empty() || params[0] == 0 {
                 // reset all
@@ -548,34 +555,20 @@ impl vte::Perform for TerminalPane {
             let move_back_count = if params[0] == 0 { 1 } else { params[0] as usize };
             self.scroll.move_cursor_back(move_back_count);
         } else if c == 'l' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false
-            };
-            if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.hide_cursor();
-                        self.should_render = true;
-                    },
-                    _ => {}
-                };
+            let first_intermediate_is_questionmark = _intermediates.get(0) == Some(&b'?');
+            let should_hide_cursor = params.get(0) == Some(&25);
+
+            if first_intermediate_is_questionmark && should_hide_cursor {
+                self.scroll.hide_cursor();
+                self.mark_for_rerender();
             }
         } else if c == 'h' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false
-            };
-            if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.show_cursor();
-                        self.should_render = true;
-                    },
-                    _ => {}
-                };
+            let first_intermediate_is_questionmark = _intermediates.get(0) == Some(&b'?');
+            let should_show_cursor = params.get(0) == Some(&25);
+
+            if first_intermediate_is_questionmark && should_show_cursor {
+                self.scroll.show_cursor();
+                self.mark_for_rerender();
             }
         } else if c == 'r' {
             if params.len() > 1 {
@@ -603,7 +596,6 @@ impl vte::Perform for TerminalPane {
         } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
         } else if c == 'T' {
-            _debug_log_to_file(format!("htop (only?) linux csi: {:?}->{:?}", c, params));
             /*
              * 124  54  T   SD
              * Scroll down, new lines inserted at top of screen

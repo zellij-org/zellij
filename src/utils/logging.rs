@@ -16,6 +16,6 @@ pub fn _debug_log_to_file(message: String) {
 
 pub fn _debug_log_to_file_pid_0(message: String, pid: RawFd) {
     if pid == 0 {
-        _debug_log_to_file(message)
+        _debug_log_to_file(message);
     }
 }
