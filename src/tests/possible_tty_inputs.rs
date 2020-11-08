@@ -28,10 +28,6 @@ impl Bytes {
             read_position: 0
         }
     }
-    pub fn content(mut self, content: Vec<u8>) -> Self {
-        self.content = content;
-        self
-    }
     pub fn content_from_str(mut self, content: &[&'static str]) -> Self {
         let mut content_as_bytes = vec![];
         for line in content {
