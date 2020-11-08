@@ -238,6 +238,14 @@ impl TerminalPane {
         self.scroll.move_viewport_down(count);
         self.mark_for_rerender();
     }
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_up(count);
+        self.mark_for_rerender();
+    }
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_down(count);
+        self.mark_for_rerender();
+    }
     pub fn clear_scroll(&mut self) {
         self.scroll.reset_viewport();
         self.mark_for_rerender();
@@ -604,9 +612,9 @@ impl vte::Perform for TerminalPane {
             let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
 
             if line_count >= 0 {
-                self.scroll_down(line_count as usize);
+                self.rotate_scroll_region_up(line_count as usize);
             } else {
-                self.scroll_up(line_count.abs() as usize);
+                self.rotate_scroll_region_down(line_count.abs() as usize);
             }
         } else {
             panic!("unhandled csi: {}->{:?}", c, params);

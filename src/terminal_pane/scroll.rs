@@ -136,6 +136,9 @@ impl CursorPosition {
     pub fn move_to_next_linewrap(&mut self) {
         self.line_index.1 += 1;
     }
+    pub fn move_to_prev_canonical_line(&mut self) {
+        self.line_index.0 -= 1;
+    }
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
     }
@@ -271,8 +274,7 @@ impl Scroll {
             }
         }
         if current_canonical_line_index == self.canonical_lines.len() - 1 {
-            let new_canonical_line = CanonicalLine::new();
-            self.canonical_lines.push(new_canonical_line);
+            self.canonical_lines.push(CanonicalLine::new());
             self.cursor_position.move_to_next_canonical_line();
             self.cursor_position.move_to_beginning_of_canonical_line();
         } else if current_canonical_line_index < self.canonical_lines.len() - 1 {
@@ -285,13 +287,33 @@ impl Scroll {
     /// [Alacritty functionality description](https://github.com/alacritty/alacritty/blob/9028fb451a967d69a9e258a083ba64b052a9a5dd/docs/ansicode.txt#L382)
     /// This function takes the first line of the scroll region and moves it to the bottom
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((_, scroll_region_bottom)) = self.scroll_region {
             if self.show_cursor {
-                
+                let scroll_region_bottom_index = scroll_region_bottom - 1;
+                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index);
+
+                for _ in 0..=count {
+                    self.canonical_lines.push(CanonicalLine::new());
+                    self.cursor_position.move_to_next_canonical_line();
+                    self.cursor_position.move_to_beginning_of_canonical_line();
+                }
             }
         }
     }
-    pub fn rotate_scroll_region_down(&mut self, count: usize) {}
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        if let Some((scroll_region_top, _)) = self.scroll_region {
+            if self.show_cursor {
+                let scroll_region_top_index = scroll_region_top - 1;
+                self.cursor_position.move_to_canonical_line(scroll_region_top_index);
+
+                for _ in 0..=count {
+                    self.canonical_lines.push(CanonicalLine::new());
+                    self.cursor_position.move_to_prev_canonical_line();
+                    self.cursor_position.move_to_beginning_of_canonical_line();
+                }
+            }
+        }
+    }
     pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> { // (x, y)
         if !self.show_cursor {
             return None
