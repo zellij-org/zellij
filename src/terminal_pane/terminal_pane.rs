@@ -603,22 +603,18 @@ impl vte::Perform for TerminalPane {
         } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
         } else if c == 'T' {
-            _debug_log_to_file(format!("htop(?) linux csi: {:?}->{:?}", c, params));
+            _debug_log_to_file(format!("htop (only?) linux csi: {:?}->{:?}", c, params));
             /*
              * 124  54  T   SD
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
-            if let Some(line_count) = params.get(0) {
-                let line_count: i64 = *line_count;
+            let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
 
-                if line_count >= 0 {
-                    self.scroll_down(line_count as usize);
-                } else {
-                    _debug_log_to_file(format!("Illegal number of lines to scroll down: {:?} in {:?}", line_count, self.scroll));
-                }
+            if line_count >= 0 {
+                self.scroll_down(line_count as usize);
             } else {
-                _debug_log_to_file("The number of lines to move up is required.".to_owned());
+                self.scroll_up(line_count.abs() as usize);
             }
         } else {
             panic!("unhandled csi: {}->{:?}", c, params);
