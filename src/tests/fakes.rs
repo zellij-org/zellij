@@ -18,14 +18,15 @@ pub enum IoEvent {
 }
 
 pub struct FakeStdinReader {
-    pub input_chars: Bytes,
+    pub input_chars: Vec<[u8; 10]>,
+    pub read_position: usize,
 }
 
 impl FakeStdinReader {
-    pub fn new(input_chars: Vec<u8>) -> Self {
-        let bytes = Bytes::new().content(input_chars);
+    pub fn new(input_chars: Vec<[u8; 10]>) -> Self {
         FakeStdinReader {
-            input_chars: bytes,
+            input_chars,
+            read_position: 0,
         }
     }
 }
@@ -36,10 +37,13 @@ impl Read for FakeStdinReader {
         // stdin should be buffered and handled in the app itself
         ::std::thread::sleep(Duration::from_millis(50));
         // ::std::thread::sleep(Duration::from_millis(100));
-        let read_position = self.input_chars.read_position;
-        buf[0] = self.input_chars.content[read_position];
-        self.input_chars.set_read_position(read_position + 1);
-        Ok(1)
+        let read_position = self.read_position;
+        let bytes_to_read = self.input_chars.get(read_position).unwrap();
+        for (i, byte) in bytes_to_read.iter().enumerate() {
+            buf[i] = *byte;
+        }
+        self.read_position += 1;
+        Ok(bytes_to_read.len())
     }
 }
 
@@ -71,7 +75,7 @@ impl Write for FakeStdoutWriter {
 #[derive(Clone)]
 pub struct FakeInputOutput {
     read_buffers: Arc<Mutex<HashMap<RawFd, Bytes>>>,
-    input_to_add: Arc<Mutex<Option<Vec<u8>>>>,
+    input_to_add: Arc<Mutex<Option<Vec<[u8; 10]>>>>,
     stdin_writes: Arc<Mutex<HashMap<RawFd, Vec<u8>>>>,
     pub stdout_writer: FakeStdoutWriter, // stdout_writer.output is already an arc/mutex
     io_events: Arc<Mutex<Vec<IoEvent>>>,
@@ -97,7 +101,7 @@ impl FakeInputOutput {
         self.possible_tty_inputs = tty_inputs;
         self
     }
-    pub fn add_terminal_input(&mut self, input: &[u8]) {
+    pub fn add_terminal_input(&mut self, input: &[[u8; 10]]) {
         self.input_to_add = Arc::new(Mutex::new(Some(input.to_vec())));
     }
     pub fn add_terminal(&mut self, fd: RawFd) {
@@ -119,7 +123,7 @@ impl OsApi for FakeInputOutput {
     fn into_raw_mode(&mut self, pid: RawFd) {
         self.io_events.lock().unwrap().push(IoEvent::IntoRawMode(pid));
     }
-    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let next_terminal_id = { self.read_buffers.lock().unwrap().keys().len() as RawFd + 1 };
         self.add_terminal(next_terminal_id);
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
@@ -175,13 +179,13 @@ impl OsApi for FakeInputOutput {
         Box::new((*self).clone())
     }
     fn get_stdin_reader(&self) -> Box<dyn Read> {
-        let mut input_chars = vec![0];
+        let mut input_chars = vec![[0; 10]];
         if let Some(input_to_add) = self.input_to_add.lock().unwrap().as_ref() {
-            for byte in input_to_add {
-                input_chars.push(*byte);
+            for bytes in input_to_add {
+                input_chars.push(*bytes);
             }
         }
-        input_chars.push(17); // ctrl-q (quit)
+        input_chars.push([17, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // ctrl-q (quit)
         let reader = FakeStdinReader::new(input_chars);
         Box::new(reader)
     }
