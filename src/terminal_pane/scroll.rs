@@ -284,7 +284,7 @@ impl Scroll {
             panic!("cursor out of bounds, cannot add_canonical_line");
         }
     }
-    /// [scroll_up](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
+    /// [scroll_up](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
     /// This function takes the first line of the scroll region and moves it to the bottom (count times)
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((_, scroll_region_bottom)) = self.scroll_region {
@@ -298,7 +298,7 @@ impl Scroll {
             }
         }
     }
-    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
+    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
     /// This function takes the last line of the scroll region and moves it to the top (count times)
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         if let Some((scroll_region_top, _)) = self.scroll_region {
