@@ -266,10 +266,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 send_pty_instructions.send(PtyInstruction::Quit).unwrap();
                 break;
             },
-            [27, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-[
+            [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgUp
                 send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
             },
-            [29, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-]
+            [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgDown
                 send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
             },
             [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-x

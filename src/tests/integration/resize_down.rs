@@ -5,6 +5,15 @@ use crate::{start, Opt};
 use crate::tests::fakes::{FakeInputOutput};
 use crate::tests::utils::get_output_frame_snapshots;
 
+use crate::tests::utils::commands::{
+    SPLIT_HORIZONTALLY,
+    SPLIT_VERTICALLY,
+    RESIZE_DOWN,
+    MOVE_FOCUS,
+    RESIZE_LEFT,
+    QUIT,
+};
+
 fn get_fake_os_input (fake_win_size: &Winsize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
@@ -27,7 +36,11 @@ pub fn resize_down_with_pane_above() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[2, 10, 17]); // split-horizontally, resize-down and quit (ctrl-b + ctrl-j + ctrl-q)
+    fake_input_output.add_terminal_input(&[
+        SPLIT_HORIZONTALLY,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
@@ -47,14 +60,18 @@ pub fn resize_down_with_pane_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[2, 16, 10, 17]); // split-horizontally, change-focus, resize-down and quit (ctrl-b + ctrl-p + ctrl-j + ctrl-q)
+    fake_input_output.add_terminal_input(&[SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
@@ -77,15 +94,21 @@ pub fn resize_down_with_panes_above_and_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    // split-horizontally * 2, change-focus * 2, resize-down and quit (ctrl-n * 2 + ctrl-p * 2 + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[2, 2, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_HORIZONTALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
@@ -105,7 +128,7 @@ pub fn resize_down_with_multiple_panes_above() {
     // │███████████│                    │███████████│
     // └───────────┘                    └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -113,8 +136,15 @@ pub fn resize_down_with_multiple_panes_above() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-b + ctrl-p + ctrl-n + ctrl-p * 2 + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[2, 16, 14, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -135,7 +165,7 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     // │     │█████│                    │     │█████│
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -143,8 +173,17 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 3, ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -165,7 +204,7 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     // │     │     │                    │     │     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -173,8 +212,16 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p + ctrl-p + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -195,7 +242,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     // │█████│     │                    │█████│     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -203,8 +250,14 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 2, 16, 2, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -225,7 +278,7 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     // │     │     │                    │     │     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -233,9 +286,15 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // split-vertically, split_horizontally, change-focus, split-horizontally, resize-right and quit
-    // (ctrl-n + ctrl-b + ctrl-p + ctrl-b + ctrl-p, ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 2, 16, 2, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -256,7 +315,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     // │   │███│   │                    │   │███│   │
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -264,8 +323,18 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n * 2 + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 2 + ctrl-b + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 14, 2, 16, 2, 16, 16, 2, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -286,7 +355,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     // │   │   │   │                    │   │   │   │
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
@@ -294,8 +363,20 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n * 2 + ctrl-b + ctrl-p + ctrl-b + ctrl-p * 2 + ctrl-b + ctrl-p * 2 + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 14, 2, 16, 2, 16, 16, 2, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -324,9 +405,35 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n * 2 + ctrl-p + ctrl-h * 3 + ctrl-b + ctrl-p * 3 + ctrl-b + ctrl-p * 2 + ctrl-b +
-    // ctrl-n * 2 + ctrl-p * 6 + ctrl-h * 2 + ctrl-p + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 14, 16, 8, 8, 8, 2, 16, 16, 16, 2, 16, 16, 2, 14, 14, 16, 16, 16, 16, 16, 16, 8, 8, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -347,7 +454,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // │ │       │ │                    │ │       │ │
     // └─┴───────┴─┘                    └─┴───────┴─┘
     // █ == focused pane
-    let fake_win_size = Winsize { // TODO: combine with above
+    let fake_win_size = Winsize {
         ws_col: 121,
         ws_row: 40,
         ws_xpixel: 0,
@@ -355,10 +462,37 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
-    // (ctrl-n * 2 + ctrl-p + ctrl-h * 3 + ctrl-b + ctrl-p * 3 + ctrl-b + ctrl-p * 2 + ctrl-b +
-    // ctrl-p * 2 +
-    // ctrl-n * 2 + ctrl-p * 2 + ctrl-h * 2 + ctrl-p * 5 + ctrl-j + ctrl-q)
-    fake_input_output.add_terminal_input(&[14, 14, 16, 8, 8, 8, 2, 16, 16, 16, 2, 16, 16, 2, 16, 16, 14, 14, 16, 16, 8, 8, 16, 16, 16, 16, 16, 10, 17]);
+    fake_input_output.add_terminal_input(&[
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_HORIZONTALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        SPLIT_VERTICALLY,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_LEFT,
+        RESIZE_LEFT,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        MOVE_FOCUS,
+        RESIZE_DOWN,
+        QUIT,
+    ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
 

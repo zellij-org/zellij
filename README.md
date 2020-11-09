@@ -41,8 +41,8 @@ Some temporary controls (these will be changed to something more convenient when
   * ctrl-h - resize focused pane left
   * ctrl-l - resize focused pane right
   * ctrl-p - move focus to next pane
-  * ctrl-[ - scroll up in focused pane
-  * ctrl-] - scroll down in focused pane
+  * ctrl-PgUp - scroll up in focused pane
+  * ctrl-PgDown - scroll down in focused pane
   * ctrl-x - close focused pane
   * ctrl-q - quit Mosaic
 
