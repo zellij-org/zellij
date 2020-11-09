@@ -153,6 +153,32 @@ impl CharacterStyles {
     }
     pub fn update_and_return_diff(&mut self, new_styles: &CharacterStyles) -> Option<CharacterStyles> {
         let mut diff: Option<CharacterStyles> = None;
+
+        if new_styles.foreground == Some(AnsiCode::Reset) &&
+            new_styles.background == Some(AnsiCode::Reset) &&
+            new_styles.strike == Some(AnsiCode::Reset) &&
+            new_styles.hidden == Some(AnsiCode::Reset) &&
+            new_styles.reverse == Some(AnsiCode::Reset) &&
+            new_styles.fast_blink == Some(AnsiCode::Reset) &&
+            new_styles.slow_blink == Some(AnsiCode::Reset) &&
+            new_styles.underline == Some(AnsiCode::Reset) &&
+            new_styles.bold == Some(AnsiCode::Reset) &&
+            new_styles.dim == Some(AnsiCode::Reset) &&
+            new_styles.italic == Some(AnsiCode::Reset) {
+                self.foreground = Some(AnsiCode::Reset);
+                self.background = Some(AnsiCode::Reset);
+                self.strike = Some(AnsiCode::Reset);
+                self.hidden = Some(AnsiCode::Reset);
+                self.reverse = Some(AnsiCode::Reset);
+                self.fast_blink = Some(AnsiCode::Reset);
+                self.slow_blink = Some(AnsiCode::Reset);
+                self.underline = Some(AnsiCode::Reset);
+                self.bold = Some(AnsiCode::Reset);
+                self.dim = Some(AnsiCode::Reset);
+                self.italic = Some(AnsiCode::Reset);
+                return Some(*new_styles)
+        };
+
         if self.foreground != new_styles.foreground {
             if let Some(new_diff) = diff.as_mut() {
                 diff = Some(new_diff.foreground(new_styles.foreground));
