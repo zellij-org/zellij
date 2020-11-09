@@ -338,6 +338,9 @@ impl Scroll {
             self.cursor_position.move_backwards(count);
         }
     }
+    pub fn move_cursor_to_beginning_of_linewrap(&mut self) {
+        self.cursor_position.move_to_beginning_of_linewrap();
+    }
     pub fn move_cursor_to_beginning_of_canonical_line(&mut self) {
         self.cursor_position.move_to_beginning_of_canonical_line();
     }

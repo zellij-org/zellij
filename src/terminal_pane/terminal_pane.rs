@@ -260,7 +260,7 @@ impl TerminalPane {
         self.should_render = true;
     }
     fn move_to_beginning_of_line (&mut self) {
-        self.scroll.move_cursor_to_beginning_of_canonical_line();
+        self.scroll.move_cursor_to_beginning_of_linewrap();
     }
     fn move_cursor_backwards(&mut self, count: usize) {
         self.scroll.move_cursor_backwards(count);
