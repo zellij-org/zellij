@@ -8,6 +8,7 @@ use crate::os_input_output::OsApi;
 use crate::terminal_pane::TerminalPane;
 use crate::pty_bus::{VteEvent, PtyInstruction};
 use crate::boundaries::Boundaries;
+use crate::AppInstruction;
 
 /*
  * Screen
@@ -81,6 +82,7 @@ pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
     max_panes: Option<usize>,
     send_pty_instructions: Sender<PtyInstruction>,
+    send_app_instructions: Sender<AppInstruction>,
     full_screen_ws: Winsize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
@@ -92,6 +94,7 @@ impl Screen {
     pub fn new (
         receive_screen_instructions: Receiver<ScreenInstruction>,
         send_pty_instructions: Sender<PtyInstruction>,
+        send_app_instructions: Sender<AppInstruction>,
         full_screen_ws: &Winsize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
@@ -100,6 +103,7 @@ impl Screen {
             receiver: receive_screen_instructions,
             max_panes,
             send_pty_instructions,
+            send_app_instructions,
             full_screen_ws: full_screen_ws.clone(),
             terminals: BTreeMap::new(),
             panes_to_hide: HashSet::new(),
@@ -307,6 +311,11 @@ impl Screen {
         }
     }
     pub fn render (&mut self) {
+        if self.active_terminal.is_none() {
+            // we might not have an active terminal if we closed the last pane
+            // in that case, we should not render as the app is exiting
+            return;
+        }
         let mut stdout = self.os_api.get_stdout_writer();
         let mut boundaries = Boundaries::new(self.full_screen_ws.ws_col, self.full_screen_ws.ws_row);
         for (pid, terminal) in self.terminals.iter_mut() {
@@ -1072,9 +1081,12 @@ impl Screen {
                     self.active_terminal = Some(*terminals.last().unwrap());
                 }
             } else {
-                return; // TODO: exit app? here we're trying to close the last pane on screen
             }
             self.terminals.remove(&id);
+            if self.terminals.is_empty() {
+                self.active_terminal = None;
+                let _ = self.send_app_instructions.send(AppInstruction::Exit);
+            }
         }
     }
     pub fn close_focused_pane(&mut self) {
