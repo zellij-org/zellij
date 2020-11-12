@@ -193,7 +193,12 @@ impl TerminalPane {
         self.scroll.change_size(columns, rows);
     }
     pub fn buffer_as_vte_output(&mut self) -> Option<String> { // TODO: rename to render
-        if self.should_render {
+        // if self.should_render {
+        if true {
+            // while checking should_render rather than rendering each pane every time
+            // is more performant, it causes some problems when the pane to the left should be
+            // rendered and has wide characters (eg. Chinese characters or emoji)
+            // as a (hopefully) temporary hack, we render all panes until we find a better solution
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
@@ -272,7 +277,7 @@ impl TerminalPane {
         self.mark_for_rerender();
     }
     fn move_to_beginning_of_line (&mut self) {
-        self.scroll.move_cursor_to_beginning_of_canonical_line();
+        self.scroll.move_cursor_to_beginning_of_linewrap();
     }
     fn move_cursor_backwards(&mut self, count: usize) {
         self.scroll.move_cursor_backwards(count);
@@ -535,7 +540,7 @@ impl vte::Perform for TerminalPane {
                 _debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid);
             }
         } else if c == 'C' { // move cursor forward
-            let move_by = params[0] as usize;
+            let move_by = if params[0] == 0 { 1 } else { params[0] as usize };
             self.scroll.move_cursor_forward(move_by);
         } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
