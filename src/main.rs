@@ -93,6 +93,10 @@ pub fn main() {
     }
 }
 
+pub enum AppInstruction {
+    Exit
+}
+
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
@@ -102,7 +106,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
     let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
-    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
+    let (send_app_instructions, receive_app_instructions): (Sender<AppInstruction>, Receiver<AppInstruction>) = channel();
+    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), send_app_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
     let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone(), opts.debug);
 
     active_threads.push(
@@ -250,62 +255,84 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             }
         }).unwrap();
 
-    let mut stdin = os_input.get_stdin_reader();
+    let _stdin_thread = thread::Builder::new()
+        .name("ipc_server".to_string())
+        .spawn({
+            let send_screen_instructions = send_screen_instructions.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
+            let send_app_instructions = send_app_instructions.clone();
+            let os_input = os_input.clone();
+            move || {
+                let mut stdin = os_input.get_stdin_reader();
+                loop {
+                    let mut buffer = [0; 10]; // TODO: more accurately
+                    stdin.read(&mut buffer).expect("failed to read stdin");
+                    // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
+                    // _debug_log_to_file(format!("buffer {:?}", buffer));
+                    match buffer {
+                        [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-j
+                            send_screen_instructions.send(ScreenInstruction::ResizeDown).unwrap();
+                        },
+                        [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-k
+                            send_screen_instructions.send(ScreenInstruction::ResizeUp).unwrap();
+                        },
+                        [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-p
+                            send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+                        },
+                        [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-h
+                            send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
+                        },
+                        [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-l
+                            send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
+                        },
+                        [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-z
+                            send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
+                        },
+                        [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-n
+                            send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
+                        },
+                        [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-b
+                            send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
+                        },
+                        [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-q
+                            let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                            let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                            let _ = send_app_instructions.send(AppInstruction::Exit);
+                            break;
+                        },
+                        [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgUp
+                            send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
+                        },
+                        [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgDown
+                            send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
+                        },
+                        [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-x
+                            send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
+                            // ::std::thread::sleep(::std::time::Duration::from_millis(10));
+                        },
+                        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-e
+                            send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
+                        },
+                        _ => {
+                            send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
+                            send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer)).unwrap();
+                        }
+                    }
+                };
+            }
+        });
 
     loop {
-		let mut buffer = [0; 10]; // TODO: more accurately
-        stdin.read(&mut buffer).expect("failed to read stdin");
-        // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-        // _debug_log_to_file(format!("buffer {:?}", buffer));
-        match buffer {
-            [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-j
-                send_screen_instructions.send(ScreenInstruction::ResizeDown).unwrap();
-            },
-            [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-k
-                send_screen_instructions.send(ScreenInstruction::ResizeUp).unwrap();
-            },
-            [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-p
-                send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
-            },
-            [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-h
-                send_screen_instructions.send(ScreenInstruction::ResizeLeft).unwrap();
-            },
-            [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-l
-                send_screen_instructions.send(ScreenInstruction::ResizeRight).unwrap();
-            },
-            [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-z
-                send_pty_instructions.send(PtyInstruction::SpawnTerminal(None)).unwrap();
-            },
-            [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-n
-                send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
-            },
-            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-b
-                send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
-            },
-            [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-q
-                send_screen_instructions.send(ScreenInstruction::Quit).unwrap();
-                send_pty_instructions.send(PtyInstruction::Quit).unwrap();
+        let app_instruction = receive_app_instructions.recv().expect("failed to receive app instruction on channel");
+        match app_instruction {
+            AppInstruction::Exit => {
+                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 break;
             },
-            [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgUp
-                send_screen_instructions.send(ScreenInstruction::ScrollUp).unwrap();
-            },
-            [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => { // ctrl-PgDown
-                send_screen_instructions.send(ScreenInstruction::ScrollDown).unwrap();
-            },
-            [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-x
-                send_screen_instructions.send(ScreenInstruction::CloseFocusedPane).unwrap();
-            },
-            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => { // ctrl-e
-                send_screen_instructions.send(ScreenInstruction::ToggleActiveTerminalFullscreen).unwrap();
-            },
-            _ => {
-                send_screen_instructions.send(ScreenInstruction::ClearScroll).unwrap();
-                send_screen_instructions.send(ScreenInstruction::WriteCharacter(buffer)).unwrap();
-            }
         }
-    };
-    
+    }
+
     for thread_handler in active_threads {
         thread_handler.join().unwrap();
     }

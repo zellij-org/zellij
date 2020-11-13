@@ -26,6 +26,14 @@ pub struct CanonicalLine {
     pub wrapped_fragments: Vec<WrappedFragment>
 }
 
+fn debug_log_to_file (message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
 impl CanonicalLine {
     pub fn new() -> Self {
         CanonicalLine {
@@ -55,6 +63,9 @@ impl CanonicalLine {
             } else {
                 wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
             }
+        }
+        if wrapped_fragments.len() == 0 {
+            wrapped_fragments.push(WrappedFragment::new());
         }
         self.wrapped_fragments = wrapped_fragments;
     }
@@ -116,7 +127,7 @@ impl Debug for WrappedFragment {
 #[derive(Debug)]
 pub struct CursorPosition {
     line_index: (usize, usize), // (canonical line index, fragment index in line)
-    column_index: usize // 0 is the first character from the pane edge 
+    column_index: usize // 0 is the first character from the pane edge
 }
 
 impl CursorPosition {
@@ -185,7 +196,7 @@ impl Scroll {
             canonical_lines: vec![CanonicalLine::new()], // The rest will be created by newlines explicitly
             total_columns,
             lines_in_view,
-            cursor_position, 
+            cursor_position,
             viewport_bottom_offset: None,
             scroll_region: None,
             show_cursor: true,
@@ -243,6 +254,7 @@ impl Scroll {
             current_line.add_new_wrap(terminal_character);
             self.cursor_position.move_to_next_linewrap();
             self.cursor_position.move_to_beginning_of_linewrap();
+            self.cursor_position.move_forward(1);
         }
     }
     pub fn show_cursor (&mut self) {
@@ -356,8 +368,8 @@ impl Scroll {
                 canonical_line.change_width(columns);
             }
             let cursor_line = self.canonical_lines.get(self.cursor_position.line_index.0).expect("cursor out of bounds");
-            if cursor_line.wrapped_fragments.len() < self.cursor_position.line_index.1 {
-                self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len();
+            if cursor_line.wrapped_fragments.len() <= self.cursor_position.line_index.1 {
+                self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len() - 1;
             }
         }
         self.lines_in_view = lines;
