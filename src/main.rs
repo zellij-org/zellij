@@ -42,7 +42,10 @@ pub struct Opt {
     open_file: Option<PathBuf>,
     #[structopt(long)]
     /// Maximum panes on screen, caution: opening more panes will close old ones
-    max_panes: Option<usize>
+    max_panes: Option<usize>,
+
+    #[structopt(short, long)]
+    debug: bool
 }
 
 fn _debug_log_to_file (message: String) {
@@ -51,6 +54,12 @@ fn _debug_log_to_file (message: String) {
     let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
+}
+
+fn delete_log_files() -> std::io::Result<()> {
+    std::fs::remove_dir_all("/tmp/mosaic-logs").ok();
+    std::fs::create_dir_all("/tmp/mosaic-logs").ok();
+    Ok(())
 }
 
 pub fn main() {
@@ -91,13 +100,15 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
+    delete_log_files().unwrap();
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
     let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
     let (send_app_instructions, receive_app_instructions): (Sender<AppInstruction>, Receiver<AppInstruction>) = channel();
     let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), send_app_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
-    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone());
+    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone(), opts.debug);
 
     active_threads.push(
         thread::Builder::new()

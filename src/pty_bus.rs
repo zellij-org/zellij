@@ -34,6 +34,26 @@ fn _debug_log_to_file (message: String) {
     file.write_all("\n".as_bytes()).unwrap();
 }
 
+fn debug_to_file(message: u8, pid: RawFd) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut path = PathBuf::new();
+    path.push(
+        [
+            String::from("/tmp/mosaic-logs/mosaic-"),
+            pid.to_string(),
+            String::from(".log"),
+        ]
+        .concat(),
+    );
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .unwrap();
+    file.write_all(&[message]).unwrap();
+}
+
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -147,9 +167,10 @@ pub struct PtyBus {
     pub receive_pty_instructions: Receiver<PtyInstruction>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
+    debug_to_file: bool
 }
 
-fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) {
+fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>, debug: bool) {
     task::spawn({
         async move {
             let mut vte_parser = vte::Parser::new();
@@ -163,6 +184,9 @@ fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInst
             while let Some(bytes) = terminal_bytes.next().await {
                 let bytes_is_empty = bytes.is_empty();
                 for byte in bytes {
+                    if debug {
+                        debug_to_file(byte, pid);
+                    }
                     vte_parser.advance(&mut vte_event_sender, byte);
                 }
                 if !bytes_is_empty {
@@ -208,29 +232,30 @@ fn stream_terminal_bytes(pid: RawFd, send_screen_instructions: Sender<ScreenInst
 }
 
 impl PtyBus {
-    pub fn new (receive_pty_instructions: Receiver<PtyInstruction>, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>) -> Self {
+    pub fn new (receive_pty_instructions: Receiver<PtyInstruction>, send_screen_instructions: Sender<ScreenInstruction>, os_input: Box<dyn OsApi>, debug_to_file: bool) -> Self {
         PtyBus {
             send_screen_instructions,
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
+            debug_to_file
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) {
         let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone(), self.debug_to_file);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::NewPane(pid_primary)).unwrap();
     }
     pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
         let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone(), self.debug_to_file);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::VerticalSplit(pid_primary)).unwrap();
     }
     pub fn spawn_terminal_horizontally(&mut self, file_to_open: Option<PathBuf>) {
         let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
+        stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone(), self.debug_to_file);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
     }
