@@ -44,7 +44,7 @@ fn debug_to_file(message: u8, pid: RawFd) {
             pid.to_string(),
             String::from(".log"),
         ]
-        .join(""),
+        .concat(),
     );
     let mut file = OpenOptions::new()
         .append(true)
