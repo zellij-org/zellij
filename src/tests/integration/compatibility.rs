@@ -1,11 +1,11 @@
-use ::nix::pty::Winsize;
 use ::insta::assert_snapshot;
+use ::nix::pty::Winsize;
 use ::std::collections::HashMap;
 
-use crate::{start, Opt};
+use crate::tests::fakes::FakeInputOutput;
 use crate::tests::possible_tty_inputs::Bytes;
-use crate::tests::fakes::{FakeInputOutput};
 use crate::tests::utils::get_output_frame_snapshots;
+use crate::{start, Opt};
 
 use crate::tests::utils::commands::QUIT;
 
@@ -22,7 +22,7 @@ use crate::tests::utils::commands::QUIT;
  *
  */
 
-fn get_fake_os_input (fake_win_size: &Winsize, fixture_name: &str) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &Winsize, fixture_name: &str) -> FakeInputOutput {
     let mut tty_inputs = HashMap::new();
     let fixture_bytes = Bytes::from_file_in_fixtures(&fixture_name);
     tty_inputs.insert(fake_win_size.ws_col, fixture_bytes);
@@ -41,7 +41,11 @@ pub fn run_bandwhich_from_fish_shell() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
     fake_input_output.add_terminal_input(&[QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -60,7 +64,11 @@ pub fn fish_tab_completion_options() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
     fake_input_output.add_terminal_input(&[QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -84,7 +92,11 @@ pub fn fish_select_tab_completion_options() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
     fake_input_output.add_terminal_input(&[QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -92,7 +104,7 @@ pub fn fish_select_tab_completion_options() {
 }
 
 #[test]
-pub fn vim_scroll_region_down () {
+pub fn vim_scroll_region_down() {
     // here we test a case where vim defines the scroll region as lesser than the screen row count
     // and then scrolls down
     // the region is defined here by vim as 1-26 (there are 28 rows)
@@ -113,7 +125,11 @@ pub fn vim_scroll_region_down () {
     // fake_input_output.add_terminal_input(&[17]); // quit (ctrl-q)
     fake_input_output.add_terminal_input(&[QUIT]); // quit (ctrl-q)
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -138,7 +154,11 @@ pub fn vim_ctrl_d() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
     fake_input_output.add_terminal_input(&[QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -162,7 +182,11 @@ pub fn vim_ctrl_u() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
     fake_input_output.add_terminal_input(&[QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
