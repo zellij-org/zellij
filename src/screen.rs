@@ -4,8 +4,10 @@ use nix::pty::Winsize;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Sender, Receiver};
 
+use serde::{Serialize, Deserialize};
+
 use crate::os_input_output::OsApi;
-use crate::terminal_pane::TerminalPane;
+use crate::terminal_pane::{TerminalPane, PositionAndSize};
 use crate::pty_bus::{VteEvent, PtyInstruction};
 use crate::boundaries::Boundaries;
 use crate::AppInstruction;
@@ -56,6 +58,37 @@ fn split_horizontally_with_gap (rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Direction {
+    Horizontal,
+    Vertical
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum SplitSize {
+    Percent(u8) // 1 to 100
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Layout {
+    pub direction: Direction,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<Layout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split_size: Option<SplitSize>,
+}
+
+impl Layout {
+    pub fn total_panes (&self) -> usize {
+        let mut total_panes = 0;
+        total_panes += self.parts.len();
+        for part in self.parts.iter() {
+            total_panes += part.total_panes();
+        }
+        total_panes
+    }
+}
+
 #[derive(Debug)]
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
@@ -76,6 +109,7 @@ pub enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     ClosePane(RawFd),
+    ApplyLayout((Layout, Vec<RawFd>)),
 }
 
 pub struct Screen {
@@ -110,6 +144,141 @@ impl Screen {
             active_terminal: None,
             os_api,
         }
+    }
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+        _debug_log_to_file(format!("apply_layout {:?}, new_pids {:?}", layout, new_pids));
+        // pub enum Direction {
+        //     Horizontal,
+        //     Vertical
+        // }
+        // 
+        // pub struct Layout {
+        //     direction: Direction,
+        //     parts: Vec<(f32, Layout)>,
+        // }
+        self.panes_to_hide.clear();
+        let mut free_space = PositionAndSize {
+            x: 0,
+            y: 0,
+            rows: self.full_screen_ws.ws_row as usize,
+            columns: self.full_screen_ws.ws_col as usize
+        };
+        let positions_in_layout = split_space(&free_space, &layout);
+        _debug_log_to_file(format!("positions_in_layout {:?}", positions_in_layout));
+        let mut positions_and_size = positions_in_layout.iter();
+        for (pid, terminal_pane) in self.terminals.iter_mut() {
+            match positions_and_size.next() {
+                Some(position_and_size) => {
+                    terminal_pane.reset_size_and_position_override();
+                    terminal_pane.change_size_p(&position_and_size);
+                    self.os_api.set_terminal_size_using_fd(*pid, position_and_size.columns as u16, position_and_size.rows as u16);
+                },
+                None => {
+                    // we filled the entire layout, no room for this pane
+                    // TODO: handle active terminal
+                    self.panes_to_hide.insert(*pid);
+                }
+            }
+
+        }
+        let mut new_pids = new_pids.iter();
+        for position_and_size in positions_and_size {
+            // there are still panes left to fill, use the pids we received in this method
+            let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
+            let mut new_terminal = TerminalPane::new(*pid, self.full_screen_ws.clone(), position_and_size.x, position_and_size.y);
+            new_terminal.change_size_p(position_and_size);
+            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.get_columns() as u16, new_terminal.get_rows() as u16);
+            self.terminals.insert(*pid, new_terminal);
+        }
+        for unused_pid in new_pids {
+            // this is a bit of a hack and happens because we don't have any central location that
+            // can query the screen as to how many panes it needs to create a layout
+            // fixing this will require a bit of an architecture change
+            self.send_pty_instructions.send(PtyInstruction::ClosePane(*unused_pid)).unwrap();
+        }
+        self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
+        _debug_log_to_file(format!("terminals {:?}", self.terminals));
+        self.render();
+
+        fn split_space_to_parts_vertically(space_to_split: &PositionAndSize, percentages: Vec<u8>) -> Vec<PositionAndSize> {
+            let mut split_parts = vec![];
+            let mut current_x_position = space_to_split.x;
+            let width = space_to_split.columns - (percentages.len() - 1); // minus space for gaps
+            for percentage in percentages.iter() {
+                let columns = (width as f32 * (*percentage as f32 / 100.0)) as usize; // TODO: round properly
+                split_parts.push(PositionAndSize {x: current_x_position, y: space_to_split.y, columns, rows: space_to_split.rows });
+                current_x_position += columns + 1; // 1 for gap
+            }
+            let total_width = split_parts.iter().fold(0, |total_width, part| total_width + part.columns);
+            if total_width < width {
+                // we have some extra space left, let's add it to the last part
+                let last_part_index = split_parts.len() - 1;
+                let mut last_part = split_parts.get_mut(last_part_index).unwrap();
+                last_part.columns += width - total_width;
+            }
+            split_parts
+        }
+        fn split_space_to_parts_horizontally(space_to_split: &PositionAndSize, percentages: Vec<u8>) -> Vec<PositionAndSize> {
+            let mut split_parts = vec![];
+            let mut current_y_position = space_to_split.y;
+            let height = space_to_split.rows - (percentages.len() - 1); // minus space for gaps
+            for percentage in percentages.iter() {
+                let rows = (height as f32 * (*percentage as f32 / 100.0)) as usize; // TODO: round properly
+                split_parts.push(PositionAndSize {x: space_to_split.x, y: current_y_position, columns: space_to_split.columns, rows });
+                current_y_position += rows + 1; // 1 for gap
+            }
+            let total_height = split_parts.iter().fold(0, |total_height, part| total_height + part.rows);
+            if total_height < height {
+                // we have some extra space left, let's add it to the last part
+                let last_part_index = split_parts.len() - 1;
+                let mut last_part = split_parts.get_mut(last_part_index).unwrap();
+                last_part.rows += height - total_height;
+            }
+            split_parts
+        }
+
+        fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<PositionAndSize> {
+            let mut pane_positions: Vec<PositionAndSize> = vec![];
+            let percentages: Vec<u8> = layout.parts.iter().map(|part| {
+                let split_size = part.split_size.as_ref().unwrap(); // TODO: if there is no split size, it should get the remaining "free space"
+                match split_size {
+                    SplitSize::Percent(percent) => *percent
+                }
+            }).collect();
+            let split_parts = match layout.direction {
+                Direction::Vertical => split_space_to_parts_vertically(space_to_split, percentages),
+                Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, percentages),
+            };
+            for (i, part) in layout.parts.iter().enumerate() {
+                let part_position_and_size = split_parts.get(i).unwrap();
+                if part.parts.len() > 0 {
+                    let mut part_positions = split_space(&part_position_and_size, part);
+                    pane_positions.append(&mut part_positions);
+                } else {
+                    pane_positions.push(*part_position_and_size);
+                }
+
+            }
+            pane_positions
+        }
+
+
+//        for part in layout.parts.iter() {
+//            let (percentage, part_layout) = part;
+//            let split_space(percentage, part_layout);
+//
+//        }
+
+        // TODO: 
+        // * clear panes_to_hide
+        // * start with full screen as PositionAndSize
+        // * loop through layout panes
+        // * split according to percentage
+        //
+        // * iterate through terminals
+        // * if they have a PositionAndSize override, delete it
+        // * 
+
     }
     pub fn new_pane(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();

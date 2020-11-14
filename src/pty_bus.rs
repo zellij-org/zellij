@@ -11,6 +11,7 @@ use ::vte;
 
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
+use crate::screen::Layout;
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -233,6 +234,19 @@ impl PtyBus {
         stream_terminal_bytes(pid_primary, self.send_screen_instructions.clone(), self.os_input.clone());
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions.send(ScreenInstruction::HorizontalSplit(pid_primary)).unwrap();
+    }
+    pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
+        let total_panes = layout.total_panes();
+        let mut new_pane_pids = vec![];
+        for _ in 0..total_panes {
+            let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
+            self.id_to_child_pid.insert(pid_primary, pid_secondary);
+            new_pane_pids.push(pid_primary);
+        }
+        &self.send_screen_instructions.send(ScreenInstruction::ApplyLayout((layout, new_pane_pids.clone())));
+        for id in new_pane_pids {
+            stream_terminal_bytes(id, self.send_screen_instructions.clone(), self.os_input.clone());
+        }
     }
     pub fn close_pane(&mut self, id: RawFd) {
         let child_pid = self.id_to_child_pid.get(&id).unwrap();

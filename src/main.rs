@@ -14,11 +14,12 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use serde::{Serialize, Deserialize};
+use serde_yaml;
 use structopt::StructOpt;
 
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
-use crate::screen::{Screen, ScreenInstruction};
+use crate::screen::{Screen, ScreenInstruction, Layout, Direction, SplitSize};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -52,6 +53,29 @@ fn _debug_log_to_file (message: String) {
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
 }
+
+// [] h [] - horizontal split
+// [] v [] - horizontal split
+// [] v [ [] h [] ] - vertical split and then horizontal split of right side
+//
+//
+// [ h, { direction: 'horizontal', percentage: '0.3' }, v ]
+//
+//
+// {
+//   direction: 'vertical',
+//   parts: [
+//      [0.3, {}], [0.3, {}], [0.4, {}]
+//   ]
+// }
+//
+//
+
+// TODO: CONTINUE HERE
+// * when constructing Screen, give it a hard coded layout until it works and looks like my
+// workspace
+// * then make it optional
+// * then load it from a yaml file and parse with serde
 
 pub fn main() {
     let os_input = get_os_input();
@@ -104,7 +128,43 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .name("pty".to_string())
             .spawn({
                 move || {
-                    pty_bus.spawn_terminal_vertically(None);
+                    // pty_bus.spawn_terminal_vertically(None);
+                    // TODO: CONTINUE HERE - read this from a file
+                    let layout = Layout {
+                        split_size: None,
+                        direction: Direction::Horizontal,
+                        parts: vec![
+                            Layout {
+                                split_size: Some(SplitSize::Percent(80)),
+                                direction: Direction::Vertical,
+                                parts: vec![
+                                    Layout {
+                                        split_size: Some(SplitSize::Percent(20)),
+                                        direction: Direction::Horizontal,
+                                        parts: vec![]
+                                    },
+                                    Layout {
+                                        split_size: Some(SplitSize::Percent(80)),
+                                        direction: Direction::Horizontal,
+                                        parts: vec![]
+                                    },
+                                ]
+                            },
+                            Layout {
+                                split_size: Some(SplitSize::Percent(20)),
+                                direction: Direction::Vertical,
+                                parts: vec![]
+                            }
+                        ]
+                    };
+                    // TODO: remove this
+                    let s = serde_yaml::to_string(&layout).unwrap();
+                    use std::fs::OpenOptions;
+                    use std::io::prelude::*;
+                    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/layout.yaml").unwrap();
+                    file.write_all(s.as_bytes()).unwrap();
+                    // file.write_all("\n".as_bytes()).unwrap();
+                    pty_bus.spawn_terminals_for_layout(layout);
                     loop {
                         let event = pty_bus.receive_pty_instructions
                             .recv()
@@ -191,6 +251,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                                 screen.toggle_active_terminal_fullscreen();
+                            }
+                            ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                                screen.apply_layout(layout, new_pane_pids)
+
                             }
                             ScreenInstruction::Quit => {
                                 break;
