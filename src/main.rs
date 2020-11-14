@@ -63,7 +63,6 @@ fn delete_log_files() -> std::io::Result<()> {
 }
 
 pub fn main() {
-    let os_input = get_os_input();
     let opts = Opt::from_args();
     if opts.split.is_some() {
         match opts.split {
@@ -89,6 +88,7 @@ pub fn main() {
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
+        let os_input = get_os_input();
         start(Box::new(os_input), opts);
     }
 }
