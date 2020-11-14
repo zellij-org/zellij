@@ -14,6 +14,7 @@ pub enum IoEvent {
     Kill(RawFd),
     SetTerminalSizeUsingFd(RawFd, u16, u16),
     IntoRawMode(RawFd),
+    UnsetRawMode(RawFd),
     TcDrain(RawFd),
 }
 
@@ -122,6 +123,9 @@ impl OsApi for FakeInputOutput {
     }
     fn into_raw_mode(&mut self, pid: RawFd) {
         self.io_events.lock().unwrap().push(IoEvent::IntoRawMode(pid));
+    }
+    fn unset_raw_mode(&mut self, pid: RawFd) {
+        self.io_events.lock().unwrap().push(IoEvent::UnsetRawMode(pid));
     }
     fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let next_terminal_id = { self.read_buffers.lock().unwrap().keys().len() as RawFd + 1 };

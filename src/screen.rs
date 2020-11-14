@@ -72,7 +72,7 @@ pub enum SplitSize {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Layout {
     pub direction: Direction,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<Layout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split_size: Option<SplitSize>,

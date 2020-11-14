@@ -43,7 +43,12 @@ pub struct Opt {
     open_file: Option<PathBuf>,
     #[structopt(long)]
     /// Maximum panes on screen, caution: opening more panes will close old ones
-    max_panes: Option<usize>
+    max_panes: Option<usize>,
+    #[structopt(short, long)]
+    /// Path to a layout yaml file
+    layout: Option<PathBuf>,
+    #[structopt(short, long)]
+    debug: bool
 }
 
 fn _debug_log_to_file (message: String) {
@@ -54,31 +59,13 @@ fn _debug_log_to_file (message: String) {
     file.write_all("\n".as_bytes()).unwrap();
 }
 
-// [] h [] - horizontal split
-// [] v [] - horizontal split
-// [] v [ [] h [] ] - vertical split and then horizontal split of right side
-//
-//
-// [ h, { direction: 'horizontal', percentage: '0.3' }, v ]
-//
-//
-// {
-//   direction: 'vertical',
-//   parts: [
-//      [0.3, {}], [0.3, {}], [0.4, {}]
-//   ]
-// }
-//
-//
-
-// TODO: CONTINUE HERE
-// * when constructing Screen, give it a hard coded layout until it works and looks like my
-// workspace
-// * then make it optional
-// * then load it from a yaml file and parse with serde
+fn delete_log_files() -> std::io::Result<()> {
+    std::fs::remove_dir_all("/tmp/mosaic-logs").ok();
+    std::fs::create_dir_all("/tmp/mosaic-logs").ok();
+    Ok(())
+}
 
 pub fn main() {
-    let os_input = get_os_input();
     let opts = Opt::from_args();
     if opts.split.is_some() {
         match opts.split {
@@ -104,6 +91,7 @@ pub fn main() {
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
+        let os_input = get_os_input();
         start(Box::new(os_input), opts);
     }
 }
@@ -115,56 +103,35 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
+    delete_log_files().unwrap();
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
     let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
     let (send_app_instructions, receive_app_instructions): (Sender<AppInstruction>, Receiver<AppInstruction>) = channel();
     let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), send_app_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
-    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone());
+    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone(), opts.debug);
 
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
                 move || {
-                    // pty_bus.spawn_terminal_vertically(None);
-                    // TODO: CONTINUE HERE - read this from a file
-                    let layout = Layout {
-                        split_size: None,
-                        direction: Direction::Horizontal,
-                        parts: vec![
-                            Layout {
-                                split_size: Some(SplitSize::Percent(80)),
-                                direction: Direction::Vertical,
-                                parts: vec![
-                                    Layout {
-                                        split_size: Some(SplitSize::Percent(20)),
-                                        direction: Direction::Horizontal,
-                                        parts: vec![]
-                                    },
-                                    Layout {
-                                        split_size: Some(SplitSize::Percent(80)),
-                                        direction: Direction::Horizontal,
-                                        parts: vec![]
-                                    },
-                                ]
-                            },
-                            Layout {
-                                split_size: Some(SplitSize::Percent(20)),
-                                direction: Direction::Vertical,
-                                parts: vec![]
-                            }
-                        ]
-                    };
-                    // TODO: remove this
-                    let s = serde_yaml::to_string(&layout).unwrap();
-                    use std::fs::OpenOptions;
-                    use std::io::prelude::*;
-                    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/layout.yaml").unwrap();
-                    file.write_all(s.as_bytes()).unwrap();
-                    // file.write_all("\n".as_bytes()).unwrap();
-                    pty_bus.spawn_terminals_for_layout(layout);
+                    match opts.layout {
+                        Some(layout_path) => {
+                            // TODO: CONTINUE HERE - write tests for this, then refactor
+                            use std::fs::File;
+                            let mut layout_file = File::open(&layout_path).expect(&format!("cannot find layout {}", layout_path.display()));
+                            let mut layout = String::new();
+                            layout_file.read_to_string(&mut layout).expect(&format!("could not read layout {}", layout_path.display()));
+                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!("could not parse layout {}", layout_path.display()));
+                            pty_bus.spawn_terminals_for_layout(layout);
+                        },
+                        None => {
+                            pty_bus.spawn_terminal_vertically(None);
+                        }
+                    }
                     loop {
                         let event = pty_bus.receive_pty_instructions
                             .recv()
@@ -394,6 +361,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.ws_row, 1);
     let goodbye_message = format!("{}\n{}Bye from Mosaic!", goto_start_of_last_line, reset_style);
 
+    os_input.unset_raw_mode(0);
     os_input.get_stdout_writer().write(goodbye_message.as_bytes()).unwrap();
     os_input.get_stdout_writer().flush().unwrap();
 }
