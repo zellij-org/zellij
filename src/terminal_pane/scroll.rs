@@ -1,5 +1,5 @@
-use ::std::fmt::{self, Debug, Formatter};
 use ::std::collections::VecDeque;
+use ::std::fmt::{self, Debug, Formatter};
 
 use crate::terminal_pane::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 
@@ -23,13 +23,17 @@ use crate::terminal_pane::terminal_character::{TerminalCharacter, EMPTY_TERMINAL
 
 #[derive(Clone)]
 pub struct CanonicalLine {
-    pub wrapped_fragments: Vec<WrappedFragment>
+    pub wrapped_fragments: Vec<WrappedFragment>,
 }
 
-fn debug_log_to_file (message: String) {
+fn debug_log_to_file(message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/mosaic-log.txt")
+        .unwrap();
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
 }
@@ -46,12 +50,16 @@ impl CanonicalLine {
         self.wrapped_fragments.push(new_fragment);
     }
     pub fn change_width(&mut self, new_width: usize) {
-        let mut characters: Vec<TerminalCharacter> = self.wrapped_fragments
+        let mut characters: Vec<TerminalCharacter> = self
+            .wrapped_fragments
             .iter()
-            .fold(Vec::with_capacity(self.wrapped_fragments.len()), |mut characters, wrapped_fragment| {
-                characters.push(wrapped_fragment.characters.iter().copied());
-                characters
-            })
+            .fold(
+                Vec::with_capacity(self.wrapped_fragments.len()),
+                |mut characters, wrapped_fragment| {
+                    characters.push(wrapped_fragment.characters.iter().copied());
+                    characters
+                },
+            )
             .into_iter()
             .flatten()
             .collect();
@@ -59,7 +67,9 @@ impl CanonicalLine {
 
         while characters.len() > 0 {
             if characters.len() > new_width {
-                wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..new_width).collect()));
+                wrapped_fragments.push(WrappedFragment::from_vec(
+                    characters.drain(..new_width).collect(),
+                ));
             } else {
                 wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
             }
@@ -70,7 +80,10 @@ impl CanonicalLine {
         self.wrapped_fragments = wrapped_fragments;
     }
     pub fn clear_after(&mut self, fragment_index: usize, column_index: usize) {
-        let fragment_to_clear = self.wrapped_fragments.get_mut(fragment_index).expect("fragment out of bounds");
+        let fragment_to_clear = self
+            .wrapped_fragments
+            .get_mut(fragment_index)
+            .expect("fragment out of bounds");
         fragment_to_clear.clear_after_and_including(column_index);
         self.wrapped_fragments.truncate(fragment_index + 1);
     }
@@ -87,16 +100,18 @@ impl Debug for CanonicalLine {
 
 #[derive(Clone)]
 pub struct WrappedFragment {
-    pub characters: Vec<TerminalCharacter>
+    pub characters: Vec<TerminalCharacter>,
 }
 
 impl WrappedFragment {
     pub fn new() -> Self {
-        WrappedFragment {
-            characters: vec![]
-        }
+        WrappedFragment { characters: vec![] }
     }
-    pub fn add_character(&mut self, terminal_character: TerminalCharacter, position_in_line: usize) {
+    pub fn add_character(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        position_in_line: usize,
+    ) {
         if position_in_line == self.characters.len() {
             self.characters.push(terminal_character);
         } else {
@@ -106,9 +121,7 @@ impl WrappedFragment {
         }
     }
     pub fn from_vec(characters: Vec<TerminalCharacter>) -> Self {
-        WrappedFragment {
-            characters
-        }
+        WrappedFragment { characters }
     }
     pub fn clear_after_and_including(&mut self, character_index: usize) {
         self.characters.truncate(character_index);
@@ -127,17 +140,17 @@ impl Debug for WrappedFragment {
 #[derive(Debug)]
 pub struct CursorPosition {
     line_index: (usize, usize), // (canonical line index, fragment index in line)
-    column_index: usize // 0 is the first character from the pane edge
+    column_index: usize,        // 0 is the first character from the pane edge
 }
 
 impl CursorPosition {
     pub fn new() -> Self {
         CursorPosition {
             line_index: (0, 0),
-            column_index: 0
+            column_index: 0,
         }
     }
-    pub fn move_forward (&mut self, count: usize) {
+    pub fn move_forward(&mut self, count: usize) {
         // TODO: panic if out of bounds?
         self.column_index += count;
     }
@@ -150,7 +163,7 @@ impl CursorPosition {
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
     }
-    pub fn move_to_beginning_of_linewrap (&mut self) {
+    pub fn move_to_beginning_of_linewrap(&mut self) {
         self.column_index = 0;
     }
     pub fn move_to_beginning_of_canonical_line(&mut self) {
@@ -188,7 +201,7 @@ pub struct Scroll {
 }
 
 impl Scroll {
-    pub fn new (total_columns: usize, lines_in_view: usize) -> Self {
+    pub fn new(total_columns: usize, lines_in_view: usize) -> Self {
         let mut canonical_lines = vec![];
         canonical_lines.push(CanonicalLine::new());
         let cursor_position = CursorPosition::new();
@@ -210,7 +223,8 @@ impl Scroll {
             match canonical_lines.next() {
                 Some(current_canonical_line) => {
                     for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
-                        let mut line: Vec<TerminalCharacter> = wrapped_fragment.characters.iter().copied().collect();
+                        let mut line: Vec<TerminalCharacter> =
+                            wrapped_fragment.characters.iter().copied().collect();
                         if lines_to_skip > 0 {
                             lines_to_skip -= 1;
                         } else {
@@ -224,7 +238,7 @@ impl Scroll {
                             break 'gather_lines;
                         }
                     }
-                },
+                }
                 None => break, // no more lines
             }
         }
@@ -242,10 +256,17 @@ impl Scroll {
         Vec::from(lines)
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
-        let (canonical_line_position, wrapped_fragment_index_in_line) = self.cursor_position.line_index;
+        let (canonical_line_position, wrapped_fragment_index_in_line) =
+            self.cursor_position.line_index;
         let cursor_position_in_line = self.cursor_position.column_index;
-        let current_line = self.canonical_lines.get_mut(canonical_line_position).expect("cursor out of bounds");
-        let current_wrapped_fragment = current_line.wrapped_fragments.get_mut(wrapped_fragment_index_in_line).expect("cursor out of bounds");
+        let current_line = self
+            .canonical_lines
+            .get_mut(canonical_line_position)
+            .expect("cursor out of bounds");
+        let current_wrapped_fragment = current_line
+            .wrapped_fragments
+            .get_mut(wrapped_fragment_index_in_line)
+            .expect("cursor out of bounds");
 
         if cursor_position_in_line <= self.total_columns {
             current_wrapped_fragment.add_character(terminal_character, cursor_position_in_line);
@@ -257,27 +278,30 @@ impl Scroll {
             self.cursor_position.move_forward(1);
         }
     }
-    pub fn show_cursor (&mut self) {
+    pub fn show_cursor(&mut self) {
         self.show_cursor = true;
     }
-    pub fn hide_cursor (&mut self) {
+    pub fn hide_cursor(&mut self) {
         self.show_cursor = false;
     }
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             // the scroll region indices start at 1, so we need to adjust them
-            if self.show_cursor { // scroll region should be ignored if the cursor is hidden
+            if self.show_cursor {
+                // scroll region should be ignored if the cursor is hidden
                 let scroll_region_top_index = scroll_region_top - 1;
                 let scroll_region_bottom_index = scroll_region_bottom - 1;
-                if current_canonical_line_index == scroll_region_bottom_index { // end of scroll region
+                if current_canonical_line_index == scroll_region_bottom_index {
+                    // end of scroll region
                     // when we have a scroll region set and we're at its bottom
                     // we need to delete its first line, thus shifting all lines in it upwards
                     // then we add an empty line at its end which will be filled by the application
                     // controlling the scroll region (presumably filled by whatever comes next in the
                     // scroll buffer, but that's not something we control)
                     self.canonical_lines.remove(scroll_region_top_index);
-                    self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
+                    self.canonical_lines
+                        .insert(scroll_region_bottom_index, CanonicalLine::new());
                     return;
                 }
             }
@@ -294,11 +318,13 @@ impl Scroll {
             panic!("cursor out of bounds, cannot add_canonical_line");
         }
     }
-    pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> { // (x, y)
+    pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> {
+        // (x, y)
         if !self.show_cursor {
-            return None
+            return None;
         }
-        let (canonical_line_cursor_position, line_wrap_cursor_position) = self.cursor_position.line_index;
+        let (canonical_line_cursor_position, line_wrap_cursor_position) =
+            self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
         let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
@@ -311,12 +337,16 @@ impl Scroll {
                     } else {
                         y += current_line.wrapped_fragments.len();
                     }
-
-                },
+                }
                 None => break,
             }
         }
-        let total_lines = self.canonical_lines.iter().fold(0, |total_lines, current_line| total_lines + current_line.wrapped_fragments.len()); // TODO: is this performant enough? should it be cached or kept track of?
+        let total_lines = self
+            .canonical_lines
+            .iter()
+            .fold(0, |total_lines, current_line| {
+                total_lines + current_line.wrapped_fragments.len()
+            }); // TODO: is this performant enough? should it be cached or kept track of?
         let y = if total_lines < self.lines_in_view {
             total_lines - y
         } else if y > self.lines_in_view {
@@ -327,10 +357,17 @@ impl Scroll {
         Some((x, y))
     }
     pub fn move_cursor_forward(&mut self, count: usize) {
-        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
         let current_cursor_column_position = self.cursor_position.column_index;
-        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
-        let current_fragment = current_canonical_line.wrapped_fragments.get_mut(current_line_wrap_position).expect("cursor out of bounds");
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        let current_fragment = current_canonical_line
+            .wrapped_fragments
+            .get_mut(current_line_wrap_position)
+            .expect("cursor out of bounds");
         let move_count = if current_cursor_column_position + count > self.total_columns {
             // move to last column in the current line wrap
             self.total_columns - current_cursor_column_position
@@ -367,7 +404,10 @@ impl Scroll {
             for canonical_line in self.canonical_lines.iter_mut() {
                 canonical_line.change_width(columns);
             }
-            let cursor_line = self.canonical_lines.get(self.cursor_position.line_index.0).expect("cursor out of bounds");
+            let cursor_line = self
+                .canonical_lines
+                .get(self.cursor_position.line_index.0)
+                .expect("cursor out of bounds");
             if cursor_line.wrapped_fragments.len() <= self.cursor_position.line_index.1 {
                 self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len() - 1;
             }
@@ -376,17 +416,28 @@ impl Scroll {
         self.total_columns = columns;
     }
     pub fn clear_canonical_line_right_of_cursor(&mut self) {
-        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
         let current_cursor_column_position = self.cursor_position.column_index;
-        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
-        current_canonical_line.clear_after(current_line_wrap_position, current_cursor_column_position);
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        current_canonical_line
+            .clear_after(current_line_wrap_position, current_cursor_column_position);
     }
     pub fn clear_all_after_cursor(&mut self) {
-        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
         let current_cursor_column_position = self.cursor_position.column_index;
-        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
-        current_canonical_line.clear_after(current_line_wrap_position, current_cursor_column_position);
-        self.canonical_lines.truncate(current_canonical_line_index + 1);
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        current_canonical_line
+            .clear_after(current_line_wrap_position, current_cursor_column_position);
+        self.canonical_lines
+            .truncate(current_canonical_line_index + 1);
     }
     pub fn clear_all(&mut self) {
         self.canonical_lines.clear();
@@ -402,9 +453,16 @@ impl Scroll {
             }
             self.cursor_position.move_to_canonical_line(line);
         }
-        let (current_canonical_line_index, current_line_wrap_position) = self.cursor_position.line_index;
-        let current_canonical_line = self.canonical_lines.get_mut(current_canonical_line_index).expect("cursor out of bounds");
-        let current_fragment = current_canonical_line.wrapped_fragments.get_mut(current_line_wrap_position).expect("cursor out of bounds");
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        let current_fragment = current_canonical_line
+            .wrapped_fragments
+            .get_mut(current_line_wrap_position)
+            .expect("cursor out of bounds");
         for _ in current_fragment.characters.len()..col {
             current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
         }
@@ -423,15 +481,17 @@ impl Scroll {
             let scroll_region_top_index = scroll_region_top - 1;
             let scroll_region_bottom_index = scroll_region_bottom - 1;
             let current_canonical_line_index = self.cursor_position.line_index.0;
-            if current_canonical_line_index >= scroll_region_top_index &&
-                current_canonical_line_index <= scroll_region_bottom_index {
+            if current_canonical_line_index >= scroll_region_top_index
+                && current_canonical_line_index <= scroll_region_bottom_index
+            {
                 // when deleting lines inside the scroll region, we must make sure it stays the
                 // same size (and that other lines below it aren't shifted inside it)
                 // so we delete the current line(s) and add an empty line at the end of the scroll
                 // region
                 for _ in 0..count {
                     self.canonical_lines.remove(current_canonical_line_index);
-                    self.canonical_lines.insert(scroll_region_bottom_index, CanonicalLine::new());
+                    self.canonical_lines
+                        .insert(scroll_region_bottom_index, CanonicalLine::new());
                 }
             }
         }
@@ -442,28 +502,29 @@ impl Scroll {
             let scroll_region_top_index = scroll_region_top - 1;
             let scroll_region_bottom_index = scroll_region_bottom - 1;
             let current_canonical_line_index = self.cursor_position.line_index.0;
-            if current_canonical_line_index >= scroll_region_top_index &&
-                current_canonical_line_index <= scroll_region_bottom_index {
+            if current_canonical_line_index >= scroll_region_top_index
+                && current_canonical_line_index <= scroll_region_bottom_index
+            {
                 // when adding empty lines inside the scroll region, we must make sure it stays the
                 // same size and that lines don't "leak" outside of it
                 // so we add an empty line where the cursor currently is, and delete the last line
                 // of the scroll region
                 for _ in 0..count {
                     self.canonical_lines.remove(scroll_region_bottom_index);
-                    self.canonical_lines.insert(current_canonical_line_index, CanonicalLine::new());
+                    self.canonical_lines
+                        .insert(current_canonical_line_index, CanonicalLine::new());
                 }
             }
         }
     }
-    pub fn move_viewport_up (&mut self, count: usize) {
+    pub fn move_viewport_up(&mut self, count: usize) {
         if let Some(current_offset) = self.viewport_bottom_offset.as_mut() {
             *current_offset += count;
         } else {
             self.viewport_bottom_offset = Some(count);
         }
-
     }
-    pub fn move_viewport_down (&mut self, count: usize) {
+    pub fn move_viewport_down(&mut self, count: usize) {
         if let Some(current_offset) = self.viewport_bottom_offset.as_mut() {
             if *current_offset > count {
                 *current_offset -= count;
@@ -472,7 +533,7 @@ impl Scroll {
             }
         }
     }
-    pub fn reset_viewport (&mut self) {
+    pub fn reset_viewport(&mut self) {
         self.viewport_bottom_offset = None;
     }
 }
