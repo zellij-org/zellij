@@ -1,4 +1,5 @@
 pub mod basic;
+pub mod layouts;
 pub mod compatibility;
 pub mod resize_right;
 pub mod resize_left;

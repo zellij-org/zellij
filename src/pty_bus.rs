@@ -11,7 +11,7 @@ use ::vte;
 
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
-use crate::screen::Layout;
+use crate::layout::Layout;
 
 pub struct ReadFromPid {
     pid: RawFd,

@@ -6,6 +6,7 @@ mod terminal_pane;
 mod pty_bus;
 mod screen;
 mod boundaries;
+mod layout;
 
 use std::io::{Read, Write};
 use std::thread;
@@ -19,7 +20,8 @@ use structopt::StructOpt;
 
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
-use crate::screen::{Screen, ScreenInstruction, Layout, Direction, SplitSize};
+use crate::screen::{Screen, ScreenInstruction};
+use crate::layout::Layout;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -120,7 +122,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 move || {
                     match opts.layout {
                         Some(layout_path) => {
-                            // TODO: CONTINUE HERE - write tests for this, then refactor
                             use std::fs::File;
                             let mut layout_file = File::open(&layout_path).expect(&format!("cannot find layout {}", layout_path.display()));
                             let mut layout = String::new();

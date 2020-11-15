@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use crate::tests::tty_inputs::{COL_10, COL_60, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39, COL_40, COL_50, COL_70, COL_90, COL_121};
+use crate::tests::tty_inputs::{COL_10, COL_60, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39, COL_40, COL_50, COL_70, COL_90, COL_96, COL_121};
 
 #[derive(Clone, Debug)]
 pub struct Bytes {
@@ -60,6 +60,7 @@ pub fn get_possible_tty_inputs () -> HashMap<u16, Bytes> { // the key is the col
     let col_60_bytes = Bytes::new().content_from_str(&COL_60);
     let col_70_bytes = Bytes::new().content_from_str(&COL_70);
     let col_90_bytes = Bytes::new().content_from_str(&COL_90);
+    let col_96_bytes = Bytes::new().content_from_str(&COL_96);
     let col_121_bytes = Bytes::new().content_from_str(&COL_121);
     possible_inputs.insert(10, col_10_bytes);
     possible_inputs.insert(14, col_14_bytes);
@@ -76,6 +77,7 @@ pub fn get_possible_tty_inputs () -> HashMap<u16, Bytes> { // the key is the col
     possible_inputs.insert(60, col_60_bytes);
     possible_inputs.insert(70, col_70_bytes);
     possible_inputs.insert(90, col_90_bytes);
+    possible_inputs.insert(96, col_96_bytes);
     possible_inputs.insert(121, col_121_bytes);
     possible_inputs
 }
