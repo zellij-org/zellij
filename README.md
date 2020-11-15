@@ -35,6 +35,7 @@ If you're interested, watch this space or better yet - get involved!
 mosaic has two modes (like vim or tmux) normal/insert mode, and command mode. The keys and behavior will update
 when the project matures a bit, but for now:
   * ctrl-g - toggle between normal mode and command mode
+  * Esc - exit command mode
 
 In command mode:
   * ctrl-n - split focused pane vertically

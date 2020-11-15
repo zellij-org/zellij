@@ -87,7 +87,8 @@ impl InputHandler {
             // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
             _debug_log_to_file(format!("buffer {:?}", self.buffer));
             match self.buffer {
-                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] |
+                [27, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // ctrl-g
                     self.mode = InputMode::Normal;
                     _debug_log_to_file(format!("switched to normal mode"));
