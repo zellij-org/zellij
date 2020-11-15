@@ -32,7 +32,11 @@ If you're interested, watch this space or better yet - get involved!
 
 (note that right now Mosaic only supports linux and maybe mac)
 
-Some temporary controls (these will be changed to something more convenient when the project matures a little):
+mosaic has two modes (like vim or tmux) normal/insert mode, and command mode. The keys and behavior will update
+when the project matures a bit, but for now:
+  * ctrl-g - toggle between normal mode and command mode
+
+In command mode:
   * ctrl-n - split focused pane vertically
   * ctrl-b - split focused pane horizontally
   * ctrl-m - split largest terminal on screen (vertically or horizontally)
