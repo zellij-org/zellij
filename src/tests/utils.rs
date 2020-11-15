@@ -1,5 +1,5 @@
-use ::nix::pty::Winsize;
 use crate::terminal_pane::TerminalPane;
+use ::nix::pty::Winsize;
 
 pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize) -> Vec<String> {
     let mut vte_parser = vte::Parser::new();
@@ -48,5 +48,6 @@ pub mod commands {
     pub const SCROLL_UP: [u8; 10] = [27, 91, 53, 94, 0, 0, 0, 0, 0, 0]; // ctrl-PgUp
     pub const SCROLL_DOWN: [u8; 10] = [27, 91, 54, 94, 0, 0, 0, 0, 0, 0]; // ctrl-PgDown
     pub const CLOSE_FOCUSED_PANE: [u8; 10] = [24, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-x
-    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 10] = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-e
+    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 10] = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // ctrl-e
 }

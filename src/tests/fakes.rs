@@ -1,19 +1,20 @@
-use ::std::time::Duration;
 use ::nix::pty::Winsize;
-use ::std::os::unix::io::RawFd;
-use ::std::io::{Read, Write};
 use ::std::collections::HashMap;
-use ::std::sync::{Arc, Mutex};
+use ::std::io::{Read, Write};
+use ::std::os::unix::io::RawFd;
 use ::std::path::PathBuf;
+use ::std::sync::{Arc, Mutex};
+use ::std::time::Duration;
 
 use crate::os_input_output::OsApi;
-use crate::tests::possible_tty_inputs::{Bytes, get_possible_tty_inputs};
+use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
 #[derive(Clone)]
 pub enum IoEvent {
     Kill(RawFd),
     SetTerminalSizeUsingFd(RawFd, u16, u16),
     IntoRawMode(RawFd),
+    UnsetRawMode(RawFd),
     TcDrain(RawFd),
 }
 
@@ -86,7 +87,7 @@ pub struct FakeInputOutput {
 impl FakeInputOutput {
     pub fn new(winsize: Winsize) -> Self {
         let mut win_sizes = HashMap::new();
-        win_sizes.insert(0 , winsize); // 0 is the current terminal
+        win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
             stdin_writes: Arc::new(Mutex::new(HashMap::new())),
@@ -116,12 +117,30 @@ impl OsApi for FakeInputOutput {
         *winsize
     }
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
-        let terminal_input = self.possible_tty_inputs.get(&cols).expect(&format!("could not find input for size {:?}", cols));
-        self.read_buffers.lock().unwrap().insert(pid, terminal_input.clone());
-        self.io_events.lock().unwrap().push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
+        let terminal_input = self
+            .possible_tty_inputs
+            .get(&cols)
+            .expect(&format!("could not find input for size {:?}", cols));
+        self.read_buffers
+            .lock()
+            .unwrap()
+            .insert(pid, terminal_input.clone());
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
     fn into_raw_mode(&mut self, pid: RawFd) {
-        self.io_events.lock().unwrap().push(IoEvent::IntoRawMode(pid));
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::IntoRawMode(pid));
+    }
+    fn unset_raw_mode(&mut self, pid: RawFd) {
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::UnsetRawMode(pid));
     }
     fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let next_terminal_id = { self.read_buffers.lock().unwrap().keys().len() as RawFd + 1 };
@@ -154,7 +173,7 @@ impl OsApi for FakeInputOutput {
                         bytes.set_read_position(bytes_read);
                     }
                     return Ok(bytes_read);
-                },
+                }
                 None => {
                     attempts_left -= 1;
                 }
