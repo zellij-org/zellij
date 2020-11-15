@@ -519,6 +519,36 @@ impl Scroll {
             }
         }
     }
+    /// [scroll_up](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
+    /// This function takes the first line of the scroll region and moves it to the bottom (count times)
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        if let Some((_, scroll_region_bottom)) = self.scroll_region {
+            if self.show_cursor {
+                let scroll_region_bottom_index = scroll_region_bottom - 1;
+                let new_lines = vec![CanonicalLine::new(); count];
+
+                self.canonical_lines.splice(scroll_region_bottom_index..scroll_region_bottom_index, new_lines);
+                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index + count);
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            }
+        }
+    }
+    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
+    /// This function takes the last line of the scroll region and moves it to the top (count times)
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        if let Some((scroll_region_top, _)) = self.scroll_region {
+            if self.show_cursor {
+                let scroll_region_top_index = scroll_region_top - 1;
+                let new_lines = vec![CanonicalLine::new(); count];
+
+                self.cursor_position.move_to_canonical_line(scroll_region_top_index);
+
+                self.canonical_lines.splice(scroll_region_top_index..scroll_region_top_index, new_lines);
+                self.cursor_position.move_to_canonical_line(scroll_region_top_index + count);
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            }
+        }
+    }
     pub fn move_viewport_up(&mut self, count: usize) {
         if let Some(current_offset) = self.viewport_bottom_offset.as_mut() {
             *current_offset += count;

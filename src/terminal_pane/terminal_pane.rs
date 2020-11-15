@@ -8,6 +8,7 @@ use crate::terminal_pane::terminal_character::{
 };
 use crate::terminal_pane::Scroll;
 use crate::VteEvent;
+use crate::utils::logging::{_debug_log_to_file_pid_0, _debug_log_to_file};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionAndSize {
@@ -268,20 +269,6 @@ impl TerminalPane {
     }
     fn reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
-    }
-}
-
-fn debug_log_to_file(message: String, pid: RawFd) {
-    if pid == 3 {
-        use std::fs::OpenOptions;
-        use std::io::prelude::*;
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open("/tmp/mosaic-log.txt")
-            .unwrap();
-        file.write_all(message.as_bytes()).unwrap();
-        file.write_all("\n".as_bytes()).unwrap();
     }
 }
 

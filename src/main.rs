@@ -1,11 +1,10 @@
 #[cfg(test)]
 mod tests;
-
+mod terminal_pane;
 mod boundaries;
 mod os_input_output;
 mod pty_bus;
 mod screen;
-mod boundaries;
 mod utils;
 
 use std::io::{Read, Write};
@@ -20,7 +19,7 @@ use structopt::StructOpt;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::consts::MOSAIC_TMP_FOLDER;
+use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -48,24 +47,6 @@ pub struct Opt {
 
     #[structopt(short, long)]
     debug: bool,
-}
-
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-fn delete_log_files() -> std::io::Result<()> {
-    std::fs::remove_dir_all("/tmp/mosaic-logs").ok();
-    std::fs::create_dir_all("/tmp/mosaic-logs").ok();
-    Ok(())
 }
 
 pub fn main() {
@@ -106,7 +87,7 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
-    delete_log_files().unwrap();
+    _delete_log_files().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
