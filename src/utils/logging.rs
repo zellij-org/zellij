@@ -46,14 +46,7 @@ pub fn _delete_log_dir() -> io::Result<()> {
 pub fn _debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(MOSAIC_TMP_LOG_DIR);
-    path.push(
-        [
-            String::from("mosaic-"),
-            pid.to_string(),
-            String::from(".log"),
-        ]
-        .concat(),
-    );
+    path.push(format!("mosaic-{}.log", pid.to_string()));
 
     let mut file = fs::OpenOptions::new()
         .append(true)
