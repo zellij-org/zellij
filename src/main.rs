@@ -1,25 +1,25 @@
 #[cfg(test)]
 mod tests;
 
+mod boundaries;
 mod input;
 mod os_input_output;
-mod terminal_pane;
 mod pty_bus;
 mod screen;
-mod boundaries;
+mod terminal_pane;
 
 use std::io::{Read, Write};
-use std::thread;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::input::input_loop;
 use crate::os_input_output::{get_os_input, OsApi};
-use crate::pty_bus::{VteEvent, PtyBus, PtyInstruction};
+use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -47,13 +47,17 @@ pub struct Opt {
     max_panes: Option<usize>,
 
     #[structopt(short, long)]
-    debug: bool
+    debug: bool,
 }
 
-fn _debug_log_to_file (message: String) {
+fn _debug_log_to_file(message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/mosaic-log.txt")
+        .unwrap();
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
 }
@@ -65,7 +69,6 @@ fn delete_log_files() -> std::io::Result<()> {
 }
 
 pub fn main() {
-    let os_input = get_os_input();
     let opts = Opt::from_args();
     if opts.split.is_some() {
         match opts.split {
@@ -73,12 +76,12 @@ pub fn main() {
                 let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
-            },
+            }
             Some('v') => {
                 let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
-            },
+            }
             _ => {}
         };
     } else if opts.move_focus {
@@ -91,12 +94,13 @@ pub fn main() {
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
+        let os_input = get_os_input();
         start(Box::new(os_input), opts);
     }
 }
 
 pub enum AppInstruction {
-    Exit
+    Exit,
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
@@ -106,11 +110,32 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
-    let (send_screen_instructions, receive_screen_instructions): (Sender<ScreenInstruction>, Receiver<ScreenInstruction>) = channel();
-    let (send_pty_instructions, receive_pty_instructions): (Sender<PtyInstruction>, Receiver<PtyInstruction>) = channel();
-    let (send_app_instructions, receive_app_instructions): (Sender<AppInstruction>, Receiver<AppInstruction>) = channel();
-    let mut screen = Screen::new(receive_screen_instructions, send_pty_instructions.clone(), send_app_instructions.clone(), &full_screen_ws, os_input.clone(), opts.max_panes);
-    let mut pty_bus = PtyBus::new(receive_pty_instructions, send_screen_instructions.clone(), os_input.clone(), opts.debug);
+    let (send_screen_instructions, receive_screen_instructions): (
+        Sender<ScreenInstruction>,
+        Receiver<ScreenInstruction>,
+    ) = channel();
+    let (send_pty_instructions, receive_pty_instructions): (
+        Sender<PtyInstruction>,
+        Receiver<PtyInstruction>,
+    ) = channel();
+    let (send_app_instructions, receive_app_instructions): (
+        Sender<AppInstruction>,
+        Receiver<AppInstruction>,
+    ) = channel();
+    let mut screen = Screen::new(
+        receive_screen_instructions,
+        send_pty_instructions.clone(),
+        send_app_instructions.clone(),
+        &full_screen_ws,
+        os_input.clone(),
+        opts.max_panes,
+    );
+    let mut pty_bus = PtyBus::new(
+        receive_pty_instructions,
+        send_screen_instructions.clone(),
+        os_input.clone(),
+        opts.debug,
+    );
 
     active_threads.push(
         thread::Builder::new()
@@ -119,7 +144,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 move || {
                     pty_bus.spawn_terminal_vertically(None);
                     loop {
-                        let event = pty_bus.receive_pty_instructions
+                        let event = pty_bus
+                            .receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
                         match event {
@@ -141,77 +167,78 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                     }
                 }
-            }).unwrap()
+            })
+            .unwrap(),
     );
 
     active_threads.push(
         thread::Builder::new()
             .name("screen".to_string())
             .spawn({
-                move || {
-                    loop {
-                        let event = screen.receiver
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        match event {
-                            ScreenInstruction::Pty(pid, vte_event) => {
-                                screen.handle_pty_event(pid, vte_event);
-                            },
-                            ScreenInstruction::Render => {
-                                screen.render();
-                            },
-                            ScreenInstruction::NewPane(pid) => {
-                                screen.new_pane(pid);
-                            }
-                            ScreenInstruction::HorizontalSplit(pid) => {
-                                screen.horizontal_split(pid);
-                            }
-                            ScreenInstruction::VerticalSplit(pid) => {
-                                screen.vertical_split(pid);
-                            }
-                            ScreenInstruction::WriteCharacter(bytes) => {
-                                screen.write_to_active_terminal(bytes);
-                            }
-                            ScreenInstruction::ResizeLeft => {
-                                screen.resize_left();
-                            }
-                            ScreenInstruction::ResizeRight => {
-                                screen.resize_right();
-                            }
-                            ScreenInstruction::ResizeDown => {
-                                screen.resize_down();
-                            }
-                            ScreenInstruction::ResizeUp => {
-                                screen.resize_up();
-                            }
-                            ScreenInstruction::MoveFocus => {
-                                screen.move_focus();
-                            }
-                            ScreenInstruction::ScrollUp => {
-                                screen.scroll_active_terminal_up();
-                            }
-                            ScreenInstruction::ScrollDown => {
-                                screen.scroll_active_terminal_down();
-                            }
-                            ScreenInstruction::ClearScroll => {
-                                screen.clear_active_terminal_scroll();
-                            }
-                            ScreenInstruction::CloseFocusedPane => {
-                                screen.close_focused_pane();
-                            }
-                            ScreenInstruction::ClosePane(id) => {
-                                screen.close_pane(id);
-                            }
-                            ScreenInstruction::ToggleActiveTerminalFullscreen => {
-                                screen.toggle_active_terminal_fullscreen();
-                            }
-                            ScreenInstruction::Quit => {
-                                break;
-                            }
+                move || loop {
+                    let event = screen
+                        .receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        ScreenInstruction::Pty(pid, vte_event) => {
+                            screen.handle_pty_event(pid, vte_event);
+                        }
+                        ScreenInstruction::Render => {
+                            screen.render();
+                        }
+                        ScreenInstruction::NewPane(pid) => {
+                            screen.new_pane(pid);
+                        }
+                        ScreenInstruction::HorizontalSplit(pid) => {
+                            screen.horizontal_split(pid);
+                        }
+                        ScreenInstruction::VerticalSplit(pid) => {
+                            screen.vertical_split(pid);
+                        }
+                        ScreenInstruction::WriteCharacter(bytes) => {
+                            screen.write_to_active_terminal(bytes);
+                        }
+                        ScreenInstruction::ResizeLeft => {
+                            screen.resize_left();
+                        }
+                        ScreenInstruction::ResizeRight => {
+                            screen.resize_right();
+                        }
+                        ScreenInstruction::ResizeDown => {
+                            screen.resize_down();
+                        }
+                        ScreenInstruction::ResizeUp => {
+                            screen.resize_up();
+                        }
+                        ScreenInstruction::MoveFocus => {
+                            screen.move_focus();
+                        }
+                        ScreenInstruction::ScrollUp => {
+                            screen.scroll_active_terminal_up();
+                        }
+                        ScreenInstruction::ScrollDown => {
+                            screen.scroll_active_terminal_down();
+                        }
+                        ScreenInstruction::ClearScroll => {
+                            screen.clear_active_terminal_scroll();
+                        }
+                        ScreenInstruction::CloseFocusedPane => {
+                            screen.close_focused_pane();
+                        }
+                        ScreenInstruction::ClosePane(id) => {
+                            screen.close_pane(id);
+                        }
+                        ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                            screen.toggle_active_terminal_fullscreen();
+                        }
+                        ScreenInstruction::Quit => {
+                            break;
                         }
                     }
                 }
-            }).unwrap()
+            })
+            .unwrap(),
     );
 
     // TODO: currently we don't push this into active_threads
@@ -225,27 +252,39 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             let send_screen_instructions = send_screen_instructions.clone();
             move || {
                 ::std::fs::remove_file("/tmp/mosaic").ok();
-                let listener = ::std::os::unix::net::UnixListener::bind("/tmp/mosaic").expect("could not listen on ipc socket");
+                let listener = ::std::os::unix::net::UnixListener::bind("/tmp/mosaic")
+                    .expect("could not listen on ipc socket");
 
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
                             let mut buffer = [0; 65535]; // TODO: more accurate
-                            stream.read(&mut buffer).expect("failed to parse ipc message");
-                            let decoded: ApiCommand = bincode::deserialize(&buffer).expect("failed to deserialize ipc message");
+                            stream
+                                .read(&mut buffer)
+                                .expect("failed to parse ipc message");
+                            let decoded: ApiCommand = bincode::deserialize(&buffer)
+                                .expect("failed to deserialize ipc message");
                             match &decoded {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
-                                    send_pty_instructions.send(PtyInstruction::SpawnTerminal(Some(path))).unwrap();
+                                    send_pty_instructions
+                                        .send(PtyInstruction::SpawnTerminal(Some(path)))
+                                        .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
-                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalHorizontally(None)).unwrap();
+                                    send_pty_instructions
+                                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                                        .unwrap();
                                 }
                                 ApiCommand::SplitVertically => {
-                                    send_pty_instructions.send(PtyInstruction::SpawnTerminalVertically(None)).unwrap();
+                                    send_pty_instructions
+                                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                                        .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
-                                    send_screen_instructions.send(ScreenInstruction::MoveFocus).unwrap();
+                                    send_screen_instructions
+                                        .send(ScreenInstruction::MoveFocus)
+                                        .unwrap();
                                 }
                             }
                         }
@@ -255,7 +294,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
                 }
             }
-        }).unwrap();
+        })
+        .unwrap();
 
     let _stdin_thread = thread::Builder::new()
         .name("ipc_server".to_string())
@@ -265,22 +305,25 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
             move || {
-                input_loop(os_input, 
-                           send_screen_instructions,
-                           send_pty_instructions,
-                           send_app_instructions) 
+                input_loop(
+                    os_input,
+                    send_screen_instructions,
+                    send_pty_instructions,
+                    send_app_instructions,
+                )
             }
         });
 
-
     loop {
-        let app_instruction = receive_app_instructions.recv().expect("failed to receive app instruction on channel");
+        let app_instruction = receive_app_instructions
+            .recv()
+            .expect("failed to receive app instruction on channel");
         match app_instruction {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 break;
-            },
+            }
         }
     }
 
@@ -290,9 +333,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     // cleanup();
     let reset_style = "\u{1b}[m";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.ws_row, 1);
-    let goodbye_message = format!("{}\n{}Bye from Mosaic!", goto_start_of_last_line, reset_style);
+    let goodbye_message = format!(
+        "{}\n{}Bye from Mosaic!",
+        goto_start_of_last_line, reset_style
+    );
 
     os_input.unset_raw_mode(0);
-    os_input.get_stdout_writer().write(goodbye_message.as_bytes()).unwrap();
+    os_input
+        .get_stdout_writer()
+        .write(goodbye_message.as_bytes())
+        .unwrap();
     os_input.get_stdout_writer().flush().unwrap();
 }

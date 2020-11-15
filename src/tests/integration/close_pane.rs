@@ -1,22 +1,16 @@
-use ::nix::pty::Winsize;
 use ::insta::assert_snapshot;
+use ::nix::pty::Winsize;
 
-use crate::{start, Opt};
-use crate::tests::fakes::{FakeInputOutput};
+use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
+use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    SPLIT_HORIZONTALLY,
+    CLOSE_FOCUSED_PANE, MOVE_FOCUS, QUIT, RESIZE_DOWN, RESIZE_LEFT, RESIZE_UP, SPLIT_HORIZONTALLY,
     SPLIT_VERTICALLY,
-    RESIZE_DOWN,
-    RESIZE_UP,
-    MOVE_FOCUS,
-    RESIZE_LEFT,
-    QUIT,
-    CLOSE_FOCUSED_PANE,
 };
 
-fn get_fake_os_input (fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
@@ -37,14 +31,14 @@ pub fn close_pane_with_another_pane_above_it() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        SPLIT_HORIZONTALLY,
-        CLOSE_FOCUSED_PANE,
-        QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[SPLIT_HORIZONTALLY, CLOSE_FOCUSED_PANE, QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -76,7 +70,11 @@ pub fn close_pane_with_another_pane_below_it() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -98,14 +96,14 @@ pub fn close_pane_with_another_pane_to_the_left() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        SPLIT_VERTICALLY,
-        CLOSE_FOCUSED_PANE,
-        QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, CLOSE_FOCUSED_PANE, QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -127,15 +125,14 @@ pub fn close_pane_with_another_pane_to_the_right() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        CLOSE_FOCUSED_PANE,
-        QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, MOVE_FOCUS, CLOSE_FOCUSED_PANE, QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -170,7 +167,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -203,7 +204,11 @@ pub fn close_pane_with_multiple_panes_below_it() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -238,7 +243,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -271,7 +280,11 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -318,7 +331,11 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -365,7 +382,11 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -414,7 +435,11 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -463,7 +488,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
@@ -489,7 +518,11 @@ pub fn closing_last_pane_exits_app() {
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
     for snapshot in snapshots {
         assert_snapshot!(snapshot);
