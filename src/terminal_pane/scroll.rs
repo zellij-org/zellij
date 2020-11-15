@@ -513,12 +513,17 @@ impl Scroll {
         if let Some((_, scroll_region_bottom)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_bottom_index = scroll_region_bottom - 1;
-                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index);
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_bottom_index);
 
                 let new_empty_lines = vec![CanonicalLine::new(); count];
-                self.canonical_lines.splice(scroll_region_bottom_index..scroll_region_bottom_index+1, new_empty_lines);
+                self.canonical_lines.splice(
+                    scroll_region_bottom_index..scroll_region_bottom_index + 1,
+                    new_empty_lines,
+                );
 
-                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index + count);
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_bottom_index + count);
             }
         }
     }
@@ -528,12 +533,17 @@ impl Scroll {
         if let Some((scroll_region_top, _)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_top_index = scroll_region_top - 1;
-                self.cursor_position.move_to_canonical_line(scroll_region_top_index);
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_top_index);
 
                 let new_empty_lines = vec![CanonicalLine::new(); count];
-                self.canonical_lines.splice(scroll_region_top_index..scroll_region_top_index, new_empty_lines);
+                self.canonical_lines.splice(
+                    scroll_region_top_index..scroll_region_top_index,
+                    new_empty_lines,
+                );
 
-                self.cursor_position.move_to_canonical_line(scroll_region_top_index + count);
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_top_index + count);
             }
         }
     }

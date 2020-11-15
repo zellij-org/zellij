@@ -1,11 +1,11 @@
-#[cfg(test)]
-mod tests;
-mod terminal_pane;
 mod boundaries;
 mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
+mod terminal_pane;
+#[cfg(test)]
+mod tests;
 mod utils;
 
 use std::io::{Read, Write};
@@ -182,7 +182,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .name("screen".to_string())
             .spawn({
                 move || loop {
-                    let event = screen.receiver
+                    let event = screen
+                        .receiver
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {

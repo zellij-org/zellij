@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
-use crate::ScreenInstruction;
 use crate::utils::logging::_debug_to_file;
+use crate::ScreenInstruction;
 
 pub struct ReadFromPid {
     pid: RawFd,
