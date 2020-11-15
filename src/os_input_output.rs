@@ -1,20 +1,13 @@
-use nix::unistd::{read, write, ForkResult, Pid};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::sys::termios::{
-    Termios,
-    tcgetattr,
-    cfmakeraw,
-    tcsetattr,
-    SetArg,
-    tcdrain,
-};
-use nix::sys::wait::waitpid;
-use nix::sys::signal::{kill, Signal};
 use nix::pty::{forkpty, Winsize};
-use std::os::unix::io::RawFd;
-use std::process::{Command, Child};
+use nix::sys::signal::{kill, Signal};
+use nix::sys::termios::{cfmakeraw, tcdrain, tcgetattr, tcsetattr, SetArg, Termios};
+use nix::sys::wait::waitpid;
+use nix::unistd::{read, write, ForkResult, Pid};
 use std::io::{Read, Write};
+use std::os::unix::io::RawFd;
 use std::path::PathBuf;
+use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 use std::env;
@@ -23,15 +16,15 @@ fn into_raw_mode(pid: RawFd) {
     let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
     cfmakeraw(&mut tio);
     match tcsetattr(pid, SetArg::TCSANOW, &mut tio) {
-        Ok(_) => {},
-        Err(e) => panic!("error {:?}", e)
+        Ok(_) => {}
+        Err(e) => panic!("error {:?}", e),
     };
 }
 
 fn unset_raw_mode(pid: RawFd, mut orig_termios: Termios) {
     match tcsetattr(pid, SetArg::TCSANOW, &mut orig_termios) {
-        Ok(_) => {},
-        Err(e) => panic!("error {:?}", e)
+        Ok(_) => {}
+        Err(e) => panic!("error {:?}", e),
     };
 }
 
@@ -65,10 +58,14 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
 }
 
-fn _debug_log_to_file (message: String) {
+fn _debug_log_to_file(message: String) {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
-    let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/mosaic-log.txt")
+        .unwrap();
     file.write_all(message.as_bytes()).unwrap();
     file.write_all("\n".as_bytes()).unwrap();
 }
@@ -96,11 +93,11 @@ fn handle_command_exit(mut child: Child) {
                 }
                 _ => {}
             }
-        };
+        }
     }
 }
 
-fn spawn_terminal (file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawFd, RawFd) {
+fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -108,26 +105,31 @@ fn spawn_terminal (file_to_open: Option<PathBuf>, orig_termios: Termios) -> (Raw
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
                         // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
+                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))
+                            .expect("could not fcntl");
                         child
-                    },
-                    ForkResult::Child => {
-                        match file_to_open {
-                            Some(file_to_open) => {
-                                if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                                    panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
-                                }
-                                let editor = env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
-
-                                let child = Command::new(editor).args(&[file_to_open]).spawn().expect("failed to spawn");
-                                handle_command_exit(child);
-                                ::std::process::exit(0);
-                            },
-                            None => {
-                                let child = Command::new(env::var("SHELL").unwrap()).spawn().expect("failed to spawn");
-                                handle_command_exit(child);
-                                ::std::process::exit(0);
+                    }
+                    ForkResult::Child => match file_to_open {
+                        Some(file_to_open) => {
+                            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
+                                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
                             }
+                            let editor =
+                                env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
+
+                            let child = Command::new(editor)
+                                .args(&[file_to_open])
+                                .spawn()
+                                .expect("failed to spawn");
+                            handle_command_exit(child);
+                            ::std::process::exit(0);
+                        }
+                        None => {
+                            let child = Command::new(env::var("SHELL").unwrap())
+                                .spawn()
+                                .expect("failed to spawn");
+                            handle_command_exit(child);
+                            ::std::process::exit(0);
                         }
                     },
                 };
@@ -209,17 +211,14 @@ impl OsApi for OsInputOutput {
     }
 }
 
-impl Clone for Box<dyn OsApi>
-{
+impl Clone for Box<dyn OsApi> {
     fn clone(&self) -> Box<dyn OsApi> {
         self.box_clone()
     }
 }
 
-pub fn get_os_input () -> OsInputOutput {
+pub fn get_os_input() -> OsInputOutput {
     let current_termios = tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    OsInputOutput {
-        orig_termios
-    }
+    OsInputOutput { orig_termios }
 }

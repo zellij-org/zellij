@@ -1,16 +1,13 @@
-use ::std::os::unix::io::RawFd;
 use ::nix::pty::Winsize;
+use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
 
-use crate::VteEvent;
 use crate::boundaries::Rect;
-use crate::terminal_pane::Scroll;
 use crate::terminal_pane::terminal_character::{
-    TerminalCharacter,
-    CharacterStyles,
-    AnsiCode,
-    NamedColor
+    AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
+use crate::terminal_pane::Scroll;
+use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionAndSize {
@@ -46,7 +43,7 @@ impl Rect for &mut TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new (pid: RawFd, ws: Winsize, x: usize, y: usize) -> TerminalPane {
+    pub fn new(pid: RawFd, ws: Winsize, x: usize, y: usize) -> TerminalPane {
         let scroll = Scroll::new(ws.ws_col as usize, ws.ws_row as usize);
         let pending_styles = CharacterStyles::new();
         let position_and_size = PositionAndSize {
@@ -69,26 +66,26 @@ impl TerminalPane {
             VteEvent::Print(c) => {
                 self.print(c);
                 self.should_render = true;
-            },
+            }
             VteEvent::Execute(byte) => {
                 self.execute(byte);
-            },
+            }
             VteEvent::Hook(params, intermediates, ignore, c) => {
                 self.hook(&params, &intermediates, ignore, c);
-            },
+            }
             VteEvent::Put(byte) => {
                 self.put(byte);
-            },
+            }
             VteEvent::Unhook => {
                 self.unhook();
-            },
+            }
             VteEvent::OscDispatch(params, bell_terminated) => {
                 let params: Vec<&[u8]> = params.iter().map(|p| &p[..]).collect();
                 self.osc_dispatch(&params[..], bell_terminated);
-            },
+            }
             VteEvent::CsiDispatch(params, intermediates, ignore, c) => {
                 self.csi_dispatch(&params, &intermediates, ignore, c);
-            },
+            }
             VteEvent::EscDispatch(intermediates, ignore, byte) => {
                 self.esc_dispatch(&intermediates, ignore, byte);
             }
@@ -152,50 +149,35 @@ impl TerminalPane {
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
-            Some(position_and_size_override) => {
-                position_and_size_override.x
-            },
-            None => {
-                self.position_and_size.x as usize
-            }
+            Some(position_and_size_override) => position_and_size_override.x,
+            None => self.position_and_size.x as usize,
         }
     }
     pub fn get_y(&self) -> usize {
         match self.position_and_size_override {
-            Some(position_and_size_override) => {
-                position_and_size_override.y
-            },
-            None => {
-                self.position_and_size.y as usize
-            }
+            Some(position_and_size_override) => position_and_size_override.y,
+            None => self.position_and_size.y as usize,
         }
     }
     pub fn get_columns(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => {
-                position_and_size_override.columns
-            },
-            None => {
-                self.position_and_size.columns as usize
-            }
+            Some(position_and_size_override) => position_and_size_override.columns,
+            None => self.position_and_size.columns as usize,
         }
     }
     pub fn get_rows(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => {
-                position_and_size_override.rows
-            },
-            None => {
-                self.position_and_size.rows as usize
-            }
+            Some(position_and_size_override) => position_and_size_override.rows,
+            None => self.position_and_size.rows as usize,
         }
     }
-    fn reflow_lines (&mut self) {
+    fn reflow_lines(&mut self) {
         let rows = self.get_rows();
         let columns = self.get_columns();
         self.scroll.change_size(columns, rows);
     }
-    pub fn buffer_as_vte_output(&mut self) -> Option<String> { // TODO: rename to render
+    pub fn buffer_as_vte_output(&mut self) -> Option<String> {
+        // TODO: rename to render
         // if self.should_render {
         if true {
             // while checking should_render rather than rendering each pane every time
@@ -215,7 +197,9 @@ impl TerminalPane {
                         // in some cases (eg. while resizing) some characters will spill over
                         // before they are corrected by the shell (for the prompt) or by reflowing
                         // lines
-                        if let Some(new_styles) = character_styles.update_and_return_diff(&t_character.styles) {
+                        if let Some(new_styles) =
+                            character_styles.update_and_return_diff(&t_character.styles)
+                        {
                             // the terminal keeps the previous styles as long as we're in the same
                             // line, so we only want to update the new styles here (this also
                             // includes resetting previous styles as needed)
@@ -232,10 +216,11 @@ impl TerminalPane {
             None
         }
     }
-    pub fn read_buffer_as_lines (&self) -> Vec<Vec<TerminalCharacter>> {
+    pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.scroll.as_character_lines()
     }
-    pub fn cursor_coordinates (&self) -> Option<(usize, usize)> { // (x, y)
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+        // (x, y)
         self.scroll.cursor_coordinates_on_screen()
     }
     pub fn scroll_up(&mut self, count: usize) {
@@ -266,12 +251,12 @@ impl TerminalPane {
         self.reflow_lines();
         self.should_render = true;
     }
-    fn add_newline (&mut self) {
+    fn add_newline(&mut self) {
         self.scroll.add_canonical_line();
         // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
         self.should_render = true;
     }
-    fn move_to_beginning_of_line (&mut self) {
+    fn move_to_beginning_of_line(&mut self) {
         self.scroll.move_cursor_to_beginning_of_linewrap();
     }
     fn move_cursor_backwards(&mut self, count: usize) {
@@ -282,11 +267,15 @@ impl TerminalPane {
     }
 }
 
-fn debug_log_to_file (message: String, pid: RawFd) {
+fn debug_log_to_file(message: String, pid: RawFd) {
     if pid == 3 {
         use std::fs::OpenOptions;
         use std::io::prelude::*;
-        let mut file = OpenOptions::new().append(true).create(true).open("/tmp/mosaic-log.txt").unwrap();
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("/tmp/mosaic-log.txt")
+            .unwrap();
         file.write_all(message.as_bytes()).unwrap();
         file.write_all("\n".as_bytes()).unwrap();
     }
@@ -304,11 +293,14 @@ impl vte::Perform for TerminalPane {
     }
 
     fn execute(&mut self, byte: u8) {
-        if byte == 13 { // 0d, carriage return
+        if byte == 13 {
+            // 0d, carriage return
             self.move_to_beginning_of_line();
-        } else if byte == 08 { // backspace
+        } else if byte == 08 {
+            // backspace
             self.move_cursor_backwards(1);
-        } else if byte == 10 { // 0a, newline
+        } else if byte == 10 {
+            // 0a, newline
             self.add_newline();
         }
     }
@@ -367,219 +359,334 @@ impl vte::Perform for TerminalPane {
             } else if params[0] == 38 {
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code(
+                            (Some(*param1 as u16), Some(*param2 as u16)),
+                        )));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .foreground(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .foreground(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 48 {
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code(
+                            (Some(*param1 as u16), Some(*param2 as u16)),
+                        )));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .background(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .background(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 1 {
                 // bold
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .bold(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles =
+                            self.pending_styles.bold(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 2 {
                 // dim
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .dim(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.dim(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles =
+                            self.pending_styles.dim(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 3 {
                 // italic
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .italic(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.italic(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .italic(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 4 {
                 // underline
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code(
+                            (Some(*param1 as u16), Some(*param2 as u16)),
+                        )));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .underline(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.underline(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .underline(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 5 {
                 // blink slow
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code(
+                            (Some(*param1 as u16), Some(*param2 as u16)),
+                        )));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .blink_slow(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.blink_slow(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .blink_slow(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 6 {
                 // blink fast
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code(
+                            (Some(*param1 as u16), Some(*param2 as u16)),
+                        )));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .blink_fast(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.blink_fast(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .blink_fast(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 7 {
                 // reverse
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .reverse(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.reverse(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .reverse(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 8 {
                 // hidden
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .hidden(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.hidden(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .hidden(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 9 {
                 // strike
                 match (params.get(1), params.get(2)) {
                     (Some(param1), Some(param2)) => {
-                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((Some(*param1 as u16), Some(*param2 as u16)))));
-                    },
+                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            Some(*param2 as u16),
+                        ))));
+                    }
                     (Some(param1), None) => {
-                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .strike(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                     (_, _) => {
-                        self.pending_styles = self.pending_styles.strike(Some(AnsiCode::Code((None, None))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .strike(Some(AnsiCode::Code((None, None))));
                     }
                 };
             } else if params[0] == 30 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Black)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Black)));
             } else if params[0] == 31 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Red)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Red)));
             } else if params[0] == 32 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Green)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Green)));
             } else if params[0] == 33 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
             } else if params[0] == 34 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Blue)));
             } else if params[0] == 35 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
             } else if params[0] == 36 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
             } else if params[0] == 37 {
-                self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::NamedColor(NamedColor::White)));
+                self.pending_styles = self
+                    .pending_styles
+                    .foreground(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else if params[0] == 40 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Black)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Black)));
             } else if params[0] == 41 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Red)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Red)));
             } else if params[0] == 42 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Green)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Green)));
             } else if params[0] == 43 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
             } else if params[0] == 44 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
             } else if params[0] == 45 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
             } else if params[0] == 46 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
             } else if params[0] == 47 {
-                self.pending_styles = self.pending_styles.background(Some(AnsiCode::NamedColor(NamedColor::White)));
+                self.pending_styles = self
+                    .pending_styles
+                    .background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
                 debug_log_to_file(format!("unhandled csi m code {:?}", params), self.pid);
             }
-        } else if c == 'C' { // move cursor forward
-            let move_by = if params[0] == 0 { 1 } else { params[0] as usize };
+        } else if c == 'C' {
+            // move cursor forward
+            let move_by = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
             self.scroll.move_cursor_forward(move_by);
-        } else if c == 'K' { // clear line (0 => right, 1 => left, 2 => all)
+        } else if c == 'K' {
+            // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
                 self.scroll.clear_canonical_line_right_of_cursor();
             }
-            // TODO: implement 1 and 2
-        } else if c == 'J' { // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+        // TODO: implement 1 and 2
+        } else if c == 'J' {
+            // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
                 self.scroll.clear_all_after_cursor();
             } else if params[0] == 2 {
                 self.scroll.clear_all();
             }
-            // TODO: implement 1
-        } else if c == 'H' { // goto row/col
+        // TODO: implement 1
+        } else if c == 'H' {
+            // goto row/col
             let (row, col) = if params.len() == 1 {
                 (params[0] as usize, 0) // TODO: is this always correct ?
             } else {
                 (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
             };
             self.scroll.move_cursor_to(row, col);
-        } else if c == 'A' { // move cursor up until edge of screen
+        } else if c == 'A' {
+            // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
             self.scroll.move_cursor_up(move_up_count as usize);
         } else if c == 'D' {
-            let move_back_count = if params[0] == 0 { 1 } else { params[0] as usize };
+            let move_back_count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
             self.scroll.move_cursor_back(move_back_count);
         } else if c == 'l' {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
                 Some(b'?') => true,
                 None => false,
-                _ => false
+                _ => false,
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.hide_cursor();
                         self.should_render = true;
-                    },
+                    }
                     _ => {}
                 };
             }
@@ -587,14 +694,14 @@ impl vte::Perform for TerminalPane {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
                 Some(b'?') => true,
                 None => false,
-                _ => false
+                _ => false,
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.show_cursor();
                         self.should_render = true;
-                    },
+                    }
                     _ => {}
                 };
             }
@@ -602,7 +709,8 @@ impl vte::Perform for TerminalPane {
             if params.len() > 1 {
                 let top_line_index = params[0] as usize;
                 let bottom_line_index = params[1] as usize;
-                self.scroll.set_scroll_region(top_line_index, bottom_line_index);
+                self.scroll
+                    .set_scroll_region(top_line_index, bottom_line_index);
                 self.scroll.show_cursor();
             } else {
                 self.scroll.clear_scroll_region();
@@ -615,12 +723,22 @@ impl vte::Perform for TerminalPane {
             // TBD - identify terminal
         } else if c == 'M' {
             // delete lines if currently inside scroll region
-            let line_count_to_delete = if params[0] == 0 { 1 } else { params[0] as usize };
-            self.scroll.delete_lines_in_scroll_region(line_count_to_delete);
+            let line_count_to_delete = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll
+                .delete_lines_in_scroll_region(line_count_to_delete);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
-            let line_count_to_add = if params[0] == 0 { 1 } else { params[0] as usize };
-            self.scroll.add_empty_lines_in_scroll_region(line_count_to_add);
+            let line_count_to_add = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll
+                .add_empty_lines_in_scroll_region(line_count_to_add);
         } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
         } else {
