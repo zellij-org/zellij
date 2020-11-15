@@ -92,6 +92,7 @@ pub struct Screen {
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
+    is_fullscreen: bool,
 }
 
 impl Screen {
@@ -113,6 +114,7 @@ impl Screen {
             panes_to_hide: HashSet::new(),
             active_terminal: None,
             os_api,
+            is_fullscreen: false,
         }
     }
     pub fn new_pane(&mut self, pid: RawFd) {
@@ -388,6 +390,7 @@ impl Screen {
                 active_terminal.get_columns() as u16,
                 active_terminal.get_rows() as u16,
             );
+            self.is_fullscreen = !self.is_fullscreen;
             self.render();
         }
     }
@@ -1215,6 +1218,9 @@ impl Screen {
     }
     pub fn move_focus(&mut self) {
         if self.terminals.is_empty() {
+            return;
+        }
+        if self.is_fullscreen {
             return;
         }
         let active_terminal_id = self.get_active_terminal_id().unwrap();
