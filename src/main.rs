@@ -180,8 +180,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     active_threads.push(
         thread::Builder::new()
             .name("screen".to_string())
-            .spawn(move || {
-                loop {
+            .spawn({
+                move || loop {
                     let event = screen.receiver
                         .recv()
                         .expect("failed to receive event on channel");
