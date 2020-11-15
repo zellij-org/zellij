@@ -26,18 +26,6 @@ pub struct CanonicalLine {
     pub wrapped_fragments: Vec<WrappedFragment>,
 }
 
-fn debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
 impl CanonicalLine {
     pub fn new() -> Self {
         CanonicalLine {

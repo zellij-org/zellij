@@ -313,10 +313,6 @@ impl vte::Perform for TerminalPane {
     }
 
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
-        if c != 'm' {
-            _debug_log_to_file(format!("htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})", c, params, _intermediates, _ignore));
-        }
-
         if c == 'm' {
             if params.is_empty() || params[0] == 0 {
                 // reset all
@@ -742,6 +738,7 @@ impl vte::Perform for TerminalPane {
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
+             _debug_log_to_file(format!("htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})", c, params, _intermediates, _ignore));
             let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
 
             if line_count >= 0 {
@@ -755,7 +752,9 @@ impl vte::Perform for TerminalPane {
              * Delete Character, from current position to end of field
 		     * [4P = Delete 4 characters, VT102 series
              */
+            _debug_log_to_file(format!("htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})", c, params, _intermediates, _ignore));
         } else {
+            _debug_log_to_file(format!("unhandled csi: {}->{:?}", c, params));
             panic!("unhandled csi: {}->{:?}", c, params);
         }
     }

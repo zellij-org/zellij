@@ -18,19 +18,7 @@ use crate::AppInstruction;
  *
  */
 
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-const CURSOR_HEIGHT_WIDGH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 type BorderAndPaneIds = (usize, Vec<RawFd>);
 
@@ -135,7 +123,7 @@ impl Screen {
                 (0, 0),
                 |(current_longest_edge, current_terminal_id_to_split), id_and_terminal_to_check| {
                     let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
-                    let terminal_size = (terminal_to_check.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO)
+                    let terminal_size = (terminal_to_check.get_rows() * CURSOR_HEIGHT_WIDTH_RATIO)
                         * terminal_to_check.get_columns();
                     if terminal_size > current_longest_edge {
                         (terminal_size, *id_of_terminal_to_check)
@@ -151,7 +139,7 @@ impl Screen {
                 ws_xpixel: terminal_to_split.get_x() as u16,
                 ws_ypixel: terminal_to_split.get_y() as u16,
             };
-            if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO
+            if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDTH_RATIO
                 > terminal_to_split.get_columns()
             {
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
