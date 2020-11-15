@@ -17,6 +17,7 @@ pub struct PositionAndSize {
     pub columns: usize,
 }
 
+#[derive(Debug)]
 pub struct TerminalPane {
     pub pid: RawFd,
     pub scroll: Scroll,
@@ -134,6 +135,12 @@ impl TerminalPane {
         self.reflow_lines();
         self.should_render = true;
     }
+    pub fn change_size_p(&mut self, position_and_size: &PositionAndSize) {
+        self.position_and_size = *position_and_size;
+        self.reflow_lines();
+        self.should_render = true;
+    }
+    // TODO: merge these two methods
     pub fn change_size(&mut self, ws: &Winsize) {
         self.position_and_size.columns = ws.ws_col as usize;
         self.position_and_size.rows = ws.ws_row as usize;
