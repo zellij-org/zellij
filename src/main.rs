@@ -2,10 +2,10 @@
 mod tests;
 
 mod boundaries;
+mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
-mod layout;
 mod terminal_pane;
 
 use std::io::{Read, Write};
@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use structopt::StructOpt;
 
+use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::layout::Layout;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -148,12 +148,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     match opts.layout {
                         Some(layout_path) => {
                             use std::fs::File;
-                            let mut layout_file = File::open(&layout_path).expect(&format!("cannot find layout {}", layout_path.display()));
+                            let mut layout_file = File::open(&layout_path)
+                                .expect(&format!("cannot find layout {}", layout_path.display()));
                             let mut layout = String::new();
-                            layout_file.read_to_string(&mut layout).expect(&format!("could not read layout {}", layout_path.display()));
-                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!("could not parse layout {}", layout_path.display()));
+                            layout_file.read_to_string(&mut layout).expect(&format!(
+                                "could not read layout {}",
+                                layout_path.display()
+                            ));
+                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
+                                "could not parse layout {}",
+                                layout_path.display()
+                            ));
                             pty_bus.spawn_terminals_for_layout(layout);
-                        },
+                        }
                         None => {
                             pty_bus.spawn_terminal_vertically(None);
                         }
@@ -191,16 +198,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .name("screen".to_string())
             .spawn({
                 move || loop {
-                    let event = screen.receiver
+                    let event = screen
+                        .receiver
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
                             screen.handle_pty_event(pid, vte_event);
-                        },
+                        }
                         ScreenInstruction::Render => {
                             screen.render();
-                        },
+                        }
                         ScreenInstruction::NewPane(pid) => {
                             screen.new_pane(pid);
                         }
@@ -248,7 +256,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(layout, new_pane_pids)
-
                         }
                         ScreenInstruction::Quit => {
                             break;

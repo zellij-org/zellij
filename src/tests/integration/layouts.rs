@@ -1,14 +1,12 @@
-use ::nix::pty::Winsize;
 use ::insta::assert_snapshot;
+use ::nix::pty::Winsize;
 
-use crate::{start, Opt};
-use crate::tests::fakes::{FakeInputOutput};
+use crate::tests::fakes::FakeInputOutput;
+use crate::tests::utils::commands::QUIT;
 use crate::tests::utils::get_output_frame_snapshots;
-use crate::tests::utils::commands::{
-    QUIT,
-};
+use crate::{start, Opt};
 
-fn get_fake_os_input (fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
@@ -24,9 +22,15 @@ pub fn accepts_basic_layout() {
     fake_input_output.add_terminal_input(&[QUIT]);
     use std::path::PathBuf;
     let mut opts = Opt::default();
-    opts.layout = Some(PathBuf::from("src/tests/fixtures/layouts/three-panes-with-nesting.yaml"));
+    opts.layout = Some(PathBuf::from(
+        "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
+    ));
     start(Box::new(fake_input_output.clone()), opts);
-    let output_frames = fake_input_output.stdout_writer.output_frames.lock().unwrap();
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
 
     let snapshot_count = snapshots.len();

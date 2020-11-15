@@ -5,11 +5,11 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Receiver, Sender};
 
 use crate::boundaries::Boundaries;
-use crate::os_input_output::OsApi;
-use crate::terminal_pane::{TerminalPane, PositionAndSize};
-use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::AppInstruction;
 use crate::layout::Layout;
+use crate::os_input_output::OsApi;
+use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::terminal_pane::{PositionAndSize, TerminalPane};
+use crate::AppInstruction;
 
 /*
  * Screen
@@ -124,7 +124,7 @@ impl Screen {
             x: 0,
             y: 0,
             rows: self.full_screen_ws.ws_row as usize,
-            columns: self.full_screen_ws.ws_col as usize
+            columns: self.full_screen_ws.ws_col as usize,
         };
         let positions_in_layout = layout.position_panes_in_space(&free_space);
         let mut positions_and_size = positions_in_layout.iter();
@@ -133,30 +133,44 @@ impl Screen {
                 Some(position_and_size) => {
                     terminal_pane.reset_size_and_position_override();
                     terminal_pane.change_size_p(&position_and_size);
-                    self.os_api.set_terminal_size_using_fd(*pid, position_and_size.columns as u16, position_and_size.rows as u16);
-                },
+                    self.os_api.set_terminal_size_using_fd(
+                        *pid,
+                        position_and_size.columns as u16,
+                        position_and_size.rows as u16,
+                    );
+                }
                 None => {
                     // we filled the entire layout, no room for this pane
                     // TODO: handle active terminal
                     self.panes_to_hide.insert(*pid);
                 }
             }
-
         }
         let mut new_pids = new_pids.iter();
         for position_and_size in positions_and_size {
             // there are still panes left to fill, use the pids we received in this method
             let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-            let mut new_terminal = TerminalPane::new(*pid, self.full_screen_ws.clone(), position_and_size.x, position_and_size.y);
+            let mut new_terminal = TerminalPane::new(
+                *pid,
+                self.full_screen_ws.clone(),
+                position_and_size.x,
+                position_and_size.y,
+            );
             new_terminal.change_size_p(position_and_size);
-            self.os_api.set_terminal_size_using_fd(new_terminal.pid, new_terminal.get_columns() as u16, new_terminal.get_rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                new_terminal.pid,
+                new_terminal.get_columns() as u16,
+                new_terminal.get_rows() as u16,
+            );
             self.terminals.insert(*pid, new_terminal);
         }
         for unused_pid in new_pids {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
-            self.send_pty_instructions.send(PtyInstruction::ClosePane(*unused_pid)).unwrap();
+            self.send_pty_instructions
+                .send(PtyInstruction::ClosePane(*unused_pid))
+                .unwrap();
         }
         self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
         self.render();

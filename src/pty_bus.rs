@@ -9,9 +9,9 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
+use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::ScreenInstruction;
-use crate::layout::Layout;
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -326,9 +326,19 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        &self.send_screen_instructions.send(ScreenInstruction::ApplyLayout((layout, new_pane_pids.clone())));
+        &self
+            .send_screen_instructions
+            .send(ScreenInstruction::ApplyLayout((
+                layout,
+                new_pane_pids.clone(),
+            )));
         for id in new_pane_pids {
-            stream_terminal_bytes(id, self.send_screen_instructions.clone(), self.os_input.clone(), self.debug_to_file);
+            stream_terminal_bytes(
+                id,
+                self.send_screen_instructions.clone(),
+                self.os_input.clone(),
+                self.debug_to_file,
+            );
         }
     }
     pub fn close_pane(&mut self, id: RawFd) {
