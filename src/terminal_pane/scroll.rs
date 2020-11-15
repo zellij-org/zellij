@@ -148,11 +148,11 @@ impl CursorPosition {
     pub fn move_to_next_linewrap(&mut self) {
         self.line_index.1 += 1;
     }
-    pub fn move_to_prev_canonical_line(&mut self) {
-        self.line_index.0 -= 1;
-    }
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
+    }
+    pub fn move_to_prev_canonical_line(&mut self) {
+        self.line_index.0 -= 1;
     }
     pub fn move_to_beginning_of_linewrap(&mut self) {
         self.column_index = 0;
@@ -513,11 +513,12 @@ impl Scroll {
         if let Some((_, scroll_region_bottom)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_bottom_index = scroll_region_bottom - 1;
-                let new_lines = vec![CanonicalLine::new(); count];
+                self.cursor_position.move_to_canonical_line(scroll_region_bottom_index);
 
-                self.canonical_lines.splice(scroll_region_bottom_index..scroll_region_bottom_index, new_lines);
+                let new_empty_lines = vec![CanonicalLine::new(); count];
+                self.canonical_lines.splice(scroll_region_bottom_index..scroll_region_bottom_index+1, new_empty_lines);
+
                 self.cursor_position.move_to_canonical_line(scroll_region_bottom_index + count);
-                self.cursor_position.move_to_beginning_of_canonical_line();
             }
         }
     }
@@ -527,13 +528,12 @@ impl Scroll {
         if let Some((scroll_region_top, _)) = self.scroll_region {
             if self.show_cursor {
                 let scroll_region_top_index = scroll_region_top - 1;
-                let new_lines = vec![CanonicalLine::new(); count];
-
                 self.cursor_position.move_to_canonical_line(scroll_region_top_index);
 
-                self.canonical_lines.splice(scroll_region_top_index..scroll_region_top_index, new_lines);
+                let new_empty_lines = vec![CanonicalLine::new(); count];
+                self.canonical_lines.splice(scroll_region_top_index..scroll_region_top_index, new_empty_lines);
+
                 self.cursor_position.move_to_canonical_line(scroll_region_top_index + count);
-                self.cursor_position.move_to_beginning_of_canonical_line();
             }
         }
     }

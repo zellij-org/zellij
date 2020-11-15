@@ -1,6 +1,6 @@
 use std::{
     fs,
-    env::temp_dir,
+    path::PathBuf,
     io::{self, prelude::*},
     os::unix::io::RawFd
 };
@@ -26,7 +26,15 @@ pub fn _debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     Ok(())
 }
 
-pub fn _delete_log_files() -> io::Result<()> {
+pub fn _delete_log_file() -> io::Result<()> {
+    if fs::metadata(MOSAIC_TMP_LOG_FILE).is_ok() {
+        fs::remove_file(MOSAIC_TMP_LOG_FILE)?;
+    }
+
+    Ok(())
+}
+
+pub fn _delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
     }
@@ -36,7 +44,7 @@ pub fn _delete_log_files() -> io::Result<()> {
 }
 
 pub fn _debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
-    let mut path = temp_dir();
+    let mut path = PathBuf::new();
     path.push(MOSAIC_TMP_LOG_DIR);
     path.push(
         [

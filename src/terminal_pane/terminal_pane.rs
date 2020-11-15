@@ -754,7 +754,7 @@ impl vte::Perform for TerminalPane {
              */
             _debug_log_to_file(format!("htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})", c, params, _intermediates, _ignore)).unwrap();
         } else {
-            _debug_log_to_file(format!("unhandled csi: {}->{:?}", c, params)).unwrap();
+            _debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
             panic!("unhandled csi: {}->{:?}", c, params);
         }
     }
