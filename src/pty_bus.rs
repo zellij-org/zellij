@@ -9,7 +9,7 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
-use crate::os_input_output::OsApi;
+use crate::{os_input_output::OsApi, utils::logging::_debug_to_file};
 use crate::ScreenInstruction;
 
 pub struct ReadFromPid {
@@ -24,38 +24,6 @@ impl ReadFromPid {
             os_input,
         }
     }
-}
-
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-fn debug_to_file(message: u8, pid: RawFd) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut path = PathBuf::new();
-    path.push(
-        [
-            String::from("/tmp/mosaic-logs/mosaic-"),
-            pid.to_string(),
-            String::from(".log"),
-        ]
-        .concat(),
-    );
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .unwrap();
-    file.write_all(&[message]).unwrap();
 }
 
 impl Stream for ReadFromPid {
@@ -193,70 +161,68 @@ fn stream_terminal_bytes(
     os_input: Box<dyn OsApi>,
     debug: bool,
 ) {
-    task::spawn({
-        async move {
-            let mut vte_parser = vte::Parser::new();
-            let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
-            let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
+    task::spawn(async move {
+        let mut vte_parser = vte::Parser::new();
+        let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
+        let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
 
-            let mut last_byte_receive_time: Option<Instant> = None;
-            let mut pending_render = false;
-            let max_render_pause = Duration::from_millis(30);
+        let mut last_byte_receive_time: Option<Instant> = None;
+        let mut pending_render = false;
+        let max_render_pause = Duration::from_millis(30);
 
-            while let Some(bytes) = terminal_bytes.next().await {
-                let bytes_is_empty = bytes.is_empty();
-                for byte in bytes {
-                    if debug {
-                        debug_to_file(byte, pid);
-                    }
-                    vte_parser.advance(&mut vte_event_sender, byte);
+        while let Some(bytes) = terminal_bytes.next().await {
+            let bytes_is_empty = bytes.is_empty();
+            for byte in bytes {
+                if debug {
+                    _debug_to_file(byte, pid).unwrap();
                 }
-                if !bytes_is_empty {
-                    // for UX reasons, if we got something on the wire, we only send the render notice if:
-                    // 1. there aren't any more bytes on the wire afterwards
-                    // 2. a certain period (currently 30ms) has elapsed since the last render
-                    //    (otherwise if we get a large amount of data, the display would hang
-                    //    until it's done)
-                    // 3. the stream has ended, and so we render 1 last time
-                    match last_byte_receive_time.as_mut() {
-                        Some(receive_time) => {
-                            if receive_time.elapsed() > max_render_pause {
-                                pending_render = false;
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
-                                last_byte_receive_time = Some(Instant::now());
-                            } else {
-                                pending_render = true;
-                            }
-                        }
-                        None => {
+                vte_parser.advance(&mut vte_event_sender, byte);
+            }
+            if !bytes_is_empty {
+                // for UX reasons, if we got something on the wire, we only send the render notice if:
+                // 1. there aren't any more bytes on the wire afterwards
+                // 2. a certain period (currently 30ms) has elapsed since the last render
+                //    (otherwise if we get a large amount of data, the display would hang
+                //    until it's done)
+                // 3. the stream has ended, and so we render 1 last time
+                match last_byte_receive_time.as_mut() {
+                    Some(receive_time) => {
+                        if receive_time.elapsed() > max_render_pause {
+                            pending_render = false;
+                            send_screen_instructions
+                                .send(ScreenInstruction::Render)
+                                .unwrap();
                             last_byte_receive_time = Some(Instant::now());
+                        } else {
                             pending_render = true;
                         }
-                    };
-                } else {
-                    if pending_render {
-                        pending_render = false;
-                        send_screen_instructions
-                            .send(ScreenInstruction::Render)
-                            .unwrap();
                     }
-                    last_byte_receive_time = None;
-                    task::sleep(::std::time::Duration::from_millis(10)).await;
+                    None => {
+                        last_byte_receive_time = Some(Instant::now());
+                        pending_render = true;
+                    }
+                };
+            } else {
+                if pending_render {
+                    pending_render = false;
+                    send_screen_instructions
+                        .send(ScreenInstruction::Render)
+                        .unwrap();
                 }
+                last_byte_receive_time = None;
+                task::sleep(::std::time::Duration::from_millis(10)).await;
             }
-            send_screen_instructions
-                .send(ScreenInstruction::Render)
-                .unwrap();
-            #[cfg(not(test))]
-            // this is a little hacky, and is because the tests end the file as soon as
-            // we read everything, rather than hanging until there is new data
-            // a better solution would be to fix the test fakes, but this will do for now
-            send_screen_instructions
-                .send(ScreenInstruction::ClosePane(pid))
-                .unwrap();
         }
+        send_screen_instructions
+            .send(ScreenInstruction::Render)
+            .unwrap();
+        #[cfg(not(test))]
+        // this is a little hacky, and is because the tests end the file as soon as
+        // we read everything, rather than hanging until there is new data
+        // a better solution would be to fix the test fakes, but this will do for now
+        send_screen_instructions
+            .send(ScreenInstruction::ClosePane(pid))
+            .unwrap();
     });
 }
 
