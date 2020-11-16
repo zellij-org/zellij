@@ -143,7 +143,7 @@ impl OsApi for FakeInputOutput {
             .push(IoEvent::UnsetRawMode(pid));
     }
     fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
-        let next_terminal_id = { self.read_buffers.lock().unwrap().keys().len() as RawFd + 1 };
+        let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
     }
