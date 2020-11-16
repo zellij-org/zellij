@@ -6,8 +6,8 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    CLOSE_FOCUSED_PANE, MOVE_FOCUS, QUIT, RESIZE_DOWN, RESIZE_LEFT, RESIZE_UP, SPLIT_HORIZONTALLY,
-    SPLIT_VERTICALLY,
+    CLOSE_FOCUSED_PANE, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 
 fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
@@ -42,4 +42,3 @@ pub fn adding_new_terminal_in_fullscreen() {
         assert_snapshot!(snapshot);
     }
 }
-
