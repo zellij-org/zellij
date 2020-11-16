@@ -6,8 +6,8 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    CLOSE_FOCUSED_PANE, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN, MOVE_FOCUS
+    CLOSE_FOCUSED_PANE, MOVE_FOCUS, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 
 fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
@@ -49,7 +49,7 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         ws_col: 121,
         ws_row: 20,
         ws_xpixel: 0,
-        ws_ypixel: 0
+        ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
