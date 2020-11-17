@@ -1295,6 +1295,9 @@ impl Screen {
         if self.terminals.is_empty() {
             return;
         }
+        if self.fullscreen_is_active {
+            return;
+        }
         let active_terminal_id = self.get_active_terminal_id().unwrap();
         let terminal_ids: Vec<RawFd> = self.terminals.keys().copied().collect(); // TODO: better, no allocations
         let first_terminal = terminal_ids.get(0).unwrap();
