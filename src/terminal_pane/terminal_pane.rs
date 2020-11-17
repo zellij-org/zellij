@@ -8,6 +8,7 @@ use crate::terminal_pane::terminal_character::{
 };
 use crate::terminal_pane::Scroll;
 use crate::VteEvent;
+use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionAndSize {
