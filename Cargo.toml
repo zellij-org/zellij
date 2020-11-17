@@ -3,7 +3,7 @@ name = "module"
 version = "0.1.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2018"
-description = "A small client-side library for writing mosaic plugins (tiles)"
+description = "A simplified ranger clone written as a mosaic tile"
 repository = "https://github.com/mosaic-org/strider"
 license = "MIT"
 
