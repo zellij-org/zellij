@@ -4,16 +4,16 @@ mod shim;
 pub use keys::*;
 pub use shim::*;
 
-pub trait MosaicPlugin {
+pub trait MosaicTile {
     fn init(&mut self);
     fn draw(&mut self, rows: usize, cols: usize);
     fn handle_key(&mut self, key: KeyEvent);
 }
 
 #[macro_export]
-macro_rules! register_plugin {
+macro_rules! register_tile {
     ($t:ty) => {
-        use mosaic_plugin::*;
+        use mosaic_tile::*;
 
         use std::cell::RefCell;
         thread_local! {
