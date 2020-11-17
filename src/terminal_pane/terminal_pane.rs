@@ -7,8 +7,8 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::VteEvent;
 use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
+use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionAndSize {
@@ -69,7 +69,7 @@ impl TerminalPane {
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
-                self.should_render = true;
+                self.mark_for_rerender();
             }
             VteEvent::Execute(byte) => {
                 self.execute(byte);
@@ -142,7 +142,7 @@ impl TerminalPane {
     pub fn change_size_p(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     // TODO: merge these two methods
     pub fn change_size(&mut self, ws: &Winsize) {
@@ -214,7 +214,7 @@ impl TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.should_render = false;
+            self.mark_for_rerender();
             Some(vte_output)
         } else {
             None
@@ -684,7 +684,7 @@ impl vte::Perform for TerminalPane {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.hide_cursor();
-                        self.should_render = true;
+                        self.mark_for_rerender();
                     }
                     _ => {}
                 };
@@ -699,7 +699,7 @@ impl vte::Perform for TerminalPane {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.show_cursor();
-                        self.should_render = true;
+                        self.mark_for_rerender();
                     }
                     _ => {}
                 };
