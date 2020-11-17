@@ -7,7 +7,7 @@ use std::{
 
 use crate::utils::consts::{MOSAIC_TMP_LOG_DIR, MOSAIC_TMP_LOG_FILE};
 
-pub fn _debug_log_to_file(message: String) -> io::Result<()> {
+pub fn debug_log_to_file(message: String) -> io::Result<()> {
     let mut file = fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -18,9 +18,9 @@ pub fn _debug_log_to_file(message: String) -> io::Result<()> {
     Ok(())
 }
 
-pub fn _debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
+pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     if pid == 0 {
-        _debug_log_to_file(message)?;
+        debug_log_to_file(message)?;
     }
 
     Ok(())

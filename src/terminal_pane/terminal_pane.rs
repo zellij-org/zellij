@@ -7,7 +7,6 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{_debug_log_to_file, _debug_log_to_file_pid_0};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -630,7 +629,7 @@ impl vte::Perform for TerminalPane {
                     .pending_styles
                     .background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
-                _debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid)
+                debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid)
                     .unwrap();
             }
         } else if c == 'C' {
@@ -746,7 +745,7 @@ impl vte::Perform for TerminalPane {
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
-            _debug_log_to_file(format!(
+            debug_log_to_file(format!(
                 "htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})",
                 c, params, _intermediates, _ignore
             ))
@@ -764,13 +763,13 @@ impl vte::Perform for TerminalPane {
              * Delete Character, from current position to end of field
              * [4P = Delete 4 characters, VT102 series
              */
-            _debug_log_to_file(format!(
+            debug_log_to_file(format!(
                 "htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})",
                 c, params, _intermediates, _ignore
             ))
             .unwrap();
         } else {
-            _debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
+            debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
             panic!("unhandled csi: {}->{:?}", c, params);
         }
     }

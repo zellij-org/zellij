@@ -319,7 +319,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     let mut buffer = [0; 10]; // TODO: more accurately
                     stdin.read(&mut buffer).expect("failed to read stdin");
                     // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-                    // _debug_log_to_file(format!("buffer {:?}", buffer));
+                    //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
                     match buffer {
                         [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-j
