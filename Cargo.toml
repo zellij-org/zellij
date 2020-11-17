@@ -1,0 +1,13 @@
+[package]
+name = "module"
+version = "0.1.0"
+authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
+edition = "2018"
+description = "A small client-side library for writing mosaic plugins (tiles)"
+repository = "https://github.com/mosaic-org/strider"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+mosaic-tile = "0.1"
+pretty-bytes = "0.2"
