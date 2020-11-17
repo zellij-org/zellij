@@ -3,6 +3,9 @@ name = "mosaic-tile"
 version = "0.1.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2018"
+description = "A small client-side library for writing mosaic plugins (tiles)"
+repository = "https://github.com/mosaic-org/mosaic-tile"
+license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
