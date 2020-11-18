@@ -82,6 +82,7 @@ pub struct Screen {
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
+    fullscreen_is_active: bool,
 }
 
 impl Screen {
@@ -103,8 +104,10 @@ impl Screen {
             panes_to_hide: HashSet::new(),
             active_terminal: None,
             os_api,
+            fullscreen_is_active: false,
         }
     }
+
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         self.panes_to_hide.clear();
         // TODO: this should be an attribute on Screen instead of full_screen_ws
@@ -163,8 +166,16 @@ impl Screen {
         self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
         self.render();
     }
+
+    pub fn toggle_fullscreen_is_active(&mut self) {
+        self.fullscreen_is_active = !self.fullscreen_is_active;
+    }
+
     pub fn new_pane(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -251,6 +262,9 @@ impl Screen {
     }
     pub fn horizontal_split(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -306,6 +320,9 @@ impl Screen {
     }
     pub fn vertical_split(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -437,6 +454,7 @@ impl Screen {
                 active_terminal.get_rows() as u16,
             );
             self.render();
+            self.toggle_fullscreen_is_active();
         }
     }
     pub fn render(&mut self) {
@@ -1263,6 +1281,9 @@ impl Screen {
     }
     pub fn move_focus(&mut self) {
         if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
             return;
         }
         let active_terminal_id = self.get_active_terminal_id().unwrap();
