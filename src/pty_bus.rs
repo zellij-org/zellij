@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
-use crate::utils::logging::_debug_to_file;
+use crate::utils::logging::debug_to_file;
 use crate::ScreenInstruction;
 
 pub struct ReadFromPid {
@@ -177,7 +177,7 @@ fn stream_terminal_bytes(
                 let bytes_is_empty = bytes.is_empty();
                 for byte in bytes {
                     if debug {
-                        _debug_to_file(byte, pid).unwrap();
+                        debug_to_file(byte, pid).unwrap();
                     }
                     vte_parser.advance(&mut vte_event_sender, byte);
                 }

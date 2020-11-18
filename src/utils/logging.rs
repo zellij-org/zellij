@@ -26,7 +26,7 @@ pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     Ok(())
 }
 
-pub fn _delete_log_file() -> io::Result<()> {
+pub fn delete_log_file() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_FILE).is_ok() {
         fs::remove_file(MOSAIC_TMP_LOG_FILE)?;
     }
@@ -34,7 +34,7 @@ pub fn _delete_log_file() -> io::Result<()> {
     Ok(())
 }
 
-pub fn _delete_log_dir() -> io::Result<()> {
+pub fn delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
     }
@@ -43,7 +43,7 @@ pub fn _delete_log_dir() -> io::Result<()> {
     Ok(())
 }
 
-pub fn _debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
+pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(MOSAIC_TMP_LOG_DIR);
     path.push(format!("mosaic-{}.log", pid.to_string()));

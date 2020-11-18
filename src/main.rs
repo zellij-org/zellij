@@ -92,8 +92,8 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
-    _delete_log_dir().unwrap();
-    _delete_log_file().unwrap();
+    delete_log_dir().unwrap();
+    delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
