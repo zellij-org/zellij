@@ -1,18 +1,6 @@
 use crate::terminal_pane::PositionAndSize;
 use serde::{Deserialize, Serialize};
 
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,
     percentages: Vec<u8>,

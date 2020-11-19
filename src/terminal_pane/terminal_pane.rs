@@ -7,6 +7,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
+use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -61,11 +62,14 @@ impl TerminalPane {
             position_and_size_override: None,
         }
     }
+    pub fn mark_for_rerender(&mut self) {
+        self.should_render = true;
+    }
     pub fn handle_event(&mut self, event: VteEvent) {
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
-                self.should_render = true;
+                self.mark_for_rerender();
             }
             VteEvent::Execute(byte) => {
                 self.execute(byte);
@@ -95,57 +99,57 @@ impl TerminalPane {
         self.position_and_size.x += count;
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_height_down(&mut self, count: usize) {
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reduce_height_up(&mut self, count: usize) {
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn change_size_p(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     // TODO: merge these two methods
     pub fn change_size(&mut self, ws: &Winsize) {
         self.position_and_size.columns = ws.ws_col as usize;
         self.position_and_size.rows = ws.ws_row as usize;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
@@ -210,7 +214,7 @@ impl TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.should_render = false;
+            self.mark_for_rerender();
             Some(vte_output)
         } else {
             None
@@ -225,15 +229,23 @@ impl TerminalPane {
     }
     pub fn scroll_up(&mut self, count: usize) {
         self.scroll.move_viewport_up(count);
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn scroll_down(&mut self, count: usize) {
         self.scroll.move_viewport_down(count);
-        self.should_render = true;
+        self.mark_for_rerender();
+    }
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_up(count);
+        self.mark_for_rerender();
+    }
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_down(count);
+        self.mark_for_rerender();
     }
     pub fn clear_scroll(&mut self) {
         self.scroll.reset_viewport();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &Winsize) {
         let position_and_size_override = PositionAndSize {
@@ -244,17 +256,17 @@ impl TerminalPane {
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     pub fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
         self.reflow_lines();
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     fn add_newline(&mut self) {
         self.scroll.add_canonical_line();
         // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
-        self.should_render = true;
+        self.mark_for_rerender();
     }
     fn move_to_beginning_of_line(&mut self) {
         self.scroll.move_cursor_to_beginning_of_linewrap();
@@ -264,20 +276,6 @@ impl TerminalPane {
     }
     fn reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
-    }
-}
-
-fn debug_log_to_file(message: String, pid: RawFd) {
-    if pid == 3 {
-        use std::fs::OpenOptions;
-        use std::io::prelude::*;
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open("/tmp/mosaic-log.txt")
-            .unwrap();
-        file.write_all(message.as_bytes()).unwrap();
-        file.write_all("\n".as_bytes()).unwrap();
     }
 }
 
@@ -632,7 +630,8 @@ impl vte::Perform for TerminalPane {
                     .pending_styles
                     .background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
-                debug_log_to_file(format!("unhandled csi m code {:?}", params), self.pid);
+                debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid)
+                    .unwrap();
             }
         } else if c == 'C' {
             // move cursor forward
@@ -685,7 +684,7 @@ impl vte::Perform for TerminalPane {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.hide_cursor();
-                        self.should_render = true;
+                        self.mark_for_rerender();
                     }
                     _ => {}
                 };
@@ -700,7 +699,7 @@ impl vte::Perform for TerminalPane {
                 match params.get(0) {
                     Some(25) => {
                         self.scroll.show_cursor();
-                        self.should_render = true;
+                        self.mark_for_rerender();
                     }
                     _ => {}
                 };
@@ -741,8 +740,38 @@ impl vte::Perform for TerminalPane {
                 .add_empty_lines_in_scroll_region(line_count_to_add);
         } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
             // ignore for now to run on mac
+        } else if c == 'T' {
+            /*
+             * 124  54  T   SD
+             * Scroll down, new lines inserted at top of screen
+             * [4T = Scroll down 4, bring previous lines back into view
+             */
+            debug_log_to_file(format!(
+                "htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})",
+                c, params, _intermediates, _ignore
+            ))
+            .unwrap();
+            let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
+
+            if line_count >= 0 {
+                self.rotate_scroll_region_up(line_count as usize);
+            } else {
+                self.rotate_scroll_region_down(line_count.abs() as usize);
+            }
+        } else if c == 'P' {
+            /*
+             * 120 50 P * DCH
+             * Delete Character, from current position to end of field
+             * [4P = Delete 4 characters, VT102 series
+             */
+            debug_log_to_file(format!(
+                "htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})",
+                c, params, _intermediates, _ignore
+            ))
+            .unwrap();
         } else {
-            panic!("unhandled csi: {:?}->{:?}", c, params);
+            debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
+            panic!("unhandled csi: {}->{:?}", c, params);
         }
     }
 

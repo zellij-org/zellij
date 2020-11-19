@@ -1,12 +1,12 @@
-#[cfg(test)]
-mod tests;
-
 mod boundaries;
 mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
 mod terminal_pane;
+#[cfg(test)]
+mod tests;
+mod utils;
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -22,6 +22,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -53,46 +54,28 @@ pub struct Opt {
     debug: bool,
 }
 
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-fn delete_log_files() -> std::io::Result<()> {
-    std::fs::remove_dir_all("/tmp/mosaic-logs").ok();
-    std::fs::create_dir_all("/tmp/mosaic-logs").ok();
-    Ok(())
-}
-
 pub fn main() {
     let opts = Opt::from_args();
     if opts.split.is_some() {
         match opts.split {
             Some('h') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             Some('v') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             _ => {}
         };
     } else if opts.move_focus {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
     } else if opts.open_file.is_some() {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
@@ -109,7 +92,8 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
-    delete_log_files().unwrap();
+    delete_log_dir().unwrap();
+    delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
@@ -335,7 +319,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     let mut buffer = [0; 10]; // TODO: more accurately
                     stdin.read(&mut buffer).expect("failed to read stdin");
                     // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-                    // _debug_log_to_file(format!("buffer {:?}", buffer));
+                    //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
                     match buffer {
                         [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-j

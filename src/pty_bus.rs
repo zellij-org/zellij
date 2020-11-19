@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
+use crate::utils::logging::debug_to_file;
 use crate::ScreenInstruction;
 
 pub struct ReadFromPid {
@@ -25,38 +26,6 @@ impl ReadFromPid {
             os_input,
         }
     }
-}
-
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-fn debug_to_file(message: u8, pid: RawFd) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut path = PathBuf::new();
-    path.push(
-        [
-            String::from("/tmp/mosaic-logs/mosaic-"),
-            pid.to_string(),
-            String::from(".log"),
-        ]
-        .concat(),
-    );
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .unwrap();
-    file.write_all(&[message]).unwrap();
 }
 
 impl Stream for ReadFromPid {
@@ -208,7 +177,7 @@ fn stream_terminal_bytes(
                 let bytes_is_empty = bytes.is_empty();
                 for byte in bytes {
                     if debug {
-                        debug_to_file(byte, pid);
+                        debug_to_file(byte, pid).unwrap();
                     }
                     vte_parser.advance(&mut vte_event_sender, byte);
                 }
