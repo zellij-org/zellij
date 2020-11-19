@@ -51,7 +51,6 @@ pub fn accepts_basic_layout() {
 }
 
 #[test]
-#[ignore]
 #[should_panic(expected = "The total percent for each part should equal 100.")]
 pub fn should_throw_for_more_than_100_percent_total() {
     let fake_win_size = Winsize {
@@ -72,7 +71,6 @@ pub fn should_throw_for_more_than_100_percent_total() {
 }
 
 #[test]
-#[ignore]
 #[should_panic(expected = "The total percent for each part should equal 100.")]
 pub fn should_throw_for_less_than_100_percent_total() {
     let fake_win_size = Winsize {

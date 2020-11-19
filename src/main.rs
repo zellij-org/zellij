@@ -15,13 +15,12 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use structopt::StructOpt;
 
-use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::layout::Layout;
 use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,6 +51,8 @@ pub struct Opt {
     layout: Option<PathBuf>,
     #[structopt(short, long)]
     debug: bool,
+    #[structopt(long)]
+    clear_log_file: bool,
 }
 
 pub fn main() {
@@ -93,7 +94,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
     delete_log_dir().unwrap();
-    delete_log_file().unwrap();
+
+    if opts.clear_log_file {
+        // TODO: Remove this once it is decided that it goes into the logs dir
+        delete_log_file().unwrap();
+    }
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
@@ -124,31 +129,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         opts.debug,
     );
 
+    if let Some(layout_path) = opts.layout {
+        let layout = Layout::new(&layout_path);
+        pty_bus.spawn_terminals_for_layout(layout);
+    } else {
+        pty_bus.spawn_terminal_vertically(None);
+    }
+
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
                 move || {
-                    match opts.layout {
-                        Some(layout_path) => {
-                            use std::fs::File;
-                            let mut layout_file = File::open(&layout_path)
-                                .expect(&format!("cannot find layout {}", layout_path.display()));
-                            let mut layout = String::new();
-                            layout_file.read_to_string(&mut layout).expect(&format!(
-                                "could not read layout {}",
-                                layout_path.display()
-                            ));
-                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
-                                "could not parse layout {}",
-                                layout_path.display()
-                            ));
-                            pty_bus.spawn_terminals_for_layout(layout);
-                        }
-                        None => {
-                            pty_bus.spawn_terminal_vertically(None);
-                        }
-                    }
                     loop {
                         let event = pty_bus
                             .receive_pty_instructions
