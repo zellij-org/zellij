@@ -91,7 +91,7 @@ impl Stream for ReadFromPid {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VteEvent {
     // TODO: try not to allocate Vecs
     Print(char),
@@ -172,6 +172,7 @@ impl vte::Perform for VteEventSender {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),

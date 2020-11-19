@@ -61,7 +61,7 @@ fn split_horizontally_with_gap(rect: &Winsize) -> (Winsize, Winsize) {
     (first_rect, second_rect)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
@@ -1485,10 +1485,10 @@ impl Screen {
     }
     pub fn close_focused_pane(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            self.close_pane(active_terminal_id);
             self.send_pty_instructions
                 .send(PtyInstruction::ClosePane(active_terminal_id))
                 .unwrap();
-            self.close_pane(active_terminal_id);
         }
     }
     pub fn scroll_active_terminal_up(&mut self) {

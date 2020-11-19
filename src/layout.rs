@@ -99,18 +99,18 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
     pane_positions
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Direction {
     Horizontal,
     Vertical,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SplitSize {
     Percent(u8), // 1 to 100
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Layout {
     pub direction: Direction,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

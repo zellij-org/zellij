@@ -7,6 +7,7 @@ mod os_input_output;
 mod pty_bus;
 mod screen;
 mod terminal_pane;
+mod command_is_executing;
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -22,6 +23,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::command_is_executing::CommandIsExecuting;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -109,6 +111,8 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
+    let command_is_executing = CommandIsExecuting::new();
+
     delete_log_files().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -144,6 +148,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || {
                     match opts.layout {
                         Some(layout_path) => {
@@ -182,6 +187,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
+                                command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -197,6 +203,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("screen".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || loop {
                     let event = screen
                         .receiver
@@ -211,12 +218,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::NewPane(pid) => {
                             screen.new_pane(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
                             screen.horizontal_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
                             screen.vertical_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
                             screen.write_to_active_terminal(bytes);
@@ -323,12 +333,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .unwrap();
 
     let _stdin_thread = thread::Builder::new()
-        .name("ipc_server".to_string())
+        .name("stdin".to_string())
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
+            
+            let mut command_is_executing = command_is_executing.clone();
             move || {
                 let mut stdin = os_input.get_stdin_reader();
                 loop {
@@ -369,21 +381,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-z
+                            command_is_executing.opening_new_pane();
                             send_pty_instructions
                                 .send(PtyInstruction::SpawnTerminal(None))
                                 .unwrap();
+                            command_is_executing.wait_until_new_pane_is_opened();
                         }
                         [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-n
+                            command_is_executing.opening_new_pane();
                             send_pty_instructions
                                 .send(PtyInstruction::SpawnTerminalVertically(None))
                                 .unwrap();
+                            command_is_executing.wait_until_new_pane_is_opened();
                         }
                         [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-b
+                            command_is_executing.opening_new_pane();
                             send_pty_instructions
                                 .send(PtyInstruction::SpawnTerminalHorizontally(None))
                                 .unwrap();
+                            command_is_executing.wait_until_new_pane_is_opened();
                         }
                         [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-q
@@ -406,10 +424,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-x
+                            command_is_executing.closing_pane();
                             send_screen_instructions
                                 .send(ScreenInstruction::CloseFocusedPane)
                                 .unwrap();
-                            // ::std::thread::sleep(::std::time::Duration::from_millis(10));
+                            command_is_executing.wait_until_pane_is_closed();
                         }
                         [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                             // ctrl-e
