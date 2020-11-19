@@ -75,6 +75,11 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
             }
         })
         .collect();
+
+    if percentages.iter().sum::<u8>() != 100 {
+        panic!("The total percent for each part should equal 100.");
+    }
+
     let split_parts = match layout.direction {
         Direction::Vertical => split_space_to_parts_vertically(space_to_split, percentages),
         Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, percentages),
