@@ -1,13 +1,15 @@
-use ::nix::pty::Winsize;
+use crate::terminal_pane::PositionAndSize;
 use ::std::collections::HashMap;
 use ::std::io::{Read, Write};
 use ::std::os::unix::io::RawFd;
 use ::std::path::PathBuf;
 use ::std::sync::{Arc, Mutex};
-use ::std::time::Duration;
+use ::std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -21,23 +23,29 @@ pub enum IoEvent {
 pub struct FakeStdinReader {
     pub input_chars: Vec<[u8; 10]>,
     pub read_position: usize,
+    last_snapshot_time: Arc<Mutex<Instant>>,
 }
 
 impl FakeStdinReader {
-    pub fn new(input_chars: Vec<[u8; 10]>) -> Self {
+    pub fn new(input_chars: Vec<[u8; 10]>, last_snapshot_time: Arc<Mutex<Instant>>) -> Self {
         FakeStdinReader {
             input_chars,
             read_position: 0,
+            last_snapshot_time,
         }
     }
 }
 
 impl Read for FakeStdinReader {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        // ideally, we shouldn't have to sleep here
-        // stdin should be buffered and handled in the app itself
-        ::std::thread::sleep(Duration::from_millis(50));
-        // ::std::thread::sleep(Duration::from_millis(100));
+        loop {
+            let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
+            if last_snapshot_time.elapsed() > MIN_TIME_BETWEEN_SNAPSHOTS {
+                break;
+            } else {
+                ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
+            }
+        }
         let read_position = self.read_position;
         let bytes_to_read = self.input_chars.get(read_position).unwrap();
         for (i, byte) in bytes_to_read.iter().enumerate() {
@@ -48,10 +56,21 @@ impl Read for FakeStdinReader {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FakeStdoutWriter {
     output_buffer: Arc<Mutex<Vec<u8>>>,
     pub output_frames: Arc<Mutex<Vec<Vec<u8>>>>,
+    last_snapshot_time: Arc<Mutex<Instant>>,
+}
+
+impl FakeStdoutWriter {
+    pub fn new(last_snapshot_time: Arc<Mutex<Instant>>) -> Self {
+        FakeStdoutWriter {
+            output_buffer: Arc::new(Mutex::new(Vec::new())),
+            output_frames: Arc::new(Mutex::new(Vec::new())),
+            last_snapshot_time,
+        }
+    }
 }
 
 impl Write for FakeStdoutWriter {
@@ -69,6 +88,8 @@ impl Write for FakeStdoutWriter {
         let mut output_frames = self.output_frames.lock().unwrap();
         let new_frame = output_buffer.drain(..).collect();
         output_frames.push(new_frame);
+        let mut last_snapshot_time = self.last_snapshot_time.lock().unwrap();
+        *last_snapshot_time = Instant::now();
         Ok(())
     }
 }
@@ -80,19 +101,23 @@ pub struct FakeInputOutput {
     stdin_writes: Arc<Mutex<HashMap<RawFd, Vec<u8>>>>,
     pub stdout_writer: FakeStdoutWriter, // stdout_writer.output is already an arc/mutex
     io_events: Arc<Mutex<Vec<IoEvent>>>,
-    win_sizes: Arc<Mutex<HashMap<RawFd, Winsize>>>,
+    win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
+    last_snapshot_time: Arc<Mutex<Instant>>,
 }
 
 impl FakeInputOutput {
-    pub fn new(winsize: Winsize) -> Self {
+    pub fn new(winsize: PositionAndSize) -> Self {
         let mut win_sizes = HashMap::new();
+        let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
+        let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
             stdin_writes: Arc::new(Mutex::new(HashMap::new())),
             input_to_add: Arc::new(Mutex::new(None)),
-            stdout_writer: FakeStdoutWriter::default(),
+            stdout_writer,
+            last_snapshot_time,
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
@@ -111,7 +136,7 @@ impl FakeInputOutput {
 }
 
 impl OsApi for FakeInputOutput {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize {
+    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
         let win_sizes = self.win_sizes.lock().unwrap();
         let winsize = win_sizes.get(&pid).unwrap();
         *winsize
@@ -206,7 +231,7 @@ impl OsApi for FakeInputOutput {
         }
         input_chars.push([7, 0, 0, 0, 0, 0, 0, 0, 0, 0]);  // ctrl-g (cmd mode)
         input_chars.push([17, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // ctrl-q (quit)
-        let reader = FakeStdinReader::new(input_chars);
+        let reader = FakeStdinReader::new(input_chars, self.last_snapshot_time.clone());
         Box::new(reader)
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {

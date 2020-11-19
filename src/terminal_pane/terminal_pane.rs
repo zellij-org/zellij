@@ -18,6 +18,17 @@ pub struct PositionAndSize {
     pub columns: usize,
 }
 
+impl PositionAndSize {
+    pub fn from(winsize: Winsize) -> PositionAndSize {
+        PositionAndSize {
+            columns: winsize.ws_col as usize,
+            rows: winsize.ws_row as usize,
+            x: winsize.ws_xpixel as usize,
+            y: winsize.ws_ypixel as usize,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TerminalPane {
     pub pid: RawFd,
@@ -44,14 +55,14 @@ impl Rect for &mut TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, ws: Winsize, x: usize, y: usize) -> TerminalPane {
-        let scroll = Scroll::new(ws.ws_col as usize, ws.ws_row as usize);
+    pub fn new(pid: RawFd, ws: PositionAndSize, x: usize, y: usize) -> TerminalPane {
+        let scroll = Scroll::new(ws.columns, ws.rows);
         let pending_styles = CharacterStyles::new();
         let position_and_size = PositionAndSize {
             x,
             y,
-            rows: ws.ws_row as usize,
-            columns: ws.ws_col as usize,
+            rows: ws.rows,
+            columns: ws.columns,
         };
         TerminalPane {
             pid,
@@ -145,9 +156,9 @@ impl TerminalPane {
         self.mark_for_rerender();
     }
     // TODO: merge these two methods
-    pub fn change_size(&mut self, ws: &Winsize) {
-        self.position_and_size.columns = ws.ws_col as usize;
-        self.position_and_size.rows = ws.ws_row as usize;
+    pub fn change_size(&mut self, ws: &PositionAndSize) {
+        self.position_and_size.columns = ws.columns;
+        self.position_and_size.rows = ws.rows;
         self.reflow_lines();
         self.mark_for_rerender();
     }
@@ -247,12 +258,12 @@ impl TerminalPane {
         self.scroll.reset_viewport();
         self.mark_for_rerender();
     }
-    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &Winsize) {
+    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
         let position_and_size_override = PositionAndSize {
             x,
             y,
-            rows: size.ws_row as usize,
-            columns: size.ws_col as usize,
+            rows: size.rows,
+            columns: size.columns,
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();

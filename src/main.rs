@@ -1,12 +1,14 @@
+#[cfg(test)]
+mod tests;
+
 mod boundaries;
 mod input;
+mod command_is_executing;
 mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
 mod terminal_pane;
-#[cfg(test)]
-mod tests;
 mod utils;
 
 use std::io::{Read, Write};
@@ -20,6 +22,7 @@ use serde_yaml;
 use structopt::StructOpt;
 
 use crate::input::input_loop;
+use crate::command_is_executing::CommandIsExecuting;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
@@ -94,7 +97,9 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
-    delete_log_dir().unwrap();
+    let command_is_executing = CommandIsExecuting::new();
+
+    let _ = delete_log_dir();
     delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -130,6 +135,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || {
                     match opts.layout {
                         Some(layout_path) => {
@@ -168,6 +174,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
+                                command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -183,6 +190,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("screen".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || loop {
                     let event = screen
                         .receiver
@@ -197,12 +205,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::NewPane(pid) => {
                             screen.new_pane(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
                             screen.horizontal_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
                             screen.vertical_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
                             screen.write_to_active_terminal(bytes);
@@ -309,15 +320,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .unwrap();
 
     let _stdin_thread = thread::Builder::new()
-        .name("ipc_server".to_string())
+        .name("stdin_handler".to_string())
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
+            let command_is_executing = command_is_executing.clone();
             move || {
                 input_loop(
                     os_input,
+                    command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,
                     send_app_instructions,
@@ -343,7 +356,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     }
     // cleanup();
     let reset_style = "\u{1b}[m";
-    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.ws_row, 1);
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
         "{}\n{}Bye from Mosaic!",
         goto_start_of_last_line, reset_style

@@ -1,3 +1,4 @@
+use crate::terminal_pane::PositionAndSize;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -28,7 +29,7 @@ fn unset_raw_mode(pid: RawFd, mut orig_termios: Termios) {
     };
 }
 
-pub fn get_terminal_size_using_fd(fd: RawFd) -> Winsize {
+pub fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCGWINSZ;
@@ -41,7 +42,7 @@ pub fn get_terminal_size_using_fd(fd: RawFd) -> Winsize {
     };
 
     unsafe { ioctl(fd, TIOCGWINSZ.into(), &mut winsize) };
-    winsize
+    PositionAndSize::from(winsize)
 }
 
 pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
@@ -137,7 +138,7 @@ pub struct OsInputOutput {
 }
 
 pub trait OsApi: Send + Sync {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize;
+    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize;
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
     fn into_raw_mode(&mut self, pid: RawFd);
     fn unset_raw_mode(&mut self, pid: RawFd);
@@ -152,7 +153,7 @@ pub trait OsApi: Send + Sync {
 }
 
 impl OsApi for OsInputOutput {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize {
+    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
         get_terminal_size_using_fd(pid)
     }
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {

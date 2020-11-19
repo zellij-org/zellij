@@ -7,11 +7,13 @@ use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
+use crate::CommandIsExecuting;
 
 struct InputHandler {
     buffer: [u8; 10], // TODO: more accurately
     mode: InputMode,
     stdin: Box<dyn Read>,
+    command_is_executing: CommandIsExecuting,
     send_screen_instructions: Sender<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
     send_app_instructions: Sender<AppInstruction>,
@@ -20,6 +22,7 @@ struct InputHandler {
 impl InputHandler {
     fn new(
         os_input: Box<dyn OsApi>,
+        command_is_executing: CommandIsExecuting,
         send_screen_instructions: Sender<ScreenInstruction>,
         send_pty_instructions: Sender<PtyInstruction>,
         send_app_instructions: Sender<AppInstruction>,
@@ -28,6 +31,7 @@ impl InputHandler {
             buffer: [0; 10], // TODO: more accurately
             mode: InputMode::Normal,
             stdin: os_input.get_stdin_reader(),
+            command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
             send_app_instructions,
@@ -146,21 +150,27 @@ impl InputHandler {
                 }
                 [122, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // z
+                    self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminal(None))
                         .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
                 }
                 [110, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // n
+                    self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminalVertically(None))
                         .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
                 }
                 [98, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // b
+                    self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminalHorizontally(None))
                         .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
                 }
                 [113, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // q
@@ -181,10 +191,11 @@ impl InputHandler {
                 }
                 [120, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // x
+                    self.command_is_executing.closing_pane();
                     self.send_screen_instructions
                         .send(ScreenInstruction::CloseFocusedPane)
                         .unwrap();
-                    // ::std::thread::sleep(::std::time::Duration::from_millis(10));
+                    self.command_is_executing.wait_until_pane_is_closed();
                 }
                 [101, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // e
@@ -239,12 +250,14 @@ pub enum InputMode {
 /// reading loop
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
+    command_is_executing: CommandIsExecuting,
     send_screen_instructions: Sender<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
     send_app_instructions: Sender<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
         os_input,
+        command_is_executing,
         send_screen_instructions,
         send_pty_instructions,
         send_app_instructions,

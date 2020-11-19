@@ -1,22 +1,22 @@
 use ::insta::assert_snapshot;
-use ::nix::pty::Winsize;
 
+use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
-fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
 #[test]
 pub fn accepts_basic_layout() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[COMMAND_TOGGLE, COMMAND_TOGGLE, QUIT]);

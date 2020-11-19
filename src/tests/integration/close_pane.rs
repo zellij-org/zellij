@@ -1,5 +1,5 @@
+use crate::terminal_pane::PositionAndSize;
 use ::insta::assert_snapshot;
-use ::nix::pty::Winsize;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
@@ -10,7 +10,7 @@ use crate::tests::utils::commands::{
     SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
 };
 
-fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
@@ -24,11 +24,11 @@ pub fn close_pane_with_another_pane_above_it() {
     // │███████████│            │xxxxxxxxxxx│
     // └───────────┘            └───────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -61,11 +61,11 @@ pub fn close_pane_with_another_pane_below_it() {
     // │xxxxxxxxxxx│            │xxxxxxxxxxx│
     // └───────────┘            └───────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -97,11 +97,11 @@ pub fn close_pane_with_another_pane_to_the_left() {
     // │xxxxx│█████│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -132,11 +132,11 @@ pub fn close_pane_with_another_pane_to_the_right() {
     // │█████│xxxxx│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -170,11 +170,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
     // │███████████│            │xxxxx│xxxxx│
     // └───────────┘            └─────┴─────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -211,11 +211,11 @@ pub fn close_pane_with_multiple_panes_below_it() {
     // │xxxxx│xxxxx│            │xxxxx│xxxxx│
     // └─────┴─────┘            └─────┴─────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -250,11 +250,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     // │xxxxx│█████│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -291,11 +291,11 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     // │█████│xxxxx│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -330,11 +330,11 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
     // └───┴───────┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -383,11 +383,11 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     // │xxx│xxx│xxx│xxx│            │xxx│xxx│xxx│xxx│
     // └───┴───┴───┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -438,11 +438,11 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     // │xxxx│xxxxxx│            │xxxx│xxxxxx│
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -493,11 +493,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     // │xxxx│xxxxxx│            │xxxx│xxxxxx│
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -538,11 +538,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
 
 #[test]
 pub fn closing_last_pane_exits_app() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[

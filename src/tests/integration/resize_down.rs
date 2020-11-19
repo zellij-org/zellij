@@ -1,6 +1,6 @@
 use ::insta::assert_snapshot;
-use ::nix::pty::Winsize;
 
+use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
@@ -10,7 +10,7 @@ use crate::tests::utils::commands::{
     SPLIT_VERTICALLY,
 };
 
-fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
@@ -25,11 +25,11 @@ pub fn resize_down_with_pane_above() {
     // │███████████│                  │███████████│
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -62,11 +62,11 @@ pub fn resize_down_with_pane_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -103,11 +103,11 @@ pub fn resize_down_with_panes_above_and_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -143,11 +143,11 @@ pub fn resize_down_with_multiple_panes_above() {
     // │███████████│                    │███████████│
     // └───────────┘                    └───────────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -186,11 +186,11 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     // │     │█████│                    │     │█████│
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -231,11 +231,11 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     // │     │     │                    │     │     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -275,11 +275,11 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     // │█████│     │                    │█████│     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -317,11 +317,11 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     // │     │     │                    │     │     │
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -360,11 +360,11 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     // │   │███│   │                    │   │███│   │
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -406,11 +406,11 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     // │   │   │   │                    │   │   │   │
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -454,11 +454,11 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     // │ │ │███│ │ │                    │ │ │███│ │ │
     // └─┴─┴───┴─┴─┘                    └─┴─┴───┴─┴─┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 40,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 40,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -517,11 +517,11 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // │ │       │ │                    │ │       │ │
     // └─┴───────┴─┘                    └─┴───────┴─┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 40,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 40,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
