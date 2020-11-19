@@ -7,7 +7,7 @@ use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
     CLOSE_FOCUSED_PANE, COMMAND_TOGGLE, MOVE_FOCUS, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {

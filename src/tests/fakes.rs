@@ -54,7 +54,7 @@ impl Read for FakeStdinReader {
                 }
                 self.read_position += 1;
                 Ok(bytes_to_read.len())
-            },
+            }
             None => {
                 // what is happening here?
                 //

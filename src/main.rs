@@ -2,8 +2,8 @@
 mod tests;
 
 mod boundaries;
-mod input;
 mod command_is_executing;
+mod input;
 mod layout;
 mod os_input_output;
 mod pty_bus;
@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use structopt::StructOpt;
 
-use crate::input::input_loop;
 use crate::command_is_executing::CommandIsExecuting;
+use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
