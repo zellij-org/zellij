@@ -1,13 +1,12 @@
 use ::insta::assert_snapshot;
-use ::nix::pty::Winsize;
 use ::std::collections::HashMap;
 
+use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::possible_tty_inputs::Bytes;
+use crate::tests::utils::commands::QUIT;
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
-
-use crate::tests::utils::commands::QUIT;
 
 /*
  * These tests are general compatibility tests for non-trivial scenarios running in the terminal.
@@ -22,20 +21,20 @@ use crate::tests::utils::commands::QUIT;
  *
  */
 
-fn get_fake_os_input(fake_win_size: &Winsize, fixture_name: &str) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &PositionAndSize, fixture_name: &str) -> FakeInputOutput {
     let mut tty_inputs = HashMap::new();
     let fixture_bytes = Bytes::from_file_in_fixtures(&fixture_name);
-    tty_inputs.insert(fake_win_size.ws_col, fixture_bytes);
+    tty_inputs.insert(fake_win_size.columns as u16, fixture_bytes);
     FakeInputOutput::new(fake_win_size.clone()).with_tty_inputs(tty_inputs)
 }
 
 #[test]
 pub fn run_bandwhich_from_fish_shell() {
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "fish_and_bandwhich";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -54,11 +53,11 @@ pub fn run_bandwhich_from_fish_shell() {
 
 #[test]
 pub fn fish_tab_completion_options() {
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "fish_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -82,11 +81,11 @@ pub fn fish_select_tab_completion_options() {
     // changes.
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "fish_select_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -114,11 +113,11 @@ pub fn vim_scroll_region_down() {
     // this tests also has other steps afterwards that fills the line with the next line in the
     // file
     // experience appear to the user
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "vim_scroll_region_down";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -144,11 +143,11 @@ pub fn vim_ctrl_d() {
     // what happens here is that 13 lines are deleted and instead 13 empty lines are added at the
     // end of the scroll region
     // vim makes sure to fill these empty lines with the rest of the file
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "vim_ctrl_d";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -172,11 +171,11 @@ pub fn vim_ctrl_u() {
     // this case) lines at the cursor, pushing away (deleting) the last line in the scroll region
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
-    let fake_win_size = Winsize {
-        ws_col: 116,
-        ws_row: 28,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
     };
     let fixture_name = "vim_ctrl_u";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);

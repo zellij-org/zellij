@@ -1,5 +1,5 @@
+use crate::terminal_pane::PositionAndSize;
 use ::insta::assert_snapshot;
-use ::nix::pty::Winsize;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
@@ -9,17 +9,17 @@ use crate::tests::utils::commands::{
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
-fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
+fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
 }
 
 #[test]
 pub fn starts_with_one_terminal() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[QUIT]);
@@ -37,11 +37,11 @@ pub fn starts_with_one_terminal() {
 
 #[test]
 pub fn split_terminals_vertically() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, QUIT]);
@@ -59,11 +59,11 @@ pub fn split_terminals_vertically() {
 
 #[test]
 pub fn split_terminals_horizontally() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[SPLIT_HORIZONTALLY, QUIT]);
@@ -82,11 +82,11 @@ pub fn split_terminals_horizontally() {
 #[test]
 pub fn split_largest_terminal() {
     // this finds the largest pane and splits along its longest edge (vertically or horizontally)
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[SPAWN_TERMINAL, SPAWN_TERMINAL, SPAWN_TERMINAL, QUIT]);
@@ -119,11 +119,11 @@ pub fn resize_right_and_up_on_the_same_axis() {
     // │█████│     │                   │█████│     │
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 40,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 40,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -153,11 +153,11 @@ pub fn resize_right_and_up_on_the_same_axis() {
 
 #[test]
 pub fn scrolling_inside_a_pane() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -185,11 +185,11 @@ pub fn scrolling_inside_a_pane() {
 pub fn max_panes() {
     // with the --max-panes option, we only allow a certain amount of panes on screen
     // simultaneously, new panes beyond this limit will close older panes on screen
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -215,11 +215,11 @@ pub fn max_panes() {
 
 #[test]
 pub fn toggle_focused_pane_fullscreen() {
-    let fake_win_size = Winsize {
-        ws_col: 121,
-        ws_row: 20,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
