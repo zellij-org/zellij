@@ -47,12 +47,28 @@ impl Read for FakeStdinReader {
             }
         }
         let read_position = self.read_position;
-        let bytes_to_read = self.input_chars.get(read_position).unwrap();
-        for (i, byte) in bytes_to_read.iter().enumerate() {
-            buf[i] = *byte;
+        match self.input_chars.get(read_position) {
+            Some(bytes_to_read) => {
+                for (i, byte) in bytes_to_read.iter().enumerate() {
+                    buf[i] = *byte;
+                }
+                self.read_position += 1;
+                Ok(bytes_to_read.len())
+            },
+            None => {
+                // what is happening here?
+                //
+                // Here the stdin loop is requesting more input than we have provided it with in
+                // the fake input chars.
+                // Normally this should not happen, because each test quits in the end.
+                // There is one case (at the time of this writing) in which it does happen, and
+                // that's when we quit by closing the last pane. In this case the stdin loop might
+                // get a chance to request more input before the app quits and drops it. In that
+                // case, we just give it no input and let it keep doing its thing until it dies
+                // very shortly after.
+                Ok(0)
+            }
         }
-        self.read_position += 1;
-        Ok(bytes_to_read.len())
     }
 }
 
@@ -229,8 +245,6 @@ impl OsApi for FakeInputOutput {
                 input_chars.push(*bytes);
             }
         }
-        input_chars.push([7, 0, 0, 0, 0, 0, 0, 0, 0, 0]);  // ctrl-g (cmd mode)
-        input_chars.push([17, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // ctrl-q (quit)
         let reader = FakeStdinReader::new(input_chars, self.last_snapshot_time.clone());
         Box::new(reader)
     }

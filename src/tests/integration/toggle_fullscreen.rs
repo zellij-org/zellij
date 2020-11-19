@@ -6,8 +6,8 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    CLOSE_FOCUSED_PANE, MOVE_FOCUS, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    CLOSE_FOCUSED_PANE, COMMAND_TOGGLE, MOVE_FOCUS, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -24,6 +24,8 @@ pub fn adding_new_terminal_in_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         SPLIT_HORIZONTALLY,
@@ -53,6 +55,8 @@ pub fn move_focus_is_disabled_in_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         MOVE_FOCUS,
