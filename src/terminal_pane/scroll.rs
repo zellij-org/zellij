@@ -26,18 +26,6 @@ pub struct CanonicalLine {
     pub wrapped_fragments: Vec<WrappedFragment>,
 }
 
-fn debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
 impl CanonicalLine {
     pub fn new() -> Self {
         CanonicalLine {
@@ -162,6 +150,9 @@ impl CursorPosition {
     }
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
+    }
+    pub fn move_to_prev_canonical_line(&mut self) {
+        self.line_index.0 -= 1;
     }
     pub fn move_to_beginning_of_linewrap(&mut self) {
         self.column_index = 0;
@@ -307,8 +298,7 @@ impl Scroll {
             }
         }
         if current_canonical_line_index == self.canonical_lines.len() - 1 {
-            let new_canonical_line = CanonicalLine::new();
-            self.canonical_lines.push(new_canonical_line);
+            self.canonical_lines.push(CanonicalLine::new());
             self.cursor_position.move_to_next_canonical_line();
             self.cursor_position.move_to_beginning_of_canonical_line();
         } else if current_canonical_line_index < self.canonical_lines.len() - 1 {
@@ -514,6 +504,46 @@ impl Scroll {
                     self.canonical_lines
                         .insert(current_canonical_line_index, CanonicalLine::new());
                 }
+            }
+        }
+    }
+    /// [scroll_up](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
+    /// This function takes the first line of the scroll region and moves it to the bottom (count times)
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        if let Some((_, scroll_region_bottom)) = self.scroll_region {
+            if self.show_cursor {
+                let scroll_region_bottom_index = scroll_region_bottom - 1;
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_bottom_index);
+
+                let new_empty_lines = vec![CanonicalLine::new(); count];
+                self.canonical_lines.splice(
+                    scroll_region_bottom_index..scroll_region_bottom_index + 1,
+                    new_empty_lines,
+                );
+
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_bottom_index + count);
+            }
+        }
+    }
+    /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
+    /// This function takes the last line of the scroll region and moves it to the top (count times)
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        if let Some((scroll_region_top, _)) = self.scroll_region {
+            if self.show_cursor {
+                let scroll_region_top_index = scroll_region_top - 1;
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_top_index);
+
+                let new_empty_lines = vec![CanonicalLine::new(); count];
+                self.canonical_lines.splice(
+                    scroll_region_top_index..scroll_region_top_index,
+                    new_empty_lines,
+                );
+
+                self.cursor_position
+                    .move_to_canonical_line(scroll_region_top_index + count);
             }
         }
     }

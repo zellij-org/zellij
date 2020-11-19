@@ -5,9 +5,10 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Receiver, Sender};
 
 use crate::boundaries::Boundaries;
+use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::terminal_pane::TerminalPane;
+use crate::terminal_pane::{PositionAndSize, TerminalPane};
 use crate::AppInstruction;
 
 /*
@@ -18,19 +19,7 @@ use crate::AppInstruction;
  *
  */
 
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-const CURSOR_HEIGHT_WIDGH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 type BorderAndPaneIds = (usize, Vec<RawFd>);
 
@@ -80,6 +69,7 @@ pub enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     ClosePane(RawFd),
+    ApplyLayout((Layout, Vec<RawFd>)),
 }
 
 pub struct Screen {
@@ -92,6 +82,7 @@ pub struct Screen {
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     os_api: Box<dyn OsApi>,
+    fullscreen_is_active: bool,
 }
 
 impl Screen {
@@ -113,10 +104,78 @@ impl Screen {
             panes_to_hide: HashSet::new(),
             active_terminal: None,
             os_api,
+            fullscreen_is_active: false,
         }
     }
+
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+        self.panes_to_hide.clear();
+        // TODO: this should be an attribute on Screen instead of full_screen_ws
+        let free_space = PositionAndSize {
+            x: 0,
+            y: 0,
+            rows: self.full_screen_ws.ws_row as usize,
+            columns: self.full_screen_ws.ws_col as usize,
+        };
+        let positions_in_layout = layout.position_panes_in_space(&free_space);
+        let mut positions_and_size = positions_in_layout.iter();
+        for (pid, terminal_pane) in self.terminals.iter_mut() {
+            match positions_and_size.next() {
+                Some(position_and_size) => {
+                    terminal_pane.reset_size_and_position_override();
+                    terminal_pane.change_size_p(&position_and_size);
+                    self.os_api.set_terminal_size_using_fd(
+                        *pid,
+                        position_and_size.columns as u16,
+                        position_and_size.rows as u16,
+                    );
+                }
+                None => {
+                    // we filled the entire layout, no room for this pane
+                    // TODO: handle active terminal
+                    self.panes_to_hide.insert(*pid);
+                }
+            }
+        }
+        let mut new_pids = new_pids.iter();
+        for position_and_size in positions_and_size {
+            // there are still panes left to fill, use the pids we received in this method
+            let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
+            let mut new_terminal = TerminalPane::new(
+                *pid,
+                self.full_screen_ws.clone(),
+                position_and_size.x,
+                position_and_size.y,
+            );
+            new_terminal.change_size_p(position_and_size);
+            self.os_api.set_terminal_size_using_fd(
+                new_terminal.pid,
+                new_terminal.get_columns() as u16,
+                new_terminal.get_rows() as u16,
+            );
+            self.terminals.insert(*pid, new_terminal);
+        }
+        for unused_pid in new_pids {
+            // this is a bit of a hack and happens because we don't have any central location that
+            // can query the screen as to how many panes it needs to create a layout
+            // fixing this will require a bit of an architecture change
+            self.send_pty_instructions
+                .send(PtyInstruction::ClosePane(*unused_pid))
+                .unwrap();
+        }
+        self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
+        self.render();
+    }
+
+    pub fn toggle_fullscreen_is_active(&mut self) {
+        self.fullscreen_is_active = !self.fullscreen_is_active;
+    }
+
     pub fn new_pane(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -135,7 +194,7 @@ impl Screen {
                 (0, 0),
                 |(current_longest_edge, current_terminal_id_to_split), id_and_terminal_to_check| {
                     let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
-                    let terminal_size = (terminal_to_check.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO)
+                    let terminal_size = (terminal_to_check.get_rows() * CURSOR_HEIGHT_WIDTH_RATIO)
                         * terminal_to_check.get_columns();
                     if terminal_size > current_longest_edge {
                         (terminal_size, *id_of_terminal_to_check)
@@ -151,7 +210,7 @@ impl Screen {
                 ws_xpixel: terminal_to_split.get_x() as u16,
                 ws_ypixel: terminal_to_split.get_y() as u16,
             };
-            if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDGH_RATIO
+            if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDTH_RATIO
                 > terminal_to_split.get_columns()
             {
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
@@ -203,6 +262,9 @@ impl Screen {
     }
     pub fn horizontal_split(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -258,6 +320,9 @@ impl Screen {
     }
     pub fn vertical_split(&mut self, pid: RawFd) {
         self.close_down_to_max_terminals();
+        if self.fullscreen_is_active {
+            self.toggle_active_terminal_fullscreen();
+        }
         if self.terminals.is_empty() {
             let x = 0;
             let y = 0;
@@ -389,6 +454,7 @@ impl Screen {
                 active_terminal.get_rows() as u16,
             );
             self.render();
+            self.toggle_fullscreen_is_active();
         }
     }
     pub fn render(&mut self) {
@@ -1215,6 +1281,9 @@ impl Screen {
     }
     pub fn move_focus(&mut self) {
         if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
             return;
         }
         let active_terminal_id = self.get_active_terminal_id().unwrap();
