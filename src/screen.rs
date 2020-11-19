@@ -1,4 +1,3 @@
-use nix::pty::Winsize;
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::os::unix::io::RawFd;
@@ -23,29 +22,29 @@ const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of 
 
 type BorderAndPaneIds = (usize, Vec<RawFd>);
 
-fn split_vertically_with_gap(rect: &Winsize) -> (Winsize, Winsize) {
-    let width_of_each_half = (rect.ws_col - 1) / 2;
+fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
+    let width_of_each_half = (rect.columns - 1) / 2;
     let mut first_rect = rect.clone();
     let mut second_rect = rect.clone();
-    if rect.ws_col % 2 == 0 {
-        first_rect.ws_col = width_of_each_half + 1;
+    if rect.columns % 2 == 0 {
+        first_rect.columns = width_of_each_half + 1;
     } else {
-        first_rect.ws_col = width_of_each_half;
+        first_rect.columns = width_of_each_half;
     }
-    second_rect.ws_col = width_of_each_half;
+    second_rect.columns = width_of_each_half;
     (first_rect, second_rect)
 }
 
-fn split_horizontally_with_gap(rect: &Winsize) -> (Winsize, Winsize) {
-    let height_of_each_half = (rect.ws_row - 1) / 2;
+fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
+    let height_of_each_half = (rect.rows - 1) / 2;
     let mut first_rect = rect.clone();
     let mut second_rect = rect.clone();
-    if rect.ws_row % 2 == 0 {
-        first_rect.ws_row = height_of_each_half + 1;
+    if rect.rows % 2 == 0 {
+        first_rect.rows = height_of_each_half + 1;
     } else {
-        first_rect.ws_row = height_of_each_half;
+        first_rect.rows = height_of_each_half;
     }
-    second_rect.ws_row = height_of_each_half;
+    second_rect.rows = height_of_each_half;
     (first_rect, second_rect)
 }
 
@@ -77,7 +76,7 @@ pub struct Screen {
     max_panes: Option<usize>,
     send_pty_instructions: Sender<PtyInstruction>,
     send_app_instructions: Sender<AppInstruction>,
-    full_screen_ws: Winsize,
+    full_screen_ws: PositionAndSize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
@@ -90,7 +89,7 @@ impl Screen {
         receive_screen_instructions: Receiver<ScreenInstruction>,
         send_pty_instructions: Sender<PtyInstruction>,
         send_app_instructions: Sender<AppInstruction>,
-        full_screen_ws: &Winsize,
+        full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
     ) -> Self {
@@ -114,8 +113,8 @@ impl Screen {
         let free_space = PositionAndSize {
             x: 0,
             y: 0,
-            rows: self.full_screen_ws.ws_row as usize,
-            columns: self.full_screen_ws.ws_col as usize,
+            rows: self.full_screen_ws.rows,
+            columns: self.full_screen_ws.columns,
         };
         let positions_in_layout = layout.position_panes_in_space(&free_space);
         let mut positions_and_size = positions_in_layout.iter();
@@ -204,56 +203,48 @@ impl Screen {
                 },
             );
             let terminal_to_split = self.terminals.get_mut(&terminal_id_to_split).unwrap();
-            let terminal_ws = Winsize {
-                ws_row: terminal_to_split.get_rows() as u16,
-                ws_col: terminal_to_split.get_columns() as u16,
-                ws_xpixel: terminal_to_split.get_x() as u16,
-                ws_ypixel: terminal_to_split.get_y() as u16,
+            let terminal_ws = PositionAndSize {
+                rows: terminal_to_split.get_rows(),
+                columns: terminal_to_split.get_columns(),
+                x: terminal_to_split.get_x(),
+                y: terminal_to_split.get_y(),
             };
             if terminal_to_split.get_rows() * CURSOR_HEIGHT_WIDTH_RATIO
                 > terminal_to_split.get_columns()
             {
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-                let bottom_half_y = terminal_ws.ws_ypixel + top_winsize.ws_row + 1;
-                let new_terminal = TerminalPane::new(
-                    pid,
-                    bottom_winsize,
-                    terminal_ws.ws_xpixel as usize,
-                    bottom_half_y as usize,
-                );
+                let bottom_half_y = terminal_ws.y + top_winsize.rows + 1;
+                let new_terminal =
+                    TerminalPane::new(pid, bottom_winsize, terminal_ws.x, bottom_half_y);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
-                    bottom_winsize.ws_col,
-                    bottom_winsize.ws_row,
+                    bottom_winsize.columns as u16,
+                    bottom_winsize.rows as u16,
                 );
                 terminal_to_split.change_size(&top_winsize);
                 self.terminals.insert(pid, new_terminal);
                 self.os_api.set_terminal_size_using_fd(
                     terminal_id_to_split,
-                    top_winsize.ws_col,
-                    top_winsize.ws_row,
+                    top_winsize.columns as u16,
+                    top_winsize.rows as u16,
                 );
                 self.active_terminal = Some(pid);
             } else {
                 let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
-                let right_side_x = (terminal_ws.ws_xpixel + left_winszie.ws_col + 1) as usize;
-                let new_terminal = TerminalPane::new(
-                    pid,
-                    right_winsize,
-                    right_side_x,
-                    terminal_ws.ws_ypixel as usize,
-                );
+                let right_side_x = (terminal_ws.x + left_winszie.columns + 1) as usize;
+                let new_terminal =
+                    TerminalPane::new(pid, right_winsize, right_side_x, terminal_ws.y);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
-                    right_winsize.ws_col,
-                    right_winsize.ws_row,
+                    right_winsize.columns as u16,
+                    right_winsize.rows as u16,
                 );
                 terminal_to_split.change_size(&left_winszie);
                 self.terminals.insert(pid, new_terminal);
                 self.os_api.set_terminal_size_using_fd(
                     terminal_id_to_split,
-                    left_winszie.ws_col,
-                    left_winszie.ws_row,
+                    left_winszie.columns as u16,
+                    left_winszie.rows as u16,
                 );
             }
             self.active_terminal = Some(pid);
@@ -281,24 +272,24 @@ impl Screen {
             let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
                 let active_terminal = &self.get_active_terminal().unwrap();
                 (
-                    Winsize {
-                        ws_row: active_terminal.get_rows() as u16,
-                        ws_col: active_terminal.get_columns() as u16,
-                        ws_xpixel: 0,
-                        ws_ypixel: 0,
+                    PositionAndSize {
+                        rows: active_terminal.get_rows(),
+                        columns: active_terminal.get_columns(),
+                        x: 0,
+                        y: 0,
                     },
                     active_terminal.get_x(),
                     active_terminal.get_y(),
                 )
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&active_terminal_ws);
-            let bottom_half_y = active_terminal_y + top_winsize.ws_row as usize + 1;
+            let bottom_half_y = active_terminal_y + top_winsize.rows + 1;
             let new_terminal =
                 TerminalPane::new(pid, bottom_winsize, active_terminal_x, bottom_half_y);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                bottom_winsize.ws_col,
-                bottom_winsize.ws_row,
+                bottom_winsize.columns as u16,
+                bottom_winsize.rows as u16,
             );
 
             {
@@ -311,8 +302,8 @@ impl Screen {
             let active_terminal_pid = self.get_active_terminal_id().unwrap();
             self.os_api.set_terminal_size_using_fd(
                 active_terminal_pid,
-                top_winsize.ws_col,
-                top_winsize.ws_row,
+                top_winsize.columns as u16,
+                top_winsize.rows as u16,
             );
             self.active_terminal = Some(pid);
             self.render();
@@ -339,24 +330,24 @@ impl Screen {
             let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
                 let active_terminal = &self.get_active_terminal().unwrap();
                 (
-                    Winsize {
-                        ws_row: active_terminal.get_rows() as u16,
-                        ws_col: active_terminal.get_columns() as u16,
-                        ws_xpixel: 0,
-                        ws_ypixel: 0,
+                    PositionAndSize {
+                        rows: active_terminal.get_rows(),
+                        columns: active_terminal.get_columns(),
+                        x: 0,
+                        y: 0,
                     },
                     active_terminal.get_x(),
                     active_terminal.get_y(),
                 )
             };
             let (left_winszie, right_winsize) = split_vertically_with_gap(&active_terminal_ws);
-            let right_side_x = active_terminal_x + left_winszie.ws_col as usize + 1;
+            let right_side_x = active_terminal_x + left_winszie.columns + 1;
             let new_terminal =
                 TerminalPane::new(pid, right_winsize, right_side_x, active_terminal_y);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                right_winsize.ws_col,
-                right_winsize.ws_row,
+                right_winsize.columns as u16,
+                right_winsize.rows as u16,
             );
 
             {
@@ -369,8 +360,8 @@ impl Screen {
             let active_terminal_pid = self.get_active_terminal_id().unwrap();
             self.os_api.set_terminal_size_using_fd(
                 active_terminal_pid,
-                left_winszie.ws_col,
-                left_winszie.ws_row,
+                left_winszie.columns as u16,
+                left_winszie.rows as u16,
             );
             self.active_terminal = Some(pid);
             self.render();
@@ -464,8 +455,10 @@ impl Screen {
             return;
         }
         let mut stdout = self.os_api.get_stdout_writer();
-        let mut boundaries =
-            Boundaries::new(self.full_screen_ws.ws_col, self.full_screen_ws.ws_row);
+        let mut boundaries = Boundaries::new(
+            self.full_screen_ws.columns as u16,
+            self.full_screen_ws.rows as u16,
+        );
         for (pid, terminal) in self.terminals.iter_mut() {
             if !self.panes_to_hide.contains(pid) {
                 boundaries.add_rect(&terminal);
@@ -658,7 +651,7 @@ impl Screen {
             }
         }
         // bottom-most border aligned with a pane border to the right
-        let mut bottom_resize_border = self.full_screen_ws.ws_row as usize;
+        let mut bottom_resize_border = self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.get_y();
             if terminal_borders_to_the_right
@@ -736,7 +729,7 @@ impl Screen {
             }
         }
         // bottom-most border aligned with a pane border to the left
-        let mut bottom_resize_border = self.full_screen_ws.ws_row as usize;
+        let mut bottom_resize_border = self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.get_y();
             if terminal_borders_to_the_left
@@ -817,7 +810,7 @@ impl Screen {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.ws_col as usize;
+        let mut right_resize_border = self.full_screen_ws.columns;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.get_x();
             if terminal_borders_above
@@ -896,7 +889,7 @@ impl Screen {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.ws_col as usize;
+        let mut right_resize_border = self.full_screen_ws.columns;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.get_x();
             if terminal_borders_below
@@ -1217,11 +1210,11 @@ impl Screen {
     }
     fn panes_exist_below(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.get_y() + pane.get_rows() < self.full_screen_ws.ws_row as usize
+        pane.get_y() + pane.get_rows() < self.full_screen_ws.rows
     }
     fn panes_exist_to_the_right(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");
-        pane.get_x() + pane.get_columns() < self.full_screen_ws.ws_col as usize
+        pane.get_x() + pane.get_columns() < self.full_screen_ws.columns
     }
     fn panes_exist_to_the_left(&self, pane_id: &RawFd) -> bool {
         let pane = self.terminals.get(pane_id).expect("pane does not exist");

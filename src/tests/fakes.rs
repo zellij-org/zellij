@@ -1,4 +1,4 @@
-use ::nix::pty::Winsize;
+use crate::terminal_pane::PositionAndSize;
 use ::std::collections::HashMap;
 use ::std::io::{Read, Write};
 use ::std::os::unix::io::RawFd;
@@ -80,12 +80,12 @@ pub struct FakeInputOutput {
     stdin_writes: Arc<Mutex<HashMap<RawFd, Vec<u8>>>>,
     pub stdout_writer: FakeStdoutWriter, // stdout_writer.output is already an arc/mutex
     io_events: Arc<Mutex<Vec<IoEvent>>>,
-    win_sizes: Arc<Mutex<HashMap<RawFd, Winsize>>>,
+    win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
 }
 
 impl FakeInputOutput {
-    pub fn new(winsize: Winsize) -> Self {
+    pub fn new(winsize: PositionAndSize) -> Self {
         let mut win_sizes = HashMap::new();
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
@@ -111,7 +111,7 @@ impl FakeInputOutput {
 }
 
 impl OsApi for FakeInputOutput {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> Winsize {
+    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
         let win_sizes = self.win_sizes.lock().unwrap();
         let winsize = win_sizes.get(&pid).unwrap();
         *winsize
