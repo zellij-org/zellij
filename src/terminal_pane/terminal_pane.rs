@@ -1,8 +1,9 @@
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
+use std::collections::HashMap;
 
-use crate::boundaries::Rect;
+use crate::geometry::{EdgeType, Rectangle};
 use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
@@ -37,9 +38,10 @@ pub struct TerminalPane {
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pending_styles: CharacterStyles,
+    borders: HashMap<EdgeType, usize>,
 }
 
-impl Rect for &mut TerminalPane {
+impl Rectangle for &mut TerminalPane {
     fn x(&self) -> usize {
         self.get_x()
     }
@@ -51,6 +53,9 @@ impl Rect for &mut TerminalPane {
     }
     fn columns(&self) -> usize {
         self.get_columns()
+    }
+    fn borders(&self) -> &HashMap<EdgeType, usize> {
+        self.get_borders()
     }
 }
 
@@ -71,6 +76,15 @@ impl TerminalPane {
             pending_styles,
             position_and_size,
             position_and_size_override: None,
+            borders: [
+                (EdgeType::Left, 0),
+                (EdgeType::Right, 0),
+                (EdgeType::Top, 0),
+                (EdgeType::Bottom, 0),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
         }
     }
     pub fn mark_for_rerender(&mut self) {
@@ -186,6 +200,10 @@ impl TerminalPane {
             None => self.position_and_size.rows as usize,
         }
     }
+    pub fn get_borders(&self) -> &HashMap<EdgeType, usize> {
+        &self.borders
+    }
+
     fn reflow_lines(&mut self) {
         let rows = self.get_rows();
         let columns = self.get_columns();

@@ -4,6 +4,7 @@ mod tests;
 mod boundaries;
 mod command_is_executing;
 mod layout;
+mod geometry;
 mod os_input_output;
 mod pty_bus;
 mod screen;

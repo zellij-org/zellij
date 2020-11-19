@@ -3,8 +3,8 @@ use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Receiver, Sender};
 
-use crate::boundaries::Boundaries;
 use crate::layout::Layout;
+use crate::boundaries::ScreenCanvas;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
@@ -455,7 +455,9 @@ impl Screen {
             return;
         }
         let mut stdout = self.os_api.get_stdout_writer();
-        let mut boundaries = Boundaries::new(
+        let mut boundaries = ScreenCanvas::new(
+            0,
+            0,
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );

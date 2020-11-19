@@ -1,5 +1,19 @@
 use std::collections::HashMap;
 
+use crate::geometry::{Coordinates, EdgeType, CornerType, Rectangle};
+
+fn _debug_log_to_file(message: String) {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/mosaic-log.txt")
+        .unwrap();
+    file.write_all(message.as_bytes()).unwrap();
+    file.write_all("\n".as_bytes()).unwrap();
+}
+
 pub mod boundary_type {
     pub const TOP_RIGHT: &str = "┐";
     pub const VERTICAL: &str = "│";
@@ -16,7 +30,7 @@ pub mod boundary_type {
 
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
-fn combine_symbols(current_symbol: &str, next_symbol: &str) -> Option<&'static str> {
+fn combine_symbols(current_symbol: &str, next_symbol: &str) -> Option<BoundaryType> {
     use boundary_type::*;
 
     match (current_symbol, next_symbol) {
@@ -92,51 +106,41 @@ fn combine_symbols(current_symbol: &str, next_symbol: &str) -> Option<&'static s
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub struct Coordinates {
+pub struct ScreenCanvas {
     x: usize,
     y: usize,
-}
-
-impl Coordinates {
-    pub fn new(x: usize, y: usize) -> Self {
-        Coordinates { x, y }
-    }
-}
-
-pub trait Rect {
-    fn x(&self) -> usize;
-    fn y(&self) -> usize;
-    fn rows(&self) -> usize;
-    fn columns(&self) -> usize;
-    fn right_boundary_x_coords(&self) -> usize {
-        self.x() + self.columns()
-    }
-    fn bottom_boundary_y_coords(&self) -> usize {
-        self.y() + self.rows()
-    }
-}
-
-pub struct Boundaries {
     columns: usize,
     rows: usize,
     boundary_characters: HashMap<Coordinates, BoundaryType>,
+    borders: HashMap<EdgeType, usize>,
 }
 
-impl Boundaries {
-    pub fn new(columns: u16, rows: u16) -> Self {
+impl ScreenCanvas {
+    pub fn new(x: u16, y: u16, columns: u16, rows: u16) -> Self {
+        let x = x as usize;
+        let y = y as usize;
         let columns = columns as usize;
         let rows = rows as usize;
-        Boundaries {
+        ScreenCanvas {
+            x,
+            y,
             columns,
             rows,
             boundary_characters: HashMap::new(),
+            borders: [
+                (EdgeType::Left, 0),
+                (EdgeType::Right, 0),
+                (EdgeType::Top, 0),
+                (EdgeType::Bottom, 0),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
         }
     }
-    pub fn add_rect<R: Rect>(&mut self, rect: &R) {
+    pub fn add_rect<R: Rectangle>(&mut self, rect: &R) {
         if self.rect_right_boundary_is_before_screen_edge(rect) {
-            // let boundary_x_coords = self.rect_right_boundary_x_coords(rect);
-            let boundary_x_coords = rect.right_boundary_x_coords();
+            let boundary_x_coords = rect.edge(&EdgeType::Right);
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
@@ -157,7 +161,7 @@ impl Boundaries {
             }
         }
         if self.rect_bottom_boundary_is_before_screen_edge(rect) {
-            let boundary_y_coords = rect.bottom_boundary_y_coords();
+            let boundary_y_coords = rect.edge(&EdgeType::Bottom);
             let first_col_coordinates = self.rect_bottom_boundary_col_start(rect);
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
@@ -190,20 +194,20 @@ impl Boundaries {
         }
         vte_output
     }
-    fn rect_right_boundary_is_before_screen_edge<R: Rect>(&self, rect: &R) -> bool {
+    fn rect_right_boundary_is_before_screen_edge<R: Rectangle>(&self, rect: &R) -> bool {
         rect.x() + rect.columns() < self.columns
     }
-    fn rect_bottom_boundary_is_before_screen_edge<R: Rect>(&self, rect: &R) -> bool {
+    fn rect_bottom_boundary_is_before_screen_edge<R: Rectangle>(&self, rect: &R) -> bool {
         rect.y() + rect.rows() < self.rows
     }
-    fn rect_right_boundary_row_start<R: Rect>(&self, rect: &R) -> usize {
+    fn rect_right_boundary_row_start<R: Rectangle>(&self, rect: &R) -> usize {
         if rect.y() == 0 {
             0
         } else {
             rect.y() - 1
         }
     }
-    fn rect_right_boundary_row_end<R: Rect>(&self, rect: &R) -> usize {
+    fn rect_right_boundary_row_end<R: Rectangle>(&self, rect: &R) -> usize {
         let rect_bottom_row = rect.y() + rect.rows();
         // we do this because unless we're on the screen edge, we'd like to go one extra row to
         // connect to whatever boundary is beneath us
@@ -213,14 +217,14 @@ impl Boundaries {
             rect_bottom_row + 1
         }
     }
-    fn rect_bottom_boundary_col_start<R: Rect>(&self, rect: &R) -> usize {
+    fn rect_bottom_boundary_col_start<R: Rectangle>(&self, rect: &R) -> usize {
         if rect.x() == 0 {
             0
         } else {
             rect.x() - 1
         }
     }
-    fn rect_bottom_boundary_col_end<R: Rect>(&self, rect: &R) -> usize {
+    fn rect_bottom_boundary_col_end<R: Rectangle>(&self, rect: &R) -> usize {
         let rect_right_col = rect.x() + rect.columns();
         // we do this because unless we're on the screen edge, we'd like to go one extra column to
         // connect to whatever boundary is right of us
@@ -229,5 +233,26 @@ impl Boundaries {
         } else {
             rect_right_col + 1
         }
+    }
+}
+
+impl Rectangle for ScreenCanvas {
+    fn x(&self) -> usize {
+        self.x
+    }
+    fn y(&self) -> usize {
+        self.y
+    }
+
+    fn columns(&self) -> usize {
+        self.columns
+    }
+
+    fn rows(&self) -> usize {
+        self.rows
+    }
+
+    fn borders(&self) -> &HashMap<EdgeType, usize> {
+        &self.borders
     }
 }
