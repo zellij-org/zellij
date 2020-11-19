@@ -56,14 +56,14 @@ pub struct Opt {
 
 pub fn main() {
     let opts = Opt::from_args();
-    if opts.split.is_some() {
-        match opts.split {
-            Some('h') => {
+    if let Some(split_dir) = opts.split {
+        match split_dir {
+            'h' => {
                 let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
-            Some('v') => {
+            'v' => {
                 let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();

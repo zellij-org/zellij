@@ -49,3 +49,45 @@ pub fn accepts_basic_layout() {
     assert_snapshot!(next_to_last_snapshot);
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+#[should_panic(expected = "The total percent for each part should equal 100.")]
+pub fn should_throw_for_more_than_100_percent_total() {
+    let fake_win_size = Winsize {
+        ws_col: 121,
+        ws_row: 20,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[QUIT]);
+    use std::path::PathBuf;
+    let mut opts = Opt::default();
+    opts.layout = Some(PathBuf::from(
+        "src/tests/fixtures/layouts/parts-total-more-than-100-percent.yaml",
+    ));
+
+    start(Box::new(fake_input_output.clone()), opts);
+}
+
+#[test]
+#[ignore]
+#[should_panic(expected = "The total percent for each part should equal 100.")]
+pub fn should_throw_for_less_than_100_percent_total() {
+    let fake_win_size = Winsize {
+        ws_col: 121,
+        ws_row: 20,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[QUIT]);
+    use std::path::PathBuf;
+    let mut opts = Opt::default();
+    opts.layout = Some(PathBuf::from(
+        "src/tests/fixtures/layouts/parts-total-less-than-100-percent.yaml",
+    ));
+
+    start(Box::new(fake_input_output.clone()), opts);
+}

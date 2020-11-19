@@ -65,9 +65,13 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
         .parts
         .iter()
         .map(|part| {
-            let split_size = part.split_size.as_ref().unwrap(); // TODO: if there is no split size, it should get the remaining "free space"
+            let split_size = part.split_size.as_ref();
             match split_size {
-                SplitSize::Percent(percent) => *percent,
+                Some(SplitSize::Percent(percent)) => *percent,
+                None => {
+                    // TODO: if there is no split size, it should get the remaining "free space"
+                    panic!("Please enter the percentage of the screen part");
+                }
             }
         })
         .collect();
