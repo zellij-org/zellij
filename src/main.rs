@@ -138,19 +138,20 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
-
-    if let Some(layout_path) = opts.layout {
-        let layout = Layout::new(&layout_path);
-        pty_bus.spawn_terminals_for_layout(layout);
-    } else {
-        pty_bus.spawn_terminal_vertically(None);
-    }
+    let maybe_layout = Layout::new(&opts.layout);
 
     active_threads.push(
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
+
+                if let Some(layout) = maybe_layout {
+                    pty_bus.spawn_terminals_for_layout(layout);
+                } else {
+                    pty_bus.spawn_terminal_vertically(None);
+                }
+
                 move || loop {
                     let event = pty_bus
                         .receive_pty_instructions
