@@ -10,6 +10,7 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
+use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -60,6 +61,11 @@ pub struct Opt {
 
 pub fn main() {
     let opts = Opt::from_args();
+
+    if !fs::metadata(MOSAIC_TMP_FOLDER).is_ok() {
+        fs::create_dir_all(MOSAIC_TMP_FOLDER).unwrap();
+    }
+
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
@@ -78,9 +84,8 @@ pub fn main() {
         let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
-    } else if opts.open_file.is_some() {
+    } else if let Some(file_to_open) = opts.open_file {
         let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
-        let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {

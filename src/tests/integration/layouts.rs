@@ -1,4 +1,5 @@
 use ::insta::assert_snapshot;
+use std::path::PathBuf;
 
 use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
@@ -20,7 +21,6 @@ pub fn accepts_basic_layout() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[QUIT]);
-    use std::path::PathBuf;
     let mut opts = Opt::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
@@ -61,7 +61,6 @@ pub fn should_throw_for_more_than_100_percent_total() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[QUIT]);
-    use std::path::PathBuf;
     let mut opts = Opt::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/parts-total-more-than-100-percent.yaml",
@@ -81,7 +80,6 @@ pub fn should_throw_for_less_than_100_percent_total() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[QUIT]);
-    use std::path::PathBuf;
     let mut opts = Opt::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/parts-total-less-than-100-percent.yaml",
