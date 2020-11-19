@@ -3,8 +3,8 @@ use ::nix::pty::Winsize;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    MOVE_FOCUS, QUIT, RESIZE_LEFT, RESIZE_RIGHT, RESIZE_UP, SCROLL_DOWN, SCROLL_UP, SPAWN_TERMINAL,
-    SPLIT_HORIZONTALLY, SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    COMMAND_TOGGLE, MOVE_FOCUS, QUIT, RESIZE_LEFT, RESIZE_RIGHT, RESIZE_UP, SCROLL_DOWN, SCROLL_UP,
+    SPAWN_TERMINAL, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
@@ -22,7 +22,7 @@ pub fn starts_with_one_terminal() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[QUIT]);
+    fake_input_output.add_terminal_input(&[COMMAND_TOGGLE, COMMAND_TOGGLE, QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -44,7 +44,7 @@ pub fn split_terminals_vertically() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, QUIT]);
+    fake_input_output.add_terminal_input(&[COMMAND_TOGGLE, COMMAND_TOGGLE, SPLIT_VERTICALLY, QUIT]);
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -66,7 +66,12 @@ pub fn split_terminals_horizontally() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPLIT_HORIZONTALLY, QUIT]);
+    fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
+        SPLIT_HORIZONTALLY,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -89,7 +94,14 @@ pub fn split_largest_terminal() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPAWN_TERMINAL, SPAWN_TERMINAL, SPAWN_TERMINAL, QUIT]);
+    fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
+        SPAWN_TERMINAL,
+        SPAWN_TERMINAL,
+        SPAWN_TERMINAL,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -128,6 +140,8 @@ pub fn resize_right_and_up_on_the_same_axis() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         SPLIT_VERTICALLY,
         MOVE_FOCUS,
@@ -161,6 +175,8 @@ pub fn scrolling_inside_a_pane() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         SPLIT_VERTICALLY,
         SCROLL_UP,
@@ -193,6 +209,8 @@ pub fn max_panes() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPAWN_TERMINAL,
         SPAWN_TERMINAL,
         SPAWN_TERMINAL,
@@ -223,6 +241,8 @@ pub fn toggle_focused_pane_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPAWN_TERMINAL,
         SPAWN_TERMINAL,
         SPAWN_TERMINAL,

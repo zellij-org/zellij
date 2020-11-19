@@ -6,8 +6,8 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    CLOSE_FOCUSED_PANE, MOVE_FOCUS, QUIT, RESIZE_DOWN, RESIZE_LEFT, RESIZE_UP, SPLIT_HORIZONTALLY,
-    SPLIT_VERTICALLY,
+    CLOSE_FOCUSED_PANE, COMMAND_TOGGLE, MOVE_FOCUS, QUIT, RESIZE_DOWN, RESIZE_LEFT, RESIZE_UP,
+    SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
 };
 
 fn get_fake_os_input(fake_win_size: &Winsize) -> FakeInputOutput {
@@ -31,7 +31,13 @@ pub fn close_pane_with_another_pane_above_it() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPLIT_HORIZONTALLY, CLOSE_FOCUSED_PANE, QUIT]);
+    fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
+        SPLIT_HORIZONTALLY,
+        CLOSE_FOCUSED_PANE,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output
@@ -63,6 +69,8 @@ pub fn close_pane_with_another_pane_below_it() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         MOVE_FOCUS,
         CLOSE_FOCUSED_PANE,
@@ -96,7 +104,13 @@ pub fn close_pane_with_another_pane_to_the_left() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, CLOSE_FOCUSED_PANE, QUIT]);
+    fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
+        SPLIT_VERTICALLY,
+        CLOSE_FOCUSED_PANE,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output
@@ -125,7 +139,14 @@ pub fn close_pane_with_another_pane_to_the_right() {
         ws_ypixel: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[SPLIT_VERTICALLY, MOVE_FOCUS, CLOSE_FOCUSED_PANE, QUIT]);
+    fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
+        SPLIT_VERTICALLY,
+        MOVE_FOCUS,
+        CLOSE_FOCUSED_PANE,
+        QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
     let output_frames = fake_input_output
@@ -157,6 +178,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         MOVE_FOCUS,
         SPLIT_VERTICALLY,
@@ -196,6 +219,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         SPLIT_VERTICALLY,
         MOVE_FOCUS,
@@ -233,6 +258,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         MOVE_FOCUS,
         SPLIT_HORIZONTALLY,
@@ -272,6 +299,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         SPLIT_HORIZONTALLY,
         MOVE_FOCUS,
@@ -309,6 +338,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         SPLIT_VERTICALLY,
         SPLIT_VERTICALLY,
@@ -360,6 +391,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_HORIZONTALLY,
         SPLIT_VERTICALLY,
         SPLIT_VERTICALLY,
@@ -413,6 +446,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         SPLIT_HORIZONTALLY,
         SPLIT_HORIZONTALLY,
@@ -466,6 +501,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         SPLIT_HORIZONTALLY,
         SPLIT_HORIZONTALLY,
@@ -509,6 +546,8 @@ pub fn closing_last_pane_exits_app() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        COMMAND_TOGGLE,
+        COMMAND_TOGGLE,
         SPLIT_VERTICALLY,
         SPLIT_HORIZONTALLY,
         MOVE_FOCUS,

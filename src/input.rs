@@ -38,7 +38,8 @@ impl InputHandler {
         loop {
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),
-                InputMode::Command => self.read_command_mode(),
+                InputMode::Command => self.read_command_mode(false),
+                InputMode::CommandPersistent => self.read_command_mode(true),
                 InputMode::Exiting => {
                     self.exit();
                     break;
@@ -76,104 +77,127 @@ impl InputHandler {
     }
 
     /// Read input and parse it as commands for mosaic
-    fn read_command_mode(&mut self) {
+    fn read_command_mode(&mut self, persistent: bool) {
         //@@@khs26 Add a powerbar type thing that we can write output to
-        assert_eq!(self.mode, InputMode::Command);
+        if persistent {
+            assert_eq!(self.mode, InputMode::CommandPersistent);
+        } else {
+            assert_eq!(self.mode, InputMode::Command);
+        }
 
         loop {
+            self.buffer = [0; 10];
             self.stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
             // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-            _debug_log_to_file(format!("buffer {:?}", self.buffer));
+            // _debug_log_to_file(format!("buffer {:?}", self.buffer));
             match self.buffer {
-                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] |
+                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // Ctrl-g
+                    // If we're in command mode, this will let us switch to persistent command mode, to execute
+                    // multiple commands. If we're already in persistent mode, it'll return us to normal mode.
+                    match self.mode {
+                        InputMode::Command => self.mode = InputMode::CommandPersistent,
+                        InputMode::CommandPersistent => {
+                            self.mode = InputMode::Normal;
+                            // _debug_log_to_file(format!("switched to normal mode"));
+                            return;
+                        }
+                        _ => panic!(),
+                    }
+                }
                 [27, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-g
+                    // Esc
                     self.mode = InputMode::Normal;
-                    _debug_log_to_file(format!("switched to normal mode"));
+                    // _debug_log_to_file(format!("switched to normal mode"));
                     return;
                 }
-                [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-j
+                [106, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // j
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeDown)
                         .unwrap();
                 }
-                [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-k
+                [107, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // k
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeUp)
                         .unwrap();
                 }
-                [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-p
+                [112, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // p
                     self.send_screen_instructions
                         .send(ScreenInstruction::MoveFocus)
                         .unwrap();
                 }
-                [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-h
+                [104, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // h
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeLeft)
                         .unwrap();
                 }
-                [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-l
+                [108, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // l
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeRight)
                         .unwrap();
                 }
-                [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-z
+                [122, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // z
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminal(None))
                         .unwrap();
                 }
-                [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-n
+                [110, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // n
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminalVertically(None))
                         .unwrap();
                 }
-                [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-b
+                [98, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // b
                     self.send_pty_instructions
                         .send(PtyInstruction::SpawnTerminalHorizontally(None))
                         .unwrap();
                 }
-                [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-q
+                [113, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // q
                     self.mode = InputMode::Exiting;
                     return;
                 }
-                [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-PgUp
+                [27, 91, 53, 126, 0, 0, 0, 0, 0, 0] => {
+                    // PgUp
                     self.send_screen_instructions
                         .send(ScreenInstruction::ScrollUp)
                         .unwrap();
                 }
-                [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-PgDown
+                [27, 91, 54, 126, 0, 0, 0, 0, 0, 0] => {
+                    // PgDown
                     self.send_screen_instructions
                         .send(ScreenInstruction::ScrollDown)
                         .unwrap();
                 }
-                [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-x
+                [120, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // x
                     self.send_screen_instructions
                         .send(ScreenInstruction::CloseFocusedPane)
                         .unwrap();
                     // ::std::thread::sleep(::std::time::Duration::from_millis(10));
                 }
-                [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                    // ctrl-e
+                [101, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // e
                     self.send_screen_instructions
                         .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
                         .unwrap();
                 }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}
+            }
+
+            if self.mode == InputMode::Command {
+                self.mode = InputMode::Normal;
+                return;
             }
         }
     }
@@ -193,17 +217,20 @@ impl InputHandler {
     }
 }
 
-/// Dictates whether we're in command mode, normal mode or exiting:
+/// Dictates whether we're in command mode, persistent command mode, normal mode or exiting:
 /// - Normal mode either writes characters to the terminal, or switches to command mode
 ///   using a particular key control
-/// - Command mode intercepts characters to control mosaic itself, including to switch
+/// - Command mode intercepts characters to control mosaic itself, before switching immediately
 ///   back to normal mode
+/// - Persistent command mode is the same as command mode, but doesn't return automatically to
+///   normal mode
 /// - Exiting means that we should start the shutdown process for mosaic or the given
 ///   input handler
 #[derive(Debug, PartialEq)]
 pub enum InputMode {
     Normal,
     Command,
+    CommandPersistent,
     Exiting,
 }
 

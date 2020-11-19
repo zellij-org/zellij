@@ -36,18 +36,32 @@ pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize)
 }
 
 pub mod commands {
-    pub const SPLIT_HORIZONTALLY: [u8; 10] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-b
-    pub const SPLIT_VERTICALLY: [u8; 10] = [14, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-n
-    pub const RESIZE_DOWN: [u8; 10] = [10, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-j
-    pub const RESIZE_UP: [u8; 10] = [11, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-k
-    pub const MOVE_FOCUS: [u8; 10] = [16, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-p
-    pub const RESIZE_LEFT: [u8; 10] = [8, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-h
-    pub const RESIZE_RIGHT: [u8; 10] = [12, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-l
-    pub const SPAWN_TERMINAL: [u8; 10] = [26, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-z
-    pub const QUIT: [u8; 10] = [17, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-q
-    pub const SCROLL_UP: [u8; 10] = [27, 91, 53, 94, 0, 0, 0, 0, 0, 0]; // ctrl-PgUp
-    pub const SCROLL_DOWN: [u8; 10] = [27, 91, 54, 94, 0, 0, 0, 0, 0, 0]; // ctrl-PgDown
-    pub const CLOSE_FOCUSED_PANE: [u8; 10] = [24, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // ctrl-x
-    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 10] = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    // ctrl-e
+    /// ctrl-g
+    pub const COMMAND_TOGGLE: [u8; 10] = [7, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// b
+    pub const SPLIT_HORIZONTALLY: [u8; 10] = [98, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// n
+    pub const SPLIT_VERTICALLY: [u8; 10] = [110, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// j
+    pub const RESIZE_DOWN: [u8; 10] = [106, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// k
+    pub const RESIZE_UP: [u8; 10] = [107, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// p
+    pub const MOVE_FOCUS: [u8; 10] = [112, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// h
+    pub const RESIZE_LEFT: [u8; 10] = [104, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// l
+    pub const RESIZE_RIGHT: [u8; 10] = [108, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// z
+    pub const SPAWN_TERMINAL: [u8; 10] = [122, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// q
+    pub const QUIT: [u8; 10] = [113, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// PgUp
+    pub const SCROLL_UP: [u8; 10] = [27, 91, 53, 126, 0, 0, 0, 0, 0, 0];
+    /// PgDn
+    pub const SCROLL_DOWN: [u8; 10] = [27, 91, 54, 126, 0, 0, 0, 0, 0, 0];
+    /// x
+    pub const CLOSE_FOCUSED_PANE: [u8; 10] = [120, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    /// e
+    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 10] = [101, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 }

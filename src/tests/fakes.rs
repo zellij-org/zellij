@@ -204,6 +204,7 @@ impl OsApi for FakeInputOutput {
                 input_chars.push(*bytes);
             }
         }
+        input_chars.push([7, 0, 0, 0, 0, 0, 0, 0, 0, 0]);  // ctrl-g (cmd mode)
         input_chars.push([17, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // ctrl-q (quit)
         let reader = FakeStdinReader::new(input_chars);
         Box::new(reader)
