@@ -2,12 +2,13 @@
 mod tests;
 
 mod boundaries;
+mod command_is_executing;
 mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
 mod terminal_pane;
-mod command_is_executing;
+mod utils;
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -19,11 +20,12 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use structopt::StructOpt;
 
+use crate::command_is_executing::CommandIsExecuting;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::command_is_executing::CommandIsExecuting;
+use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -55,46 +57,28 @@ pub struct Opt {
     debug: bool,
 }
 
-fn _debug_log_to_file(message: String) {
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/mosaic-log.txt")
-        .unwrap();
-    file.write_all(message.as_bytes()).unwrap();
-    file.write_all("\n".as_bytes()).unwrap();
-}
-
-fn delete_log_files() -> std::io::Result<()> {
-    std::fs::remove_dir_all("/tmp/mosaic-logs").ok();
-    std::fs::create_dir_all("/tmp/mosaic-logs").ok();
-    Ok(())
-}
-
 pub fn main() {
     let opts = Opt::from_args();
     if opts.split.is_some() {
         match opts.split {
             Some('h') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             Some('v') => {
-                let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             _ => {}
         };
     } else if opts.move_focus {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
     } else if opts.open_file.is_some() {
-        let mut stream = UnixStream::connect("/tmp/mosaic").unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
         let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
@@ -113,7 +97,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let command_is_executing = CommandIsExecuting::new();
 
-    delete_log_files().unwrap();
+    delete_log_dir().unwrap();
+    delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
@@ -332,122 +317,120 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         })
         .unwrap();
 
-    let _stdin_thread = thread::Builder::new()
-        .name("stdin".to_string())
-        .spawn({
-            let send_screen_instructions = send_screen_instructions.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
-            let os_input = os_input.clone();
-            
-            let mut command_is_executing = command_is_executing.clone();
-            move || {
-                let mut stdin = os_input.get_stdin_reader();
-                loop {
-                    let mut buffer = [0; 10]; // TODO: more accurately
-                    stdin.read(&mut buffer).expect("failed to read stdin");
-                    // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-                    // _debug_log_to_file(format!("buffer {:?}", buffer));
-                    match buffer {
-                        [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-j
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeDown)
-                                .unwrap();
-                        }
-                        [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-k
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeUp)
-                                .unwrap();
-                        }
-                        [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-p
-                            send_screen_instructions
-                                .send(ScreenInstruction::MoveFocus)
-                                .unwrap();
-                        }
-                        [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-h
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeLeft)
-                                .unwrap();
-                        }
-                        [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-l
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeRight)
-                                .unwrap();
-                        }
-                        [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-z
-                            command_is_executing.opening_new_pane();
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminal(None))
-                                .unwrap();
-                            command_is_executing.wait_until_new_pane_is_opened();
-                        }
-                        [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-n
-                            command_is_executing.opening_new_pane();
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminalVertically(None))
-                                .unwrap();
-                            command_is_executing.wait_until_new_pane_is_opened();
-                        }
-                        [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-b
-                            command_is_executing.opening_new_pane();
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                                .unwrap();
-                            command_is_executing.wait_until_new_pane_is_opened();
-                        }
-                        [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-q
-                            let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                            let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                            let _ = send_app_instructions.send(AppInstruction::Exit);
-                            break;
-                        }
-                        [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-PgUp
-                            send_screen_instructions
-                                .send(ScreenInstruction::ScrollUp)
-                                .unwrap();
-                        }
-                        [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-PgDown
-                            send_screen_instructions
-                                .send(ScreenInstruction::ScrollDown)
-                                .unwrap();
-                        }
-                        [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-x
-                            command_is_executing.closing_pane();
-                            send_screen_instructions
-                                .send(ScreenInstruction::CloseFocusedPane)
-                                .unwrap();
-                            command_is_executing.wait_until_pane_is_closed();
-                        }
-                        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-e
-                            send_screen_instructions
-                                .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
-                                .unwrap();
-                        }
-                        _ => {
-                            send_screen_instructions
-                                .send(ScreenInstruction::ClearScroll)
-                                .unwrap();
-                            send_screen_instructions
-                                .send(ScreenInstruction::WriteCharacter(buffer))
-                                .unwrap();
-                        }
+    let _stdin_thread = thread::Builder::new().name("stdin".to_string()).spawn({
+        let send_screen_instructions = send_screen_instructions.clone();
+        let send_pty_instructions = send_pty_instructions.clone();
+        let send_app_instructions = send_app_instructions.clone();
+        let os_input = os_input.clone();
+
+        let mut command_is_executing = command_is_executing.clone();
+        move || {
+            let mut stdin = os_input.get_stdin_reader();
+            loop {
+                let mut buffer = [0; 10]; // TODO: more accurately
+                stdin.read(&mut buffer).expect("failed to read stdin");
+                // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
+                //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
+                match buffer {
+                    [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-j
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeDown)
+                            .unwrap();
+                    }
+                    [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-k
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeUp)
+                            .unwrap();
+                    }
+                    [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-p
+                        send_screen_instructions
+                            .send(ScreenInstruction::MoveFocus)
+                            .unwrap();
+                    }
+                    [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-h
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeLeft)
+                            .unwrap();
+                    }
+                    [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-l
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeRight)
+                            .unwrap();
+                    }
+                    [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-z
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminal(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-n
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalVertically(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-b
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-q
+                        let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                        let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                        let _ = send_app_instructions.send(AppInstruction::Exit);
+                        break;
+                    }
+                    [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-PgUp
+                        send_screen_instructions
+                            .send(ScreenInstruction::ScrollUp)
+                            .unwrap();
+                    }
+                    [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-PgDown
+                        send_screen_instructions
+                            .send(ScreenInstruction::ScrollDown)
+                            .unwrap();
+                    }
+                    [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-x
+                        command_is_executing.closing_pane();
+                        send_screen_instructions
+                            .send(ScreenInstruction::CloseFocusedPane)
+                            .unwrap();
+                        command_is_executing.wait_until_pane_is_closed();
+                    }
+                    [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-e
+                        send_screen_instructions
+                            .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                            .unwrap();
+                    }
+                    _ => {
+                        send_screen_instructions
+                            .send(ScreenInstruction::ClearScroll)
+                            .unwrap();
+                        send_screen_instructions
+                            .send(ScreenInstruction::WriteCharacter(buffer))
+                            .unwrap();
                     }
                 }
             }
-        });
+        }
+    });
 
     loop {
         let app_instruction = receive_app_instructions
@@ -467,7 +450,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     }
     // cleanup();
     let reset_style = "\u{1b}[m";
-    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.ws_row, 1);
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
         "{}\n{}Bye from Mosaic!",
         goto_start_of_last_line, reset_style

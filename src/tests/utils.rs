@@ -1,7 +1,10 @@
+use crate::terminal_pane::PositionAndSize;
 use crate::terminal_pane::TerminalPane;
-use ::nix::pty::Winsize;
 
-pub fn get_output_frame_snapshots(output_frames: &[Vec<u8>], win_size: &Winsize) -> Vec<String> {
+pub fn get_output_frame_snapshots(
+    output_frames: &[Vec<u8>],
+    win_size: &PositionAndSize,
+) -> Vec<String> {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
     let x = 0;

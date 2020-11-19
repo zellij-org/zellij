@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Clone)]
 pub struct CommandIsExecuting {
@@ -7,7 +7,7 @@ pub struct CommandIsExecuting {
 }
 
 impl CommandIsExecuting {
-    pub fn new () -> Self {
+    pub fn new() -> Self {
         CommandIsExecuting {
             opening_new_pane: Arc::new((Mutex::new(false), Condvar::new())),
             closing_pane: Arc::new((Mutex::new(false), Condvar::new())),
