@@ -1,11 +1,13 @@
+#[cfg(test)]
+mod tests;
+
 mod boundaries;
+mod command_is_executing;
 mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
 mod terminal_pane;
-#[cfg(test)]
-mod tests;
 mod utils;
 
 use std::io::{Read, Write};
@@ -18,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use structopt::StructOpt;
 
+use crate::command_is_executing::CommandIsExecuting;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
@@ -92,6 +95,8 @@ pub enum AppInstruction {
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
+    let command_is_executing = CommandIsExecuting::new();
+
     delete_log_dir().unwrap();
     delete_log_file().unwrap();
 
@@ -128,6 +133,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("pty".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || {
                     match opts.layout {
                         Some(layout_path) => {
@@ -166,6 +172,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
+                                command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -181,6 +188,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("screen".to_string())
             .spawn({
+                let mut command_is_executing = command_is_executing.clone();
                 move || loop {
                     let event = screen
                         .receiver
@@ -195,12 +203,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::NewPane(pid) => {
                             screen.new_pane(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
                             screen.horizontal_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
                             screen.vertical_split(pid);
+                            command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
                             screen.write_to_active_terminal(bytes);
@@ -306,113 +317,120 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         })
         .unwrap();
 
-    let _stdin_thread = thread::Builder::new()
-        .name("ipc_server".to_string())
-        .spawn({
-            let send_screen_instructions = send_screen_instructions.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
-            let os_input = os_input.clone();
-            move || {
-                let mut stdin = os_input.get_stdin_reader();
-                loop {
-                    let mut buffer = [0; 10]; // TODO: more accurately
-                    stdin.read(&mut buffer).expect("failed to read stdin");
-                    // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-                    //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
-                    match buffer {
-                        [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-j
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeDown)
-                                .unwrap();
-                        }
-                        [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-k
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeUp)
-                                .unwrap();
-                        }
-                        [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-p
-                            send_screen_instructions
-                                .send(ScreenInstruction::MoveFocus)
-                                .unwrap();
-                        }
-                        [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-h
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeLeft)
-                                .unwrap();
-                        }
-                        [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-l
-                            send_screen_instructions
-                                .send(ScreenInstruction::ResizeRight)
-                                .unwrap();
-                        }
-                        [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-z
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminal(None))
-                                .unwrap();
-                        }
-                        [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-n
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminalVertically(None))
-                                .unwrap();
-                        }
-                        [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-b
-                            send_pty_instructions
-                                .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                                .unwrap();
-                        }
-                        [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-q
-                            let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                            let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                            let _ = send_app_instructions.send(AppInstruction::Exit);
-                            break;
-                        }
-                        [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-PgUp
-                            send_screen_instructions
-                                .send(ScreenInstruction::ScrollUp)
-                                .unwrap();
-                        }
-                        [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-PgDown
-                            send_screen_instructions
-                                .send(ScreenInstruction::ScrollDown)
-                                .unwrap();
-                        }
-                        [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-x
-                            send_screen_instructions
-                                .send(ScreenInstruction::CloseFocusedPane)
-                                .unwrap();
-                            // ::std::thread::sleep(::std::time::Duration::from_millis(10));
-                        }
-                        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
-                            // ctrl-e
-                            send_screen_instructions
-                                .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
-                                .unwrap();
-                        }
-                        _ => {
-                            send_screen_instructions
-                                .send(ScreenInstruction::ClearScroll)
-                                .unwrap();
-                            send_screen_instructions
-                                .send(ScreenInstruction::WriteCharacter(buffer))
-                                .unwrap();
-                        }
+    let _stdin_thread = thread::Builder::new().name("stdin".to_string()).spawn({
+        let send_screen_instructions = send_screen_instructions.clone();
+        let send_pty_instructions = send_pty_instructions.clone();
+        let send_app_instructions = send_app_instructions.clone();
+        let os_input = os_input.clone();
+
+        let mut command_is_executing = command_is_executing.clone();
+        move || {
+            let mut stdin = os_input.get_stdin_reader();
+            loop {
+                let mut buffer = [0; 10]; // TODO: more accurately
+                stdin.read(&mut buffer).expect("failed to read stdin");
+                // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
+                //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
+                match buffer {
+                    [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-j
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeDown)
+                            .unwrap();
+                    }
+                    [11, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-k
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeUp)
+                            .unwrap();
+                    }
+                    [16, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-p
+                        send_screen_instructions
+                            .send(ScreenInstruction::MoveFocus)
+                            .unwrap();
+                    }
+                    [8, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-h
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeLeft)
+                            .unwrap();
+                    }
+                    [12, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-l
+                        send_screen_instructions
+                            .send(ScreenInstruction::ResizeRight)
+                            .unwrap();
+                    }
+                    [26, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-z
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminal(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [14, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-n
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalVertically(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-b
+                        command_is_executing.opening_new_pane();
+                        send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                            .unwrap();
+                        command_is_executing.wait_until_new_pane_is_opened();
+                    }
+                    [17, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-q
+                        let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                        let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                        let _ = send_app_instructions.send(AppInstruction::Exit);
+                        break;
+                    }
+                    [27, 91, 53, 94, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-PgUp
+                        send_screen_instructions
+                            .send(ScreenInstruction::ScrollUp)
+                            .unwrap();
+                    }
+                    [27, 91, 54, 94, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-PgDown
+                        send_screen_instructions
+                            .send(ScreenInstruction::ScrollDown)
+                            .unwrap();
+                    }
+                    [24, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-x
+                        command_is_executing.closing_pane();
+                        send_screen_instructions
+                            .send(ScreenInstruction::CloseFocusedPane)
+                            .unwrap();
+                        command_is_executing.wait_until_pane_is_closed();
+                    }
+                    [5, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                        // ctrl-e
+                        send_screen_instructions
+                            .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                            .unwrap();
+                    }
+                    _ => {
+                        send_screen_instructions
+                            .send(ScreenInstruction::ClearScroll)
+                            .unwrap();
+                        send_screen_instructions
+                            .send(ScreenInstruction::WriteCharacter(buffer))
+                            .unwrap();
                     }
                 }
             }
-        });
+        }
+    });
 
     loop {
         let app_instruction = receive_app_instructions
