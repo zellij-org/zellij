@@ -1,5 +1,5 @@
-use std::{path::PathBuf, fs::File, io::prelude::*};
 use serde::{Deserialize, Serialize};
+use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use crate::terminal_pane::PositionAndSize;
 
@@ -115,7 +115,7 @@ fn validate_layout_percentage_total(layout: &Layout) -> bool {
 
     for part in layout.parts.iter() {
         if part.parts.len() > 0 {
-            return validate_layout_percentage_total(part)
+            return validate_layout_percentage_total(part);
         }
     }
 
@@ -148,14 +148,11 @@ impl Layout {
             .expect(&format!("cannot find layout {}", layout_path.display()));
 
         let mut layout = String::new();
-        layout_file.read_to_string(&mut layout).expect(&format!(
-            "could not read layout {}",
-            layout_path.display()
-        ));
-        let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
-            "could not parse layout {}",
-            layout_path.display()
-        ));
+        layout_file
+            .read_to_string(&mut layout)
+            .expect(&format!("could not read layout {}", layout_path.display()));
+        let layout: Layout = serde_yaml::from_str(&layout)
+            .expect(&format!("could not parse layout {}", layout_path.display()));
 
         if !validate_layout_percentage_total(&layout) {
             panic!("The total percent for each part should equal 100.");

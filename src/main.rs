@@ -146,29 +146,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .name("pty".to_string())
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
-                move || {
-                    loop {
-                        let event = pty_bus
-                            .receive_pty_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        match event {
-                            PtyInstruction::SpawnTerminal(file_to_open) => {
-                                pty_bus.spawn_terminal(file_to_open);
-                            }
-                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                pty_bus.spawn_terminal_vertically(file_to_open);
-                            }
-                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                pty_bus.spawn_terminal_horizontally(file_to_open);
-                            }
-                            PtyInstruction::ClosePane(id) => {
-                                pty_bus.close_pane(id);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::Quit => {
-                                break;
-                            }
+                move || loop {
+                    let event = pty_bus
+                        .receive_pty_instructions
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        PtyInstruction::SpawnTerminal(file_to_open) => {
+                            pty_bus.spawn_terminal(file_to_open);
+                        }
+                        PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                            pty_bus.spawn_terminal_vertically(file_to_open);
+                        }
+                        PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                            pty_bus.spawn_terminal_horizontally(file_to_open);
+                        }
+                        PtyInstruction::ClosePane(id) => {
+                            pty_bus.close_pane(id);
+                            command_is_executing.done_closing_pane();
+                        }
+                        PtyInstruction::Quit => {
+                            break;
                         }
                     }
                 }
