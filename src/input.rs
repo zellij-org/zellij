@@ -5,7 +5,8 @@ use std::sync::mpsc::Sender;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, _debug_log_to_file};
+use crate::utils::logging::debug_log_to_file;
+use crate::AppInstruction;
 
 struct InputHandler {
     buffer: [u8; 10], // TODO: more accurately
@@ -60,7 +61,7 @@ impl InputHandler {
             match self.buffer {
                 [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // ctrl-g
-                    _debug_log_to_file(format!("switched to command mode"));
+                    // debug_log_to_file(format!("switched to command mode"));
                     self.mode = InputMode::Command;
                     return;
                 }
@@ -91,7 +92,7 @@ impl InputHandler {
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
             // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
-            // _debug_log_to_file(format!("buffer {:?}", self.buffer));
+            // debug_log_to_file(format!("buffer {:?}", self.buffer));
             match self.buffer {
                 [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // Ctrl-g
@@ -101,7 +102,7 @@ impl InputHandler {
                         InputMode::Command => self.mode = InputMode::CommandPersistent,
                         InputMode::CommandPersistent => {
                             self.mode = InputMode::Normal;
-                            // _debug_log_to_file(format!("switched to normal mode"));
+                            // debug_log_to_file(format!("switched to normal mode"));
                             return;
                         }
                         _ => panic!(),
