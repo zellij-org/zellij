@@ -25,7 +25,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
+use crate::utils::{consts::MOSAIC_IPC_PIPE, logging::*};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -62,23 +62,23 @@ pub fn main() {
     if opts.split.is_some() {
         match opts.split {
             Some('h') => {
-                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             Some('v') => {
-                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             _ => {}
         };
     } else if opts.move_focus {
-        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
     } else if opts.open_file.is_some() {
-        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
@@ -271,8 +271,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             move || {
-                ::std::fs::remove_file("/tmp/mosaic").ok();
-                let listener = ::std::os::unix::net::UnixListener::bind("/tmp/mosaic")
+                std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
+                let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
 
                 for stream in listener.incoming() {
@@ -329,7 +329,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             loop {
                 let mut buffer = [0; 10]; // TODO: more accurately
                 stdin.read(&mut buffer).expect("failed to read stdin");
-                // uncomment this to print the entered character to a log file (/tmp/mosaic-log.txt) for debugging
+                // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
                 //crate::utils::logging::debug_log_to_file(format!("buffer {:?}", buffer));
                 match buffer {
                     [10, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
