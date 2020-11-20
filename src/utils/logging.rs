@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::utils::consts::{MOSAIC_TMP_LOG_DIR, MOSAIC_TMP_LOG_FILE};
+use crate::utils::consts::*;
 
 pub fn debug_log_to_file(message: String) -> io::Result<()> {
     let mut file = fs::OpenOptions::new()
@@ -38,7 +38,6 @@ pub fn delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
     }
-    fs::create_dir_all(MOSAIC_TMP_LOG_DIR)?;
 
     Ok(())
 }

@@ -95,7 +95,7 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
 }
 
 fn validate_layout_percentage_total(layout: &Layout) -> bool {
-    let percentages: Vec<u8> = layout
+    let total_percentages: u8 = layout
         .parts
         .iter()
         .map(|part| {
@@ -108,8 +108,8 @@ fn validate_layout_percentage_total(layout: &Layout) -> bool {
                 }
             }
         })
-        .collect();
-    if percentages.iter().sum::<u8>() != 100 {
+        .sum();
+    if total_percentages != 100 {
         return false;
     }
 
@@ -143,10 +143,10 @@ pub struct Layout {
 }
 
 impl Layout {
-    pub fn new(layout_path: &Option<PathBuf>) -> Option<Self> {
-        if let Some(path) = layout_path {
+    pub fn new(layout_path: Option<PathBuf>) -> Option<Self> {
+        layout_path.and_then(|path| {
             let mut layout_file =
-                File::open(path).expect(&format!("cannot find layout {}", path.display()));
+                File::open(&path).expect(&format!("cannot find layout {}", &path.display()));
 
             let mut layout = String::new();
             layout_file
@@ -160,9 +160,7 @@ impl Layout {
             }
 
             Some(layout)
-        } else {
-            None
-        }
+        })
     }
 
     pub fn total_panes(&self) -> usize {
