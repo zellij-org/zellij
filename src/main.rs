@@ -97,7 +97,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let command_is_executing = CommandIsExecuting::new();
 
-    let _ = delete_log_dir();
+    delete_log_dir().unwrap();
     delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
