@@ -114,7 +114,7 @@ fn validate_layout_percentage_total(layout: &Layout) -> bool {
     }
 
     for part in layout.parts.iter() {
-        if part.parts.len() > 0 {
+        if !part.parts.is_empty() {
             return validate_layout_percentage_total(part);
         }
     }
@@ -145,12 +145,12 @@ pub struct Layout {
 impl Layout {
     pub fn new(layout_path: PathBuf) -> Self {
         let mut layout_file = File::open(&layout_path)
-            .expect(&format!("cannot find layout {}", &layout_path.display()));
+            .unwrap_or_else(|_| panic!("cannot find layout {}", &layout_path.display()));
 
         let mut layout = String::new();
         layout_file
             .read_to_string(&mut layout)
-            .expect(&format!("could not read layout {}", &layout_path.display()));
+            .unwrap_or_else(|_| panic!("could not read layout {}", &layout_path.display()));
         let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
             "could not parse layout {}",
             &layout_path.display()

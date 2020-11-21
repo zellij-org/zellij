@@ -305,7 +305,7 @@ impl vte::Perform for TerminalPane {
         if byte == 13 {
             // 0d, carriage return
             self.move_to_beginning_of_line();
-        } else if byte == 08 {
+        } else if byte == 8 {
             // backspace
             self.move_cursor_backwards(1);
         } else if byte == 10 {
@@ -330,6 +330,7 @@ impl vte::Perform for TerminalPane {
         // TBD
     }
 
+    #[warn(clippy::if_same_then_else)]
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
         if c == 'm' {
             if params.is_empty() || params[0] == 0 {
