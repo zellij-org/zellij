@@ -18,7 +18,6 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
@@ -61,14 +60,14 @@ pub struct Opt {
 
 pub fn main() {
     let opts = Opt::from_args();
-    if opts.split.is_some() {
-        match opts.split {
-            Some('h') => {
+    if let Some(split_dir) = opts.split {
+        match split_dir {
+            'h' => {
                 let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
-            Some('v') => {
+            'v' => {
                 let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
@@ -79,9 +78,8 @@ pub fn main() {
         let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
-    } else if opts.open_file.is_some() {
+    } else if let Some(file_to_open) = opts.open_file {
         let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-        let file_to_open = opts.open_file.unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
@@ -99,7 +97,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let command_is_executing = CommandIsExecuting::new();
 
-    let _ = delete_log_dir();
+    delete_log_dir().unwrap();
     delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -130,6 +128,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
+    let maybe_layout = opts.layout.and_then(|layout_path| {
+        let layout = Layout::new(layout_path);
+        Some(layout)
+    });
 
     active_threads.push(
         thread::Builder::new()
@@ -137,26 +139,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
                 move || {
-                    match opts.layout {
-                        Some(layout_path) => {
-                            use std::fs::File;
-                            let mut layout_file = File::open(&layout_path)
-                                .expect(&format!("cannot find layout {}", layout_path.display()));
-                            let mut layout = String::new();
-                            layout_file.read_to_string(&mut layout).expect(&format!(
-                                "could not read layout {}",
-                                layout_path.display()
-                            ));
-                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
-                                "could not parse layout {}",
-                                layout_path.display()
-                            ));
-                            pty_bus.spawn_terminals_for_layout(layout);
-                        }
-                        None => {
-                            pty_bus.spawn_terminal_vertically(None);
-                        }
+                    if let Some(layout) = maybe_layout {
+                        pty_bus.spawn_terminals_for_layout(layout);
+                    } else {
+                        pty_bus.spawn_terminal_vertically(None);
                     }
+
                     loop {
                         let event = pty_bus
                             .receive_pty_instructions

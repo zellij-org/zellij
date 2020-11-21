@@ -38,7 +38,6 @@ pub fn delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
     }
-    fs::create_dir_all(MOSAIC_TMP_LOG_DIR)?;
 
     Ok(())
 }
