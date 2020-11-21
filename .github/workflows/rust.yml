@@ -37,18 +37,15 @@ jobs:
           command: fmt
           args: --all -- --check
   clippy:
-    name: Code styling
+    name: Clippy
     runs-on: ubuntu
 
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
           toolchain: stable
-          override: true
           components: clippy
-      - run: rustup component add rustfmt
       - uses: actions-rs/clippy@master
         with:
           args: --all-features --all-targets
