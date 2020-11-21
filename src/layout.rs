@@ -144,15 +144,17 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(layout_path: PathBuf) -> Self {
-        let mut layout_file =
-            File::open(&layout_path).expect(&format!("cannot find layout {}", &layout_path.display()));
+        let mut layout_file = File::open(&layout_path)
+            .expect(&format!("cannot find layout {}", &layout_path.display()));
 
         let mut layout = String::new();
         layout_file
             .read_to_string(&mut layout)
             .expect(&format!("could not read layout {}", &layout_path.display()));
-        let layout: Layout = serde_yaml::from_str(&layout)
-            .expect(&format!("could not parse layout {}", &layout_path.display()));
+        let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
+            "could not parse layout {}",
+            &layout_path.display()
+        ));
         layout.validate();
 
         layout

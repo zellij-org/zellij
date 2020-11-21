@@ -32,19 +32,29 @@ If you're interested, watch this space or better yet - get involved!
 
 (note that right now Mosaic only supports linux and maybe mac)
 
-Some temporary controls (these will be changed to something more convenient when the project matures a little):
-  * ctrl-n - split focused pane vertically
-  * ctrl-b - split focused pane horizontally
-  * ctrl-m - split largest terminal on screen (vertically or horizontally)
-  * ctrl-j - resize focused pane down
-  * ctrl-k - resize focused pane up 
-  * ctrl-h - resize focused pane left
-  * ctrl-l - resize focused pane right
-  * ctrl-p - move focus to next pane
-  * ctrl-PgUp - scroll up in focused pane
-  * ctrl-PgDown - scroll down in focused pane
-  * ctrl-x - close focused pane
-  * ctrl-q - quit Mosaic
+mosaic has three modes, which are a bit like vim or tmux:
+  * Normal mode - allows you to enter text, input will be sent through to stdin on the pane you're typing in
+  * Command mode - input is interpreted as commands to control mosaic. This comes in two variants:
+    * Temporary - once a single valid command has been parsed, returns to normal mode (e.g. quickly opening a new pane and start typing)
+    * Permanent - remain in command mode until you issue the exit command mode command
+
+The keys and behavior will update when the project matures a bit, but for now:
+  * ctrl-g to cycle between modes (normal mode -> temporary command mode -> permanent command mode -> normal mode)
+  * Esc - exit command mode (any) and return to normal mode
+
+In command mode:
+  * n - split focused pane vertically
+  * b - split focused pane horizontally
+  * m - split largest terminal on screen (vertically or horizontally)
+  * j - resize focused pane down
+  * k - resize focused pane up 
+  * h - resize focused pane left
+  * l - resize focused pane right
+  * p - move focus to next pane
+  * PgUp - scroll up in focused pane
+  * PgDown - scroll down in focused pane
+  * x - close focused pane
+  * q - quit Mosaic
 
 # What is the current status of the project?
 

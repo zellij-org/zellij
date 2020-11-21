@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::utils::consts::{MOSAIC_TMP_LOG_FILE, MOSAIC_TMP_LOG_DIR};
+use crate::utils::consts::{MOSAIC_TMP_LOG_DIR, MOSAIC_TMP_LOG_FILE};
 
 pub fn debug_log_to_file(message: String) -> io::Result<()> {
     let mut file = fs::OpenOptions::new()
