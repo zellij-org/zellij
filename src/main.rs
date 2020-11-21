@@ -3,6 +3,7 @@ mod tests;
 
 mod boundaries;
 mod command_is_executing;
+mod hotkeys;
 mod input;
 mod layout;
 mod os_input_output;
