@@ -55,8 +55,6 @@ pub struct Opt {
     layout: Option<PathBuf>,
     #[structopt(short, long)]
     debug: bool,
-    #[structopt(long)]
-    clear_log_file: bool,
 }
 
 pub fn main() {
@@ -104,11 +102,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let command_is_executing = CommandIsExecuting::new();
 
     delete_log_dir().unwrap();
-
-    if opts.clear_log_file {
-        // TODO: Remove this once it is decided that it goes into the logs dir
-        delete_log_file().unwrap();
-    }
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
