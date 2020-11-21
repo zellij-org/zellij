@@ -2,7 +2,7 @@ use ::insta::assert_snapshot;
 
 use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
-use crate::tests::utils::commands::QUIT;
+use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
@@ -19,7 +19,7 @@ pub fn accepts_basic_layout() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[QUIT]);
+    fake_input_output.add_terminal_input(&[COMMAND_TOGGLE, COMMAND_TOGGLE, QUIT]);
     use std::path::PathBuf;
     let mut opts = Opt::default();
     opts.layout = Some(PathBuf::from(
