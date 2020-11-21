@@ -84,7 +84,7 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
     };
     for (i, part) in layout.parts.iter().enumerate() {
         let part_position_and_size = split_parts.get(i).unwrap();
-        if part.parts.len() > 0 {
+        if !part.parts.is_empty() {
             let mut part_positions = split_space(&part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {

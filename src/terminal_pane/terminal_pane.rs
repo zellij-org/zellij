@@ -302,15 +302,20 @@ impl vte::Perform for TerminalPane {
     }
 
     fn execute(&mut self, byte: u8) {
-        if byte == 13 {
-            // 0d, carriage return
-            self.move_to_beginning_of_line();
-        } else if byte == 8 {
-            // backspace
-            self.move_cursor_backwards(1);
-        } else if byte == 10 {
-            // 0a, newline
-            self.add_newline();
+        match byte {
+            8 => {
+                // backspace
+                self.move_cursor_backwards(1);
+            }
+            10 => {
+                // 0a, newline
+                self.add_newline();
+            }
+            13 => {
+                // 0d, carriage return
+                self.move_to_beginning_of_line();
+            }
+            _ => {}
         }
     }
 
