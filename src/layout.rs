@@ -151,10 +151,8 @@ impl Layout {
         layout_file
             .read_to_string(&mut layout)
             .unwrap_or_else(|_| panic!("could not read layout {}", &layout_path.display()));
-        let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
-            "could not parse layout {}",
-            &layout_path.display()
-        ));
+        let layout: Layout = serde_yaml::from_str(&layout)
+            .unwrap_or_else(|_| panic!("could not parse layout {}", &layout_path.display()));
         layout.validate();
 
         layout

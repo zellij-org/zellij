@@ -57,7 +57,8 @@ impl InputHandler {
         assert_eq!(self.mode, InputMode::Normal);
 
         loop {
-            let _ = self.stdin
+            let _ = self
+                .stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
 
@@ -91,7 +92,8 @@ impl InputHandler {
 
         loop {
             self.buffer = [0; 10];
-            let _ = self.stdin
+            let _ = self
+                .stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
