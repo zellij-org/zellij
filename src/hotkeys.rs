@@ -1,25 +1,28 @@
 /// Provides handling for customisable hotkeys
-/// 
+///
 /// There are a few purposes to this module:
 ///   - Define what character sequences are available to be mapped
 ///   - Provide a user representation of what those sequences are (i.e. key combinations)
 ///   - For each mode, provide a map between the key sequences and a mosaic action (including pass-through)
 ///   - Provide functions for getting and setting (remapping) hotkey definitions
 ///   - Render the current keymap and provide an interface to change the keys
-/// 
+///
 /// Open questions:
 ///   - Do we want to have different base inputs depending on locale (i.e. keyboard map)?
 ///   - Should the user view be a plugin?
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
 /// Enum defining the available set of base input keys that we handle
-/// 
+///
 /// Per the questions above, we probably need to support multiple keyboard
 /// layouts. I'm sticking with my (UK qwerty) keyboard for now, but do add your own!
-/// 
+///
 /// @@@khs26 Not sure you can actually pass all these through - try it out!
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum BaseInputKey {
     Esc,
     F1,
@@ -82,7 +85,7 @@ pub enum BaseInputKey {
     /// '
     Apostrophe,
     /// #   - you can call it pound if you really want to :)
-    Hash, 
+    Hash,
     Return,
     /// \
     Backslash,
@@ -189,7 +192,7 @@ impl std::string::ToString for BaseInputKey {
             BaseInputKey::L => String::from("L"),
             BaseInputKey::Semicolon => String::from(";"),
             BaseInputKey::Apostrophe => String::from("'"),
-            BaseInputKey::Hash => String::from("#"), 
+            BaseInputKey::Hash => String::from("#"),
             BaseInputKey::Return => String::from("Return"),
             BaseInputKey::Backslash => String::from("\\"),
             BaseInputKey::Z => String::from("Z"),
@@ -239,7 +242,10 @@ impl std::string::ToString for BaseInputKey {
 }
 
 /// Modifier keys that can be applied to input keys
-#[derive(Debug, PartialEq, Eq, Hash)]
+/// 
+/// N.B. The EnumIter trait means that the order of the enum members will affect
+/// the order in which the modifiers are displayed (i.e. Ctrl+Alt+<key>, not Alt+Ctrl+<key>)
+#[derive(Debug, PartialEq, Eq, Hash, Clone, EnumIter)]
 pub enum ModifierKey {
     Control,
     Alt,
@@ -277,13 +283,63 @@ pub struct InputKey {
 }
 
 impl InputKey {
-    pub fn new(base_key: BaseInputKey, modifiers: HashSet<ModifierKey>, char_sequence: Vec<u8>) -> InputKey {
-        todo!()
+    pub fn new(
+        base_key: BaseInputKey,
+        modifiers: HashSet<ModifierKey>,
+        char_sequence: Vec<u8>,
+    ) -> InputKey {
+        let mut user_string_list = vec![];
+
+        for modifier in ModifierKey::iter() {
+            if modifiers.contains(&modifier) {
+                user_string_list.push(modifier.to_string());
+            }
+        }
+
+        user_string_list.push(base_key.to_string());
+
+        InputKey {
+            base_key,
+            modifiers,
+            char_sequence,
+            user_string: user_string_list.join("+"),
+        }
     }
 }
 
 impl fmt::Display for InputKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.user_string)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_key_as_string() {
+        let test_key = InputKey::new(BaseInputKey::A, [].iter().cloned().collect(), vec![0, 1, 2]);
+        assert_eq!("A", test_key.user_string);
+
+        let test_key = InputKey::new(
+            BaseInputKey::G,
+            [ModifierKey::Control, ModifierKey::Shift]
+                .iter()
+                .cloned()
+                .collect(),
+            vec![0, 1, 2],
+        );
+        assert_eq!("Ctrl+Shift+G", test_key.user_string);
+
+        let test_key = InputKey::new(
+            BaseInputKey::B,
+            [ModifierKey::Control, ModifierKey::Alt, ModifierKey::Shift]
+                .iter()
+                .cloned()
+                .collect(),
+            vec![0, 1, 2],
+        );
+        assert_eq!("Ctrl+Alt+Shift+B", test_key.user_string);
     }
 }
