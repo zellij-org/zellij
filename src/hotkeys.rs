@@ -245,7 +245,7 @@ pub enum ModifierKey {
     Alt,
     Shift,
     AltGr,
-    // @@@khs26 are these actually different
+    // @@@khs26 are these actually different?
     RightShift,
     RightControl,
 }
@@ -263,12 +263,16 @@ impl std::string::ToString for ModifierKey {
     }
 }
 
+/// Represents a particular key combination that can be input by a user
 #[derive(Debug, PartialEq)]
 pub struct InputKey {
-    /// The character sequence sent when this key is pressed
+    /// Base (keyboard) key
     base_key: BaseInputKey,
+    /// Modifier keys
     modifiers: HashSet<ModifierKey>,
+    /// The character sequence sent when this key is pressed
     char_sequence: Vec<u8>,
+    /// How to display this key to the user
     user_string: String,
 }
 
