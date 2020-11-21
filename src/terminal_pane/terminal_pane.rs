@@ -285,7 +285,7 @@ impl TerminalPane {
     fn move_cursor_backwards(&mut self, count: usize) {
         self.scroll.move_cursor_backwards(count);
     }
-    fn reset_all_ansi_codes(&mut self) {
+    fn _reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
     }
 }
@@ -692,12 +692,9 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.hide_cursor();
-                        self.mark_for_rerender();
-                    }
-                    _ => {}
+                if let Some(&25) = params.get(0) {
+                    self.scroll.hide_cursor();
+                    self.mark_for_rerender();
                 };
             }
         } else if c == 'h' {
@@ -707,12 +704,9 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.show_cursor();
-                        self.mark_for_rerender();
-                    }
-                    _ => {}
+                if let Some(&25) = params.get(0) {
+                    self.scroll.show_cursor();
+                    self.mark_for_rerender();
                 };
             }
         } else if c == 'r' {

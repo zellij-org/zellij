@@ -151,7 +151,7 @@ impl CursorPosition {
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
     }
-    pub fn move_to_prev_canonical_line(&mut self) {
+    pub fn _move_to_prev_canonical_line(&mut self) {
         self.line_index.0 -= 1;
     }
     pub fn move_to_beginning_of_linewrap(&mut self) {
@@ -235,10 +235,8 @@ impl Scroll {
         }
         if lines.len() < self.lines_in_view {
             // pad lines in case we don't have enough scrollback to fill the view
-            let mut empty_line = vec![];
-            for _ in 0..self.total_columns {
-                empty_line.push(EMPTY_TERMINAL_CHARACTER);
-            }
+            let empty_line = vec![EMPTY_TERMINAL_CHARACTER; self.total_columns];
+
             for _ in lines.len()..self.lines_in_view {
                 // pad lines in case we didn't have enough
                 lines.push_back(empty_line.clone());
@@ -318,17 +316,12 @@ impl Scroll {
         let x = self.cursor_position.column_index;
         let mut y = 0;
         let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
-        loop {
-            match indices_and_canonical_lines.next() {
-                Some((current_index, current_line)) => {
-                    if current_index == canonical_line_cursor_position {
-                        y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
-                        break;
-                    } else {
-                        y += current_line.wrapped_fragments.len();
-                    }
-                }
-                None => break,
+        while let Some((current_index, current_line)) = indices_and_canonical_lines.next() {
+            if current_index == canonical_line_cursor_position {
+                y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
+                break;
+            } else {
+                y += current_line.wrapped_fragments.len();
             }
         }
         let total_lines = self
@@ -380,7 +373,7 @@ impl Scroll {
     pub fn move_cursor_to_beginning_of_linewrap(&mut self) {
         self.cursor_position.move_to_beginning_of_linewrap();
     }
-    pub fn move_cursor_to_beginning_of_canonical_line(&mut self) {
+    pub fn _move_cursor_to_beginning_of_canonical_line(&mut self) {
         self.cursor_position.move_to_beginning_of_canonical_line();
     }
     pub fn move_cursor_backwards(&mut self, count: usize) {

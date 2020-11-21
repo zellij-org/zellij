@@ -13,7 +13,7 @@ pub fn debug_log_to_file(message: String) -> io::Result<()> {
         .create(true)
         .open(MOSAIC_TMP_LOG_FILE)?;
     file.write_all(message.as_bytes())?;
-    file.write_all("\n".as_bytes())?;
+    file.write_all(b"\n")?;
 
     Ok(())
 }

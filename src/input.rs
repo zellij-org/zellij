@@ -5,7 +5,6 @@ use std::sync::mpsc::Sender;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
 use crate::CommandIsExecuting;
 

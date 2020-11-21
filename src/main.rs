@@ -11,6 +11,7 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
+#[allow(unused_imports)]
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -128,9 +129,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout.and_then(|layout_path| {
+    let maybe_layout = opts.layout.map(|layout_path| {
         let layout = Layout::new(layout_path);
-        Some(layout)
+        layout
     });
 
     active_threads.push(
@@ -269,7 +270,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     match stream {
                         Ok(mut stream) => {
                             let mut buffer = [0; 65535]; // TODO: more accurate
-                            stream
+                            let _ = stream
                                 .read(&mut buffer)
                                 .expect("failed to parse ipc message");
                             let decoded: ApiCommand = bincode::deserialize(&buffer)
@@ -326,6 +327,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             }
         });
 
+    #[warn(clippy::never_loop)]
     loop {
         let app_instruction = receive_app_instructions
             .recv()
@@ -351,7 +353,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     );
 
     os_input.unset_raw_mode(0);
-    os_input
+    let _ = os_input
         .get_stdout_writer()
         .write(goodbye_message.as_bytes())
         .unwrap();
