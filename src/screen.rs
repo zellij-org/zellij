@@ -67,7 +67,6 @@ pub enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
-    #[allow(dead_code)]
     ClosePane(RawFd),
     ApplyLayout((Layout, Vec<RawFd>)),
 }

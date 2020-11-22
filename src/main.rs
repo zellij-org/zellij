@@ -11,7 +11,6 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
-#[allow(unused_imports)]
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
