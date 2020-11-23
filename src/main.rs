@@ -97,9 +97,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let command_is_executing = CommandIsExecuting::new();
 
-    delete_log_dir().unwrap();
-    delete_log_file().unwrap();
-
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (
