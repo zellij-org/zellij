@@ -4,7 +4,6 @@ use ::std::fmt::{self, Debug, Formatter};
 use crate::terminal_pane::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 
 /*
  * Scroll
@@ -531,9 +530,9 @@ impl Scroll {
             .get_mut(current_line_wrap_position)
             .expect("cursor out of bounds");
 
-            for _ in current_fragment.characters.len()..col {
-                current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
-            }
+        for _ in current_fragment.characters.len()..col {
+            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
+        }
         self.cursor_position.move_to_column(col);
     }
     pub fn move_cursor_to_column(&mut self, col: usize) {
