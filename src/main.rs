@@ -125,8 +125,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout
-        .map(|layout_path| Layout::new(layout_path));
+    let maybe_layout = opts.layout.map(|layout_path| Layout::new(layout_path));
 
     active_threads.push(
         thread::Builder::new()

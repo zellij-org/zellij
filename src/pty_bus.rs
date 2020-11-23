@@ -296,8 +296,7 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        self
-            .send_screen_instructions
+        self.send_screen_instructions
             .send(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
