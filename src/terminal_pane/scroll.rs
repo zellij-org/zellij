@@ -56,7 +56,7 @@ impl CanonicalLine {
             .collect();
         let mut wrapped_fragments = Vec::with_capacity(characters.len() / new_width);
 
-        while characters.len() > 0 {
+        while !characters.is_empty() {
             if characters.len() > new_width {
                 wrapped_fragments.push(WrappedFragment::from_vec(
                     characters.drain(..new_width).collect(),
@@ -65,7 +65,7 @@ impl CanonicalLine {
                 wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
             }
         }
-        if wrapped_fragments.len() == 0 {
+        if wrapped_fragments.is_empty() {
             wrapped_fragments.push(WrappedFragment::new());
         }
         self.wrapped_fragments = wrapped_fragments;
@@ -271,27 +271,22 @@ impl Scroll {
         let mut lines: VecDeque<Vec<TerminalCharacter>> = VecDeque::new(); // TODO: with capacity lines_from_end?
         let mut canonical_lines = self.canonical_lines.iter().rev();
         let mut lines_to_skip = self.viewport_bottom_offset.unwrap_or(0);
-        'gather_lines: loop {
-            match canonical_lines.next() {
-                Some(current_canonical_line) => {
-                    for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
-                        let mut line: Vec<TerminalCharacter> =
-                            wrapped_fragment.characters.iter().copied().collect();
-                        if lines_to_skip > 0 {
-                            lines_to_skip -= 1;
-                        } else {
-                            for _ in line.len()..self.total_columns {
-                                // pad line if needed
-                                line.push(EMPTY_TERMINAL_CHARACTER);
-                            }
-                            lines.push_front(line);
-                        }
-                        if lines.len() == self.lines_in_view {
-                            break 'gather_lines;
-                        }
+        'gather_lines: while let Some(current_canonical_line) = canonical_lines.next() {
+            for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
+                let mut line: Vec<TerminalCharacter> =
+                    wrapped_fragment.characters.iter().copied().collect();
+                if lines_to_skip > 0 {
+                    lines_to_skip -= 1;
+                } else {
+                    for _ in line.len()..self.total_columns {
+                        // pad line if needed
+                        line.push(EMPTY_TERMINAL_CHARACTER);
                     }
+                    lines.push_front(line);
                 }
-                None => break, // no more lines
+                if lines.len() == self.lines_in_view {
+                    break 'gather_lines;
+                }
             }
         }
         if lines.len() < self.lines_in_view {
@@ -376,8 +371,8 @@ impl Scroll {
             self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
-        let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
-        while let Some((current_index, current_line)) = indices_and_canonical_lines.next() {
+        let indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
+        for (current_index, current_line) in indices_and_canonical_lines {
             if current_index == canonical_line_cursor_position {
                 y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
                 break;

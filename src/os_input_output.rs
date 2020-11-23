@@ -16,7 +16,7 @@ use std::env;
 fn into_raw_mode(pid: RawFd) {
     let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
     cfmakeraw(&mut tio);
-    match tcsetattr(pid, SetArg::TCSANOW, &mut tio) {
+    match tcsetattr(pid, SetArg::TCSANOW, &tio) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
