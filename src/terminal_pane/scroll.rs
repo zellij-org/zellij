@@ -358,11 +358,11 @@ impl Scroll {
                 self.canonical_lines.push(CanonicalLine::new());
                 self.cursor_position.move_to_next_canonical_line();
                 self.cursor_position.move_to_beginning_of_canonical_line();
-            },
+            }
             Ordering::Less => {
                 self.cursor_position.move_to_next_canonical_line();
                 self.cursor_position.move_to_beginning_of_canonical_line();
-            },
+            }
             _ => panic!("cursor out of bounds, cannot add_canonical_line"),
         }
     }
@@ -375,8 +375,8 @@ impl Scroll {
             self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
-        let indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
-        for (current_index, current_line) in indices_and_canonical_lines {
+        let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
+        while let Some((current_index, current_line)) = indices_and_canonical_lines.next() {
             if current_index == canonical_line_cursor_position {
                 y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
                 break;
@@ -418,7 +418,9 @@ impl Scroll {
             count
         };
 
-        current_fragment.characters.extend(vec![EMPTY_TERMINAL_CHARACTER; current_cursor_column_position + move_count - current_fragment.characters.len()]);
+        for _ in current_fragment.characters.len()..current_cursor_column_position + move_count {
+            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
+        }
         self.cursor_position.move_forward(move_count);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
@@ -529,7 +531,9 @@ impl Scroll {
             .get_mut(current_line_wrap_position)
             .expect("cursor out of bounds");
 
-        current_fragment.characters.extend(vec![EMPTY_TERMINAL_CHARACTER; col - current_fragment.characters.len()]);
+            for _ in current_fragment.characters.len()..col {
+                current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
+            }
         self.cursor_position.move_to_column(col);
     }
     pub fn move_cursor_to_column(&mut self, col: usize) {
