@@ -1,7 +1,9 @@
 use ::std::collections::VecDeque;
 use ::std::fmt::{self, Debug, Formatter};
 
-use crate::terminal_pane::terminal_character::{TerminalCharacter, CharacterStyles, EMPTY_TERMINAL_CHARACTER};
+use crate::terminal_pane::terminal_character::{
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+};
 use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 
 /*
@@ -76,7 +78,13 @@ impl CanonicalLine {
         fragment_to_clear.clear_after_and_including(column_index);
         self.wrapped_fragments.truncate(fragment_index + 1);
     }
-    pub fn replace_with_empty_chars(&mut self, fragment_index: usize, from_col: usize, count: usize, style_of_empty_space: CharacterStyles) {
+    pub fn replace_with_empty_chars(
+        &mut self,
+        fragment_index: usize,
+        from_col: usize,
+        count: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
         let mut characters_replaced = 0;
         let mut column_position_in_fragment = from_col;
         let mut current_fragment = fragment_index;
@@ -90,14 +98,15 @@ impl CanonicalLine {
                 Some(fragment_to_clear) => {
                     let fragment_characters_count = fragment_to_clear.characters.len();
                     if fragment_characters_count >= column_position_in_fragment {
-                        fragment_to_clear.add_character(empty_space_character, column_position_in_fragment);
+                        fragment_to_clear
+                            .add_character(empty_space_character, column_position_in_fragment);
                         column_position_in_fragment += 1;
                         characters_replaced += 1;
                     } else {
                         current_fragment += 1;
                         column_position_in_fragment = 0;
                     }
-                },
+                }
                 None => {
                     // end of line, nothing more to clear
                     break;
@@ -105,7 +114,13 @@ impl CanonicalLine {
             }
         }
     }
-    pub fn replace_with_empty_chars_after_cursor(&mut self, fragment_index: usize, from_col: usize, total_columns: usize, style_of_empty_space: CharacterStyles) {
+    pub fn replace_with_empty_chars_after_cursor(
+        &mut self,
+        fragment_index: usize,
+        from_col: usize,
+        total_columns: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
         let mut empty_char_character = EMPTY_TERMINAL_CHARACTER;
         empty_char_character.styles = style_of_empty_space;
         let current_fragment = self.wrapped_fragments.get_mut(fragment_index).unwrap();
@@ -118,7 +133,7 @@ impl CanonicalLine {
         for i in fragment_characters_count..total_columns {
             current_fragment.add_character(empty_char_character, i);
         }
-        
+
         self.wrapped_fragments.truncate(fragment_index + 1);
     }
 }
@@ -459,8 +474,12 @@ impl Scroll {
             .canonical_lines
             .get_mut(current_canonical_line_index)
             .expect("cursor out of bounds");
-        current_canonical_line
-            .replace_with_empty_chars_after_cursor(current_line_wrap_position, current_cursor_column_position, self.total_columns, style_of_empty_space);
+        current_canonical_line.replace_with_empty_chars_after_cursor(
+            current_line_wrap_position,
+            current_cursor_column_position,
+            self.total_columns,
+            style_of_empty_space,
+        );
     }
     pub fn clear_all_after_cursor(&mut self) {
         let (current_canonical_line_index, current_line_wrap_position) =
@@ -475,7 +494,11 @@ impl Scroll {
         self.canonical_lines
             .truncate(current_canonical_line_index + 1);
     }
-    pub fn replace_with_empty_chars(&mut self, count: usize, style_of_empty_space: CharacterStyles) {
+    pub fn replace_with_empty_chars(
+        &mut self,
+        count: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
         let (current_canonical_line_index, current_line_wrap_position) =
             self.cursor_position.line_index;
         let current_cursor_column_position = self.cursor_position.column_index;
@@ -483,7 +506,12 @@ impl Scroll {
             .canonical_lines
             .get_mut(current_canonical_line_index)
             .expect("cursor out of bounds");
-        current_canonical_line.replace_with_empty_chars(current_line_wrap_position, current_cursor_column_position, count, style_of_empty_space);
+        current_canonical_line.replace_with_empty_chars(
+            current_line_wrap_position,
+            current_cursor_column_position,
+            count,
+            style_of_empty_space,
+        );
     }
     pub fn clear_all(&mut self) {
         self.canonical_lines.clear();

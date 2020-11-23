@@ -342,10 +342,9 @@ impl vte::Perform for TerminalPane {
                     // solution for them
                     if *param1 == 1 {
                         // bold
-                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((
-                            Some(*param1 as u16),
-                            None
-                        ))));
+                        self.pending_styles = self
+                            .pending_styles
+                            .bold(Some(AnsiCode::Code((Some(*param1 as u16), None))));
                     }
                 }
             } else if params[0] == 39 {
@@ -679,7 +678,8 @@ impl vte::Perform for TerminalPane {
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
-                self.scroll.clear_canonical_line_right_of_cursor(self.pending_styles);
+                self.scroll
+                    .clear_canonical_line_right_of_cursor(self.pending_styles);
             }
         // TODO: implement 1 and 2
         } else if c == 'J' {
@@ -800,7 +800,8 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll.replace_with_empty_chars(count, self.pending_styles);
+            self.scroll
+                .replace_with_empty_chars(count, self.pending_styles);
         } else if c == 'T' {
             /*
              * 124  54  T   SD
@@ -821,10 +822,8 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll
-                .delete_lines_in_scroll_region(count);
-            self.scroll
-                .add_empty_lines_in_scroll_region(count);
+            self.scroll.delete_lines_in_scroll_region(count);
+            self.scroll.add_empty_lines_in_scroll_region(count);
         } else {
             debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
             panic!("unhandled csi: {}->{:?}", c, params);
