@@ -86,14 +86,14 @@ impl VteEventSender {
 
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
-        self.sender
-            .send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)))
-            .unwrap();
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)));
     }
     fn execute(&mut self, byte: u8) {
-        self.sender
-            .send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)))
-            .unwrap();
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)));
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
@@ -101,26 +101,26 @@ impl vte::Perform for VteEventSender {
         let intermediates = intermediates.iter().copied().collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::Hook(params, intermediates, ignore, c));
-        self.sender.send(instruction).unwrap();
+        let _ = self.sender.send(instruction);
     }
 
     fn put(&mut self, byte: u8) {
-        self.sender
-            .send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)))
-            .unwrap();
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)));
     }
 
     fn unhook(&mut self) {
-        self.sender
-            .send(ScreenInstruction::Pty(self.id, VteEvent::Unhook))
-            .unwrap();
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Unhook));
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params = params.iter().map(|p| p.to_vec()).collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::OscDispatch(params, bell_terminated));
-        self.sender.send(instruction).unwrap();
+        let _ = self.sender.send(instruction);
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
@@ -130,14 +130,14 @@ impl vte::Perform for VteEventSender {
             self.id,
             VteEvent::CsiDispatch(params, intermediates, ignore, c),
         );
-        self.sender.send(instruction).unwrap();
+        let _ = self.sender.send(instruction);
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         let intermediates = intermediates.iter().copied().collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::EscDispatch(intermediates, ignore, byte));
-        self.sender.send(instruction).unwrap();
+        let _ = self.sender.send(instruction);
     }
 }
 
