@@ -1,5 +1,7 @@
-use crate::terminal_pane::PositionAndSize;
 use serde::{Deserialize, Serialize};
+use std::{fs::File, io::prelude::*, path::PathBuf};
+
+use crate::terminal_pane::PositionAndSize;
 
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,
@@ -65,12 +67,17 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
         .parts
         .iter()
         .map(|part| {
-            let split_size = part.split_size.as_ref().unwrap(); // TODO: if there is no split size, it should get the remaining "free space"
+            let split_size = part.split_size.as_ref();
             match split_size {
-                SplitSize::Percent(percent) => *percent,
+                Some(SplitSize::Percent(percent)) => *percent,
+                None => {
+                    // TODO: if there is no split size, it should get the remaining "free space"
+                    panic!("Please enter the percentage of the screen part");
+                }
             }
         })
         .collect();
+
     let split_parts = match layout.direction {
         Direction::Vertical => split_space_to_parts_vertically(space_to_split, percentages),
         Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, percentages),
@@ -85,6 +92,34 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
         }
     }
     pane_positions
+}
+
+fn validate_layout_percentage_total(layout: &Layout) -> bool {
+    let total_percentages: u8 = layout
+        .parts
+        .iter()
+        .map(|part| {
+            let split_size = part.split_size.as_ref();
+            match split_size {
+                Some(SplitSize::Percent(percent)) => *percent,
+                None => {
+                    // TODO: if there is no split size, it should get the remaining "free space"
+                    panic!("Please enter the percentage of the screen part");
+                }
+            }
+        })
+        .sum();
+    if total_percentages != 100 {
+        return false;
+    }
+
+    for part in layout.parts.iter() {
+        if part.parts.len() > 0 {
+            return validate_layout_percentage_total(part);
+        }
+    }
+
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -108,6 +143,28 @@ pub struct Layout {
 }
 
 impl Layout {
+    pub fn new(layout_path: PathBuf) -> Self {
+        let mut layout_file = File::open(&layout_path)
+            .expect(&format!("cannot find layout {}", &layout_path.display()));
+
+        let mut layout = String::new();
+        layout_file
+            .read_to_string(&mut layout)
+            .expect(&format!("could not read layout {}", &layout_path.display()));
+        let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
+            "could not parse layout {}",
+            &layout_path.display()
+        ));
+        layout.validate();
+
+        layout
+    }
+
+    pub fn validate(&self) {
+        if !validate_layout_percentage_total(&self) {
+            panic!("The total percent for each part should equal 100.");
+        }
+    }
     pub fn total_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
