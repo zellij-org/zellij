@@ -125,7 +125,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout.map(|layout_path| Layout::new(layout_path));
+    let maybe_layout = opts.layout.map(Layout::new);
 
     active_threads.push(
         thread::Builder::new()
@@ -308,7 +308,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
-            let command_is_executing = command_is_executing.clone();
             move || {
                 input_loop(
                     os_input,

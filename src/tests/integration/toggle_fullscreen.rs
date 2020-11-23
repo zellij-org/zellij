@@ -11,7 +11,7 @@ use crate::tests::utils::commands::{
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
-    FakeInputOutput::new(fake_win_size.clone())
+    FakeInputOutput::new(*fake_win_size)
 }
 
 #[test]

@@ -269,9 +269,9 @@ impl Scroll {
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         let mut lines: VecDeque<Vec<TerminalCharacter>> = VecDeque::new(); // TODO: with capacity lines_from_end?
-        let mut canonical_lines = self.canonical_lines.iter().rev();
+        let canonical_lines = self.canonical_lines.iter().rev();
         let mut lines_to_skip = self.viewport_bottom_offset.unwrap_or(0);
-        'gather_lines: while let Some(current_canonical_line) = canonical_lines.next() {
+        'gather_lines: for current_canonical_line in canonical_lines {
             for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
                 let mut line: Vec<TerminalCharacter> =
                     wrapped_fragment.characters.iter().copied().collect();
@@ -351,15 +351,19 @@ impl Scroll {
                 }
             }
         }
-        if current_canonical_line_index == self.canonical_lines.len() - 1 {
-            self.canonical_lines.push(CanonicalLine::new());
-            self.cursor_position.move_to_next_canonical_line();
-            self.cursor_position.move_to_beginning_of_canonical_line();
-        } else if current_canonical_line_index < self.canonical_lines.len() - 1 {
-            self.cursor_position.move_to_next_canonical_line();
-            self.cursor_position.move_to_beginning_of_canonical_line();
-        } else {
-            panic!("cursor out of bounds, cannot add_canonical_line");
+
+        use std::cmp::Ordering;
+        match current_canonical_line_index.cmp(&(self.canonical_lines.len() - 1)) {
+            Ordering::Equal => {
+                self.canonical_lines.push(CanonicalLine::new());
+                self.cursor_position.move_to_next_canonical_line();
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            },
+            Ordering::Less => {
+                self.cursor_position.move_to_next_canonical_line();
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            },
+            _ => panic!("cursor out of bounds, cannot add_canonical_line"),
         }
     }
     pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> {
@@ -413,9 +417,8 @@ impl Scroll {
         } else {
             count
         };
-        for _ in current_fragment.characters.len()..current_cursor_column_position + move_count {
-            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
-        }
+
+        current_fragment.characters.extend(vec![EMPTY_TERMINAL_CHARACTER; current_cursor_column_position + move_count - current_fragment.characters.len()]);
         self.cursor_position.move_forward(move_count);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
@@ -525,9 +528,8 @@ impl Scroll {
             .wrapped_fragments
             .get_mut(current_line_wrap_position)
             .expect("cursor out of bounds");
-        for _ in current_fragment.characters.len()..col {
-            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
-        }
+
+        current_fragment.characters.extend(vec![EMPTY_TERMINAL_CHARACTER; col - current_fragment.characters.len()]);
         self.cursor_position.move_to_column(col);
     }
     pub fn move_cursor_to_column(&mut self, col: usize) {

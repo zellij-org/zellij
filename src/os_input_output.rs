@@ -22,8 +22,8 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
-fn unset_raw_mode(pid: RawFd, mut orig_termios: Termios) {
-    match tcsetattr(pid, SetArg::TCSANOW, &mut orig_termios) {
+fn unset_raw_mode(pid: RawFd, orig_termios: Termios) {
+    match tcsetattr(pid, SetArg::TCSANOW, &orig_termios) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
@@ -41,7 +41,7 @@ pub fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
         ws_ypixel: 0,
     };
 
-    unsafe { ioctl(fd, TIOCGWINSZ.into(), &mut winsize) };
+    unsafe { ioctl(fd, TIOCGWINSZ, &mut winsize) };
     PositionAndSize::from(winsize)
 }
 
@@ -56,7 +56,7 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
+    unsafe { ioctl(fd, TIOCSWINSZ, &winsize) };
 }
 
 fn handle_command_exit(mut child: Child) {
@@ -74,13 +74,10 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
-            match signal {
-                signal_hook::SIGINT => {
-                    child.kill().unwrap();
-                    child.wait().unwrap();
-                    break 'handle_exit;
-                }
-                _ => {}
+            if let signal_hook::SIGINT = signal {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                break 'handle_exit;
             }
         }
     }

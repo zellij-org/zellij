@@ -24,8 +24,8 @@ type BorderAndPaneIds = (usize, Vec<RawFd>);
 
 fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
     let width_of_each_half = (rect.columns - 1) / 2;
-    let mut first_rect = rect.clone();
-    let mut second_rect = rect.clone();
+    let mut first_rect = *rect;
+    let mut second_rect = *rect;
     if rect.columns % 2 == 0 {
         first_rect.columns = width_of_each_half + 1;
     } else {
@@ -37,8 +37,8 @@ fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Positi
 
 fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
     let height_of_each_half = (rect.rows - 1) / 2;
-    let mut first_rect = rect.clone();
-    let mut second_rect = rect.clone();
+    let mut first_rect = *rect;
+    let mut second_rect = *rect;
     if rect.rows % 2 == 0 {
         first_rect.rows = height_of_each_half + 1;
     } else {
@@ -98,7 +98,7 @@ impl Screen {
             max_panes,
             send_pty_instructions,
             send_app_instructions,
-            full_screen_ws: full_screen_ws.clone(),
+            full_screen_ws: *full_screen_ws,
             terminals: BTreeMap::new(),
             panes_to_hide: HashSet::new(),
             active_terminal: None,
