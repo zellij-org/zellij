@@ -335,8 +335,32 @@ impl vte::Perform for TerminalPane {
             if params.is_empty() || params[0] == 0 {
                 // reset all
                 self.pending_styles.reset_all();
+                if let Some(param1) = params.get(1) {
+                    // TODO: this is a case currently found in eg. htop where we get two different
+                    // csi 'm' codes in one event.
+                    // We should understand why these are happening and then make a more generic
+                    // solution for them
+                    if *param1 == 1 {
+                        // bold
+                        self.pending_styles = self.pending_styles.bold(Some(AnsiCode::Code((
+                            Some(*param1 as u16),
+                            None
+                        ))));
+                    }
+                }
             } else if params[0] == 39 {
                 self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Reset));
+                if let Some(param1) = params.get(1) {
+                    // TODO: this is a case currently found in eg. htop where we get two different
+                    // csi 'm' codes in one event.
+                    // We should understand why these are happening and then make a more generic
+                    // solution for them
+                    if *param1 == 49 {
+                        // TODO: if we need this to fix the bug, we need to make collecting the
+                        // second argument in such cases generic
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Reset));
+                    }
+                }
             } else if params[0] == 49 {
                 self.pending_styles = self.pending_styles.background(Some(AnsiCode::Reset));
             } else if params[0] == 21 {
@@ -655,7 +679,7 @@ impl vte::Perform for TerminalPane {
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
-                self.scroll.clear_canonical_line_right_of_cursor();
+                self.scroll.clear_canonical_line_right_of_cursor(self.pending_styles);
             }
         // TODO: implement 1 and 2
         } else if c == 'J' {
@@ -669,9 +693,11 @@ impl vte::Perform for TerminalPane {
         } else if c == 'H' {
             // goto row/col
             let (row, col) = if params.len() == 1 {
-                (params[0] as usize, 0) // TODO: is this always correct ?
+                (params[0] as usize, params[0] as usize)
             } else {
-                (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
+                // we subtract 1 from the column because after we get a cursor goto, the print
+                // character should be printed on top of the cursor
+                (params[0] as usize, params[1] as usize - 1)
             };
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
@@ -749,19 +775,38 @@ impl vte::Perform for TerminalPane {
             };
             self.scroll
                 .add_empty_lines_in_scroll_region(line_count_to_add);
-        } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
+        } else if c == 'q' {
             // ignore for now to run on mac
+        } else if c == 'G' {
+            let column = if params[0] == 0 {
+                0
+            } else {
+                // params[0] as usize
+                params[0] as usize - 1
+            };
+            self.scroll.move_cursor_to_column(column);
+        } else if c == 'd' {
+            // goto line
+            let line = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll.move_cursor_to_line(line);
+        } else if c == 'X' || c == 'P' {
+            // erase characters
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll.replace_with_empty_chars(count, self.pending_styles);
         } else if c == 'T' {
             /*
              * 124  54  T   SD
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
-            debug_log_to_file(format!(
-                "htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})",
-                c, params, _intermediates, _ignore
-            ))
-            .unwrap();
             let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
 
             if line_count >= 0 {
@@ -769,17 +814,17 @@ impl vte::Perform for TerminalPane {
             } else {
                 self.rotate_scroll_region_down(line_count.abs() as usize);
             }
-        } else if c == 'P' {
-            /*
-             * 120 50 P * DCH
-             * Delete Character, from current position to end of field
-             * [4P = Delete 4 characters, VT102 series
-             */
-            debug_log_to_file(format!(
-                "htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})",
-                c, params, _intermediates, _ignore
-            ))
-            .unwrap();
+        } else if c == 'S' {
+            // move scroll up
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll
+                .delete_lines_in_scroll_region(count);
+            self.scroll
+                .add_empty_lines_in_scroll_region(count);
         } else {
             debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
             panic!("unhandled csi: {}->{:?}", c, params);
