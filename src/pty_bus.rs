@@ -86,10 +86,14 @@ impl VteEventSender {
 
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
-        let _ = self.sender.send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)));
     }
     fn execute(&mut self, byte: u8) {
-        let _ = self.sender.send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)));
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
@@ -101,11 +105,15 @@ impl vte::Perform for VteEventSender {
     }
 
     fn put(&mut self, byte: u8) {
-        let _ = self.sender.send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)));
     }
 
     fn unhook(&mut self) {
-        let _ = self.sender.send(ScreenInstruction::Pty(self.id, VteEvent::Unhook));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Unhook));
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
