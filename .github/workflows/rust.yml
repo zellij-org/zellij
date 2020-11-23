@@ -44,8 +44,8 @@ jobs:
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
         with:
-            toolchain: stable
-            components: clippy
+          toolchain: stable
+          components: clippy
       - uses: actions-rs/clippy@master
         with:
           args: --all-features --all-targets
