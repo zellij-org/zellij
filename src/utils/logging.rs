@@ -7,44 +7,42 @@ use std::{
 
 use crate::utils::consts::{MOSAIC_TMP_LOG_DIR, MOSAIC_TMP_LOG_FILE};
 
-fn atomic_create_file(file_name: &str) {
-    let _ = fs::OpenOptions::new().create(true).open(file_name);
+fn atomic_create_file(file_name: &str) -> io::Result<fs::File> {
+    fs::OpenOptions::new().create(true).open(file_name)
 }
 
 pub fn debug_log_to_file(message: String) -> io::Result<()> {
-    atomic_create_file(MOSAIC_TMP_LOG_FILE);
+    atomic_create_file(MOSAIC_TMP_LOG_FILE)?;
     let mut file = fs::OpenOptions::new()
         .append(true)
         .create(true)
         .open(MOSAIC_TMP_LOG_FILE)?;
     file.write_all(message.as_bytes())?;
-    file.write_all(b"\n")?;
-
-    Ok(())
+    file.write_all(b"\n")
 }
 
 pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     if pid == 0 {
-        debug_log_to_file(message)?;
+        debug_log_to_file(message)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
-pub fn delete_log_file() -> io::Result<()> {
+pub fn _delete_log_file() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_FILE).is_ok() {
-        fs::remove_file(MOSAIC_TMP_LOG_FILE)?;
+        fs::remove_file(MOSAIC_TMP_LOG_FILE)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
-pub fn delete_log_dir() -> io::Result<()> {
+pub fn _delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
-        fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
+        fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
 pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
@@ -56,7 +54,5 @@ pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
         .append(true)
         .create(true)
         .open(path)?;
-    file.write_all(&[message])?;
-
-    Ok(())
+    file.write_all(&[message])
 }
