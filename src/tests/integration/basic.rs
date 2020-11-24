@@ -44,7 +44,12 @@ pub fn split_terminals_vertically() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &SPLIT_VERTICALLY, &QUIT]);
+    fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
     let output_frames = fake_input_output
         .stdout_writer

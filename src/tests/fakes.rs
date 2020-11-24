@@ -202,10 +202,7 @@ impl OsApi for FakeInputOutput {
             }
         }
         match self.stdin_commands.lock().unwrap().pop_front() {
-            // Some(bytes_to_read) => {
-            Some(command) => {
-                command.to_vec()
-            }
+            Some(command) => command,
             None => {
                 // what is happening here?
                 //
