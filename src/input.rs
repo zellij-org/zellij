@@ -57,8 +57,8 @@ impl InputHandler {
         assert_eq!(self.mode, InputMode::Normal);
 
         loop {
-            let _ = self
-                .stdin
+            self.buffer = [0; 10];
+            self.stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
 
