@@ -29,11 +29,11 @@ pub fn resize_right_with_pane_to_the_left() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -64,12 +64,12 @@ pub fn resize_right_with_pane_to_the_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -100,14 +100,14 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), Opt::default());
 
@@ -139,15 +139,15 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -180,17 +180,17 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -223,14 +223,14 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -263,16 +263,16 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -305,15 +305,15 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_VERTICALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -348,18 +348,18 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -394,20 +394,20 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -442,35 +442,35 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        RESIZE_UP,
-        RESIZE_UP,
-        RESIZE_UP,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_UP,
-        RESIZE_UP,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());
@@ -505,37 +505,37 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        COMMAND_TOGGLE,
-        COMMAND_TOGGLE,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        RESIZE_UP,
-        RESIZE_UP,
-        RESIZE_UP,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_VERTICALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        SPLIT_HORIZONTALLY,
-        SPLIT_HORIZONTALLY,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        MOVE_FOCUS,
-        RESIZE_UP,
-        RESIZE_UP,
-        RESIZE_RIGHT,
-        QUIT,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_VERTICALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &SPLIT_HORIZONTALLY,
+        &SPLIT_HORIZONTALLY,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &RESIZE_UP,
+        &RESIZE_UP,
+        &RESIZE_RIGHT,
+        &QUIT,
     ]);
 
     start(Box::new(fake_input_output.clone()), Opt::default());

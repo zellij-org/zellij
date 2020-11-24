@@ -1,18 +1,15 @@
 /// Module for handling input
-use std::io::Read;
 use std::sync::mpsc::Sender;
 
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
 use crate::CommandIsExecuting;
 
 struct InputHandler {
-    buffer: [u8; 10], // TODO: more accurately
     mode: InputMode,
-    stdin: Box<dyn Read>,
+    os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: Sender<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
@@ -28,9 +25,8 @@ impl InputHandler {
         send_app_instructions: Sender<AppInstruction>,
     ) -> Self {
         InputHandler {
-            buffer: [0; 10], // TODO: more accurately
             mode: InputMode::Normal,
-            stdin: os_input.get_stdin_reader(),
+            os_input,
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
@@ -58,15 +54,10 @@ impl InputHandler {
         assert_eq!(self.mode, InputMode::Normal);
 
         loop {
-            self.buffer = [0; 10];
-            self.stdin
-                .read(&mut self.buffer)
-                .expect("failed to read stdin");
-
-            match self.buffer {
-                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+            let stdin_buffer = self.os_input.read_from_stdin();
+            match stdin_buffer.as_slice() {
+                [7] => {
                     // ctrl-g
-                    // debug_log_to_file(format!("switched to command mode"));
                     self.mode = InputMode::Command;
                     return;
                 }
@@ -75,7 +66,7 @@ impl InputHandler {
                         .send(ScreenInstruction::ClearScroll)
                         .unwrap();
                     self.send_screen_instructions
-                        .send(ScreenInstruction::WriteCharacter(self.buffer))
+                        .send(ScreenInstruction::WriteCharacter(stdin_buffer))
                         .unwrap();
                 }
             }
@@ -92,14 +83,13 @@ impl InputHandler {
         }
 
         loop {
-            self.buffer = [0; 10];
-            self.stdin
-                .read(&mut self.buffer)
-                .expect("failed to read stdin");
+            let stdin_buffer = self.os_input.read_from_stdin();
+
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
-            // debug_log_to_file(format!("buffer {:?}", self.buffer));
-            match self.buffer {
-                [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+            // debug_log_to_file(format!("buffer {:?}", stdin_buffer));
+
+            match stdin_buffer.as_slice() {
+                [7] => {
                     // Ctrl-g
                     // If we're in command mode, this will let us switch to persistent command mode, to execute
                     // multiple commands. If we're already in persistent mode, it'll return us to normal mode.
@@ -107,49 +97,47 @@ impl InputHandler {
                         InputMode::Command => self.mode = InputMode::CommandPersistent,
                         InputMode::CommandPersistent => {
                             self.mode = InputMode::Normal;
-                            // debug_log_to_file(format!("switched to normal mode"));
                             return;
                         }
                         _ => panic!(),
                     }
                 }
-                [27, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [27] => {
                     // Esc
                     self.mode = InputMode::Normal;
-                    // _debug_log_to_file(format!("switched to normal mode"));
                     return;
                 }
-                [106, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [106] => {
                     // j
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeDown)
                         .unwrap();
                 }
-                [107, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [107] => {
                     // k
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeUp)
                         .unwrap();
                 }
-                [112, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [112] => {
                     // p
                     self.send_screen_instructions
                         .send(ScreenInstruction::MoveFocus)
                         .unwrap();
                 }
-                [104, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [104] => {
                     // h
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeLeft)
                         .unwrap();
                 }
-                [108, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [108] => {
                     // l
                     self.send_screen_instructions
                         .send(ScreenInstruction::ResizeRight)
                         .unwrap();
                 }
-                [122, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [122] => {
                     // z
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
@@ -157,7 +145,7 @@ impl InputHandler {
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
-                [110, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [110] => {
                     // n
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
@@ -165,7 +153,7 @@ impl InputHandler {
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
-                [98, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [98] => {
                     // b
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
@@ -173,24 +161,24 @@ impl InputHandler {
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
-                [113, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [113] => {
                     // q
                     self.mode = InputMode::Exiting;
                     return;
                 }
-                [27, 91, 53, 126, 0, 0, 0, 0, 0, 0] => {
+                [27, 91, 53, 126] => {
                     // PgUp
                     self.send_screen_instructions
                         .send(ScreenInstruction::ScrollUp)
                         .unwrap();
                 }
-                [27, 91, 54, 126, 0, 0, 0, 0, 0, 0] => {
+                [27, 91, 54, 126] => {
                     // PgDown
                     self.send_screen_instructions
                         .send(ScreenInstruction::ScrollDown)
                         .unwrap();
                 }
-                [120, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [120] => {
                     // x
                     self.command_is_executing.closing_pane();
                     self.send_screen_instructions
@@ -198,7 +186,7 @@ impl InputHandler {
                         .unwrap();
                     self.command_is_executing.wait_until_pane_is_closed();
                 }
-                [101, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                [101] => {
                     // e
                     self.send_screen_instructions
                         .send(ScreenInstruction::ToggleActiveTerminalFullscreen)

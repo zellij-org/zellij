@@ -5,7 +5,8 @@ use nix::sys::signal::{kill, Signal};
 use nix::sys::termios::{cfmakeraw, tcdrain, tcgetattr, tcsetattr, SetArg, Termios};
 use nix::sys::wait::waitpid;
 use nix::unistd::{read, write, ForkResult, Pid};
-use std::io::{Read, Write};
+use std::io::{stdin, Write};
+use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -147,7 +148,7 @@ pub trait OsApi: Send + Sync {
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
-    fn get_stdin_reader(&self) -> Box<dyn Read>;
+    fn read_from_stdin(&self) -> Vec<u8>;
     fn get_stdout_writer(&self) -> Box<dyn Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
@@ -182,12 +183,14 @@ impl OsApi for OsInputOutput {
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())
     }
-    fn get_stdin_reader(&self) -> Box<dyn Read> {
-        // TODO: stdin lock, right now it's not done because we don't have where to put it
-        // if we put it on the struct, we won't be able to clone the struct
-        // if we leave it here, we're referencing a temporary value
-        let stdin = ::std::io::stdin();
-        Box::new(stdin)
+    fn read_from_stdin(&self) -> Vec<u8> {
+        let stdin = stdin();
+        let mut stdin = stdin.lock();
+        let buffer = stdin.fill_buf().unwrap();
+        let length = buffer.len();
+        let read_bytes = Vec::from(buffer);
+        stdin.consume(length);
+        read_bytes
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         let stdout = ::std::io::stdout();
