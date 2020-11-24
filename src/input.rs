@@ -58,6 +58,7 @@ impl InputHandler {
         assert_eq!(self.mode, InputMode::Normal);
 
         loop {
+            self.buffer = [0; 10];
             self.stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
