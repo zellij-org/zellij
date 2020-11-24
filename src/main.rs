@@ -26,7 +26,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::{consts::MOSAIC_IPC_PIPE, logging::*};
+use crate::utils::consts::MOSAIC_IPC_PIPE;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
