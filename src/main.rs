@@ -11,7 +11,7 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
