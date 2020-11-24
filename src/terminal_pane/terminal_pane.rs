@@ -335,7 +335,6 @@ impl vte::Perform for TerminalPane {
         // TBD
     }
 
-    #[warn(clippy::if_same_then_else)]
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
         if c == 'm' {
             if params.is_empty() || params[0] == 0 {

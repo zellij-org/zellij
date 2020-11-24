@@ -374,8 +374,8 @@ impl Scroll {
             self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
-        let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
-        while let Some((current_index, current_line)) = indices_and_canonical_lines.next() {
+        let indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
+        for (current_index, current_line) in indices_and_canonical_lines {
             if current_index == canonical_line_cursor_position {
                 y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
                 break;
