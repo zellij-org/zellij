@@ -257,6 +257,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .unwrap(),
     );
 
+    // Here be dragons! This is very much a work in progress, and isn't quite functional
+    // yet. It's being left out of the tests because is slows them down massively (by
+    // recompiling a WASM module for every single test). Stay tuned for more updates!
+    #[cfg(not(test))]
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
@@ -268,7 +272,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     println!("Compiling module...");
                     // FIXME: Switch to a higher performance compiler (`Store::default()`) and cache this on disk
                     // I could use `(de)serialize_to_file()` for that
-                    let module = Module::from_file(&store, "target/wasm32-wasi/debug/module.wasm")?;
+                    let module = if let Ok(m) = Module::from_file(&store, "strider.wasm") {
+                        m
+                    } else {
+                        return Ok(()) // Just abort this thread quietly if the WASM isn't found
+                    };
 
                     // FIXME: Upstream the `Pipe` struct
                     //let output = fluff::Pipe::new();
@@ -343,6 +351,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             _ => (),
                         } */
                     }
+                    debug_log_to_file("WASM module loaded and exited cleanly :)".to_string())?;
                     Ok(())
                 }().unwrap()
             })
