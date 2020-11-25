@@ -58,7 +58,7 @@ impl InputHandler {
 
         loop {
             self.buffer = [0; 10];
-            self.stdin
+            let _ = self.stdin
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
 
