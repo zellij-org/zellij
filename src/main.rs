@@ -26,7 +26,10 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::{consts::MOSAIC_IPC_PIPE, logging::*};
+use crate::utils::{
+    consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
+    logging::*,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -84,6 +87,8 @@ pub fn main() {
         stream.write_all(&api_command).unwrap();
     } else {
         let os_input = get_os_input();
+        atomic_create_dir(MOSAIC_TMP_DIR).unwrap();
+        atomic_create_dir(MOSAIC_TMP_LOG_DIR).unwrap();
         start(Box::new(os_input), opts);
     }
 }
