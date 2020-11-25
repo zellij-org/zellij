@@ -293,6 +293,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         "host_open_file",
                         Function::new_native_with_env(&store, Arc::clone(&wasi_env.state), host_open_file),
                     ); */
+                    fn noop() {}
+                    host_exports.insert("host_open_file", Function::new_native(&store, noop));
                     import_object.register("mosaic", host_exports);
                     let instance = Instance::new(&module, &import_object)?;
 
