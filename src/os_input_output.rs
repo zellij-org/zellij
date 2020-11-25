@@ -74,10 +74,13 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
-            if let signal_hook::SIGINT = signal {
-                child.kill().unwrap();
-                child.wait().unwrap();
-                break 'handle_exit;
+            match signal {
+                signal_hook::SIGINT => {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    break 'handle_exit;
+                }	
+                _ => {}	
             }
         }
     }
