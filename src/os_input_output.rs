@@ -79,8 +79,8 @@ fn handle_command_exit(mut child: Child) {
                     child.kill().unwrap();
                     child.wait().unwrap();
                     break 'handle_exit;
-                }	
-                _ => {}	
+                }
+                _ => {}
             }
         }
     }
