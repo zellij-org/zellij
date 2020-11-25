@@ -1,3 +1,5 @@
+#![allow(clippy::clippy::if_same_then_else)]
+
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;

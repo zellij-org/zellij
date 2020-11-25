@@ -29,7 +29,8 @@ pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     }
 }
 
-pub fn _delete_log_file() -> io::Result<()> {
+#[allow(dead_code)]
+pub fn delete_log_file() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_FILE).is_ok() {
         fs::remove_file(MOSAIC_TMP_LOG_FILE)
     } else {
@@ -37,7 +38,8 @@ pub fn _delete_log_file() -> io::Result<()> {
     }
 }
 
-pub fn _delete_log_dir() -> io::Result<()> {
+#[allow(dead_code)]
+pub fn delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)
     } else {

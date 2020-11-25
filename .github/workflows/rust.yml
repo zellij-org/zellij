@@ -46,6 +46,5 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - uses: actions-rs/clippy@master
-        with:
-          args: --all-features --all-targets
+      - name: Run clippy
+        run: cargo clippy --all-features --all-targets
