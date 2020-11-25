@@ -275,7 +275,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     let module = if let Ok(m) = Module::from_file(&store, "strider.wasm") {
                         m
                     } else {
-                        return Ok(()) // Just abort this thread quietly if the WASM isn't found
+                        return Ok(()); // Just abort this thread quietly if the WASM isn't found
                     };
 
                     // FIXME: Upstream the `Pipe` struct
@@ -353,7 +353,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
                     debug_log_to_file("WASM module loaded and exited cleanly :)".to_string())?;
                     Ok(())
-                }().unwrap()
+                }()
+                .unwrap()
             })
             .unwrap(),
     );
