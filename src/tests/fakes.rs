@@ -4,6 +4,7 @@ use ::std::io::{Read, Write};
 use ::std::os::unix::io::RawFd;
 use ::std::path::PathBuf;
 use ::std::sync::{Arc, Mutex};
+use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
@@ -24,14 +25,16 @@ pub struct FakeStdinReader {
     pub input_chars: Vec<[u8; 10]>,
     pub read_position: usize,
     last_snapshot_time: Arc<Mutex<Instant>>,
+    started_reading_from_pty: Arc<AtomicBool>,
 }
 
 impl FakeStdinReader {
-    pub fn new(input_chars: Vec<[u8; 10]>, last_snapshot_time: Arc<Mutex<Instant>>) -> Self {
+    pub fn new(input_chars: Vec<[u8; 10]>, last_snapshot_time: Arc<Mutex<Instant>>, started_reading_from_pty: Arc<AtomicBool>) -> Self {
         FakeStdinReader {
             input_chars,
             read_position: 0,
             last_snapshot_time,
+            started_reading_from_pty,
         }
     }
 }
@@ -39,11 +42,15 @@ impl FakeStdinReader {
 impl Read for FakeStdinReader {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         loop {
-            let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
-            if last_snapshot_time.elapsed() > MIN_TIME_BETWEEN_SNAPSHOTS {
-                break;
+            if self.started_reading_from_pty.load(Ordering::SeqCst) == false {
+                ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS);
             } else {
-                ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
+                let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
+                if last_snapshot_time.elapsed() > MIN_TIME_BETWEEN_SNAPSHOTS {
+                    break;
+                } else {
+                    ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
+                }
             }
         }
         let read_position = self.read_position;
@@ -120,6 +127,7 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
+    started_reading_from_pty: Arc<AtomicBool>,
 }
 
 impl FakeInputOutput {
@@ -137,6 +145,7 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
+            started_reading_from_pty: Arc::new(AtomicBool::new(false)),
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -200,6 +209,7 @@ impl OsApi for FakeInputOutput {
                 // them fail
                 ::std::thread::sleep(::std::time::Duration::from_millis(25));
             } else if attempts_left == 0 {
+                self.started_reading_from_pty.store(true, Ordering::SeqCst);
                 return Ok(0);
             }
             let mut read_buffers = self.read_buffers.lock().unwrap();
@@ -213,6 +223,7 @@ impl OsApi for FakeInputOutput {
                     if bytes_read > bytes.read_position {
                         bytes.set_read_position(bytes_read);
                     }
+                    self.started_reading_from_pty.store(true, Ordering::SeqCst);
                     return Ok(bytes_read);
                 }
                 None => {
@@ -245,7 +256,7 @@ impl OsApi for FakeInputOutput {
                 input_chars.push(*bytes);
             }
         }
-        let reader = FakeStdinReader::new(input_chars, self.last_snapshot_time.clone());
+        let reader = FakeStdinReader::new(input_chars, self.last_snapshot_time.clone(), self.started_reading_from_pty.clone());
         Box::new(reader)
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
