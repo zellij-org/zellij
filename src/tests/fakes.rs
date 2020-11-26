@@ -3,8 +3,8 @@ use ::std::collections::HashMap;
 use ::std::io::{Read, Write};
 use ::std::os::unix::io::RawFd;
 use ::std::path::PathBuf;
-use ::std::sync::{Arc, Mutex};
 use ::std::sync::atomic::{AtomicBool, Ordering};
+use ::std::sync::{Arc, Mutex};
 use ::std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
@@ -29,7 +29,11 @@ pub struct FakeStdinReader {
 }
 
 impl FakeStdinReader {
-    pub fn new(input_chars: Vec<[u8; 10]>, last_snapshot_time: Arc<Mutex<Instant>>, started_reading_from_pty: Arc<AtomicBool>) -> Self {
+    pub fn new(
+        input_chars: Vec<[u8; 10]>,
+        last_snapshot_time: Arc<Mutex<Instant>>,
+        started_reading_from_pty: Arc<AtomicBool>,
+    ) -> Self {
         FakeStdinReader {
             input_chars,
             read_position: 0,
@@ -256,7 +260,11 @@ impl OsApi for FakeInputOutput {
                 input_chars.push(*bytes);
             }
         }
-        let reader = FakeStdinReader::new(input_chars, self.last_snapshot_time.clone(), self.started_reading_from_pty.clone());
+        let reader = FakeStdinReader::new(
+            input_chars,
+            self.last_snapshot_time.clone(),
+            self.started_reading_from_pty.clone(),
+        );
         Box::new(reader)
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
