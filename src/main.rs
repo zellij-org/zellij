@@ -312,7 +312,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
                     // This eventually calls the `.init()` method
                     start.call(&[])?;
-                    
+
                     #[warn(clippy::never_loop)]
                     loop {
                         break;
