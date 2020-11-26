@@ -46,7 +46,7 @@ impl FakeStdinReader {
 impl Read for FakeStdinReader {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         loop {
-            if self.started_reading_from_pty.load(Ordering::SeqCst) == false {
+            if self.started_reading_from_pty.load(Ordering::Acquire) == false {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS);
             } else {
                 let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
@@ -213,7 +213,7 @@ impl OsApi for FakeInputOutput {
                 // them fail
                 ::std::thread::sleep(::std::time::Duration::from_millis(25));
             } else if attempts_left == 0 {
-                self.started_reading_from_pty.store(true, Ordering::SeqCst);
+                self.started_reading_from_pty.store(true, Ordering::Release);
                 return Ok(0);
             }
             let mut read_buffers = self.read_buffers.lock().unwrap();
@@ -227,7 +227,7 @@ impl OsApi for FakeInputOutput {
                     if bytes_read > bytes.read_position {
                         bytes.set_read_position(bytes_read);
                     }
-                    self.started_reading_from_pty.store(true, Ordering::SeqCst);
+                    self.started_reading_from_pty.store(true, Ordering::Release);
                     return Ok(bytes_read);
                 }
                 None => {
