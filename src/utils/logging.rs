@@ -7,8 +7,20 @@ use std::{
 
 use crate::utils::consts::{MOSAIC_TMP_LOG_DIR, MOSAIC_TMP_LOG_FILE};
 
-fn atomic_create_file(file_name: &str) {
+pub fn atomic_create_file(file_name: &str) {
     let _ = fs::OpenOptions::new().create(true).open(file_name);
+}
+
+pub fn atomic_create_dir(dir_name: &str) -> io::Result<()> {
+    if let Err(e) = fs::create_dir(dir_name) {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            Ok(())
+        } else {
+            Err(e)
+        }
+    } else {
+        Ok(())
+    }
 }
 
 pub fn debug_log_to_file(message: String) -> io::Result<()> {
