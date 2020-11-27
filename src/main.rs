@@ -12,6 +12,7 @@ mod terminal_pane;
 mod utils;
 
 use std::io::Write;
+use backtrace::Backtrace;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -37,6 +38,7 @@ enum ApiCommand {
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+    Error(String),
 }
 
 #[derive(StructOpt, Debug, Default)]
@@ -95,10 +97,49 @@ pub fn main() {
 
 pub enum AppInstruction {
     Exit,
+    Error,
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
+
+    std::panic::set_hook(Box::new(move |info| {
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
+
+        let backtrace = Backtrace::new();
+        let thread = thread::current();
+        let thread = thread.name().unwrap_or("unnamed");
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => &**s,
+                None => "Box<Any>",
+            },
+        };
+
+        let backtrace = match info.location() {
+            Some(location) => {
+                format!(
+                    "\nthread '{}' panicked at '{}': {}:{}\n{:?}",
+                    thread,
+                    msg,
+                    location.file(),
+                    location.line(),
+                    backtrace
+                )
+            }
+            None => {
+                format!(
+                    "\nthread '{}' panicked at '{}'\n{:?}",
+                    thread, msg, backtrace
+                )
+            }
+        };
+
+        let api_command = bincode::serialize(&ApiCommand::Error(backtrace)).unwrap();
+        stream.write_all(&api_command).unwrap();
+    }));
 
     let command_is_executing = CommandIsExecuting::new();
 
@@ -367,6 +408,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             use std::io::Read;
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
+            let send_app_instructions = send_app_instructions.clone();
+            let mut os_input = os_input.clone();
             move || {
                 std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
@@ -402,6 +445,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                     send_screen_instructions
                                         .send(ScreenInstruction::MoveFocus)
                                         .unwrap();
+                                }
+                                ApiCommand::Error(backtrace) => {
+                                    os_input.unset_raw_mode(0);
+                                    println!("{}", backtrace);
+                                    send_app_instructions.send(AppInstruction::Error).unwrap();
                                 }
                             }
                         }
@@ -442,6 +490,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 break;
+            }
+            AppInstruction::Error => {
+                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                for thread_handler in active_threads {
+                    let _ = thread_handler.join();
+                }
+                std::process::exit(1);
             }
         }
     }

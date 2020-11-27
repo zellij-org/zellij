@@ -7,12 +7,19 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-termios = "0.3"
+backtrace = "0.3.55"
+bincode = "1.3.1"
+futures = "0.3.5"
 libc = "0.2"
 nix = "0.17.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
 signal-hook = "0.1.10"
-unicode-width = "0.1.8"
+structopt = "0.3"
+termios = "0.3"
 unicode-truncate = "0.1.1"
+unicode-width = "0.1.8"
 vte = "0.8.0"
 futures = "0.3.5"
 serde = { version = "1.0", features = ["derive"] }
