@@ -134,10 +134,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout.and_then(|layout_path| {
-        let layout = Layout::new(layout_path);
-        Some(layout)
-    });
+    let maybe_layout = opts.layout.map(Layout::new);
 
     active_threads.push(
         thread::Builder::new()
@@ -316,6 +313,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     // This eventually calls the `.init()` method
                     start.call(&[])?;
 
+                    #[warn(clippy::never_loop)]
                     loop {
                         break;
                         //let (cols, rows) = terminal::size()?;
@@ -377,7 +375,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     match stream {
                         Ok(mut stream) => {
                             let mut buffer = [0; 65535]; // TODO: more accurate
-                            stream
+                            let _ = stream
                                 .read(&mut buffer)
                                 .expect("failed to parse ipc message");
                             let decoded: ApiCommand = bincode::deserialize(&buffer)
@@ -422,7 +420,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
-            let command_is_executing = command_is_executing.clone();
             move || {
                 input_loop(
                     os_input,
@@ -434,6 +431,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             }
         });
 
+    #[warn(clippy::never_loop)]
     loop {
         let app_instruction = receive_app_instructions
             .recv()
@@ -459,7 +457,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     );
 
     os_input.unset_raw_mode(0);
-    os_input
+    let _ = os_input
         .get_stdout_writer()
         .write(goodbye_message.as_bytes())
         .unwrap();

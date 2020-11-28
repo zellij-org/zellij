@@ -38,17 +38,17 @@ impl Stream for ReadFromPid {
             Ok(res) => {
                 if *res == 0 {
                     // indicates end of file
-                    return Poll::Ready(None);
+                    Poll::Ready(None)
                 } else {
                     let res = Some(read_buffer[..=*res].to_vec());
-                    return Poll::Ready(res);
+                    Poll::Ready(res)
                 }
             }
             Err(e) => {
                 match e {
                     nix::Error::Sys(errno) => {
                         if *errno == nix::errno::Errno::EAGAIN {
-                            return Poll::Ready(Some(vec![])); // TODO: better with timeout waker somehow
+                            Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
                         } else {
                             Poll::Ready(None)
                         }
@@ -296,12 +296,12 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        &self
-            .send_screen_instructions
+        self.send_screen_instructions
             .send(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
-            )));
+            )))
+            .unwrap();
         for id in new_pane_pids {
             stream_terminal_bytes(
                 id,
