@@ -143,7 +143,7 @@ impl CanonicalLine {
     ) {
         let mut empty_char_character = EMPTY_TERMINAL_CHARACTER;
         empty_char_character.styles = style_of_empty_space;
-        
+
         if fragment_index > 0 {
             for i in 0..(fragment_index - 1) {
                 let fragment = self.wrapped_fragments.get_mut(i).unwrap();
@@ -634,7 +634,8 @@ impl Scroll {
                     // if we're at the top line, we create a new line and remove the last line that
                     // would otherwise overflow
                     self.canonical_lines.remove(scroll_region_bottom);
-                    self.canonical_lines.insert(current_canonical_line_index, CanonicalLine::new());
+                    self.canonical_lines
+                        .insert(current_canonical_line_index, CanonicalLine::new());
                 } else if current_canonical_line_index > scroll_region_top
                     && current_canonical_line_index <= scroll_region_bottom
                 {

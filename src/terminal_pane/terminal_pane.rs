@@ -9,10 +9,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{
-    debug_log_to_file,
-    debug_log_to_file_pid_0,
-};
+use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -837,11 +834,15 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-		match (byte, intermediates.get(0)) {
+        match (byte, intermediates.get(0)) {
             (b'M', None) => {
                 self.scroll.move_cursor_up_in_scroll_region(1);
-            },
-            _ => debug_log_to_file(format!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates)).unwrap(),
+            }
+            _ => debug_log_to_file(format!(
+                "Unhandled esc_dispatch: {}->{:?}",
+                byte, intermediates
+            ))
+            .unwrap(),
         }
     }
 }

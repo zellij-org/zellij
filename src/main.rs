@@ -32,7 +32,7 @@ use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
-    logging::*
+    logging::*,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
