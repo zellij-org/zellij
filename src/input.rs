@@ -84,7 +84,6 @@ impl InputHandler {
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
-
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
             // debug_log_to_file(format!("buffer {:?}", stdin_buffer));
 

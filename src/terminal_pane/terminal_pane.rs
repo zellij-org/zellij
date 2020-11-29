@@ -1,3 +1,5 @@
+#![allow(clippy::clippy::if_same_then_else)]
+
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
@@ -285,7 +287,7 @@ impl TerminalPane {
     fn move_cursor_backwards(&mut self, count: usize) {
         self.scroll.move_cursor_backwards(count);
     }
-    fn reset_all_ansi_codes(&mut self) {
+    fn _reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
     }
 }
@@ -302,15 +304,20 @@ impl vte::Perform for TerminalPane {
     }
 
     fn execute(&mut self, byte: u8) {
-        if byte == 13 {
-            // 0d, carriage return
-            self.move_to_beginning_of_line();
-        } else if byte == 08 {
-            // backspace
-            self.move_cursor_backwards(1);
-        } else if byte == 10 {
-            // 0a, newline
-            self.add_newline();
+        match byte {
+            8 => {
+                // backspace
+                self.move_cursor_backwards(1);
+            }
+            10 => {
+                // 0a, newline
+                self.add_newline();
+            }
+            13 => {
+                // 0d, carriage return
+                self.move_to_beginning_of_line();
+            }
+            _ => {}
         }
     }
 
@@ -718,12 +725,9 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.hide_cursor();
-                        self.mark_for_rerender();
-                    }
-                    _ => {}
+                if let Some(&25) = params.get(0) {
+                    self.scroll.hide_cursor();
+                    self.mark_for_rerender();
                 };
             }
         } else if c == 'h' {
@@ -733,12 +737,9 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(25) => {
-                        self.scroll.show_cursor();
-                        self.mark_for_rerender();
-                    }
-                    _ => {}
+                if let Some(&25) = params.get(0) {
+                    self.scroll.show_cursor();
+                    self.mark_for_rerender();
                 };
             }
         } else if c == 'r' {

@@ -3,6 +3,7 @@ use ::std::collections::{HashMap, VecDeque};
 use ::std::io::Write;
 use ::std::os::unix::io::RawFd;
 use ::std::path::PathBuf;
+use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::{Arc, Mutex};
 use ::std::time::{Duration, Instant};
 
@@ -69,6 +70,7 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
+    started_reading_from_pty: Arc<AtomicBool>,
 }
 
 impl FakeInputOutput {
@@ -87,6 +89,7 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
+            started_reading_from_pty: Arc::new(AtomicBool::new(false)),
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -154,6 +157,7 @@ impl OsApi for FakeInputOutput {
                 // them fail
                 ::std::thread::sleep(::std::time::Duration::from_millis(25));
             } else if attempts_left == 0 {
+                self.started_reading_from_pty.store(true, Ordering::Release);
                 return Ok(0);
             }
             let mut read_buffers = self.read_buffers.lock().unwrap();
@@ -167,6 +171,7 @@ impl OsApi for FakeInputOutput {
                     if bytes_read > bytes.read_position {
                         bytes.set_read_position(bytes_read);
                     }
+                    self.started_reading_from_pty.store(true, Ordering::Release);
                     return Ok(bytes_read);
                 }
                 None => {
