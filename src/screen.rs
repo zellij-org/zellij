@@ -55,7 +55,7 @@ pub enum ScreenInstruction {
     NewPane(RawFd),
     HorizontalSplit(RawFd),
     VerticalSplit(RawFd),
-    WriteCharacter([u8; 10]),
+    WriteCharacter(Vec<u8>),
     ResizeLeft,
     ResizeRight,
     ResizeDown,
@@ -383,21 +383,10 @@ impl Screen {
         let terminal_output = self.terminals.get_mut(&pid).unwrap();
         terminal_output.handle_event(event);
     }
-    pub fn write_to_active_terminal(&mut self, bytes: [u8; 10]) {
+    pub fn write_to_active_terminal(&mut self, mut bytes: Vec<u8>) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
-            // this is a bit of a hack and is done in order not to send trailing
-            // zeros to the terminal (because they mess things up)
-            // TODO: fix this by only sending around the exact bytes read from stdin
-            let mut trimmed_bytes = vec![];
-            for byte in bytes.iter() {
-                if *byte == 0 {
-                    break;
-                } else {
-                    trimmed_bytes.push(*byte);
-                }
-            }
             self.os_api
-                .write_to_tty_stdin(*active_terminal_id, &mut trimmed_bytes)
+                .write_to_tty_stdin(*active_terminal_id, &mut bytes)
                 .expect("failed to write to terminal");
             self.os_api
                 .tcdrain(*active_terminal_id)
