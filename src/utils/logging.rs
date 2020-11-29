@@ -30,9 +30,7 @@ pub fn debug_log_to_file(message: String) -> io::Result<()> {
         .create(true)
         .open(MOSAIC_TMP_LOG_FILE)?;
     file.write_all(message.as_bytes())?;
-    file.write_all("\n".as_bytes())?;
-
-    Ok(())
+    file.write_all(b"\n")
 }
 
 pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
@@ -48,26 +46,28 @@ pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
 
 pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     if pid == 0 {
-        debug_log_to_file(message)?;
+        debug_log_to_file(message)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_log_file() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_FILE).is_ok() {
-        fs::remove_file(MOSAIC_TMP_LOG_FILE)?;
+        fs::remove_file(MOSAIC_TMP_LOG_FILE)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_log_dir() -> io::Result<()> {
     if fs::metadata(MOSAIC_TMP_LOG_DIR).is_ok() {
-        fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)?;
+        fs::remove_dir_all(MOSAIC_TMP_LOG_DIR)
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
 pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
@@ -79,7 +79,5 @@ pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
         .append(true)
         .create(true)
         .open(path)?;
-    file.write_all(&[message])?;
-
-    Ok(())
+    file.write_all(&[message])
 }

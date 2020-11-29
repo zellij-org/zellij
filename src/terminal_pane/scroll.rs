@@ -4,7 +4,6 @@ use ::std::fmt::{self, Debug, Formatter};
 use crate::terminal_pane::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
 
 /*
  * Scroll
@@ -56,7 +55,7 @@ impl CanonicalLine {
             .collect();
         let mut wrapped_fragments = Vec::with_capacity(characters.len() / new_width);
 
-        while characters.len() > 0 {
+        while !characters.is_empty() {
             if characters.len() > new_width {
                 wrapped_fragments.push(WrappedFragment::from_vec(
                     characters.drain(..new_width).collect(),
@@ -65,7 +64,7 @@ impl CanonicalLine {
                 wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
             }
         }
-        if wrapped_fragments.len() == 0 {
+        if wrapped_fragments.is_empty() {
             wrapped_fragments.push(WrappedFragment::new());
         }
         self.wrapped_fragments = wrapped_fragments;
@@ -234,7 +233,7 @@ impl CursorPosition {
     pub fn move_to_next_canonical_line(&mut self) {
         self.line_index.0 += 1;
     }
-    pub fn move_to_prev_canonical_line(&mut self) {
+    pub fn _move_to_prev_canonical_line(&mut self) {
         self.line_index.0 -= 1;
     }
     pub fn move_to_beginning_of_linewrap(&mut self) {
@@ -291,37 +290,30 @@ impl Scroll {
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         let mut lines: VecDeque<Vec<TerminalCharacter>> = VecDeque::new(); // TODO: with capacity lines_from_end?
-        let mut canonical_lines = self.canonical_lines.iter().rev();
+        let canonical_lines = self.canonical_lines.iter().rev();
         let mut lines_to_skip = self.viewport_bottom_offset.unwrap_or(0);
-        'gather_lines: loop {
-            match canonical_lines.next() {
-                Some(current_canonical_line) => {
-                    for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
-                        let mut line: Vec<TerminalCharacter> =
-                            wrapped_fragment.characters.iter().copied().collect();
-                        if lines_to_skip > 0 {
-                            lines_to_skip -= 1;
-                        } else {
-                            for _ in line.len()..self.total_columns {
-                                // pad line if needed
-                                line.push(EMPTY_TERMINAL_CHARACTER);
-                            }
-                            lines.push_front(line);
-                        }
-                        if lines.len() == self.lines_in_view {
-                            break 'gather_lines;
-                        }
+        'gather_lines: for current_canonical_line in canonical_lines {
+            for wrapped_fragment in current_canonical_line.wrapped_fragments.iter().rev() {
+                let mut line: Vec<TerminalCharacter> =
+                    wrapped_fragment.characters.iter().copied().collect();
+                if lines_to_skip > 0 {
+                    lines_to_skip -= 1;
+                } else {
+                    for _ in line.len()..self.total_columns {
+                        // pad line if needed
+                        line.push(EMPTY_TERMINAL_CHARACTER);
                     }
+                    lines.push_front(line);
                 }
-                None => break, // no more lines
+                if lines.len() == self.lines_in_view {
+                    break 'gather_lines;
+                }
             }
         }
         if lines.len() < self.lines_in_view {
             // pad lines in case we don't have enough scrollback to fill the view
-            let mut empty_line = vec![];
-            for _ in 0..self.total_columns {
-                empty_line.push(EMPTY_TERMINAL_CHARACTER);
-            }
+            let empty_line = vec![EMPTY_TERMINAL_CHARACTER; self.total_columns];
+
             for _ in lines.len()..self.lines_in_view {
                 // pad lines in case we didn't have enough
                 lines.push_back(empty_line.clone());
@@ -377,15 +369,19 @@ impl Scroll {
                 }
             }
         }
-        if current_canonical_line_index == self.canonical_lines.len() - 1 {
-            self.canonical_lines.push(CanonicalLine::new());
-            self.cursor_position.move_to_next_canonical_line();
-            self.cursor_position.move_to_beginning_of_canonical_line();
-        } else if current_canonical_line_index < self.canonical_lines.len() - 1 {
-            self.cursor_position.move_to_next_canonical_line();
-            self.cursor_position.move_to_beginning_of_canonical_line();
-        } else {
-            panic!("cursor out of bounds, cannot add_canonical_line");
+
+        use std::cmp::Ordering;
+        match current_canonical_line_index.cmp(&(self.canonical_lines.len() - 1)) {
+            Ordering::Equal => {
+                self.canonical_lines.push(CanonicalLine::new());
+                self.cursor_position.move_to_next_canonical_line();
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            }
+            Ordering::Less => {
+                self.cursor_position.move_to_next_canonical_line();
+                self.cursor_position.move_to_beginning_of_canonical_line();
+            }
+            _ => panic!("cursor out of bounds, cannot add_canonical_line"),
         }
     }
     pub fn cursor_coordinates_on_screen(&self) -> Option<(usize, usize)> {
@@ -397,18 +393,13 @@ impl Scroll {
             self.cursor_position.line_index;
         let x = self.cursor_position.column_index;
         let mut y = 0;
-        let mut indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
-        loop {
-            match indices_and_canonical_lines.next() {
-                Some((current_index, current_line)) => {
-                    if current_index == canonical_line_cursor_position {
-                        y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
-                        break;
-                    } else {
-                        y += current_line.wrapped_fragments.len();
-                    }
-                }
-                None => break,
+        let indices_and_canonical_lines = self.canonical_lines.iter().enumerate().rev();
+        for (current_index, current_line) in indices_and_canonical_lines {
+            if current_index == canonical_line_cursor_position {
+                y += current_line.wrapped_fragments.len() - line_wrap_cursor_position;
+                break;
+            } else {
+                y += current_line.wrapped_fragments.len();
             }
         }
         let total_lines = self
@@ -444,6 +435,7 @@ impl Scroll {
         } else {
             count
         };
+
         for _ in current_fragment.characters.len()..current_cursor_column_position + move_count {
             current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
         }
@@ -460,7 +452,7 @@ impl Scroll {
     pub fn move_cursor_to_beginning_of_linewrap(&mut self) {
         self.cursor_position.move_to_beginning_of_linewrap();
     }
-    pub fn move_cursor_to_beginning_of_canonical_line(&mut self) {
+    pub fn _move_cursor_to_beginning_of_canonical_line(&mut self) {
         self.cursor_position.move_to_beginning_of_canonical_line();
     }
     pub fn move_cursor_backwards(&mut self, count: usize) {
@@ -570,6 +562,7 @@ impl Scroll {
             .wrapped_fragments
             .get_mut(current_line_wrap_position)
             .expect("cursor out of bounds");
+
         for _ in current_fragment.characters.len()..col {
             current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
         }
