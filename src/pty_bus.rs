@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
-use crate::utils::logging::debug_to_file;
+use crate::utils::logging::{debug_log_to_file, debug_to_file};
 use crate::ScreenInstruction;
 
 pub struct ReadFromPid {

@@ -7,7 +7,10 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
+use crate::utils::logging::{
+    debug_log_to_file,
+    debug_log_to_file_pid_0,
+};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -680,8 +683,11 @@ impl vte::Perform for TerminalPane {
             if params[0] == 0 {
                 self.scroll
                     .clear_canonical_line_right_of_cursor(self.pending_styles);
+            } else if params[0] == 1 {
+                self.scroll
+                    .clear_canonical_line_left_of_cursor(self.pending_styles);
             }
-        // TODO: implement 1 and 2
+        // TODO: implement 2
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
@@ -826,11 +832,15 @@ impl vte::Perform for TerminalPane {
             self.scroll.add_empty_lines_in_scroll_region(count);
         } else {
             debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
-            panic!("unhandled csi: {}->{:?}", c, params);
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {
-        // TBD
+    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
+		match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.scroll.move_cursor_up_in_scroll_region(1);
+            },
+            _ => debug_log_to_file(format!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates)).unwrap(),
+        }
     }
 }

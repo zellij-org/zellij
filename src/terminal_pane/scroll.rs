@@ -136,6 +136,28 @@ impl CanonicalLine {
 
         self.wrapped_fragments.truncate(fragment_index + 1);
     }
+    pub fn replace_with_empty_chars_before_cursor(
+        &mut self,
+        fragment_index: usize,
+        until_col: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
+        let mut empty_char_character = EMPTY_TERMINAL_CHARACTER;
+        empty_char_character.styles = style_of_empty_space;
+        
+        if fragment_index > 0 {
+            for i in 0..(fragment_index - 1) {
+                let fragment = self.wrapped_fragments.get_mut(i).unwrap();
+                for i in 0..fragment.characters.len() {
+                    fragment.add_character(empty_char_character, i);
+                }
+            }
+        }
+        let current_fragment = self.wrapped_fragments.get_mut(fragment_index).unwrap();
+        for i in 0..until_col {
+            current_fragment.add_character(empty_char_character, i);
+        }
+    }
 }
 
 impl Debug for CanonicalLine {
@@ -339,21 +361,18 @@ impl Scroll {
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
-            // the scroll region indices start at 1, so we need to adjust them
             if self.show_cursor {
                 // scroll region should be ignored if the cursor is hidden
-                let scroll_region_top_index = scroll_region_top - 1;
-                let scroll_region_bottom_index = scroll_region_bottom - 1;
-                if current_canonical_line_index == scroll_region_bottom_index + 1 {
+                if current_canonical_line_index == scroll_region_bottom {
                     // end of scroll region
                     // when we have a scroll region set and we're at its bottom
                     // we need to delete its first line, thus shifting all lines in it upwards
                     // then we add an empty line at its end which will be filled by the application
                     // controlling the scroll region (presumably filled by whatever comes next in the
                     // scroll buffer, but that's not something we control)
-                    self.canonical_lines.remove(scroll_region_top_index);
+                    self.canonical_lines.remove(scroll_region_top);
                     self.canonical_lines
-                        .insert(scroll_region_bottom_index + 1, CanonicalLine::new());
+                        .insert(scroll_region_bottom, CanonicalLine::new());
                     return;
                 }
             }
@@ -481,6 +500,20 @@ impl Scroll {
             style_of_empty_space,
         );
     }
+    pub fn clear_canonical_line_left_of_cursor(&mut self, style_of_empty_space: CharacterStyles) {
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
+        let current_cursor_column_position = self.cursor_position.column_index;
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        current_canonical_line.replace_with_empty_chars_before_cursor(
+            current_line_wrap_position,
+            current_cursor_column_position,
+            style_of_empty_space,
+        );
+    }
     pub fn clear_all_after_cursor(&mut self) {
         let (current_canonical_line_index, current_line_wrap_position) =
             self.cursor_position.line_index;
@@ -595,6 +628,24 @@ impl Scroll {
                     self.canonical_lines.remove(scroll_region_bottom_index + 1);
                     self.canonical_lines
                         .insert(current_canonical_line_index, CanonicalLine::new());
+                }
+            }
+        }
+    }
+    pub fn move_cursor_up_in_scroll_region(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            // the scroll region indices start at 1, so we need to adjust them
+            for _ in 0..count {
+                let current_canonical_line_index = self.cursor_position.line_index.0;
+                if current_canonical_line_index == scroll_region_top {
+                    // if we're at the top line, we create a new line and remove the last line that
+                    // would otherwise overflow
+                    self.canonical_lines.remove(scroll_region_bottom);
+                    self.canonical_lines.insert(current_canonical_line_index, CanonicalLine::new());
+                } else if current_canonical_line_index > scroll_region_top
+                    && current_canonical_line_index <= scroll_region_bottom
+                {
+                    self.move_cursor_up(count);
                 }
             }
         }

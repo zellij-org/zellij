@@ -35,6 +35,17 @@ pub fn debug_log_to_file(message: String) -> io::Result<()> {
     Ok(())
 }
 
+pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
+    atomic_create_file(MOSAIC_TMP_LOG_FILE);
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(MOSAIC_TMP_LOG_FILE)?;
+    file.write_all(message.as_bytes())?;
+
+    Ok(())
+}
+
 pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
     if pid == 0 {
         debug_log_to_file(message)?;
