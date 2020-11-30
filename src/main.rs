@@ -136,6 +136,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     let send_app_instructions_clone = send_app_instructions.clone();
 
+    #[cfg(not(test))]
     std::panic::set_hook(Box::new(move |info| {
         let backtrace = Backtrace::new();
         let thread = thread::current();
@@ -491,15 +492,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             AppInstruction::Error(backtrace) => {
                 os_input.unset_raw_mode(0);
                 println!("{}", backtrace);
-                #[cfg(not(test))]
-                {
-                    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                    for thread_handler in active_threads {
-                        let _ = thread_handler.join();
-                    }
-                    std::process::exit(1);
+                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                for thread_handler in active_threads {
+                    let _ = thread_handler.join();
                 }
+                std::process::exit(1);
             }
         }
     }
