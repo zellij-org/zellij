@@ -97,7 +97,7 @@ impl InputHandler {
                 .read(&mut self.buffer)
                 .expect("failed to read stdin");
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
-            // debug_log_to_file(format!("buffer {:?}", self.buffer));
+            //debug_log_to_file(format!("buffer {:?}", self.buffer));
             match self.buffer {
                 [7, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
                     // Ctrl-g
@@ -203,6 +203,30 @@ impl InputHandler {
                     self.send_screen_instructions
                         .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
                         .unwrap();
+                }
+                [121, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // y
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusLeft)
+                        .unwrap()
+                }
+                [117, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // u
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusDown)
+                        .unwrap()
+                }
+                [105, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // i
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusUp)
+                        .unwrap()
+                }
+                [111, 0, 0, 0, 0, 0, 0, 0, 0, 0] => {
+                    // o
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusRight)
+                        .unwrap()
                 }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}

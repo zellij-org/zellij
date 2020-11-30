@@ -8,6 +8,7 @@ use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
+use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
 
 /*
@@ -61,6 +62,10 @@ pub enum ScreenInstruction {
     ResizeDown,
     ResizeUp,
     MoveFocus,
+    MoveFocusLeft,
+    MoveFocusDown,
+    MoveFocusUp,
+    MoveFocusRight,
     Quit,
     ScrollUp,
     ScrollDown,
@@ -1290,6 +1295,154 @@ impl Screen {
             self.active_terminal = Some(*next_terminal);
         } else {
             self.active_terminal = Some(*first_terminal);
+        }
+        self.render();
+    }
+    pub fn move_focus_left(&mut self) {
+        if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_terminal();
+        match active_terminal {
+            Some(active) => {
+                let next_index = self
+                    .terminals
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, c))| {
+                        c.is_directly_left_of(&active) && c.horizontally_overlaps_with(&active)
+                    })
+                    .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                    .map(|(_, (pid, _))| pid);
+                match next_index {
+                    Some(p) => {
+                        self.active_terminal = Some(*p);
+                        ()
+                    }
+                    None => {
+                        self.active_terminal = Some(active.pid);
+                        ()
+                    }
+                }
+            }
+            None => {
+                self.active_terminal = Some(active_terminal.unwrap().pid);
+                ()
+            }
+        }
+        self.render();
+    }
+    pub fn move_focus_down(&mut self) {
+        if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_terminal();
+        match active_terminal {
+            Some(active) => {
+                let next_index = self
+                    .terminals
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, c))| {
+                        c.is_directly_below(&active) && c.vertically_overlaps_with(&active)
+                    })
+                    .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                    .map(|(_, (pid, _))| pid);
+                match next_index {
+                    Some(p) => {
+                        self.active_terminal = Some(*p);
+                        ()
+                    }
+                    None => {
+                        self.active_terminal = Some(active.pid);
+                        ()
+                    }
+                }
+            }
+            None => {
+                self.active_terminal = Some(active_terminal.unwrap().pid);
+                ()
+            }
+        }
+        self.render();
+    }
+    pub fn move_focus_up(&mut self) {
+        if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_terminal();
+        match active_terminal {
+            Some(active) => {
+                let next_index = self
+                    .terminals
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, c))| {
+                        c.is_directly_above(&active) && c.vertically_overlaps_with(&active)
+                    })
+                    .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                    .map(|(_, (pid, _))| pid);
+                match next_index {
+                    Some(p) => {
+                        self.active_terminal = Some(*p);
+                        ()
+                    }
+                    None => {
+                        self.active_terminal = Some(active.pid);
+                        ()
+                    }
+                }
+            }
+            None => {
+                self.active_terminal = Some(active_terminal.unwrap().pid);
+                ()
+            }
+        }
+        self.render();
+    }
+    pub fn move_focus_right(&mut self) {
+        if self.terminals.is_empty() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_terminal();
+        match active_terminal {
+            Some(active) => {
+                let next_index = self
+                    .terminals
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, c))| {
+                        c.is_directly_right_of(&active) && c.horizontally_overlaps_with(&active)
+                    })
+                    .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                    .map(|(_, (pid, _))| pid);
+                match next_index {
+                    Some(p) => {
+                        self.active_terminal = Some(*p);
+                        ()
+                    }
+                    None => {
+                        self.active_terminal = Some(active.pid);
+                        ()
+                    }
+                }
+            }
+            None => {
+                self.active_terminal = Some(active_terminal.unwrap().pid);
+                ()
+            }
         }
         self.render();
     }
