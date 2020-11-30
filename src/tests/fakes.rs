@@ -1,11 +1,11 @@
 use crate::terminal_pane::PositionAndSize;
-use ::std::collections::{HashMap, VecDeque};
-use ::std::io::Write;
-use ::std::os::unix::io::RawFd;
-use ::std::path::PathBuf;
-use ::std::sync::atomic::{AtomicBool, Ordering};
-use ::std::sync::{Arc, Mutex};
-use ::std::time::{Duration, Instant};
+use std::collections::{HashMap, VecDeque};
+use std::io::Write;
+use std::os::unix::io::RawFd;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};

@@ -1,4 +1,4 @@
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 
 use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;

@@ -115,9 +115,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         Receiver<PtyInstruction>,
     ) = channel();
     let (send_app_instructions, receive_app_instructions): (
-        Sender<AppInstruction>,
+        SyncSender<AppInstruction>,
         Receiver<AppInstruction>,
-    ) = channel();
+    ) = sync_channel(0);
     let mut screen = Screen::new(
         receive_screen_instructions,
         send_pty_instructions.clone(),
@@ -491,12 +491,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             AppInstruction::Error(backtrace) => {
                 os_input.unset_raw_mode(0);
                 println!("{}", backtrace);
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                for thread_handler in active_threads {
-                    let _ = thread_handler.join();
+                #[cfg(not(test))]
+                {
+                    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                    for thread_handler in active_threads {
+                        let _ = thread_handler.join();
+                    }
+                    std::process::exit(1);
                 }
-                std::process::exit(1);
             }
         }
     }
