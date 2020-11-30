@@ -25,8 +25,8 @@ impl Bytes {
         path_to_file.push("tests");
         path_to_file.push("fixtures");
         path_to_file.push(file_name);
-        let content =
-            fs::read(path_to_file).expect(&format!("could not read fixture {:?}", &file_name));
+        let content = fs::read(path_to_file)
+            .unwrap_or_else(|_| panic!("could not read fixture {:?}", &file_name));
         Bytes {
             content,
             read_position: 0,
