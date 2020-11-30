@@ -829,7 +829,7 @@ impl vte::Perform for TerminalPane {
             self.scroll.delete_lines_in_scroll_region(count);
             self.scroll.add_empty_lines_in_scroll_region(count);
         } else {
-            debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
+            let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
         }
     }
 
@@ -838,11 +838,12 @@ impl vte::Perform for TerminalPane {
             (b'M', None) => {
                 self.scroll.move_cursor_up_in_scroll_region(1);
             }
-            _ => debug_log_to_file(format!(
-                "Unhandled esc_dispatch: {}->{:?}",
-                byte, intermediates
-            ))
-            .unwrap(),
+            _ => {
+                let _ = debug_log_to_file(format!(
+                    "Unhandled esc_dispatch: {}->{:?}",
+                    byte, intermediates
+                ));
+            }
         }
     }
 }
