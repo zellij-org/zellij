@@ -380,8 +380,9 @@ impl Screen {
         }
     }
     pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
-        let terminal_output = self.terminals.get_mut(&pid).unwrap();
-        terminal_output.handle_event(event);
+        if let Some(terminal_output) = self.terminals.get_mut(&pid){
+            terminal_output.handle_event(event);
+        }
     }
     pub fn write_to_active_terminal(&mut self, mut bytes: Vec<u8>) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {

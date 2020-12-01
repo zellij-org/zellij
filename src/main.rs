@@ -11,18 +11,14 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
-use std::io::{self, Read, Write};
+use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-
-use wasmer::{Exports, Function, Instance, Module, Store, Value};
-use wasmer_wasi::WasiState;
 
 use crate::command_is_executing::CommandIsExecuting;
 use crate::input::input_loop;
@@ -257,13 +253,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     // Here be dragons! This is very much a work in progress, and isn't quite functional
     // yet. It's being left out of the tests because is slows them down massively (by
     // recompiling a WASM module for every single test). Stay tuned for more updates!
-    #[cfg(not(test))]
+    #[cfg(feature = "wasm-wip")]
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
             .spawn(move || {
                 // TODO: Clone shared state here
                 move || -> Result<(), Box<dyn std::error::Error>> {
+                    use std::io;
+                    use std::sync::{Arc, Mutex};
+                    use wasmer::{Exports, Function, Instance, Module, Store, Value};
+                    use wasmer_wasi::WasiState;
                     let store = Store::default();
 
                     println!("Compiling module...");
@@ -364,6 +364,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let _ipc_thread = thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
+            use std::io::Read;
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             move || {

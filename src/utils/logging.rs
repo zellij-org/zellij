@@ -23,14 +23,9 @@ pub fn atomic_create_dir(dir_name: &str) -> io::Result<()> {
     }
 }
 
-pub fn debug_log_to_file(message: String) -> io::Result<()> {
-    atomic_create_file(MOSAIC_TMP_LOG_FILE);
-    let mut file = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(MOSAIC_TMP_LOG_FILE)?;
-    file.write_all(message.as_bytes())?;
-    file.write_all(b"\n")
+pub fn debug_log_to_file(mut message: String) -> io::Result<()> {
+    message.push('\n');
+    debug_log_to_file_without_newline(message)
 }
 
 pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
@@ -39,9 +34,7 @@ pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
         .append(true)
         .create(true)
         .open(MOSAIC_TMP_LOG_FILE)?;
-    file.write_all(message.as_bytes())?;
-
-    Ok(())
+    file.write_all(message.as_bytes())
 }
 
 pub fn debug_log_to_file_pid_0(message: String, pid: RawFd) -> io::Result<()> {
