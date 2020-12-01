@@ -1,0 +1,32 @@
+---
+source: src/tests/integration/compatibility.rs
+expression: snapshot
+---
+  1  [||||||||||||||||||||||||||||||||||||||||||100.0%]   Tasks: 79, 382 thr; 1 running                             
+  2  [                                            0.0%]   Load average: 1.40 1.43 1.38                              
+  3  [                                            0.0%]   Uptime: 2 days, 07:33:50                                  
+  4  [                                            0.0%]                                                             
+  Mem[|||||||||||||||||||||||||||||||||||||3.64G/15.3G]                                                             
+  Swp[                                        0K/16.0G]                                                             
+                                                                                                                    
+    PID USER      PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command                                            
+ 123934 aram       20   0  8444  4384  3364 R 66.7  0.0  0:00.05 htop --delay=100000000000                          
+      1 root       20   0  171M 11616  8608 S  0.0  0.1  0:56.91 /sbin/init                                         
+    268 root       20   0 93324 34340 33072 S  0.0  0.2  0:01.05 /usr/lib/systemd/systemd-journald                  
+    276 root       20   0 32648 10192  7240 S  0.0  0.1  0:01.13 /usr/lib/systemd/systemd-udevd                     
+    286 root       20   0 78060  1132   996 S  0.0  0.0  0:00.00 /usr/bin/lvmetad -f                                
+    343 dbus       20   0  6952  4384  3520 S  0.0  0.0  0:13.85 /usr/bin/dbus-daemon --system --address=systemd: --
+    344 root       20   0 14588  7512  6176 S  0.0  0.0  0:03.21 /usr/bin/connmand -n --nodnsproxy                  
+    345 root       20   0 17696  8372  7128 S  0.0  0.1  0:00.67 /usr/lib/systemd/systemd-logind                    
+    395 root       20   0 1635M 83324 44976 S  0.0  0.5  0:32.43 /usr/bin/dockerd -H fd://                          
+    396 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.01 /usr/bin/dockerd -H fd://                          
+    397 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.01 /usr/bin/dockerd -H fd://                          
+    398 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                          
+    399 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                          
+    412 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                          
+    441 root       20   0 1635M 83324 44976 S  0.0  0.5  0:41.35 /usr/bin/dockerd -H fd://                          
+    442 root       20   0 1635M 83324 44976 S  0.0  0.5  0:33.61 /usr/bin/dockerd -H fd://                          
+    444 root       20   0 1635M 83324 44976 S  0.0  0.5  0:33.13 /usr/bin/dockerd -H fd://                          
+    449 root       20   0 1635M 83324 44976 S  0.0  0.5  0:41.39 /usr/bin/dockerd -H fd://                          
+F1Help  F2Setup F3SearchF4FilterF5Tree  F6SortByF7Nice -F8Nice +F9Kill  F10Quit                                     
+█                                                                                                                   
