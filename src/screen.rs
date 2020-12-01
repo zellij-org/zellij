@@ -1295,32 +1295,26 @@ impl Screen {
             return;
         }
         let active_terminal = self.get_active_terminal();
-        match active_terminal {
-            Some(active) => {
-                let next_index = self
-                    .terminals
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, c))| {
-                        c.is_directly_left_of(&active) && c.horizontally_overlaps_with(&active)
-                    })
-                    .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
-                    .map(|(_, (pid, _))| pid);
-                match next_index {
-                    Some(p) => {
-                        self.active_terminal = Some(*p);
-                        ()
-                    }
-                    None => {
-                        self.active_terminal = Some(active.pid);
-                        ()
-                    }
+        if let Some(active) = active_terminal {
+            let next_index = self
+                .terminals
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_left_of(&active) && c.horizontally_overlaps_with(&active)
+                })
+                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(p) => {
+                    self.active_terminal = Some(*p);
+                }
+                None => {
+                    self.active_terminal = Some(active.pid);
                 }
             }
-            None => {
-                self.active_terminal = Some(active_terminal.unwrap().pid);
-                ()
-            }
+        } else {
+            self.active_terminal = Some(active_terminal.unwrap().pid);
         }
         self.render();
     }
@@ -1332,32 +1326,26 @@ impl Screen {
             return;
         }
         let active_terminal = self.get_active_terminal();
-        match active_terminal {
-            Some(active) => {
-                let next_index = self
-                    .terminals
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, c))| {
-                        c.is_directly_below(&active) && c.vertically_overlaps_with(&active)
-                    })
-                    .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
-                    .map(|(_, (pid, _))| pid);
-                match next_index {
-                    Some(p) => {
-                        self.active_terminal = Some(*p);
-                        ()
-                    }
-                    None => {
-                        self.active_terminal = Some(active.pid);
-                        ()
-                    }
+        if let Some(active) = active_terminal {
+            let next_index = self
+                .terminals
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_below(&active) && c.vertically_overlaps_with(&active)
+                })
+                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(p) => {
+                    self.active_terminal = Some(*p);
+                }
+                None => {
+                    self.active_terminal = Some(active.pid);
                 }
             }
-            None => {
-                self.active_terminal = Some(active_terminal.unwrap().pid);
-                ()
-            }
+        } else {
+            self.active_terminal = Some(active_terminal.unwrap().pid);
         }
         self.render();
     }
@@ -1369,32 +1357,26 @@ impl Screen {
             return;
         }
         let active_terminal = self.get_active_terminal();
-        match active_terminal {
-            Some(active) => {
-                let next_index = self
-                    .terminals
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, c))| {
-                        c.is_directly_above(&active) && c.vertically_overlaps_with(&active)
-                    })
-                    .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
-                    .map(|(_, (pid, _))| pid);
-                match next_index {
-                    Some(p) => {
-                        self.active_terminal = Some(*p);
-                        ()
-                    }
-                    None => {
-                        self.active_terminal = Some(active.pid);
-                        ()
-                    }
+        if let Some(active) = active_terminal {
+            let next_index = self
+                .terminals
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_above(&active) && c.vertically_overlaps_with(&active)
+                })
+                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(p) => {
+                    self.active_terminal = Some(*p);
+                }
+                None => {
+                    self.active_terminal = Some(active.pid);
                 }
             }
-            None => {
-                self.active_terminal = Some(active_terminal.unwrap().pid);
-                ()
-            }
+        } else {
+            self.active_terminal = Some(active_terminal.unwrap().pid);
         }
         self.render();
     }
@@ -1406,32 +1388,26 @@ impl Screen {
             return;
         }
         let active_terminal = self.get_active_terminal();
-        match active_terminal {
-            Some(active) => {
-                let next_index = self
-                    .terminals
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, c))| {
-                        c.is_directly_right_of(&active) && c.horizontally_overlaps_with(&active)
-                    })
-                    .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
-                    .map(|(_, (pid, _))| pid);
-                match next_index {
-                    Some(p) => {
-                        self.active_terminal = Some(*p);
-                        ()
-                    }
-                    None => {
-                        self.active_terminal = Some(active.pid);
-                        ()
-                    }
+        if let Some(active) = active_terminal {
+            let next_index = self
+                .terminals
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_right_of(&active) && c.horizontally_overlaps_with(&active)
+                })
+                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(p) => {
+                    self.active_terminal = Some(*p);
+                }
+                None => {
+                    self.active_terminal = Some(active.pid);
                 }
             }
-            None => {
-                self.active_terminal = Some(active_terminal.unwrap().pid);
-                ()
-            }
+        } else {
+            self.active_terminal = Some(active_terminal.unwrap().pid);
         }
         self.render();
     }
