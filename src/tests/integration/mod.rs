@@ -7,3 +7,7 @@ pub mod resize_left;
 pub mod resize_right;
 pub mod resize_up;
 pub mod toggle_fullscreen;
+pub mod move_focus_down;
+pub mod move_focus_up;
+pub mod move_focus_left;
+pub mod move_focus_right;

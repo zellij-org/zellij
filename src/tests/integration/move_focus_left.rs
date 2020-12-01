@@ -6,7 +6,7 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-  COMMAND_TOGGLE, MOVE_FOCUS, MOVE_FOCUS_DOWN, MOVE_FOCUS_UP, QUIT, RESIZE_DOWN, RESIZE_LEFT,
+  COMMAND_TOGGLE, MOVE_FOCUS, MOVE_FOCUS_DOWN, MOVE_FOCUS_UP, MOVE_FOCUS_LEFT, MOVE_FOCUS_RIGHT, QUIT, RESIZE_DOWN, RESIZE_LEFT,
   SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
 };
 
@@ -15,7 +15,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 }
 
 #[test]
-pub fn move_focus_down() {
+pub fn move_focus_left() {
   let fake_win_size = PositionAndSize {
     columns: 121,
     rows: 20,
@@ -26,9 +26,8 @@ pub fn move_focus_down() {
   fake_input_output.add_terminal_input(&[
     &COMMAND_TOGGLE,
     &COMMAND_TOGGLE,
-    &SPLIT_HORIZONTALLY,
-    &MOVE_FOCUS_UP,
-    &MOVE_FOCUS_DOWN,
+    &SPLIT_VERTICALLY,
+    &MOVE_FOCUS_LEFT,
     &QUIT,
   ]);
   start(Box::new(fake_input_output.clone()), Opt::default());

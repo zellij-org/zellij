@@ -15,7 +15,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 }
 
 #[test]
-pub fn move_focus_down() {
+pub fn move_focus_up() {
   let fake_win_size = PositionAndSize {
     columns: 121,
     rows: 20,
@@ -28,7 +28,6 @@ pub fn move_focus_down() {
     &COMMAND_TOGGLE,
     &SPLIT_HORIZONTALLY,
     &MOVE_FOCUS_UP,
-    &MOVE_FOCUS_DOWN,
     &QUIT,
   ]);
   start(Box::new(fake_input_output.clone()), Opt::default());
