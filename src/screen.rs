@@ -380,6 +380,11 @@ impl Screen {
         }
     }
     pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
+        // if we don't have the terminal in self.terminals it's probably because
+        // of a race condition where the terminal was created in pty_bus but has not
+        // yet been created in Screen. These events are currently not buffered, so
+        // if you're debugging seemingly randomly missing stdout data, this is
+        // the reason
         if let Some(terminal_output) = self.terminals.get_mut(&pid) {
             terminal_output.handle_event(event);
         }
