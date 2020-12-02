@@ -3,6 +3,7 @@ mod tests;
 
 mod boundaries;
 mod command_is_executing;
+mod errors;
 mod input;
 mod layout;
 mod os_input_output;
@@ -12,7 +13,6 @@ mod terminal_pane;
 mod utils;
 
 use std::io::Write;
-use backtrace::Backtrace;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
@@ -134,49 +134,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     );
     let maybe_layout = opts.layout.map(Layout::new);
 
-    let send_app_instructions_clone = send_app_instructions.clone();
-
     #[cfg(not(test))]
-    std::panic::set_hook(Box::new(move |info| {
-        let backtrace = Backtrace::new();
-        let thread = thread::current();
-        let thread = thread.name().unwrap_or("unnamed");
-
-        let msg = match info.payload().downcast_ref::<&'static str>() {
-            Some(s) => *s,
-            None => match info.payload().downcast_ref::<String>() {
-                Some(s) => &**s,
-                None => "Box<Any>",
-            },
-        };
-
-        let backtrace = match info.location() {
-            Some(location) => {
-                format!(
-                    "\nthread '{}' panicked at '{}': {}:{}\n{:?}",
-                    thread,
-                    msg,
-                    location.file(),
-                    location.line(),
-                    backtrace
-                )
-            }
-            None => {
-                format!(
-                    "\nthread '{}' panicked at '{}'\n{:?}",
-                    thread, msg, backtrace
-                )
-            }
-        };
-
-        if send_app_instructions_clone
-            .send(AppInstruction::Error(backtrace.clone()))
-            .is_err()
-        {
-            get_os_input().unset_raw_mode(0);
-            println!("{}", backtrace);
-        }
-    }));
+    std::panic::set_hook({
+        use crate::errors::handle_panic;
+        let send_app_instructions = send_app_instructions.clone();
+        Box::new(move |info| {
+            handle_panic(info, &send_app_instructions);
+        })
+    });
 
     active_threads.push(
         thread::Builder::new()
@@ -465,7 +430,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 input_loop(
