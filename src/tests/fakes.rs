@@ -214,7 +214,7 @@ impl OsApi for FakeInputOutput {
                     std::thread::sleep(WAIT_TIME_BEFORE_QUITTING);
                 }
                 command
-            },
+            }
             None => {
                 // what is happening here?
                 //
