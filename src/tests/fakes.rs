@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(500);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
+const WAIT_TIME_BEFORE_QUITTING: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -207,7 +208,12 @@ impl OsApi for FakeInputOutput {
             }
         }
         match self.stdin_commands.lock().unwrap().pop_front() {
-            Some(command) => command,
+            Some(command) => {
+                if command == QUIT {
+                    std::thread::sleep(WAIT_TIME_BEFORE_QUITTING);
+                }
+                command
+            },
             None => {
                 // what is happening here?
                 //
