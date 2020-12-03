@@ -389,10 +389,12 @@ impl Screen {
             terminal_output.handle_event(event);
         }
     }
-    pub fn write_to_active_terminal(&mut self, mut bytes: Vec<u8>) {
+    pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
+            let active_terminal = self.get_active_terminal().unwrap();
+            let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
             self.os_api
-                .write_to_tty_stdin(*active_terminal_id, &mut bytes)
+                .write_to_tty_stdin(*active_terminal_id, &mut adjusted_input)
                 .expect("failed to write to terminal");
             self.os_api
                 .tcdrain(*active_terminal_id)
