@@ -286,21 +286,29 @@ impl TerminalPane {
         match input_bytes.as_slice() {
             [27, 91, 68] => { // left arrow
                 if self.cursor_key_mode { 
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
                     return "OD".as_bytes().to_vec()
                 }
             },
             [27, 91, 67] => { // right arrow
                 if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
                     return "OC".as_bytes().to_vec()
                 }
             },
             [27, 91, 65] => { // up arrow
                 if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
                     return "OA".as_bytes().to_vec()
                 }
             },
             [27, 91, 66] => { // down arrow
                 if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
                     return "OB".as_bytes().to_vec()
                 }
             }
