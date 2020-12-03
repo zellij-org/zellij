@@ -862,6 +862,7 @@ name = "mosaic"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "backtrace",
  "bincode",
  "futures",
  "insta",

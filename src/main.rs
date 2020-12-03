@@ -3,6 +3,7 @@ mod tests;
 
 mod boundaries;
 mod command_is_executing;
+mod errors;
 mod input;
 mod layout;
 mod os_input_output;
@@ -14,7 +15,7 @@ mod utils;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
@@ -95,6 +96,7 @@ pub fn main() {
 
 pub enum AppInstruction {
     Exit,
+    Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
@@ -113,9 +115,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         Receiver<PtyInstruction>,
     ) = channel();
     let (send_app_instructions, receive_app_instructions): (
-        Sender<AppInstruction>,
+        SyncSender<AppInstruction>,
         Receiver<AppInstruction>,
-    ) = channel();
+    ) = sync_channel(0);
     let mut screen = Screen::new(
         receive_screen_instructions,
         send_pty_instructions.clone(),
@@ -131,6 +133,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         opts.debug,
     );
     let maybe_layout = opts.layout.map(Layout::new);
+
+    #[cfg(not(test))]
+    std::panic::set_hook({
+        use crate::errors::handle_panic;
+        let send_app_instructions = send_app_instructions.clone();
+        Box::new(move |info| {
+            handle_panic(info, &send_app_instructions);
+        })
+    });
 
     active_threads.push(
         thread::Builder::new()
@@ -419,7 +430,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 input_loop(
@@ -442,6 +452,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 break;
+            }
+            AppInstruction::Error(backtrace) => {
+                os_input.unset_raw_mode(0);
+                println!("{}", backtrace);
+                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                for thread_handler in active_threads {
+                    let _ = thread_handler.join();
+                }
+                std::process::exit(1);
             }
         }
     }

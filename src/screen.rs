@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::boundaries::Boundaries;
 use crate::layout::Layout;
@@ -75,7 +75,7 @@ pub struct Screen {
     pub receiver: Receiver<ScreenInstruction>,
     max_panes: Option<usize>,
     send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: Sender<AppInstruction>,
+    send_app_instructions: SyncSender<AppInstruction>,
     full_screen_ws: PositionAndSize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
@@ -88,7 +88,7 @@ impl Screen {
     pub fn new(
         receive_screen_instructions: Receiver<ScreenInstruction>,
         send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: Sender<AppInstruction>,
+        send_app_instructions: SyncSender<AppInstruction>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
