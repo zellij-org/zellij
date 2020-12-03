@@ -10,15 +10,12 @@ pub fn handle_panic(info: &PanicInfo<'_>, send_app_instructions: &SyncSender<App
     let thread = thread.name().unwrap_or("unnamed");
 
     let msg = match info.payload().downcast_ref::<&'static str>() {
-        Some(s) => *s,
-        None => match info.payload().downcast_ref::<String>() {
-            Some(s) => &**s,
-            None => "Box<Any>",
-        },
+        Some(s) => Some(*s),
+        None => info.payload().downcast_ref::<String>().map(|s| &**s),
     };
 
-    let backtrace = match info.location() {
-        Some(location) => {
+    let backtrace = match (info.location(), msg) {
+        (Some(location), Some(msg)) => {
             format!(
                 "\nthread '{}' panicked at '{}': {}:{}\n{:?}",
                 thread,
@@ -28,11 +25,23 @@ pub fn handle_panic(info: &PanicInfo<'_>, send_app_instructions: &SyncSender<App
                 backtrace
             )
         }
-        None => {
+        (Some(location), None) => {
+            format!(
+                "\nthread '{}' panicked: {}:{}\n{:?}",
+                thread,
+                location.file(),
+                location.line(),
+                backtrace
+            )
+        }
+        (None, Some(msg)) => {
             format!(
                 "\nthread '{}' panicked at '{}'\n{:?}",
                 thread, msg, backtrace
             )
+        }
+        (None, None) => {
+            format!("\nthread '{}' panicked\n{:?}", thread, backtrace)
         }
     };
 
