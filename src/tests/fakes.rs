@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::QUIT;
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 const WAIT_TIME_BEFORE_QUITTING: Duration = Duration::from_millis(500);
