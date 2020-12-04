@@ -40,33 +40,8 @@ impl CanonicalLine {
         self.wrapped_fragments.push(new_fragment);
     }
     pub fn change_width(&mut self, new_width: usize) {
-        let mut characters: Vec<TerminalCharacter> = self
-            .wrapped_fragments
-            .iter()
-            .fold(
-                Vec::with_capacity(self.wrapped_fragments.len()),
-                |mut characters, wrapped_fragment| {
-                    characters.push(wrapped_fragment.characters.iter().copied());
-                    characters
-                },
-            )
-            .into_iter()
-            .flatten()
-            .collect();
-        let mut wrapped_fragments = Vec::with_capacity(characters.len() / new_width);
-
-        while !characters.is_empty() {
-            if characters.len() > new_width {
-                wrapped_fragments.push(WrappedFragment::from_vec(
-                    characters.drain(..new_width).collect(),
-                ));
-            } else {
-                wrapped_fragments.push(WrappedFragment::from_vec(characters.drain(..).collect()));
-            }
-        }
-        if wrapped_fragments.is_empty() {
-            wrapped_fragments.push(WrappedFragment::new());
-        }
+        let characters = self.flattened_characters();
+        let wrapped_fragments = CanonicalLine::fill_fragments_up_to_width(characters, new_width, None);
         self.wrapped_fragments = wrapped_fragments;
     }
     pub fn clear_after(&mut self, fragment_index: usize, column_index: usize) {
@@ -113,6 +88,24 @@ impl CanonicalLine {
             }
         }
     }
+    pub fn erase_chars(
+        &mut self,
+        fragment_index: usize,
+        from_col: usize,
+        count: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
+        let mut empty_character = EMPTY_TERMINAL_CHARACTER;
+        empty_character.styles = style_of_empty_space;
+        let current_width = self.wrapped_fragments.get(0).unwrap().characters.len();
+        let mut characters = self.flattened_characters();
+        let absolute_position_of_character = fragment_index * current_width + from_col;
+        for _ in 0..count {
+            characters.remove(absolute_position_of_character);
+        }
+        let wrapped_fragments = CanonicalLine::fill_fragments_up_to_width(characters, current_width, Some(empty_character));
+        self.wrapped_fragments = wrapped_fragments;
+    }
     pub fn replace_with_empty_chars_after_cursor(
         &mut self,
         fragment_index: usize,
@@ -156,6 +149,46 @@ impl CanonicalLine {
         for i in 0..until_col {
             current_fragment.add_character(empty_char_character, i);
         }
+    }
+    fn flattened_characters(&self) -> Vec<TerminalCharacter> {
+        self
+            .wrapped_fragments
+            .iter()
+            .fold(
+                Vec::with_capacity(self.wrapped_fragments.len()),
+                |mut characters, wrapped_fragment| {
+                    characters.push(wrapped_fragment.characters.iter().copied());
+                    characters
+                },
+            )
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+    fn fill_fragments_up_to_width(mut characters: Vec<TerminalCharacter>, width: usize, padding: Option<TerminalCharacter>) -> Vec<WrappedFragment> {
+        let mut wrapped_fragments = vec![];
+        while !characters.is_empty() {
+            if characters.len() > width {
+                wrapped_fragments.push(WrappedFragment::from_vec(
+                    characters.drain(..width).collect(),
+                ));
+            } else {
+                let mut last_fragment = WrappedFragment::from_vec(characters.drain(..).collect());
+                let last_fragment_len = last_fragment.characters.len();
+                if let Some(empty_char_character) = padding {
+                    if last_fragment_len < width {
+                        for _ in last_fragment_len..width {
+                            last_fragment.characters.push(empty_char_character);
+                        }
+                    }
+                }
+                wrapped_fragments.push(last_fragment);
+            }
+        }
+        if wrapped_fragments.is_empty() {
+            wrapped_fragments.push(WrappedFragment::new());
+        }
+        wrapped_fragments
     }
 }
 
@@ -532,6 +565,26 @@ impl Scroll {
             .get_mut(current_canonical_line_index)
             .expect("cursor out of bounds");
         current_canonical_line.replace_with_empty_chars(
+            current_line_wrap_position,
+            current_cursor_column_position,
+            count,
+            style_of_empty_space,
+        );
+    }
+    pub fn erase_characters(
+        &mut self,
+        count: usize,
+        style_of_empty_space: CharacterStyles,
+    ) {
+
+        let (current_canonical_line_index, current_line_wrap_position) =
+            self.cursor_position.line_index;
+        let current_cursor_column_position = self.cursor_position.column_index;
+        let current_canonical_line = self
+            .canonical_lines
+            .get_mut(current_canonical_line_index)
+            .expect("cursor out of bounds");
+        current_canonical_line.erase_chars(
             current_line_wrap_position,
             current_cursor_column_position,
             count,
