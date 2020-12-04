@@ -9,7 +9,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
+use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_3};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -730,8 +730,7 @@ impl vte::Perform for TerminalPane {
                     .pending_styles
                     .background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
-                debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid)
-                    .unwrap();
+                let _ = debug_log_to_file(format!("unhandled csi m code {:?}", params));
             }
         } else if c == 'C' {
             // move cursor forward
@@ -761,12 +760,21 @@ impl vte::Perform for TerminalPane {
         // TODO: implement 1
         } else if c == 'H' {
             // goto row/col
+            // we subtract 1 from the row/column because these are 1 indexed
+            // (except when they are 0, in which case they should be 1
+            // don't look at me, I don't make the rules)
             let (row, col) = if params.len() == 1 {
-                (params[0] as usize, params[0] as usize)
+                if params[0] == 0 {
+                    (0, params[0] as usize)
+                } else {
+                    (params[0] as usize - 1, params[0] as usize)
+                }
             } else {
-                // we subtract 1 from the column because after we get a cursor goto, the print
-                // character should be printed on top of the cursor
-                (params[0] as usize, params[1] as usize - 1)
+                if params[0] == 0 {
+                    (0, params[1] as usize - 1)
+                } else {
+                    (params[0] as usize - 1, params[1] as usize - 1)
+                }
             };
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
@@ -818,8 +826,9 @@ impl vte::Perform for TerminalPane {
             }
         } else if c == 'r' {
             if params.len() > 1 {
-                let top_line_index = params[0] as usize;
-                let bottom_line_index = params[1] as usize;
+                // minus 1 because these are 1 indexed
+                let top_line_index = params[0] as usize - 1;
+                let bottom_line_index = params[1] as usize - 1;
                 self.scroll
                     .set_scroll_region(top_line_index, bottom_line_index);
                 self.scroll.show_cursor();
@@ -865,7 +874,8 @@ impl vte::Perform for TerminalPane {
             let line = if params[0] == 0 {
                 1
             } else {
-                params[0] as usize
+                // minus 1 because this is 1 indexed
+                params[0] as usize - 1
             };
             self.scroll.move_cursor_to_line(line);
         } else if c == 'P' {
