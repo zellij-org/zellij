@@ -191,6 +191,30 @@ impl InputHandler {
                         .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
                         .unwrap();
                 }
+                [121] => {
+                    // y
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusLeft)
+                        .unwrap()
+                }
+                [117] => {
+                    // u
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusDown)
+                        .unwrap()
+                }
+                [105] => {
+                    // i
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusUp)
+                        .unwrap()
+                }
+                [111] => {
+                    // o
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::MoveFocusRight)
+                        .unwrap()
+                }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}
             }

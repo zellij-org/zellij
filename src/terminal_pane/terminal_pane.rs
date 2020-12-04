@@ -42,6 +42,21 @@ pub struct TerminalPane {
     pending_styles: CharacterStyles,
 }
 
+impl Rect for TerminalPane {
+    fn x(&self) -> usize {
+        self.get_x()
+    }
+    fn y(&self) -> usize {
+        self.get_y()
+    }
+    fn rows(&self) -> usize {
+        self.get_rows()
+    }
+    fn columns(&self) -> usize {
+        self.get_columns()
+    }
+}
+
 impl Rect for &mut TerminalPane {
     fn x(&self) -> usize {
         self.get_x()

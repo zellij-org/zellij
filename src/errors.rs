@@ -15,34 +15,26 @@ pub fn handle_panic(info: &PanicInfo<'_>, send_app_instructions: &SyncSender<App
     };
 
     let backtrace = match (info.location(), msg) {
-        (Some(location), Some(msg)) => {
-            format!(
-                "\nthread '{}' panicked at '{}': {}:{}\n{:?}",
-                thread,
-                msg,
-                location.file(),
-                location.line(),
-                backtrace
-            )
-        }
-        (Some(location), None) => {
-            format!(
-                "\nthread '{}' panicked: {}:{}\n{:?}",
-                thread,
-                location.file(),
-                location.line(),
-                backtrace
-            )
-        }
-        (None, Some(msg)) => {
-            format!(
-                "\nthread '{}' panicked at '{}'\n{:?}",
-                thread, msg, backtrace
-            )
-        }
-        (None, None) => {
-            format!("\nthread '{}' panicked\n{:?}", thread, backtrace)
-        }
+        (Some(location), Some(msg)) => format!(
+            "\nthread '{}' panicked at '{}': {}:{}\n{:?}",
+            thread,
+            msg,
+            location.file(),
+            location.line(),
+            backtrace
+        ),
+        (Some(location), None) => format!(
+            "\nthread '{}' panicked: {}:{}\n{:?}",
+            thread,
+            location.file(),
+            location.line(),
+            backtrace
+        ),
+        (None, Some(msg)) => format!(
+            "\nthread '{}' panicked at '{}'\n{:?}",
+            thread, msg, backtrace
+        ),
+        (None, None) => format!("\nthread '{}' panicked\n{:?}", thread, backtrace),
     };
 
     if thread == "main" {

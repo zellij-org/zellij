@@ -67,4 +67,12 @@ pub mod commands {
     pub const CLOSE_FOCUSED_PANE: [u8; 1] = [120];
     /// e
     pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 1] = [101];
+    /// y
+    pub const MOVE_FOCUS_LEFT: [u8; 1] = [121];
+    /// u
+    pub const MOVE_FOCUS_DOWN: [u8; 1] = [117];
+    /// i
+    pub const MOVE_FOCUS_UP: [u8; 1] = [105];
+    /// o
+    pub const MOVE_FOCUS_RIGHT: [u8; 1] = [111];
 }

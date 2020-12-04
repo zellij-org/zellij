@@ -231,6 +231,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         ScreenInstruction::MoveFocus => {
                             screen.move_focus();
                         }
+                        ScreenInstruction::MoveFocusLeft => {
+                            screen.move_focus_left();
+                        }
+                        ScreenInstruction::MoveFocusDown => {
+                            screen.move_focus_down();
+                        }
+                        ScreenInstruction::MoveFocusRight => {
+                            screen.move_focus_right();
+                        }
+                        ScreenInstruction::MoveFocusUp => {
+                            screen.move_focus_up();
+                        }
                         ScreenInstruction::ScrollUp => {
                             screen.scroll_active_terminal_up();
                         }
