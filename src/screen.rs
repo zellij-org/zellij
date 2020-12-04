@@ -4,13 +4,13 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::boundaries::Boundaries;
+use crate::boundaries::Rect;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
 use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
-use crate::boundaries::Rect;
 
 /*
  * Screen
