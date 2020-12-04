@@ -1,5 +1,5 @@
 /// Module for handling input
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, SyncSender};
 
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
@@ -13,7 +13,7 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: Sender<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: Sender<AppInstruction>,
+    send_app_instructions: SyncSender<AppInstruction>,
 }
 
 impl InputHandler {
@@ -22,7 +22,7 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         send_screen_instructions: Sender<ScreenInstruction>,
         send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: Sender<AppInstruction>,
+        send_app_instructions: SyncSender<AppInstruction>,
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
@@ -265,7 +265,7 @@ pub fn input_loop(
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: Sender<ScreenInstruction>,
     send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: Sender<AppInstruction>,
+    send_app_instructions: SyncSender<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
         os_input,

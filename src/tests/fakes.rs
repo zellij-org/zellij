@@ -1,16 +1,18 @@
 use crate::terminal_pane::PositionAndSize;
-use ::std::collections::{HashMap, VecDeque};
-use ::std::io::Write;
-use ::std::os::unix::io::RawFd;
-use ::std::path::PathBuf;
-use ::std::sync::atomic::{AtomicBool, Ordering};
-use ::std::sync::{Arc, Mutex};
-use ::std::time::{Duration, Instant};
+use std::collections::{HashMap, VecDeque};
+use std::io::Write;
+use std::os::unix::io::RawFd;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::QUIT;
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
+const WAIT_TIME_BEFORE_QUITTING: Duration = Duration::from_millis(50);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -207,7 +209,12 @@ impl OsApi for FakeInputOutput {
             }
         }
         match self.stdin_commands.lock().unwrap().pop_front() {
-            Some(command) => command,
+            Some(command) => {
+                if command == QUIT {
+                    std::thread::sleep(WAIT_TIME_BEFORE_QUITTING);
+                }
+                command
+            }
             None => {
                 // what is happening here?
                 //

@@ -1,4 +1,4 @@
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use std::path::PathBuf;
 
 use crate::terminal_pane::PositionAndSize;

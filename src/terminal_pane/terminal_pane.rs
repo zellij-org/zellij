@@ -38,6 +38,7 @@ pub struct TerminalPane {
     pub should_render: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
+    pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pending_styles: CharacterStyles,
 }
 
@@ -88,6 +89,7 @@ impl TerminalPane {
             pending_styles,
             position_and_size,
             position_and_size_override: None,
+            cursor_key_mode: false,
         }
     }
     pub fn mark_for_rerender(&mut self) {
@@ -290,6 +292,48 @@ impl TerminalPane {
         self.position_and_size_override = None;
         self.reflow_lines();
         self.mark_for_rerender();
+    }
+    pub fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+        // there are some cases in which the terminal state means that input sent to it
+        // needs to be adjusted.
+        // here we match against those cases - if need be, we adjust the input and if not
+        // we send back the original input
+        match input_bytes.as_slice() {
+            [27, 91, 68] => {
+                // left arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OD".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 67] => {
+                // right arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OC".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 65] => {
+                // up arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OA".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 66] => {
+                // down arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OB".as_bytes().to_vec();
+                }
+            }
+            _ => {}
+        };
+        input_bytes
     }
     fn add_newline(&mut self) {
         self.scroll.add_canonical_line();
@@ -743,9 +787,15 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                if let Some(&25) = params.get(0) {
-                    self.scroll.hide_cursor();
-                    self.mark_for_rerender();
+                match params.get(0) {
+                    Some(&25) => {
+                        self.scroll.hide_cursor();
+                        self.mark_for_rerender();
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = false;
+                    }
+                    _ => {}
                 };
             }
         } else if c == 'h' {
@@ -755,9 +805,15 @@ impl vte::Perform for TerminalPane {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                if let Some(&25) = params.get(0) {
-                    self.scroll.show_cursor();
-                    self.mark_for_rerender();
+                match params.get(0) {
+                    Some(&25) => {
+                        self.scroll.show_cursor();
+                        self.mark_for_rerender();
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = true;
+                    }
+                    _ => {}
                 };
             }
         } else if c == 'r' {
@@ -853,12 +909,7 @@ impl vte::Perform for TerminalPane {
             (b'M', None) => {
                 self.scroll.move_cursor_up_in_scroll_region(1);
             }
-            _ => {
-                let _ = debug_log_to_file(format!(
-                    "Unhandled esc_dispatch: {}->{:?}",
-                    byte, intermediates
-                ));
-            }
+            _ => {}
         }
     }
 }
