@@ -10,6 +10,7 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
 use crate::utils::logging::debug_log_to_file;
 use crate::AppInstruction;
+use crate::boundaries::Rect;
 
 /*
  * Screen

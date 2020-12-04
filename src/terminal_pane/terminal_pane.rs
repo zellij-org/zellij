@@ -41,6 +41,21 @@ pub struct TerminalPane {
     pending_styles: CharacterStyles,
 }
 
+impl Rect for TerminalPane {
+    fn x(&self) -> usize {
+        self.get_x()
+    }
+    fn y(&self) -> usize {
+        self.get_y()
+    }
+    fn rows(&self) -> usize {
+        self.get_rows()
+    }
+    fn columns(&self) -> usize {
+        self.get_columns()
+    }
+}
+
 impl Rect for &mut TerminalPane {
     fn x(&self) -> usize {
         self.get_x()
@@ -163,48 +178,6 @@ impl TerminalPane {
         self.position_and_size.rows = ws.rows;
         self.reflow_lines();
         self.mark_for_rerender();
-    }
-    pub fn is_directly_right_of(&self, other: &TerminalPane) -> bool {
-        self.get_x() == other.get_x() + other.get_columns() + 1
-    }
-    pub fn is_directly_left_of(&self, other: &TerminalPane) -> bool {
-        self.get_x() + self.get_columns() + 1 == other.get_x()
-    }
-    pub fn is_directly_below(&self, other: &TerminalPane) -> bool {
-        self.get_y() == other.get_y() + other.get_rows() + 1
-    }
-    pub fn is_directly_above(&self, other: &TerminalPane) -> bool {
-        self.get_y() + self.get_rows() + 1 == other.get_y()
-    }
-    pub fn horizontally_overlaps_with(&self, other: &TerminalPane) -> bool {
-        (self.get_y() >= other.get_y() && self.get_y() <= (other.get_y() + other.get_rows()))
-            || ((self.get_y() + self.get_rows()) <= (other.get_y() + other.get_rows())
-                && (self.get_y() + self.get_rows()) > other.get_y())
-            || (self.get_y() <= other.get_y()
-                && (self.get_y() + self.get_rows() >= (other.get_y() + other.get_rows())))
-            || (other.get_y() <= self.get_y()
-                && (other.get_y() + other.get_rows() >= (self.get_y() + self.get_rows())))
-    }
-    pub fn get_horizontal_overlap_with(&self, other: &TerminalPane) -> usize {
-        std::cmp::min(
-            self.get_y() + self.get_rows(),
-            other.get_y() + other.get_rows(),
-        ) - std::cmp::max(self.get_y(), other.get_y())
-    }
-    pub fn vertically_overlaps_with(&self, other: &TerminalPane) -> bool {
-        (self.get_x() >= other.get_x() && self.get_x() <= (other.get_x() + other.get_columns()))
-            || ((self.get_x() + self.get_columns()) <= (other.get_x() + other.get_columns())
-                && (self.get_x() + self.get_columns()) > other.get_x())
-            || (self.get_x() <= other.get_x()
-                && (self.get_x() + self.get_columns() >= (other.get_x() + other.get_columns())))
-            || (other.get_x() <= self.get_x()
-                && (other.get_x() + other.get_columns() >= (self.get_x() + self.get_columns())))
-    }
-    pub fn get_vertical_overlap_with(&self, other: &TerminalPane) -> usize {
-        std::cmp::min(
-            self.get_x() + self.get_columns(),
-            other.get_x() + other.get_columns(),
-        ) - std::cmp::max(self.get_x(), other.get_x())
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
