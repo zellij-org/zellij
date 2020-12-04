@@ -41,7 +41,8 @@ impl CanonicalLine {
     }
     pub fn change_width(&mut self, new_width: usize) {
         let characters = self.flattened_characters();
-        let wrapped_fragments = CanonicalLine::fill_fragments_up_to_width(characters, new_width, None);
+        let wrapped_fragments =
+            CanonicalLine::fill_fragments_up_to_width(characters, new_width, None);
         self.wrapped_fragments = wrapped_fragments;
     }
     pub fn clear_after(&mut self, fragment_index: usize, column_index: usize) {
@@ -103,7 +104,11 @@ impl CanonicalLine {
         for _ in 0..count {
             characters.remove(absolute_position_of_character);
         }
-        let wrapped_fragments = CanonicalLine::fill_fragments_up_to_width(characters, current_width, Some(empty_character));
+        let wrapped_fragments = CanonicalLine::fill_fragments_up_to_width(
+            characters,
+            current_width,
+            Some(empty_character),
+        );
         self.wrapped_fragments = wrapped_fragments;
     }
     pub fn replace_with_empty_chars_after_cursor(
@@ -151,8 +156,7 @@ impl CanonicalLine {
         }
     }
     fn flattened_characters(&self) -> Vec<TerminalCharacter> {
-        self
-            .wrapped_fragments
+        self.wrapped_fragments
             .iter()
             .fold(
                 Vec::with_capacity(self.wrapped_fragments.len()),
@@ -165,7 +169,11 @@ impl CanonicalLine {
             .flatten()
             .collect()
     }
-    fn fill_fragments_up_to_width(mut characters: Vec<TerminalCharacter>, width: usize, padding: Option<TerminalCharacter>) -> Vec<WrappedFragment> {
+    fn fill_fragments_up_to_width(
+        mut characters: Vec<TerminalCharacter>,
+        width: usize,
+        padding: Option<TerminalCharacter>,
+    ) -> Vec<WrappedFragment> {
         let mut wrapped_fragments = vec![];
         while !characters.is_empty() {
             if characters.len() > width {
@@ -571,12 +579,7 @@ impl Scroll {
             style_of_empty_space,
         );
     }
-    pub fn erase_characters(
-        &mut self,
-        count: usize,
-        style_of_empty_space: CharacterStyles,
-    ) {
-
+    pub fn erase_characters(&mut self, count: usize, style_of_empty_space: CharacterStyles) {
         let (current_canonical_line_index, current_line_wrap_position) =
             self.cursor_position.line_index;
         let current_cursor_column_position = self.cursor_position.column_index;

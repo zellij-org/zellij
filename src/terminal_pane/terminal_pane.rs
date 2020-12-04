@@ -860,8 +860,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll
-                .erase_characters(count, self.pending_styles);
+            self.scroll.erase_characters(count, self.pending_styles);
         } else if c == 'X' {
             // erase characters and replace with empty characters of current style
             let count = if params[0] == 0 {
