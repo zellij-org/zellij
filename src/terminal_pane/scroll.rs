@@ -641,12 +641,9 @@ impl Scroll {
     }
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
-            // the scroll region indices start at 1, so we need to adjust them
-            let scroll_region_top_index = scroll_region_top - 1;
-            let scroll_region_bottom_index = scroll_region_bottom - 1;
             let current_canonical_line_index = self.cursor_position.line_index.0;
-            if current_canonical_line_index >= scroll_region_top_index
-                && current_canonical_line_index <= scroll_region_bottom_index
+            if current_canonical_line_index >= scroll_region_top
+                && current_canonical_line_index <= scroll_region_bottom
             {
                 // when deleting lines inside the scroll region, we must make sure it stays the
                 // same size (and that other lines below it aren't shifted inside it)
@@ -655,26 +652,23 @@ impl Scroll {
                 for _ in 0..count {
                     self.canonical_lines.remove(current_canonical_line_index);
                     self.canonical_lines
-                        .insert(scroll_region_bottom_index + 1, CanonicalLine::new());
+                        .insert(scroll_region_bottom, CanonicalLine::new());
                 }
             }
         }
     }
     pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
-            // the scroll region indices start at 1, so we need to adjust them
-            let scroll_region_top_index = scroll_region_top - 1;
-            let scroll_region_bottom_index = scroll_region_bottom - 1;
             let current_canonical_line_index = self.cursor_position.line_index.0;
-            if current_canonical_line_index >= scroll_region_top_index
-                && current_canonical_line_index <= scroll_region_bottom_index
+            if current_canonical_line_index >= scroll_region_top
+                && current_canonical_line_index <= scroll_region_bottom
             {
                 // when adding empty lines inside the scroll region, we must make sure it stays the
                 // same size and that lines don't "leak" outside of it
                 // so we add an empty line where the cursor currently is, and delete the last line
                 // of the scroll region
                 for _ in 0..count {
-                    self.canonical_lines.remove(scroll_region_bottom_index + 1);
+                    self.canonical_lines.remove(scroll_region_bottom);
                     self.canonical_lines
                         .insert(current_canonical_line_index, CanonicalLine::new());
                 }
