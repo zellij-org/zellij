@@ -3,7 +3,6 @@ mod tests;
 
 mod boundaries;
 mod command_is_executing;
-mod hotkeys;
 mod errors;
 mod input;
 mod layout;
@@ -23,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
-use crate::input::input_loop;
+use crate::input::handler::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};

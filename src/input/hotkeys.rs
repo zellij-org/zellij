@@ -270,7 +270,8 @@ impl std::string::ToString for ModifierKey {
 }
 
 /// Represents a particular key combination that can be input by a user
-#[derive(Debug, PartialEq)]
+/// @@@khs26 We need a key that can implement Eq + Hash
+#[derive(Debug)]
 pub struct InputKey {
     /// Base (keyboard) key
     base_key: BaseInputKey,
@@ -310,6 +311,26 @@ impl InputKey {
 impl fmt::Display for InputKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.user_string)
+    }
+}
+
+/// If the base key and modifiers are equal, we consider the keys equal
+impl PartialEq for InputKey {
+    fn eq(&self, other: &Self) -> bool {
+        let mut equal = self.base_key == other.base_key;
+        for modifier in &self.modifiers {
+            equal |= other.modifiers.contains(modifier);
+        }
+
+        equal
+    }
+}
+
+impl Eq for InputKey { }
+
+impl std::hash::Hash for InputKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        todo!()
     }
 }
 
