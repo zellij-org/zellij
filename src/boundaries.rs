@@ -192,6 +192,42 @@ pub trait Rect {
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
     }
+    fn is_directly_right_of(&self, other: &Self) -> bool {
+        self.x() == other.x() + other.columns() + 1
+    }
+    fn is_directly_left_of(&self, other: &Self) -> bool {
+        self.x() + self.columns() + 1 == other.x()
+    }
+    fn is_directly_below(&self, other: &Self) -> bool {
+        self.y() == other.y() + other.rows() + 1
+    }
+    fn is_directly_above(&self, other: &Self) -> bool {
+        self.y() + self.rows() + 1 == other.y()
+    }
+    fn horizontally_overlaps_with(&self, other: &Self) -> bool {
+        (self.y() >= other.y() && self.y() <= (other.y() + other.rows()))
+            || ((self.y() + self.rows()) <= (other.y() + other.rows())
+                && (self.y() + self.rows()) > other.y())
+            || (self.y() <= other.y() && (self.y() + self.rows() >= (other.y() + other.rows())))
+            || (other.y() <= self.y() && (other.y() + other.rows() >= (self.y() + self.rows())))
+    }
+    fn get_horizontal_overlap_with(&self, other: &Self) -> usize {
+        std::cmp::min(self.y() + self.rows(), other.y() + other.rows())
+            - std::cmp::max(self.y(), other.y())
+    }
+    fn vertically_overlaps_with(&self, other: &Self) -> bool {
+        (self.x() >= other.x() && self.x() <= (other.x() + other.columns()))
+            || ((self.x() + self.columns()) <= (other.x() + other.columns())
+                && (self.x() + self.columns()) > other.x())
+            || (self.x() <= other.x()
+                && (self.x() + self.columns() >= (other.x() + other.columns())))
+            || (other.x() <= self.x()
+                && (other.x() + other.columns() >= (self.x() + self.columns())))
+    }
+    fn get_vertical_overlap_with(&self, other: &Self) -> usize {
+        std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
+            - std::cmp::max(self.x(), other.x())
+    }
 }
 
 pub struct Boundaries {

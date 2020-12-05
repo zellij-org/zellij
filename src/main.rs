@@ -4,6 +4,7 @@ mod tests;
 mod boundaries;
 mod command_is_executing;
 mod hotkeys;
+mod errors;
 mod input;
 mod layout;
 mod os_input_output;
@@ -12,14 +13,13 @@ mod screen;
 mod terminal_pane;
 mod utils;
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
@@ -28,7 +28,10 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::{consts::MOSAIC_TMP_FOLDER, logging::*};
+use crate::utils::{
+    consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
+    logging::*,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -62,46 +65,45 @@ pub struct Opt {
 
 pub fn main() {
     let opts = Opt::from_args();
-    if opts.split.is_some() {
-        match opts.split {
-            Some('h') => {
-                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+    if let Some(split_dir) = opts.split {
+        match split_dir {
+            'h' => {
+                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
-            Some('v') => {
-                let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+            'v' => {
+                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
                 let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
                 stream.write_all(&api_command).unwrap();
             }
             _ => {}
         };
     } else if opts.move_focus {
-        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
         stream.write_all(&api_command).unwrap();
-    } else if opts.open_file.is_some() {
-        let mut stream = UnixStream::connect(MOSAIC_TMP_FOLDER).unwrap();
-        let file_to_open = opts.open_file.unwrap();
+    } else if let Some(file_to_open) = opts.open_file {
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
     } else {
         let os_input = get_os_input();
+        atomic_create_dir(MOSAIC_TMP_DIR).unwrap();
+        atomic_create_dir(MOSAIC_TMP_LOG_DIR).unwrap();
         start(Box::new(os_input), opts);
     }
 }
 
 pub enum AppInstruction {
     Exit,
+    Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
-
-    let _ = delete_log_dir();
-    delete_log_file().unwrap();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
@@ -114,9 +116,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         Receiver<PtyInstruction>,
     ) = channel();
     let (send_app_instructions, receive_app_instructions): (
-        Sender<AppInstruction>,
+        SyncSender<AppInstruction>,
         Receiver<AppInstruction>,
-    ) = channel();
+    ) = sync_channel(0);
     let mut screen = Screen::new(
         receive_screen_instructions,
         send_pty_instructions.clone(),
@@ -131,6 +133,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         os_input.clone(),
         opts.debug,
     );
+    let maybe_layout = opts.layout.map(Layout::new);
+
+    #[cfg(not(test))]
+    std::panic::set_hook({
+        use crate::errors::handle_panic;
+        let send_app_instructions = send_app_instructions.clone();
+        Box::new(move |info| {
+            handle_panic(info, &send_app_instructions);
+        })
+    });
 
     active_threads.push(
         thread::Builder::new()
@@ -138,26 +150,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
                 move || {
-                    match opts.layout {
-                        Some(layout_path) => {
-                            use std::fs::File;
-                            let mut layout_file = File::open(&layout_path)
-                                .expect(&format!("cannot find layout {}", layout_path.display()));
-                            let mut layout = String::new();
-                            layout_file.read_to_string(&mut layout).expect(&format!(
-                                "could not read layout {}",
-                                layout_path.display()
-                            ));
-                            let layout: Layout = serde_yaml::from_str(&layout).expect(&format!(
-                                "could not parse layout {}",
-                                layout_path.display()
-                            ));
-                            pty_bus.spawn_terminals_for_layout(layout);
-                        }
-                        None => {
-                            pty_bus.spawn_terminal_vertically(None);
-                        }
+                    if let Some(layout) = maybe_layout {
+                        pty_bus.spawn_terminals_for_layout(layout);
+                    } else {
+                        pty_bus.spawn_terminal_vertically(None);
                     }
+
                     loop {
                         let event = pty_bus
                             .receive_pty_instructions
@@ -234,6 +232,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         ScreenInstruction::MoveFocus => {
                             screen.move_focus();
                         }
+                        ScreenInstruction::MoveFocusLeft => {
+                            screen.move_focus_left();
+                        }
+                        ScreenInstruction::MoveFocusDown => {
+                            screen.move_focus_down();
+                        }
+                        ScreenInstruction::MoveFocusRight => {
+                            screen.move_focus_right();
+                        }
+                        ScreenInstruction::MoveFocusUp => {
+                            screen.move_focus_up();
+                        }
                         ScreenInstruction::ScrollUp => {
                             screen.scroll_active_terminal_up();
                         }
@@ -264,6 +274,113 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .unwrap(),
     );
 
+    // Here be dragons! This is very much a work in progress, and isn't quite functional
+    // yet. It's being left out of the tests because is slows them down massively (by
+    // recompiling a WASM module for every single test). Stay tuned for more updates!
+    #[cfg(feature = "wasm-wip")]
+    active_threads.push(
+        thread::Builder::new()
+            .name("wasm".to_string())
+            .spawn(move || {
+                // TODO: Clone shared state here
+                move || -> Result<(), Box<dyn std::error::Error>> {
+                    use std::io;
+                    use std::sync::{Arc, Mutex};
+                    use wasmer::{Exports, Function, Instance, Module, Store, Value};
+                    use wasmer_wasi::WasiState;
+                    let store = Store::default();
+
+                    println!("Compiling module...");
+                    // FIXME: Switch to a higher performance compiler (`Store::default()`) and cache this on disk
+                    // I could use `(de)serialize_to_file()` for that
+                    let module = if let Ok(m) = Module::from_file(&store, "strider.wasm") {
+                        m
+                    } else {
+                        return Ok(()); // Just abort this thread quietly if the WASM isn't found
+                    };
+
+                    // FIXME: Upstream the `Pipe` struct
+                    //let output = fluff::Pipe::new();
+                    //let input = fluff::Pipe::new();
+                    let mut wasi_env = WasiState::new("mosaic")
+                        .env("CLICOLOR_FORCE", "1")
+                        .preopen(|p| {
+                            p.directory(".") // TODO: Change this to a more meaningful dir
+                                .alias(".")
+                                .read(true)
+                                .write(true)
+                                .create(true)
+                        })?
+                        //.stdin(Box::new(input))
+                        //.stdout(Box::new(output))
+                        .finalize()?;
+
+                    let mut import_object = wasi_env.import_object(&module)?;
+                    // FIXME: Upstream an `ImportObject` merge method
+                    let mut host_exports = Exports::new();
+                    /* host_exports.insert(
+                        "host_open_file",
+                        Function::new_native_with_env(&store, Arc::clone(&wasi_env.state), host_open_file),
+                    ); */
+                    fn noop() {}
+                    host_exports.insert("host_open_file", Function::new_native(&store, noop));
+                    import_object.register("mosaic", host_exports);
+                    let instance = Instance::new(&module, &import_object)?;
+
+                    // WASI requires to explicitly set the memory for the `WasiEnv`
+                    wasi_env.set_memory(instance.exports.get_memory("memory")?.clone());
+
+                    let start = instance.exports.get_function("_start")?;
+                    let handle_key = instance.exports.get_function("handle_key")?;
+                    let draw = instance.exports.get_function("draw")?;
+
+                    // This eventually calls the `.init()` method
+                    start.call(&[])?;
+
+                    #[warn(clippy::never_loop)]
+                    loop {
+                        break;
+                        //let (cols, rows) = terminal::size()?;
+                        //draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])?;
+
+                        // FIXME: This downcasting mess needs to be abstracted away
+                        /* let mut state = wasi_env.state();
+                        let wasi_file = state.fs.stdout_mut()?.as_mut().unwrap();
+                        let output: &mut fluff::Pipe = wasi_file.downcast_mut().unwrap();
+                        // Needed because raw mode doesn't implicitly return to the start of the line
+                        write!(
+                            io::stdout(),
+                            "{}\n\r",
+                            output.to_string().lines().collect::<Vec<_>>().join("\n\r")
+                        )?;
+                        output.clear();
+
+                        let wasi_file = state.fs.stdin_mut()?.as_mut().unwrap();
+                        let input: &mut fluff::Pipe = wasi_file.downcast_mut().unwrap();
+                        input.clear(); */
+
+                        /* match event::read()? {
+                            Event::Key(KeyEvent {
+                                code: KeyCode::Char('q'),
+                                ..
+                            }) => break,
+                            Event::Key(e) => {
+                                writeln!(input, "{}\r", serde_json::to_string(&e)?)?;
+                                drop(state);
+                                // Need to release the implicit `state` mutex or I deadlock!
+                                handle_key.call(&[])?;
+                            }
+                            _ => (),
+                        } */
+                    }
+                    debug_log_to_file("WASM module loaded and exited cleanly :)".to_string())?;
+                    Ok(())
+                }()
+                .unwrap()
+            })
+            .unwrap(),
+    );
+
     // TODO: currently we don't push this into active_threads
     // because otherwise the app will hang. Need to fix this so it both
     // listens to the ipc-bus and is able to quit cleanly
@@ -271,18 +388,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let _ipc_thread = thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
+            use std::io::Read;
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             move || {
-                ::std::fs::remove_file("/tmp/mosaic").ok();
-                let listener = ::std::os::unix::net::UnixListener::bind("/tmp/mosaic")
+                std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
+                let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
 
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
                             let mut buffer = [0; 65535]; // TODO: more accurate
-                            stream
+                            let _ = stream
                                 .read(&mut buffer)
                                 .expect("failed to parse ipc message");
                             let decoded: ApiCommand = bincode::deserialize(&buffer)
@@ -325,9 +443,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
-            let command_is_executing = command_is_executing.clone();
             move || {
                 input_loop(
                     os_input,
@@ -339,6 +455,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             }
         });
 
+    #[warn(clippy::never_loop)]
     loop {
         let app_instruction = receive_app_instructions
             .recv()
@@ -349,6 +466,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 break;
             }
+            AppInstruction::Error(backtrace) => {
+                os_input.unset_raw_mode(0);
+                println!("{}", backtrace);
+                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                for thread_handler in active_threads {
+                    let _ = thread_handler.join();
+                }
+                std::process::exit(1);
+            }
         }
     }
 
@@ -357,14 +484,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     }
     // cleanup();
     let reset_style = "\u{1b}[m";
+    let show_cursor = "\u{1b}[?25h";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
-        "{}\n{}Bye from Mosaic!",
-        goto_start_of_last_line, reset_style
+        "{}\n{}{}Bye from Mosaic!",
+        goto_start_of_last_line, reset_style, show_cursor
     );
 
     os_input.unset_raw_mode(0);
-    os_input
+    let _ = os_input
         .get_stdout_writer()
         .write(goodbye_message.as_bytes())
         .unwrap();

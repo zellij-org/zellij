@@ -1,3 +1,5 @@
+#![allow(clippy::clippy::if_same_then_else)]
+
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
@@ -7,7 +9,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_0};
+use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_3};
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +38,23 @@ pub struct TerminalPane {
     pub should_render: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
+    pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pending_styles: CharacterStyles,
+}
+
+impl Rect for TerminalPane {
+    fn x(&self) -> usize {
+        self.get_x()
+    }
+    fn y(&self) -> usize {
+        self.get_y()
+    }
+    fn rows(&self) -> usize {
+        self.get_rows()
+    }
+    fn columns(&self) -> usize {
+        self.get_columns()
+    }
 }
 
 impl Rect for &mut TerminalPane {
@@ -71,6 +89,7 @@ impl TerminalPane {
             pending_styles,
             position_and_size,
             position_and_size_override: None,
+            cursor_key_mode: false,
         }
     }
     pub fn mark_for_rerender(&mut self) {
@@ -274,6 +293,48 @@ impl TerminalPane {
         self.reflow_lines();
         self.mark_for_rerender();
     }
+    pub fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+        // there are some cases in which the terminal state means that input sent to it
+        // needs to be adjusted.
+        // here we match against those cases - if need be, we adjust the input and if not
+        // we send back the original input
+        match input_bytes.as_slice() {
+            [27, 91, 68] => {
+                // left arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OD".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 67] => {
+                // right arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OC".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 65] => {
+                // up arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OA".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 66] => {
+                // down arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OB".as_bytes().to_vec();
+                }
+            }
+            _ => {}
+        };
+        input_bytes
+    }
     fn add_newline(&mut self) {
         self.scroll.add_canonical_line();
         // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
@@ -285,7 +346,7 @@ impl TerminalPane {
     fn move_cursor_backwards(&mut self, count: usize) {
         self.scroll.move_cursor_backwards(count);
     }
-    fn reset_all_ansi_codes(&mut self) {
+    fn _reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
     }
 }
@@ -302,15 +363,20 @@ impl vte::Perform for TerminalPane {
     }
 
     fn execute(&mut self, byte: u8) {
-        if byte == 13 {
-            // 0d, carriage return
-            self.move_to_beginning_of_line();
-        } else if byte == 08 {
-            // backspace
-            self.move_cursor_backwards(1);
-        } else if byte == 10 {
-            // 0a, newline
-            self.add_newline();
+        match byte {
+            8 => {
+                // backspace
+                self.move_cursor_backwards(1);
+            }
+            10 => {
+                // 0a, newline
+                self.add_newline();
+            }
+            13 => {
+                // 0d, carriage return
+                self.move_to_beginning_of_line();
+            }
+            _ => {}
         }
     }
 
@@ -335,8 +401,31 @@ impl vte::Perform for TerminalPane {
             if params.is_empty() || params[0] == 0 {
                 // reset all
                 self.pending_styles.reset_all();
+                if let Some(param1) = params.get(1) {
+                    // TODO: this is a case currently found in eg. htop where we get two different
+                    // csi 'm' codes in one event.
+                    // We should understand why these are happening and then make a more generic
+                    // solution for them
+                    if *param1 == 1 {
+                        // bold
+                        self.pending_styles = self
+                            .pending_styles
+                            .bold(Some(AnsiCode::Code((Some(*param1 as u16), None))));
+                    }
+                }
             } else if params[0] == 39 {
                 self.pending_styles = self.pending_styles.foreground(Some(AnsiCode::Reset));
+                if let Some(param1) = params.get(1) {
+                    // TODO: this is a case currently found in eg. htop where we get two different
+                    // csi 'm' codes in one event.
+                    // We should understand why these are happening and then make a more generic
+                    // solution for them
+                    if *param1 == 49 {
+                        // TODO: if we need this to fix the bug, we need to make collecting the
+                        // second argument in such cases generic
+                        self.pending_styles = self.pending_styles.background(Some(AnsiCode::Reset));
+                    }
+                }
             } else if params[0] == 49 {
                 self.pending_styles = self.pending_styles.background(Some(AnsiCode::Reset));
             } else if params[0] == 21 {
@@ -641,8 +730,7 @@ impl vte::Perform for TerminalPane {
                     .pending_styles
                     .background(Some(AnsiCode::NamedColor(NamedColor::White)));
             } else {
-                debug_log_to_file_pid_0(format!("unhandled csi m code {:?}", params), self.pid)
-                    .unwrap();
+                let _ = debug_log_to_file(format!("unhandled csi m code {:?}", params));
             }
         } else if c == 'C' {
             // move cursor forward
@@ -655,9 +743,13 @@ impl vte::Perform for TerminalPane {
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
-                self.scroll.clear_canonical_line_right_of_cursor();
+                self.scroll
+                    .clear_canonical_line_right_of_cursor(self.pending_styles);
+            } else if params[0] == 1 {
+                self.scroll
+                    .clear_canonical_line_left_of_cursor(self.pending_styles);
             }
-        // TODO: implement 1 and 2
+        // TODO: implement 2
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
@@ -668,10 +760,21 @@ impl vte::Perform for TerminalPane {
         // TODO: implement 1
         } else if c == 'H' {
             // goto row/col
+            // we subtract 1 from the row/column because these are 1 indexed
+            // (except when they are 0, in which case they should be 1
+            // don't look at me, I don't make the rules)
             let (row, col) = if params.len() == 1 {
-                (params[0] as usize, 0) // TODO: is this always correct ?
+                if params[0] == 0 {
+                    (0, params[0] as usize)
+                } else {
+                    (params[0] as usize - 1, params[0] as usize)
+                }
             } else {
-                (params[0] as usize - 1, params[1] as usize - 1) // we subtract 1 here because this csi is 1 indexed and we index from 0
+                if params[0] == 0 {
+                    (0, params[1] as usize - 1)
+                } else {
+                    (params[0] as usize - 1, params[1] as usize - 1)
+                }
             };
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
@@ -693,9 +796,12 @@ impl vte::Perform for TerminalPane {
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
-                    Some(25) => {
+                    Some(&25) => {
                         self.scroll.hide_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = false;
                     }
                     _ => {}
                 };
@@ -708,17 +814,21 @@ impl vte::Perform for TerminalPane {
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
-                    Some(25) => {
+                    Some(&25) => {
                         self.scroll.show_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = true;
                     }
                     _ => {}
                 };
             }
         } else if c == 'r' {
             if params.len() > 1 {
-                let top_line_index = params[0] as usize;
-                let bottom_line_index = params[1] as usize;
+                // minus 1 because these are 1 indexed
+                let top_line_index = params[0] as usize - 1;
+                let bottom_line_index = params[1] as usize - 1;
                 self.scroll
                     .set_scroll_region(top_line_index, bottom_line_index);
                 self.scroll.show_cursor();
@@ -749,19 +859,48 @@ impl vte::Perform for TerminalPane {
             };
             self.scroll
                 .add_empty_lines_in_scroll_region(line_count_to_add);
-        } else if c == 'q' || c == 'd' || c == 'X' || c == 'G' {
+        } else if c == 'q' {
             // ignore for now to run on mac
+        } else if c == 'G' {
+            let column = if params[0] == 0 {
+                0
+            } else {
+                // params[0] as usize
+                params[0] as usize - 1
+            };
+            self.scroll.move_cursor_to_column(column);
+        } else if c == 'd' {
+            // goto line
+            let line = if params[0] == 0 {
+                1
+            } else {
+                // minus 1 because this is 1 indexed
+                params[0] as usize - 1
+            };
+            self.scroll.move_cursor_to_line(line);
+        } else if c == 'P' {
+            // erase characters
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll.erase_characters(count, self.pending_styles);
+        } else if c == 'X' {
+            // erase characters and replace with empty characters of current style
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll
+                .replace_with_empty_chars(count, self.pending_styles);
         } else if c == 'T' {
             /*
              * 124  54  T   SD
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
-            debug_log_to_file(format!(
-                "htop (only?) linux csi: {}->{:?} ({:?} - ignore: {})",
-                c, params, _intermediates, _ignore
-            ))
-            .unwrap();
             let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
 
             if line_count >= 0 {
@@ -769,24 +908,26 @@ impl vte::Perform for TerminalPane {
             } else {
                 self.rotate_scroll_region_down(line_count.abs() as usize);
             }
-        } else if c == 'P' {
-            /*
-             * 120 50 P * DCH
-             * Delete Character, from current position to end of field
-             * [4P = Delete 4 characters, VT102 series
-             */
-            debug_log_to_file(format!(
-                "htop (only?) linux csi: {}->{:?} (intermediates: {:?}, ignore: {})",
-                c, params, _intermediates, _ignore
-            ))
-            .unwrap();
+        } else if c == 'S' {
+            // move scroll up
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.scroll.delete_lines_in_scroll_region(count);
+            self.scroll.add_empty_lines_in_scroll_region(count);
         } else {
-            debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params)).unwrap();
-            panic!("unhandled csi: {}->{:?}", c, params);
+            let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {
-        // TBD
+    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
+        match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.scroll.move_cursor_up_in_scroll_region(1);
+            }
+            _ => {}
+        }
     }
 }

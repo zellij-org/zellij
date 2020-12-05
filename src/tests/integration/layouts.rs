@@ -1,4 +1,5 @@
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
+use std::path::PathBuf;
 
 use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
@@ -19,12 +20,12 @@ pub fn accepts_basic_layout() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[COMMAND_TOGGLE, COMMAND_TOGGLE, QUIT]);
-    use std::path::PathBuf;
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     let mut opts = Opt::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
+
     start(Box::new(fake_input_output.clone()), opts);
     let output_frames = fake_input_output
         .stdout_writer
@@ -48,4 +49,44 @@ pub fn accepts_basic_layout() {
     assert_snapshot!(first_snapshot);
     assert_snapshot!(next_to_last_snapshot);
     assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[should_panic(expected = "The total percent for each part should equal 100.")]
+pub fn should_throw_for_more_than_100_percent_total() {
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[&QUIT]);
+
+    let mut opts = Opt::default();
+    opts.layout = Some(PathBuf::from(
+        "src/tests/fixtures/layouts/parts-total-more-than-100-percent.yaml",
+    ));
+
+    start(Box::new(fake_input_output.clone()), opts);
+}
+
+#[test]
+#[should_panic(expected = "The total percent for each part should equal 100.")]
+pub fn should_throw_for_less_than_100_percent_total() {
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[&QUIT]);
+
+    let mut opts = Opt::default();
+    opts.layout = Some(PathBuf::from(
+        "src/tests/fixtures/layouts/parts-total-less-than-100-percent.yaml",
+    ));
+
+    start(Box::new(fake_input_output.clone()), opts);
 }

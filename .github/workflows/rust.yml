@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-
+    name: Build & test
     runs-on: ubuntu-latest
 
     steps:
@@ -19,10 +19,11 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test -j 1 --verbose
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -35,4 +36,17 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
 
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-features --all-targets

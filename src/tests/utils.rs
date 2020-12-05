@@ -40,31 +40,39 @@ pub fn get_output_frame_snapshots(
 
 pub mod commands {
     /// ctrl-g
-    pub const COMMAND_TOGGLE: [u8; 10] = [7, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const COMMAND_TOGGLE: [u8; 1] = [7];
     /// b
-    pub const SPLIT_HORIZONTALLY: [u8; 10] = [98, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const SPLIT_HORIZONTALLY: [u8; 1] = [98];
     /// n
-    pub const SPLIT_VERTICALLY: [u8; 10] = [110, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const SPLIT_VERTICALLY: [u8; 1] = [110];
     /// j
-    pub const RESIZE_DOWN: [u8; 10] = [106, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const RESIZE_DOWN: [u8; 1] = [106];
     /// k
-    pub const RESIZE_UP: [u8; 10] = [107, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const RESIZE_UP: [u8; 1] = [107];
     /// p
-    pub const MOVE_FOCUS: [u8; 10] = [112, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const MOVE_FOCUS: [u8; 1] = [112];
     /// h
-    pub const RESIZE_LEFT: [u8; 10] = [104, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const RESIZE_LEFT: [u8; 1] = [104];
     /// l
-    pub const RESIZE_RIGHT: [u8; 10] = [108, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const RESIZE_RIGHT: [u8; 1] = [108];
     /// z
-    pub const SPAWN_TERMINAL: [u8; 10] = [122, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const SPAWN_TERMINAL: [u8; 1] = [122];
     /// q
-    pub const QUIT: [u8; 10] = [113, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const QUIT: [u8; 1] = [113];
     /// PgUp
-    pub const SCROLL_UP: [u8; 10] = [27, 91, 53, 126, 0, 0, 0, 0, 0, 0];
+    pub const SCROLL_UP: [u8; 4] = [27, 91, 53, 126];
     /// PgDn
-    pub const SCROLL_DOWN: [u8; 10] = [27, 91, 54, 126, 0, 0, 0, 0, 0, 0];
+    pub const SCROLL_DOWN: [u8; 4] = [27, 91, 54, 126];
     /// x
-    pub const CLOSE_FOCUSED_PANE: [u8; 10] = [120, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const CLOSE_FOCUSED_PANE: [u8; 1] = [120];
     /// e
-    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 10] = [101, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 1] = [101];
+    /// y
+    pub const MOVE_FOCUS_LEFT: [u8; 1] = [121];
+    /// u
+    pub const MOVE_FOCUS_DOWN: [u8; 1] = [117];
+    /// i
+    pub const MOVE_FOCUS_UP: [u8; 1] = [105];
+    /// o
+    pub const MOVE_FOCUS_RIGHT: [u8; 1] = [111];
 }
