@@ -78,10 +78,10 @@ pub enum ScreenInstruction {
 }
 
 pub struct Screen {
-    pub receiver: Receiver<(ErrorContext, ScreenInstruction)>,
+    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
     max_panes: Option<usize>,
-    send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
-    send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
+    send_pty_instructions: Sender<(PtyInstruction, ErrorContext)>,
+    send_app_instructions: SyncSender<(AppInstruction, ErrorContext)>,
     full_screen_ws: PositionAndSize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
@@ -92,9 +92,9 @@ pub struct Screen {
 
 impl Screen {
     pub fn new(
-        receive_screen_instructions: Receiver<(ErrorContext, ScreenInstruction)>,
-        send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
-        send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
+        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
+        send_pty_instructions: Sender<(PtyInstruction, ErrorContext)>,
+        send_app_instructions: SyncSender<(AppInstruction, ErrorContext)>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
@@ -166,7 +166,7 @@ impl Screen {
             // fixing this will require a bit of an architecture change
             let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
             self.send_pty_instructions
-                .send((err_ctx, PtyInstruction::ClosePane(*unused_pid)))
+                .send((PtyInstruction::ClosePane(*unused_pid), err_ctx))
                 .unwrap();
         }
         self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
@@ -1537,7 +1537,7 @@ impl Screen {
                 for _ in max_panes..=self.terminals.len() {
                     let first_pid = *self.terminals.iter().next().unwrap().0;
                     self.send_pty_instructions
-                        .send((err_ctx.clone(), PtyInstruction::ClosePane(first_pid)))
+                        .send((PtyInstruction::ClosePane(first_pid), err_ctx.clone()))
                         .unwrap();
                     self.close_pane_without_rerender(first_pid); // TODO: do not render yet
                 }
@@ -1595,7 +1595,7 @@ impl Screen {
                 let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
                 let _ = self
                     .send_app_instructions
-                    .send((err_ctx, AppInstruction::Exit));
+                    .send((AppInstruction::Exit, err_ctx));
             }
         }
     }
@@ -1604,7 +1604,7 @@ impl Screen {
             self.close_pane(active_terminal_id);
             let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
             self.send_pty_instructions
-                .send((err_ctx, PtyInstruction::ClosePane(active_terminal_id)))
+                .send((PtyInstruction::ClosePane(active_terminal_id), err_ctx))
                 .unwrap();
         }
     }

@@ -111,16 +111,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (
-        Sender<(ErrorContext, ScreenInstruction)>,
-        Receiver<(ErrorContext, ScreenInstruction)>,
+        Sender<(ScreenInstruction, ErrorContext)>,
+        Receiver<(ScreenInstruction, ErrorContext)>,
     ) = channel();
     let (send_pty_instructions, receive_pty_instructions): (
-        Sender<(ErrorContext, PtyInstruction)>,
-        Receiver<(ErrorContext, PtyInstruction)>,
+        Sender<(PtyInstruction, ErrorContext)>,
+        Receiver<(PtyInstruction, ErrorContext)>,
     ) = channel();
     let (send_app_instructions, receive_app_instructions): (
-        SyncSender<(ErrorContext, AppInstruction)>,
-        Receiver<(ErrorContext, AppInstruction)>,
+        SyncSender<(AppInstruction, ErrorContext)>,
+        Receiver<(AppInstruction, ErrorContext)>,
     ) = sync_channel(0);
     let mut screen = Screen::new(
         receive_screen_instructions,
@@ -160,7 +160,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
 
                     loop {
-                        let (mut err_ctx, event) = pty_bus
+                        let (event, mut err_ctx) = pty_bus
                             .receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
@@ -199,7 +199,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
                 move || loop {
-                    let (mut err_ctx, event) = screen
+                    let (event, mut err_ctx) = screen
                         .receiver
                         .recv()
                         .expect("failed to receive event on channel");
@@ -443,30 +443,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                     let path = PathBuf::from(file_name);
                                     send_pty_instructions
                                         .send((
-                                            err_ctx.clone(),
                                             PtyInstruction::SpawnTerminal(Some(path)),
+                                            err_ctx.clone(),
                                         ))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
                                     send_pty_instructions
                                         .send((
-                                            err_ctx.clone(),
                                             PtyInstruction::SpawnTerminalHorizontally(None),
+                                            err_ctx.clone(),
                                         ))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitVertically => {
                                     send_pty_instructions
                                         .send((
-                                            err_ctx.clone(),
                                             PtyInstruction::SpawnTerminalVertically(None),
+                                            err_ctx.clone(),
                                         ))
                                         .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send((err_ctx.clone(), ScreenInstruction::MoveFocus))
+                                        .send((ScreenInstruction::MoveFocus, err_ctx.clone()))
                                         .unwrap();
                                 }
                             }
@@ -499,23 +499,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     #[warn(clippy::never_loop)]
     loop {
-        let (mut err_ctx, app_instruction) = receive_app_instructions
+        let (app_instruction, mut err_ctx) = receive_app_instructions
             .recv()
             .expect("failed to receive app instruction on channel");
 
         err_ctx.add_call("main_thread(Exit)");
         match app_instruction {
             AppInstruction::Exit => {
-                let _ = send_screen_instructions.send((err_ctx.clone(), ScreenInstruction::Quit));
-                let _ = send_pty_instructions.send((err_ctx, PtyInstruction::Quit));
+                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
+                let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 println!("{}\n{}", goto_start_of_last_line, backtrace);
-                let _ = send_screen_instructions.send((err_ctx.clone(), ScreenInstruction::Quit));
-                let _ = send_pty_instructions.send((err_ctx, PtyInstruction::Quit));
+                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
+                let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 for thread_handler in active_threads {
                     let _ = thread_handler.join();
                 }

@@ -6,7 +6,7 @@ use std::{process, thread};
 
 pub fn handle_panic(
     info: &PanicInfo<'_>,
-    send_app_instructions: &SyncSender<(ErrorContext, AppInstruction)>,
+    send_app_instructions: &SyncSender<(AppInstruction, ErrorContext)>,
 ) {
     let backtrace = Backtrace::new();
     let thread = thread::current();
@@ -53,7 +53,7 @@ pub fn handle_panic(
     } else {
         err_ctx.add_call("panic_hook(handle_panic)");
         send_app_instructions
-            .send((err_ctx, AppInstruction::Error(backtrace)))
+            .send((AppInstruction::Error(backtrace), err_ctx))
             .unwrap();
     }
 }
@@ -73,3 +73,7 @@ impl ErrorContext {
         OPENCALLS.with(|ctx| *ctx.borrow_mut() = self.clone());
     }
 }
+
+pub trait InstType {}
+
+impl InstType for AppInstruction {}
