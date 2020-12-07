@@ -5,12 +5,12 @@ use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::boundaries::Boundaries;
 use crate::boundaries::Rect;
+use crate::errors::ErrorContext;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
-use crate::utils::logging::debug_log_to_file;
-use crate::AppInstruction;
+use crate::{AppInstruction, OPENCALLS};
 
 /*
  * Screen
@@ -78,10 +78,10 @@ pub enum ScreenInstruction {
 }
 
 pub struct Screen {
-    pub receiver: Receiver<ScreenInstruction>,
+    pub receiver: Receiver<(ErrorContext, ScreenInstruction)>,
     max_panes: Option<usize>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
+    send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
     full_screen_ws: PositionAndSize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
@@ -92,9 +92,9 @@ pub struct Screen {
 
 impl Screen {
     pub fn new(
-        receive_screen_instructions: Receiver<ScreenInstruction>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        receive_screen_instructions: Receiver<(ErrorContext, ScreenInstruction)>,
+        send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
+        send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
@@ -164,8 +164,9 @@ impl Screen {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
+            let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
             self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(*unused_pid))
+                .send((err_ctx, PtyInstruction::ClosePane(*unused_pid)))
                 .unwrap();
         }
         self.active_terminal = Some(*self.terminals.iter().next().unwrap().0);
@@ -1532,10 +1533,11 @@ impl Screen {
     fn close_down_to_max_terminals(&mut self) {
         if let Some(max_panes) = self.max_panes {
             if self.terminals.len() >= max_panes {
+                let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
                 for _ in max_panes..=self.terminals.len() {
                     let first_pid = *self.terminals.iter().next().unwrap().0;
                     self.send_pty_instructions
-                        .send(PtyInstruction::ClosePane(first_pid))
+                        .send((err_ctx.clone(), PtyInstruction::ClosePane(first_pid)))
                         .unwrap();
                     self.close_pane_without_rerender(first_pid); // TODO: do not render yet
                 }
@@ -1590,15 +1592,19 @@ impl Screen {
             self.terminals.remove(&id);
             if self.terminals.is_empty() {
                 self.active_terminal = None;
-                let _ = self.send_app_instructions.send(AppInstruction::Exit);
+                let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+                let _ = self
+                    .send_app_instructions
+                    .send((err_ctx, AppInstruction::Exit));
             }
         }
     }
     pub fn close_focused_pane(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             self.close_pane(active_terminal_id);
+            let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
             self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(active_terminal_id))
+                .send((err_ctx, PtyInstruction::ClosePane(active_terminal_id)))
                 .unwrap();
         }
     }

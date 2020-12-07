@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
+use crate::errors::ErrorContext;
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
@@ -31,6 +32,9 @@ use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
+use std::cell::RefCell;
+
+thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::new(ErrorContext::new()));
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -107,16 +111,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (
-        Sender<ScreenInstruction>,
-        Receiver<ScreenInstruction>,
+        Sender<(ErrorContext, ScreenInstruction)>,
+        Receiver<(ErrorContext, ScreenInstruction)>,
     ) = channel();
     let (send_pty_instructions, receive_pty_instructions): (
-        Sender<PtyInstruction>,
-        Receiver<PtyInstruction>,
+        Sender<(ErrorContext, PtyInstruction)>,
+        Receiver<(ErrorContext, PtyInstruction)>,
     ) = channel();
     let (send_app_instructions, receive_app_instructions): (
-        SyncSender<AppInstruction>,
-        Receiver<AppInstruction>,
+        SyncSender<(ErrorContext, AppInstruction)>,
+        Receiver<(ErrorContext, AppInstruction)>,
     ) = sync_channel(0);
     let mut screen = Screen::new(
         receive_screen_instructions,
@@ -156,25 +160,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
 
                     loop {
-                        let event = pty_bus
+                        let (mut err_ctx, event) = pty_bus
                             .receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
+                                err_ctx.add_call("pty_thread(SpawnTerminal)");
                                 pty_bus.spawn_terminal(file_to_open);
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                                err_ctx.add_call("pty_thread(SpawnTerminalVertically)");
                                 pty_bus.spawn_terminal_vertically(file_to_open);
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                                err_ctx.add_call("pty_thread(SpawnTerminalHorizontally)");
                                 pty_bus.spawn_terminal_horizontally(file_to_open);
                             }
                             PtyInstruction::ClosePane(id) => {
+                                err_ctx.add_call("pty_thread(ClosePane)");
                                 pty_bus.close_pane(id);
                                 command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
+                                err_ctx.add_call("pty_thread(Quit)");
                                 break;
                             }
                         }
@@ -190,81 +199,104 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
                 move || loop {
-                    let event = screen
+                    let (mut err_ctx, event) = screen
                         .receiver
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
+                            err_ctx.add_call("screen_thread(HandlePtyEvent)");
                             screen.handle_pty_event(pid, vte_event);
                         }
                         ScreenInstruction::Render => {
+                            err_ctx.add_call("screen_thread(Render)");
                             screen.render();
                         }
                         ScreenInstruction::NewPane(pid) => {
+                            err_ctx.add_call("screen_thread(NewPane)");
                             screen.new_pane(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
+                            err_ctx.add_call("screen_thread(HorizontalSplit)");
                             screen.horizontal_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
+                            err_ctx.add_call("screen_thread(VerticalSplit)");
                             screen.vertical_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
+                            err_ctx.add_call("screen_thread(WriteCharacter)");
                             screen.write_to_active_terminal(bytes);
                         }
                         ScreenInstruction::ResizeLeft => {
+                            err_ctx.add_call("screen_thread(ResizeLeft)");
                             screen.resize_left();
                         }
                         ScreenInstruction::ResizeRight => {
+                            err_ctx.add_call("screen_thread(ResizeRight)");
                             screen.resize_right();
                         }
                         ScreenInstruction::ResizeDown => {
+                            err_ctx.add_call("screen_thread(ResizeDown)");
                             screen.resize_down();
                         }
                         ScreenInstruction::ResizeUp => {
+                            err_ctx.add_call("screen_thread(ResizeUp)");
                             screen.resize_up();
                         }
                         ScreenInstruction::MoveFocus => {
+                            err_ctx.add_call("screen_thread(MoveFocus)");
                             screen.move_focus();
                         }
                         ScreenInstruction::MoveFocusLeft => {
+                            err_ctx.add_call("screen_thread(MoveFocusLeft)");
                             screen.move_focus_left();
                         }
                         ScreenInstruction::MoveFocusDown => {
+                            err_ctx.add_call("screen_thread(MoveFocusDown)");
                             screen.move_focus_down();
                         }
                         ScreenInstruction::MoveFocusRight => {
+                            err_ctx.add_call("screen_thread(MoveFocusRight)");
                             screen.move_focus_right();
                         }
                         ScreenInstruction::MoveFocusUp => {
+                            err_ctx.add_call("screen_thread(MoveFocusUp)");
                             screen.move_focus_up();
                         }
                         ScreenInstruction::ScrollUp => {
+                            err_ctx.add_call("screen_thread(ScrollUp)");
                             screen.scroll_active_terminal_up();
                         }
                         ScreenInstruction::ScrollDown => {
+                            err_ctx.add_call("screen_thread(ScrollDown)");
                             screen.scroll_active_terminal_down();
                         }
                         ScreenInstruction::ClearScroll => {
+                            err_ctx.add_call("screen_thread(ClearScroll)");
                             screen.clear_active_terminal_scroll();
                         }
                         ScreenInstruction::CloseFocusedPane => {
+                            err_ctx.add_call("screen_thread(CloseFocusedPane)");
                             screen.close_focused_pane();
                         }
                         ScreenInstruction::ClosePane(id) => {
+                            err_ctx.add_call("screen_thread(ClosePane)");
                             screen.close_pane(id);
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                            err_ctx.add_call("screen_thread(ToggleActiveTerminalFullscreen)");
                             screen.toggle_active_terminal_fullscreen();
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                            err_ctx.add_call("screen_thread(ApplyLayout)");
                             screen.apply_layout(layout, new_pane_pids)
                         }
                         ScreenInstruction::Quit => {
+                            err_ctx.add_call("screen_thread(Quit)");
                             break;
                         }
                     }
@@ -394,6 +426,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
+                let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+                err_ctx.add_call("ipc_server(AcceptInput)");
 
                 for stream in listener.incoming() {
                     match stream {
@@ -408,22 +442,31 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
                                     send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminal(Some(path)))
+                                        .send((
+                                            err_ctx.clone(),
+                                            PtyInstruction::SpawnTerminal(Some(path)),
+                                        ))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
                                     send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                                        .send((
+                                            err_ctx.clone(),
+                                            PtyInstruction::SpawnTerminalHorizontally(None),
+                                        ))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitVertically => {
                                     send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                                        .send((
+                                            err_ctx.clone(),
+                                            PtyInstruction::SpawnTerminalVertically(None),
+                                        ))
                                         .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
+                                        .send((err_ctx.clone(), ScreenInstruction::MoveFocus))
                                         .unwrap();
                                 }
                             }
@@ -456,20 +499,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     #[warn(clippy::never_loop)]
     loop {
-        let app_instruction = receive_app_instructions
+        let (mut err_ctx, app_instruction) = receive_app_instructions
             .recv()
             .expect("failed to receive app instruction on channel");
+
+        err_ctx.add_call("main_thread(Exit)");
         match app_instruction {
             AppInstruction::Exit => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                let _ = send_screen_instructions.send((err_ctx.clone(), ScreenInstruction::Quit));
+                let _ = send_pty_instructions.send((err_ctx, PtyInstruction::Quit));
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 os_input.unset_raw_mode(0);
-                println!("{}", backtrace);
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+                println!("{}\n{}", goto_start_of_last_line, backtrace);
+                let _ = send_screen_instructions.send((err_ctx.clone(), ScreenInstruction::Quit));
+                let _ = send_pty_instructions.send((err_ctx, PtyInstruction::Quit));
                 for thread_handler in active_threads {
                     let _ = thread_handler.join();
                 }

@@ -9,7 +9,7 @@ use crate::terminal_pane::terminal_character::{
     AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
 };
 use crate::terminal_pane::Scroll;
-use crate::utils::logging::{debug_log_to_file, debug_log_to_file_pid_3};
+use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
 
 #[derive(Clone, Copy, Debug)]

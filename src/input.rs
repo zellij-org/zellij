@@ -1,28 +1,29 @@
 /// Module for handling input
 use std::sync::mpsc::{Sender, SyncSender};
 
+use crate::errors::ErrorContext;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::AppInstruction;
 use crate::CommandIsExecuting;
+use crate::{AppInstruction, OPENCALLS};
 
 struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: Sender<ScreenInstruction>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    send_screen_instructions: Sender<(ErrorContext, ScreenInstruction)>,
+    send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
+    send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
 }
 
 impl InputHandler {
     fn new(
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
-        send_screen_instructions: Sender<ScreenInstruction>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        send_screen_instructions: Sender<(ErrorContext, ScreenInstruction)>,
+        send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
+        send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
@@ -36,6 +37,8 @@ impl InputHandler {
 
     /// Main event loop
     fn get_input(&mut self) {
+        let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+        err_ctx.add_call("stdin_handler(AcceptInput)");
         loop {
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),
@@ -52,6 +55,7 @@ impl InputHandler {
     /// Read input to the terminal (or switch to command mode)
     fn read_normal_mode(&mut self) {
         assert_eq!(self.mode, InputMode::Normal);
+        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
@@ -63,10 +67,13 @@ impl InputHandler {
                 }
                 _ => {
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ClearScroll)
+                        .send((err_ctx.clone(), ScreenInstruction::ClearScroll))
                         .unwrap();
                     self.send_screen_instructions
-                        .send(ScreenInstruction::WriteCharacter(stdin_buffer))
+                        .send((
+                            err_ctx.clone(),
+                            ScreenInstruction::WriteCharacter(stdin_buffer),
+                        ))
                         .unwrap();
                 }
             }
@@ -81,6 +88,7 @@ impl InputHandler {
         } else {
             assert_eq!(self.mode, InputMode::Command);
         }
+        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
@@ -109,38 +117,38 @@ impl InputHandler {
                 [106] => {
                     // j
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeDown)
+                        .send((err_ctx.clone(), ScreenInstruction::ResizeDown))
                         .unwrap();
                 }
                 [107] => {
                     // k
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeUp)
+                        .send((err_ctx.clone(), ScreenInstruction::ResizeUp))
                         .unwrap();
                 }
                 [112] => {
                     // p
                     self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocus)
+                        .send((err_ctx.clone(), ScreenInstruction::MoveFocus))
                         .unwrap();
                 }
                 [104] => {
                     // h
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeLeft)
+                        .send((err_ctx.clone(), ScreenInstruction::ResizeLeft))
                         .unwrap();
                 }
                 [108] => {
                     // l
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeRight)
+                        .send((err_ctx.clone(), ScreenInstruction::ResizeRight))
                         .unwrap();
                 }
                 [122] => {
                     // z
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminal(None))
+                        .send((err_ctx.clone(), PtyInstruction::SpawnTerminal(None)))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -148,7 +156,10 @@ impl InputHandler {
                     // n
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                        .send((
+                            err_ctx.clone(),
+                            PtyInstruction::SpawnTerminalVertically(None),
+                        ))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -156,7 +167,10 @@ impl InputHandler {
                     // b
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                        .send((
+                            err_ctx.clone(),
+                            PtyInstruction::SpawnTerminalHorizontally(None),
+                        ))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -168,51 +182,54 @@ impl InputHandler {
                 [27, 91, 53, 126] => {
                     // PgUp
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ScrollUp)
+                        .send((err_ctx.clone(), ScreenInstruction::ScrollUp))
                         .unwrap();
                 }
                 [27, 91, 54, 126] => {
                     // PgDown
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ScrollDown)
+                        .send((err_ctx.clone(), ScreenInstruction::ScrollDown))
                         .unwrap();
                 }
                 [120] => {
                     // x
                     self.command_is_executing.closing_pane();
                     self.send_screen_instructions
-                        .send(ScreenInstruction::CloseFocusedPane)
+                        .send((err_ctx.clone(), ScreenInstruction::CloseFocusedPane))
                         .unwrap();
                     self.command_is_executing.wait_until_pane_is_closed();
                 }
                 [101] => {
                     // e
                     self.send_screen_instructions
-                        .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                        .send((
+                            err_ctx.clone(),
+                            ScreenInstruction::ToggleActiveTerminalFullscreen,
+                        ))
                         .unwrap();
                 }
                 [121] => {
                     // y
                     self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusLeft)
+                        .send((err_ctx.clone(), ScreenInstruction::MoveFocusLeft))
                         .unwrap()
                 }
                 [117] => {
                     // u
                     self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusDown)
+                        .send((err_ctx.clone(), ScreenInstruction::MoveFocusDown))
                         .unwrap()
                 }
                 [105] => {
                     // i
                     self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusUp)
+                        .send((err_ctx.clone(), ScreenInstruction::MoveFocusUp))
                         .unwrap()
                 }
                 [111] => {
                     // o
                     self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusRight)
+                        .send((err_ctx.clone(), ScreenInstruction::MoveFocusRight))
                         .unwrap()
                 }
                 //@@@khs26 Write this to the powerbar?
@@ -229,14 +246,15 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting mosaic)
     fn exit(&mut self) {
+        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
         self.send_screen_instructions
-            .send(ScreenInstruction::Quit)
+            .send((err_ctx.clone(), ScreenInstruction::Quit))
             .unwrap();
         self.send_pty_instructions
-            .send(PtyInstruction::Quit)
+            .send((err_ctx.clone(), PtyInstruction::Quit))
             .unwrap();
         self.send_app_instructions
-            .send(AppInstruction::Exit)
+            .send((err_ctx.clone(), AppInstruction::Exit))
             .unwrap();
     }
 }
@@ -263,9 +281,9 @@ pub enum InputMode {
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: Sender<ScreenInstruction>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    send_screen_instructions: Sender<(ErrorContext, ScreenInstruction)>,
+    send_pty_instructions: Sender<(ErrorContext, PtyInstruction)>,
+    send_app_instructions: SyncSender<(ErrorContext, AppInstruction)>,
 ) {
     let _handler = InputHandler::new(
         os_input,
