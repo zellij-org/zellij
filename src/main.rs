@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
-use crate::errors::ErrorContext;
+use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
@@ -164,26 +164,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             .receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
+                        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
-                                err_ctx.add_call("pty_thread(SpawnTerminal)");
                                 pty_bus.spawn_terminal(file_to_open);
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                err_ctx.add_call("pty_thread(SpawnTerminalVertically)");
                                 pty_bus.spawn_terminal_vertically(file_to_open);
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                err_ctx.add_call("pty_thread(SpawnTerminalHorizontally)");
                                 pty_bus.spawn_terminal_horizontally(file_to_open);
                             }
                             PtyInstruction::ClosePane(id) => {
-                                err_ctx.add_call("pty_thread(ClosePane)");
                                 pty_bus.close_pane(id);
                                 command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
-                                err_ctx.add_call("pty_thread(Quit)");
                                 break;
                             }
                         }
@@ -203,100 +199,78 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         .receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
-                            err_ctx.add_call("screen_thread(HandlePtyEvent)");
                             screen.handle_pty_event(pid, vte_event);
                         }
                         ScreenInstruction::Render => {
-                            err_ctx.add_call("screen_thread(Render)");
                             screen.render();
                         }
                         ScreenInstruction::NewPane(pid) => {
-                            err_ctx.add_call("screen_thread(NewPane)");
                             screen.new_pane(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
-                            err_ctx.add_call("screen_thread(HorizontalSplit)");
                             screen.horizontal_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
-                            err_ctx.add_call("screen_thread(VerticalSplit)");
                             screen.vertical_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
-                            err_ctx.add_call("screen_thread(WriteCharacter)");
                             screen.write_to_active_terminal(bytes);
                         }
                         ScreenInstruction::ResizeLeft => {
-                            err_ctx.add_call("screen_thread(ResizeLeft)");
                             screen.resize_left();
                         }
                         ScreenInstruction::ResizeRight => {
-                            err_ctx.add_call("screen_thread(ResizeRight)");
                             screen.resize_right();
                         }
                         ScreenInstruction::ResizeDown => {
-                            err_ctx.add_call("screen_thread(ResizeDown)");
                             screen.resize_down();
                         }
                         ScreenInstruction::ResizeUp => {
-                            err_ctx.add_call("screen_thread(ResizeUp)");
                             screen.resize_up();
                         }
                         ScreenInstruction::MoveFocus => {
-                            err_ctx.add_call("screen_thread(MoveFocus)");
                             screen.move_focus();
                         }
                         ScreenInstruction::MoveFocusLeft => {
-                            err_ctx.add_call("screen_thread(MoveFocusLeft)");
                             screen.move_focus_left();
                         }
                         ScreenInstruction::MoveFocusDown => {
-                            err_ctx.add_call("screen_thread(MoveFocusDown)");
                             screen.move_focus_down();
                         }
                         ScreenInstruction::MoveFocusRight => {
-                            err_ctx.add_call("screen_thread(MoveFocusRight)");
                             screen.move_focus_right();
                         }
                         ScreenInstruction::MoveFocusUp => {
-                            err_ctx.add_call("screen_thread(MoveFocusUp)");
                             screen.move_focus_up();
                         }
                         ScreenInstruction::ScrollUp => {
-                            err_ctx.add_call("screen_thread(ScrollUp)");
                             screen.scroll_active_terminal_up();
                         }
                         ScreenInstruction::ScrollDown => {
-                            err_ctx.add_call("screen_thread(ScrollDown)");
                             screen.scroll_active_terminal_down();
                         }
                         ScreenInstruction::ClearScroll => {
-                            err_ctx.add_call("screen_thread(ClearScroll)");
                             screen.clear_active_terminal_scroll();
                         }
                         ScreenInstruction::CloseFocusedPane => {
-                            err_ctx.add_call("screen_thread(CloseFocusedPane)");
                             screen.close_focused_pane();
                         }
                         ScreenInstruction::ClosePane(id) => {
-                            err_ctx.add_call("screen_thread(ClosePane)");
                             screen.close_pane(id);
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
-                            err_ctx.add_call("screen_thread(ToggleActiveTerminalFullscreen)");
                             screen.toggle_active_terminal_fullscreen();
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
-                            err_ctx.add_call("screen_thread(ApplyLayout)");
                             screen.apply_layout(layout, new_pane_pids)
                         }
                         ScreenInstruction::Quit => {
-                            err_ctx.add_call("screen_thread(Quit)");
                             break;
                         }
                     }
@@ -427,7 +401,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
                 let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
-                err_ctx.add_call("ipc_server(AcceptInput)");
+                err_ctx.add_call(ContextType::IPCServer);
 
                 for stream in listener.incoming() {
                     match stream {
@@ -503,7 +477,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .recv()
             .expect("failed to receive app instruction on channel");
 
-        err_ctx.add_call("main_thread(Exit)");
+        err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
         match app_instruction {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));

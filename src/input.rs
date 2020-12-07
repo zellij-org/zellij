@@ -1,7 +1,7 @@
 /// Module for handling input
 use std::sync::mpsc::{Sender, SyncSender};
 
-use crate::errors::ErrorContext;
+use crate::errors::{ContextType, ErrorContext};
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
@@ -38,7 +38,7 @@ impl InputHandler {
     /// Main event loop
     fn get_input(&mut self) {
         let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
-        err_ctx.add_call("stdin_handler(AcceptInput)");
+        err_ctx.add_call(ContextType::StdinHandler);
         loop {
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),

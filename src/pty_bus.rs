@@ -9,7 +9,7 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
-use crate::errors::ErrorContext;
+use crate::errors::{ContextType, ErrorContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
@@ -177,7 +177,7 @@ fn stream_terminal_bytes(
     let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
     task::spawn({
         async move {
-            err_ctx.add_call("stream_terminal_bytes(AsyncTask)");
+            err_ctx.add_call(ContextType::AsyncTask);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
