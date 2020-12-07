@@ -1,10 +1,13 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::{AppInstruction, OPENCALLS};
+use arrayvec::ArrayVec;
 use backtrace::Backtrace;
 use std::panic::PanicInfo;
 use std::sync::mpsc::SyncSender;
 use std::{process, thread};
+
+const MAX_THREAD_CALL_STACK: usize = 5;
 
 pub fn handle_panic(
     info: &PanicInfo<'_>,
@@ -19,7 +22,7 @@ pub fn handle_panic(
         None => info.payload().downcast_ref::<String>().map(|s| &**s),
     };
 
-    let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+    let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
 
     let backtrace = match (info.location(), msg) {
         (Some(location), Some(msg)) => format!(
@@ -53,20 +56,22 @@ pub fn handle_panic(
         println!("{}", backtrace);
         process::exit(1);
     } else {
-        let instruction = AppInstruction::Error(backtrace);
-        err_ctx.add_call(ContextType::App(AppContext::from(&instruction)));
-        send_app_instructions.send((instruction, err_ctx)).unwrap();
+        send_app_instructions
+            .send((AppInstruction::Error(backtrace), err_ctx))
+            .unwrap();
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct ErrorContext {
-    calls: Vec<ContextType>,
+    calls: ArrayVec<[ContextType; MAX_THREAD_CALL_STACK]>,
 }
 
 impl ErrorContext {
     pub fn new() -> Self {
-        Self { calls: Vec::new() }
+        Self {
+            calls: ArrayVec::new(),
+        }
     }
 
     pub fn add_call(&mut self, call: ContextType) {

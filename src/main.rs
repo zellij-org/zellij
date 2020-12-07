@@ -485,11 +485,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
+                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
+                let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 println!("{}\n{}", goto_start_of_last_line, backtrace);
-                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
-                let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 for thread_handler in active_threads {
                     let _ = thread_handler.join();
                 }
