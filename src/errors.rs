@@ -7,7 +7,7 @@ use std::panic::PanicInfo;
 use std::sync::mpsc::SyncSender;
 use std::{process, thread};
 
-const MAX_THREAD_CALL_STACK: usize = 5;
+const MAX_THREAD_CALL_STACK: usize = 6;
 
 pub fn handle_panic(
     info: &PanicInfo<'_>,
