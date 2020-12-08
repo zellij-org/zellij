@@ -3,6 +3,7 @@ use crate::screen::ScreenInstruction;
 use crate::{AppInstruction, OPENCALLS};
 use arrayvec::ArrayVec;
 use backtrace::Backtrace;
+use std::fmt::{Debug, Error, Formatter};
 use std::panic::PanicInfo;
 use std::sync::mpsc::SyncSender;
 use std::{process, thread};
@@ -26,29 +27,29 @@ pub fn handle_panic(
 
     let backtrace = match (info.location(), msg) {
         (Some(location), Some(msg)) => format!(
-            "thread '{}' panicked at '{}': {}:{}\n{:#?}\n{:?}",
+            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
+            err_ctx,
             thread,
             msg,
             location.file(),
             location.line(),
-            err_ctx,
             backtrace
         ),
         (Some(location), None) => format!(
-            "thread '{}' panicked: {}:{}\n{:#?}\n{:?}",
+            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
+            err_ctx,
             thread,
             location.file(),
             location.line(),
-            err_ctx,
             backtrace
         ),
         (None, Some(msg)) => format!(
-            "thread '{}' panicked at '{}'\n{:#?}\n{:?}",
-            thread, msg, err_ctx, backtrace
+            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
+            err_ctx, thread, msg, backtrace
         ),
         (None, None) => format!(
-            "thread '{}' panicked\n{:#?}\n{:?}",
-            thread, err_ctx, backtrace
+            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
+            err_ctx, thread, backtrace
         ),
     };
 
@@ -62,7 +63,7 @@ pub fn handle_panic(
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ErrorContext {
     calls: ArrayVec<[ContextType; MAX_THREAD_CALL_STACK]>,
 }
@@ -80,7 +81,17 @@ impl ErrorContext {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+impl Debug for ErrorContext {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        writeln!(f, "Originating Thread(s):")?;
+        for (index, ctx) in self.calls.iter().enumerate() {
+            writeln!(f, "\u{1b}[0;0m{}. {:?}", index + 1, ctx)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone)]
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
@@ -88,6 +99,25 @@ pub enum ContextType {
     IPCServer,
     StdinHandler,
     AsyncTask,
+}
+
+impl Debug for ContextType {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let purple = "\u{1b}[1;35m";
+        let green = "\u{1b}[0;32m";
+        match *self {
+            ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
+            ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
+            ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
+            ContextType::IPCServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
+            ContextType::StdinHandler => {
+                write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
+            }
+            ContextType::AsyncTask => {
+                write!(f, "{}stream_terminal_bytes: {}AsyncTask", purple, green)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
