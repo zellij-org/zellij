@@ -164,7 +164,7 @@ impl Screen {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
-            let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+            let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
             self.send_pty_instructions
                 .send((PtyInstruction::ClosePane(*unused_pid), err_ctx))
                 .unwrap();
@@ -1533,11 +1533,11 @@ impl Screen {
     fn close_down_to_max_terminals(&mut self) {
         if let Some(max_panes) = self.max_panes {
             if self.terminals.len() >= max_panes {
-                let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+                let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
                 for _ in max_panes..=self.terminals.len() {
                     let first_pid = *self.terminals.iter().next().unwrap().0;
                     self.send_pty_instructions
-                        .send((PtyInstruction::ClosePane(first_pid), err_ctx.clone()))
+                        .send((PtyInstruction::ClosePane(first_pid), err_ctx))
                         .unwrap();
                     self.close_pane_without_rerender(first_pid); // TODO: do not render yet
                 }
@@ -1592,7 +1592,7 @@ impl Screen {
             self.terminals.remove(&id);
             if self.terminals.is_empty() {
                 self.active_terminal = None;
-                let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+                let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
                 let _ = self
                     .send_app_instructions
                     .send((AppInstruction::Exit, err_ctx));
@@ -1602,7 +1602,7 @@ impl Screen {
     pub fn close_focused_pane(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             self.close_pane(active_terminal_id);
-            let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+            let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
             self.send_pty_instructions
                 .send((PtyInstruction::ClosePane(active_terminal_id), err_ctx))
                 .unwrap();

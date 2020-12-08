@@ -400,7 +400,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
-                let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+                let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
                 err_ctx.add_call(ContextType::IPCServer);
 
                 for stream in listener.incoming() {
@@ -416,17 +416,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
                                     send_pty_instructions
-                                        .send((
-                                            PtyInstruction::SpawnTerminal(Some(path)),
-                                            err_ctx.clone(),
-                                        ))
+                                        .send((PtyInstruction::SpawnTerminal(Some(path)), err_ctx))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
                                     send_pty_instructions
                                         .send((
                                             PtyInstruction::SpawnTerminalHorizontally(None),
-                                            err_ctx.clone(),
+                                            err_ctx,
                                         ))
                                         .unwrap();
                                 }
@@ -434,13 +431,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                     send_pty_instructions
                                         .send((
                                             PtyInstruction::SpawnTerminalVertically(None),
-                                            err_ctx.clone(),
+                                            err_ctx,
                                         ))
                                         .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send((ScreenInstruction::MoveFocus, err_ctx.clone()))
+                                        .send((ScreenInstruction::MoveFocus, err_ctx))
                                         .unwrap();
                                 }
                             }
@@ -480,12 +477,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
         match app_instruction {
             AppInstruction::Exit => {
-                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
+                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx));
                 let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx.clone()));
+                let _ = send_screen_instructions.send((ScreenInstruction::Quit, err_ctx));
                 let _ = send_pty_instructions.send((PtyInstruction::Quit, err_ctx));
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);

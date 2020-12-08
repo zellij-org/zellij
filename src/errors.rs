@@ -1,7 +1,6 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::{AppInstruction, OPENCALLS};
-use arrayvec::ArrayVec;
 use backtrace::Backtrace;
 use std::fmt::{Debug, Error, Formatter};
 use std::panic::PanicInfo;
@@ -23,7 +22,7 @@ pub fn handle_panic(
         None => info.payload().downcast_ref::<String>().map(|s| &**s),
     };
 
-    let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
     let backtrace = match (info.location(), msg) {
         (Some(location), Some(msg)) => format!(
@@ -63,21 +62,26 @@ pub fn handle_panic(
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ErrorContext {
-    calls: ArrayVec<[ContextType; MAX_THREAD_CALL_STACK]>,
+    calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
 
 impl ErrorContext {
     pub fn new() -> Self {
         Self {
-            calls: ArrayVec::new(),
+            calls: [ContextType::Empty; MAX_THREAD_CALL_STACK],
         }
     }
 
     pub fn add_call(&mut self, call: ContextType) {
-        self.calls.push(call);
-        OPENCALLS.with(|ctx| *ctx.borrow_mut() = self.clone());
+        for ctx in self.calls.iter_mut() {
+            if *ctx == ContextType::Empty {
+                *ctx = call;
+                break;
+            }
+        }
+        OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self);
     }
 }
 
@@ -85,13 +89,16 @@ impl Debug for ErrorContext {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         writeln!(f, "Originating Thread(s):")?;
         for (index, ctx) in self.calls.iter().enumerate() {
+            if *ctx == ContextType::Empty {
+                break;
+            }
             writeln!(f, "\u{1b}[0;0m{}. {:?}", index + 1, ctx)?;
         }
         Ok(())
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
@@ -99,6 +106,7 @@ pub enum ContextType {
     IPCServer,
     StdinHandler,
     AsyncTask,
+    Empty,
 }
 
 impl Debug for ContextType {
@@ -116,11 +124,12 @@ impl Debug for ContextType {
             ContextType::AsyncTask => {
                 write!(f, "{}stream_terminal_bytes: {}AsyncTask", purple, green)
             }
+            ContextType::Empty => write!(f, ""),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
     HandlePtyEvent,
     Render,
@@ -179,7 +188,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PtyContext {
     SpawnTerminal,
     SpawnTerminalVertically,
@@ -200,7 +209,7 @@ impl From<&PtyInstruction> for PtyContext {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
     Exit,
     Error,

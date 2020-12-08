@@ -37,7 +37,7 @@ impl InputHandler {
 
     /// Main event loop
     fn get_input(&mut self) {
-        let mut err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+        let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         loop {
             match self.mode {
@@ -55,7 +55,7 @@ impl InputHandler {
     /// Read input to the terminal (or switch to command mode)
     fn read_normal_mode(&mut self) {
         assert_eq!(self.mode, InputMode::Normal);
-        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
@@ -67,13 +67,10 @@ impl InputHandler {
                 }
                 _ => {
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ClearScroll, err_ctx.clone()))
+                        .send((ScreenInstruction::ClearScroll, err_ctx))
                         .unwrap();
                     self.send_screen_instructions
-                        .send((
-                            ScreenInstruction::WriteCharacter(stdin_buffer),
-                            err_ctx.clone(),
-                        ))
+                        .send((ScreenInstruction::WriteCharacter(stdin_buffer), err_ctx))
                         .unwrap();
                 }
             }
@@ -88,7 +85,7 @@ impl InputHandler {
         } else {
             assert_eq!(self.mode, InputMode::Command);
         }
-        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
@@ -117,38 +114,38 @@ impl InputHandler {
                 [106] => {
                     // j
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ResizeDown, err_ctx.clone()))
+                        .send((ScreenInstruction::ResizeDown, err_ctx))
                         .unwrap();
                 }
                 [107] => {
                     // k
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ResizeUp, err_ctx.clone()))
+                        .send((ScreenInstruction::ResizeUp, err_ctx))
                         .unwrap();
                 }
                 [112] => {
                     // p
                     self.send_screen_instructions
-                        .send((ScreenInstruction::MoveFocus, err_ctx.clone()))
+                        .send((ScreenInstruction::MoveFocus, err_ctx))
                         .unwrap();
                 }
                 [104] => {
                     // h
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ResizeLeft, err_ctx.clone()))
+                        .send((ScreenInstruction::ResizeLeft, err_ctx))
                         .unwrap();
                 }
                 [108] => {
                     // l
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ResizeRight, err_ctx.clone()))
+                        .send((ScreenInstruction::ResizeRight, err_ctx))
                         .unwrap();
                 }
                 [122] => {
                     // z
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send((PtyInstruction::SpawnTerminal(None), err_ctx.clone()))
+                        .send((PtyInstruction::SpawnTerminal(None), err_ctx))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -156,10 +153,7 @@ impl InputHandler {
                     // n
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send((
-                            PtyInstruction::SpawnTerminalVertically(None),
-                            err_ctx.clone(),
-                        ))
+                        .send((PtyInstruction::SpawnTerminalVertically(None), err_ctx))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -167,10 +161,7 @@ impl InputHandler {
                     // b
                     self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send((
-                            PtyInstruction::SpawnTerminalHorizontally(None),
-                            err_ctx.clone(),
-                        ))
+                        .send((PtyInstruction::SpawnTerminalHorizontally(None), err_ctx))
                         .unwrap();
                     self.command_is_executing.wait_until_new_pane_is_opened();
                 }
@@ -182,54 +173,51 @@ impl InputHandler {
                 [27, 91, 53, 126] => {
                     // PgUp
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ScrollUp, err_ctx.clone()))
+                        .send((ScreenInstruction::ScrollUp, err_ctx))
                         .unwrap();
                 }
                 [27, 91, 54, 126] => {
                     // PgDown
                     self.send_screen_instructions
-                        .send((ScreenInstruction::ScrollDown, err_ctx.clone()))
+                        .send((ScreenInstruction::ScrollDown, err_ctx))
                         .unwrap();
                 }
                 [120] => {
                     // x
                     self.command_is_executing.closing_pane();
                     self.send_screen_instructions
-                        .send((ScreenInstruction::CloseFocusedPane, err_ctx.clone()))
+                        .send((ScreenInstruction::CloseFocusedPane, err_ctx))
                         .unwrap();
                     self.command_is_executing.wait_until_pane_is_closed();
                 }
                 [101] => {
                     // e
                     self.send_screen_instructions
-                        .send((
-                            ScreenInstruction::ToggleActiveTerminalFullscreen,
-                            err_ctx.clone(),
-                        ))
+                        .send((ScreenInstruction::ToggleActiveTerminalFullscreen, err_ctx))
                         .unwrap();
                 }
                 [121] => {
                     // y
                     self.send_screen_instructions
-                        .send((ScreenInstruction::MoveFocusLeft, err_ctx.clone()))
+                        .send((ScreenInstruction::MoveFocusLeft, err_ctx))
                         .unwrap()
                 }
                 [117] => {
                     // u
                     self.send_screen_instructions
-                        .send((ScreenInstruction::MoveFocusDown, err_ctx.clone()))
+                        .send((ScreenInstruction::MoveFocusDown, err_ctx))
                         .unwrap()
                 }
                 [105] => {
                     // i
                     self.send_screen_instructions
-                        .send((ScreenInstruction::MoveFocusUp, err_ctx.clone()))
+                        .send((ScreenInstruction::MoveFocusUp, err_ctx))
                         .unwrap()
                 }
                 [111] => {
                     // o
                     self.send_screen_instructions
-                        .send((ScreenInstruction::MoveFocusRight, err_ctx.clone()))
+                        .send((ScreenInstruction::MoveFocusRight, err_ctx))
                         .unwrap()
                 }
                 //@@@khs26 Write this to the powerbar?
@@ -246,12 +234,12 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting mosaic)
     fn exit(&mut self) {
-        let err_ctx: ErrorContext = OPENCALLS.with(|ctx| ctx.borrow().clone());
+        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         self.send_screen_instructions
-            .send((ScreenInstruction::Quit, err_ctx.clone()))
+            .send((ScreenInstruction::Quit, err_ctx))
             .unwrap();
         self.send_pty_instructions
-            .send((PtyInstruction::Quit, err_ctx.clone()))
+            .send((PtyInstruction::Quit, err_ctx))
             .unwrap();
         self.send_app_instructions
             .send((AppInstruction::Exit, err_ctx))
