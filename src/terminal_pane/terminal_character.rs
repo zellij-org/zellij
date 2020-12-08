@@ -1,3 +1,4 @@
+use crate::utils::logging::debug_log_to_file;
 use ::std::fmt::{self, Debug, Display, Formatter};
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
@@ -296,6 +297,114 @@ impl CharacterStyles {
         self.reverse = Some(AnsiCode::Reset);
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
+    }
+    pub fn add_style_from_ansi_params(&mut self, ansi_params: &[i64]) {
+        let mut params_used = 1; // if there's a parameter, it is always used
+        if ansi_params.is_empty() || ansi_params[0] == 0 {
+            self.reset_all();
+        } else if ansi_params[0] == 39 {
+            *self = self.foreground(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 49 {
+            *self = self.background(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 21 {
+            *self = self.bold(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 22 {
+            *self = self.bold(Some(AnsiCode::Reset));
+            *self = self.dim(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 23 {
+            *self = self.italic(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 24 {
+            *self = self.underline(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 25 {
+            *self = self.blink_slow(Some(AnsiCode::Reset));
+            *self = self.blink_fast(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 27 {
+            *self = self.reverse(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 28 {
+            *self = self.hidden(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 29 {
+            *self = self.strike(Some(AnsiCode::Reset));
+        } else if ansi_params[0] == 38 {
+            let ansi_code = AnsiCode::Code((
+                ansi_params.get(1).map(|p| *p as u16),
+                ansi_params.get(2).map(|p| *p as u16),
+            ));
+            *self = self.foreground(Some(ansi_code));
+            if ansi_params.len() > 2 {
+                params_used += ansi_params.len() - 1;
+            }
+        } else if ansi_params[0] == 48 {
+            let ansi_code = AnsiCode::Code((
+                ansi_params.get(1).map(|p| *p as u16),
+                ansi_params.get(2).map(|p| *p as u16),
+            ));
+            *self = self.background(Some(ansi_code));
+            if ansi_params.get(1).is_some() {
+                params_used += 1;
+            }
+            if ansi_params.get(2).is_some() {
+                params_used += 1;
+            }
+        } else if ansi_params[0] == 1 {
+            *self = self.bold(Some(AnsiCode::Code((Some(1), None))));
+        } else if ansi_params[0] == 2 {
+            *self = self.dim(Some(AnsiCode::Code((Some(2), None))));
+        } else if ansi_params[0] == 3 {
+            *self = self.italic(Some(AnsiCode::Code((Some(3), None))));
+        } else if ansi_params[0] == 4 {
+            *self = self.underline(Some(AnsiCode::Code((Some(4), None))));
+        } else if ansi_params[0] == 5 {
+            *self = self.blink_slow(Some(AnsiCode::Code((Some(5), None))));
+        } else if ansi_params[0] == 6 {
+            *self = self.blink_fast(Some(AnsiCode::Code((Some(6), None))));
+        } else if ansi_params[0] == 7 {
+            *self = self.reverse(Some(AnsiCode::Code((Some(7), None))));
+        } else if ansi_params[0] == 8 {
+            *self = self.hidden(Some(AnsiCode::Code((Some(8), None))));
+        } else if ansi_params[0] == 9 {
+            *self = self.strike(Some(AnsiCode::Code((Some(9), None))));
+        } else if ansi_params[0] == 30 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black)));
+        } else if ansi_params[0] == 31 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red)));
+        } else if ansi_params[0] == 32 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green)));
+        } else if ansi_params[0] == 33 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
+        } else if ansi_params[0] == 34 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+        } else if ansi_params[0] == 35 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
+        } else if ansi_params[0] == 36 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
+        } else if ansi_params[0] == 37 {
+            *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White)));
+        } else if ansi_params[0] == 40 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black)));
+        } else if ansi_params[0] == 41 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red)));
+        } else if ansi_params[0] == 42 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green)));
+        } else if ansi_params[0] == 43 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
+        } else if ansi_params[0] == 44 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+        } else if ansi_params[0] == 45 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
+        } else if ansi_params[0] == 46 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
+        } else if ansi_params[0] == 47 {
+            *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White)));
+        } else {
+            // if this happens, it's a bug
+            let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
+            return;
+        }
+        if let Some(next_params) = ansi_params.get(params_used..) {
+            if next_params.len() > 0 {
+                self.add_style_from_ansi_params(next_params);
+            }
+        }
     }
 }
 
