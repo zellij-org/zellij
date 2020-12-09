@@ -261,8 +261,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
                             screen.toggle_active_terminal_fullscreen();
                         }
-                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
-                            screen.apply_layout(layout, new_pane_pids)
+                        ScreenInstruction::NewTab(index) => {
+                            screen.new_tab(index);
+                        }
+                        ScreenInstruction::ApplyLayout((layout, new_pane_pids, tab_index)) => {
+                            screen.apply_layout(layout, new_pane_pids, tab_index);
                         }
                         ScreenInstruction::Quit => {
                             break;
