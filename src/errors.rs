@@ -1,17 +1,16 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, OPENCALLS};
+use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 use backtrace::Backtrace;
-use std::fmt::{Debug, Error, Formatter};
+use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;
-use std::sync::mpsc::SyncSender;
 use std::{process, thread};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 pub fn handle_panic(
     info: &PanicInfo<'_>,
-    send_app_instructions: &SyncSender<(AppInstruction, ErrorContext)>,
+    send_app_instructions: &SenderWithContext<AppInstruction>,
 ) {
     let backtrace = Backtrace::new();
     let thread = thread::current();
@@ -26,7 +25,7 @@ pub fn handle_panic(
 
     let backtrace = match (info.location(), msg) {
         (Some(location), Some(msg)) => format!(
-            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
             err_ctx,
             thread,
             msg,
@@ -35,7 +34,7 @@ pub fn handle_panic(
             backtrace
         ),
         (Some(location), None) => format!(
-            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
             err_ctx,
             thread,
             location.file(),
@@ -43,11 +42,11 @@ pub fn handle_panic(
             backtrace
         ),
         (None, Some(msg)) => format!(
-            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
             err_ctx, thread, msg, backtrace
         ),
         (None, None) => format!(
-            "{:#?}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
             err_ctx, thread, backtrace
         ),
     };
@@ -57,7 +56,7 @@ pub fn handle_panic(
         process::exit(1);
     } else {
         send_app_instructions
-            .send((AppInstruction::Error(backtrace), err_ctx))
+            .send(AppInstruction::Error(backtrace))
             .unwrap();
     }
 }
@@ -85,14 +84,14 @@ impl ErrorContext {
     }
 }
 
-impl Debug for ErrorContext {
+impl Display for ErrorContext {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         writeln!(f, "Originating Thread(s):")?;
         for (index, ctx) in self.calls.iter().enumerate() {
             if *ctx == ContextType::Empty {
                 break;
             }
-            writeln!(f, "\u{1b}[0;0m{}. {:?}", index + 1, ctx)?;
+            writeln!(f, "\u{1b}[0;0m{}. {}", index + 1, ctx)?;
         }
         Ok(())
     }
@@ -109,7 +108,7 @@ pub enum ContextType {
     Empty,
 }
 
-impl Debug for ContextType {
+impl Display for ContextType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let purple = "\u{1b}[1;35m";
         let green = "\u{1b}[0;32m";

@@ -4,7 +4,7 @@ use ::async_std::task::*;
 use ::std::collections::HashMap;
 use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
-use ::std::sync::mpsc::{Receiver, Sender};
+use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ use crate::errors::{ContextType, ErrorContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
-use crate::{ScreenInstruction, OPENCALLS};
+use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -76,32 +76,25 @@ pub enum VteEvent {
 
 struct VteEventSender {
     id: RawFd,
-    sender: Sender<(ScreenInstruction, ErrorContext)>,
-    err_ctx: ErrorContext,
+    sender: SenderWithContext<ScreenInstruction>,
 }
 
 impl VteEventSender {
-    pub fn new(id: RawFd, sender: Sender<(ScreenInstruction, ErrorContext)>) -> Self {
-        VteEventSender {
-            id,
-            sender,
-            err_ctx: OPENCALLS.with(|ctx| *ctx.borrow()),
-        }
+    pub fn new(id: RawFd, sender: SenderWithContext<ScreenInstruction>) -> Self {
+        VteEventSender { id, sender }
     }
 }
 
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
-        let _ = self.sender.send((
-            ScreenInstruction::Pty(self.id, VteEvent::Print(c)),
-            self.err_ctx,
-        ));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)));
     }
     fn execute(&mut self, byte: u8) {
-        let _ = self.sender.send((
-            ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)),
-            self.err_ctx,
-        ));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)));
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
@@ -109,28 +102,26 @@ impl vte::Perform for VteEventSender {
         let intermediates = intermediates.iter().copied().collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::Hook(params, intermediates, ignore, c));
-        let _ = self.sender.send((instruction, self.err_ctx));
+        let _ = self.sender.send(instruction);
     }
 
     fn put(&mut self, byte: u8) {
-        let _ = self.sender.send((
-            ScreenInstruction::Pty(self.id, VteEvent::Put(byte)),
-            self.err_ctx,
-        ));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)));
     }
 
     fn unhook(&mut self) {
-        let _ = self.sender.send((
-            ScreenInstruction::Pty(self.id, VteEvent::Unhook),
-            self.err_ctx,
-        ));
+        let _ = self
+            .sender
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Unhook));
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params = params.iter().map(|p| p.to_vec()).collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::OscDispatch(params, bell_terminated));
-        let _ = self.sender.send((instruction, self.err_ctx));
+        let _ = self.sender.send(instruction);
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
@@ -140,14 +131,14 @@ impl vte::Perform for VteEventSender {
             self.id,
             VteEvent::CsiDispatch(params, intermediates, ignore, c),
         );
-        let _ = self.sender.send((instruction, self.err_ctx));
+        let _ = self.sender.send(instruction);
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         let intermediates = intermediates.iter().copied().collect();
         let instruction =
             ScreenInstruction::Pty(self.id, VteEvent::EscDispatch(intermediates, ignore, byte));
-        let _ = self.sender.send((instruction, self.err_ctx));
+        let _ = self.sender.send(instruction);
     }
 }
 
@@ -161,7 +152,7 @@ pub enum PtyInstruction {
 }
 
 pub struct PtyBus {
-    pub send_screen_instructions: Sender<(ScreenInstruction, ErrorContext)>,
+    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
@@ -170,7 +161,7 @@ pub struct PtyBus {
 
 fn stream_terminal_bytes(
     pid: RawFd,
-    send_screen_instructions: Sender<(ScreenInstruction, ErrorContext)>,
+    mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
     os_input: Box<dyn OsApi>,
     debug: bool,
 ) {
@@ -178,6 +169,7 @@ fn stream_terminal_bytes(
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
+            send_screen_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
@@ -206,7 +198,7 @@ fn stream_terminal_bytes(
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
                                 send_screen_instructions
-                                    .send((ScreenInstruction::Render, err_ctx))
+                                    .send(ScreenInstruction::Render)
                                     .unwrap();
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
@@ -222,7 +214,7 @@ fn stream_terminal_bytes(
                     if pending_render {
                         pending_render = false;
                         send_screen_instructions
-                            .send((ScreenInstruction::Render, err_ctx))
+                            .send(ScreenInstruction::Render)
                             .unwrap();
                     }
                     last_byte_receive_time = None;
@@ -230,14 +222,14 @@ fn stream_terminal_bytes(
                 }
             }
             send_screen_instructions
-                .send((ScreenInstruction::Render, err_ctx))
+                .send(ScreenInstruction::Render)
                 .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
             send_screen_instructions
-                .send((ScreenInstruction::ClosePane(pid), err_ctx))
+                .send(ScreenInstruction::ClosePane(pid))
                 .unwrap();
         }
     });
@@ -246,7 +238,7 @@ fn stream_terminal_bytes(
 impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
-        send_screen_instructions: Sender<(ScreenInstruction, ErrorContext)>,
+        send_screen_instructions: SenderWithContext<ScreenInstruction>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,
     ) -> Self {
@@ -268,9 +260,8 @@ impl PtyBus {
             self.debug_to_file,
         );
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         self.send_screen_instructions
-            .send((ScreenInstruction::NewPane(pid_primary), err_ctx))
+            .send(ScreenInstruction::NewPane(pid_primary))
             .unwrap();
     }
     pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
@@ -283,9 +274,8 @@ impl PtyBus {
             self.debug_to_file,
         );
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         self.send_screen_instructions
-            .send((ScreenInstruction::VerticalSplit(pid_primary), err_ctx))
+            .send(ScreenInstruction::VerticalSplit(pid_primary))
             .unwrap();
     }
     pub fn spawn_terminal_horizontally(&mut self, file_to_open: Option<PathBuf>) {
@@ -298,9 +288,8 @@ impl PtyBus {
             self.debug_to_file,
         );
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         self.send_screen_instructions
-            .send((ScreenInstruction::HorizontalSplit(pid_primary), err_ctx))
+            .send(ScreenInstruction::HorizontalSplit(pid_primary))
             .unwrap();
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
@@ -311,12 +300,11 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         self.send_screen_instructions
-            .send((
-                ScreenInstruction::ApplyLayout((layout, new_pane_pids.clone())),
-                err_ctx,
-            ))
+            .send(ScreenInstruction::ApplyLayout((
+                layout,
+                new_pane_pids.clone(),
+            )))
             .unwrap();
         for id in new_pane_pids {
             stream_terminal_bytes(
