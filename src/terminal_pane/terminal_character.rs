@@ -300,25 +300,25 @@ impl CharacterStyles {
     }
     pub fn add_style_from_ansi_params(&mut self, ansi_params: &[i64]) {
         let mut params_used = 1; // if there's a parameter, it is always used
-        match ansi_params[0] {
-            0 => self.reset_all(),
-            39 => *self = self.foreground(Some(AnsiCode::Reset)),
-            49 => *self = self.background(Some(AnsiCode::Reset)),
-            21 => *self = self.bold(Some(AnsiCode::Reset)),
-            22 => {
+        match ansi_params {
+            [] | [0, ..] => self.reset_all(),
+            [39, ..] => *self = self.foreground(Some(AnsiCode::Reset)),
+            [49, ..] => *self = self.background(Some(AnsiCode::Reset)),
+            [21, ..] => *self = self.bold(Some(AnsiCode::Reset)),
+            [22, ..] => {
                 *self = self.bold(Some(AnsiCode::Reset));
                 *self = self.dim(Some(AnsiCode::Reset));
             }
-            23 => *self = self.italic(Some(AnsiCode::Reset)),
-            24 => *self = self.underline(Some(AnsiCode::Reset)),
-            25 => {
+            [23, ..] => *self = self.italic(Some(AnsiCode::Reset)),
+            [24, ..] => *self = self.underline(Some(AnsiCode::Reset)),
+            [25, ..] => {
                 *self = self.blink_slow(Some(AnsiCode::Reset));
                 *self = self.blink_fast(Some(AnsiCode::Reset));
             }
-            27 => *self = self.reverse(Some(AnsiCode::Reset)),
-            28 => *self = self.hidden(Some(AnsiCode::Reset)),
-            29 => *self = self.strike(Some(AnsiCode::Reset)),
-            38 => {
+            [27, ..] => *self = self.reverse(Some(AnsiCode::Reset)),
+            [28, ..] => *self = self.hidden(Some(AnsiCode::Reset)),
+            [29, ..] => *self = self.strike(Some(AnsiCode::Reset)),
+            [38, ..] => {
                 let ansi_code = AnsiCode::Code((
                     ansi_params.get(1).map(|p| *p as u16),
                     ansi_params.get(2).map(|p| *p as u16),
@@ -328,7 +328,7 @@ impl CharacterStyles {
                     params_used += ansi_params.len() - 1;
                 }
             }
-            48 => {
+            [48, ..] => {
                 let ansi_code = AnsiCode::Code((
                     ansi_params.get(1).map(|p| *p as u16),
                     ansi_params.get(2).map(|p| *p as u16),
@@ -341,31 +341,31 @@ impl CharacterStyles {
                     params_used += 1;
                 }
             }
-            1 => *self = self.bold(Some(AnsiCode::Code((Some(1), None)))),
-            2 => *self = self.dim(Some(AnsiCode::Code((Some(2), None)))),
-            3 => *self = self.italic(Some(AnsiCode::Code((Some(3), None)))),
-            4 => *self = self.underline(Some(AnsiCode::Code((Some(4), None)))),
-            5 => *self = self.blink_slow(Some(AnsiCode::Code((Some(5), None)))),
-            6 => *self = self.blink_fast(Some(AnsiCode::Code((Some(6), None)))),
-            7 => *self = self.reverse(Some(AnsiCode::Code((Some(7), None)))),
-            8 => *self = self.hidden(Some(AnsiCode::Code((Some(8), None)))),
-            9 => *self = self.strike(Some(AnsiCode::Code((Some(9), None)))),
-            30 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black))),
-            31 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red))),
-            32 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green))),
-            33 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
-            34 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue))),
-            35 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
-            36 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
-            37 => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
-            40 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
-            41 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
-            42 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green))),
-            43 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
-            44 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue))),
-            45 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
-            46 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
-            47 => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
+            [1, ..] => *self = self.bold(Some(AnsiCode::Code((Some(1), None)))),
+            [2, ..] => *self = self.dim(Some(AnsiCode::Code((Some(2), None)))),
+            [3, ..] => *self = self.italic(Some(AnsiCode::Code((Some(3), None)))),
+            [4, ..] => *self = self.underline(Some(AnsiCode::Code((Some(4), None)))),
+            [5, ..] => *self = self.blink_slow(Some(AnsiCode::Code((Some(5), None)))),
+            [6, ..] => *self = self.blink_fast(Some(AnsiCode::Code((Some(6), None)))),
+            [7, ..] => *self = self.reverse(Some(AnsiCode::Code((Some(7), None)))),
+            [8, ..] => *self = self.hidden(Some(AnsiCode::Code((Some(8), None)))),
+            [9, ..] => *self = self.strike(Some(AnsiCode::Code((Some(9), None)))),
+            [30, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black))),
+            [31, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red))),
+            [32, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green))),
+            [33, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+            [34, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+            [35, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+            [36, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+            [37, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
+            [40, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
+            [41, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
+            [42, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green))),
+            [43, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+            [44, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+            [45, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+            [46, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+            [47, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
             _ => {
                 // if this happens, it's a bug
                 let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
