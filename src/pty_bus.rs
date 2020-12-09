@@ -300,7 +300,7 @@ impl PtyBus {
             .send(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
-                0
+                0,
             )))
             .unwrap();
         for id in new_pane_pids {
