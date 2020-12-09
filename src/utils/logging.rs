@@ -37,7 +37,7 @@ pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
     file.write_all(message.as_bytes())
 }
 
-pub fn debug_log_to_file_pid_3(message: String, pid: RawFd) -> io::Result<()> {
+pub fn _debug_log_to_file_pid_3(message: String, pid: RawFd) -> io::Result<()> {
     if pid == 3 {
         debug_log_to_file(message)
     } else {

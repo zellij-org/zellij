@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::Receiver;
 
 use crate::boundaries::Boundaries;
 use crate::boundaries::Rect;
+use crate::errors::ErrorContext;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
-use crate::utils::logging::debug_log_to_file;
-use crate::AppInstruction;
+use crate::{AppInstruction, SenderWithContext};
 
 /*
  * Screen
@@ -78,10 +78,10 @@ pub enum ScreenInstruction {
 }
 
 pub struct Screen {
-    pub receiver: Receiver<ScreenInstruction>,
+    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
     max_panes: Option<usize>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
     terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
     panes_to_hide: HashSet<RawFd>,
@@ -92,9 +92,9 @@ pub struct Screen {
 
 impl Screen {
     pub fn new(
-        receive_screen_instructions: Receiver<ScreenInstruction>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
