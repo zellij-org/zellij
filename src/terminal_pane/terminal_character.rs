@@ -302,133 +302,6 @@ impl CharacterStyles {
     }
     pub fn add_style_from_ansi_params(&mut self, ansi_params: &[i64]) {
         let mut params_used = 1; // if there's a parameter, it is always used
-// <<<<<<< HEAD
-//         if ansi_params.is_empty() || ansi_params[0] == 0 {
-//             self.reset_all();
-//         } else if ansi_params[0] == 39 {
-//             *self = self.foreground(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 49 {
-//             *self = self.background(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 21 {
-//             *self = self.bold(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 22 {
-//             *self = self.bold(Some(AnsiCode::Reset));
-//             *self = self.dim(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 23 {
-//             *self = self.italic(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 24 {
-//             *self = self.underline(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 25 {
-//             *self = self.blink_slow(Some(AnsiCode::Reset));
-//             *self = self.blink_fast(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 27 {
-//             *self = self.reverse(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 28 {
-//             *self = self.hidden(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 29 {
-//             *self = self.strike(Some(AnsiCode::Reset));
-//         } else if ansi_params[0] == 38 {
-//             // TODO:
-//             // * if 1 is 2 it is RGB, get it and next 3
-//             // * if 1 is 5, do what we did until now
-//             match ansi_params.get(1) {
-//                 Some(2) => {
-//                     let ansi_code = AnsiCode::RGBCode((
-//                         *ansi_params.get(2).unwrap() as u8,
-//                         *ansi_params.get(3).unwrap() as u8,
-//                         *ansi_params.get(4).unwrap() as u8,
-//                     ));
-//                     *self = self.foreground(Some(ansi_code));
-//                     params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-//                 }
-//                 Some(5) => {
-//                     let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-//                     *self = self.foreground(Some(ansi_code));
-//                     params_used += 2 // one for the indicator (5 in this case) and one for the color index
-//                 }
-//                 _ => {
-//                     // this is a bug
-//                     // it means we got a color encoding we don't know how to handle (or is invalid)
-//                     params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-//                 }
-//             }
-//         } else if ansi_params[0] == 48 {
-//             match ansi_params.get(1) {
-//                 Some(2) => {
-//                     let ansi_code = AnsiCode::RGBCode((
-//                         *ansi_params.get(2).unwrap() as u8,
-//                         *ansi_params.get(3).unwrap() as u8,
-//                         *ansi_params.get(4).unwrap() as u8,
-//                     ));
-//                     *self = self.background(Some(ansi_code));
-//                     params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-//                 }
-//                 Some(5) => {
-//                     let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-//                     *self = self.background(Some(ansi_code));
-//                     params_used += 2 // one for the indicator (5 in this case) and one for the color index
-//                 }
-//                 _ => {
-//                     // this is a bug
-//                     // it means we got a color encoding we don't know how to handle (or is invalid)
-//                     params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-//                 }
-//             }
-//         } else if ansi_params[0] == 1 {
-//             *self = self.bold(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 2 {
-//             *self = self.dim(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 3 {
-//             *self = self.italic(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 4 {
-//             *self = self.underline(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 5 {
-//             *self = self.blink_slow(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 6 {
-//             *self = self.blink_fast(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 7 {
-//             *self = self.reverse(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 8 {
-//             *self = self.hidden(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 9 {
-//             *self = self.strike(Some(AnsiCode::On));
-//         } else if ansi_params[0] == 30 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black)));
-//         } else if ansi_params[0] == 31 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red)));
-//         } else if ansi_params[0] == 32 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green)));
-//         } else if ansi_params[0] == 33 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
-//         } else if ansi_params[0] == 34 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue)));
-//         } else if ansi_params[0] == 35 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
-//         } else if ansi_params[0] == 36 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
-//         } else if ansi_params[0] == 37 {
-//             *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White)));
-//         } else if ansi_params[0] == 40 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black)));
-//         } else if ansi_params[0] == 41 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red)));
-//         } else if ansi_params[0] == 42 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green)));
-//         } else if ansi_params[0] == 43 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
-//         } else if ansi_params[0] == 44 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
-//         } else if ansi_params[0] == 45 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta)));
-//         } else if ansi_params[0] == 46 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan)));
-//         } else if ansi_params[0] == 47 {
-//             *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White)));
-//         } else {
-//             // if this happens, it's a bug
-//             let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
-//             return;
-// =======
         match ansi_params {
             [] | [0, ..] => self.reset_all(),
             [39, ..] => *self = self.foreground(Some(AnsiCode::Reset)),
@@ -447,51 +320,43 @@ impl CharacterStyles {
             [27, ..] => *self = self.reverse(Some(AnsiCode::Reset)),
             [28, ..] => *self = self.hidden(Some(AnsiCode::Reset)),
             [29, ..] => *self = self.strike(Some(AnsiCode::Reset)),
+            [38, 2, ..] => {
+                let ansi_code = AnsiCode::RGBCode((
+                    *ansi_params.get(2).unwrap() as u8,
+                    *ansi_params.get(3).unwrap() as u8,
+                    *ansi_params.get(4).unwrap() as u8,
+                ));
+                *self = self.foreground(Some(ansi_code));
+                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
+            }
+            [38, 5, ..] => {
+                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
+                *self = self.foreground(Some(ansi_code));
+                params_used += 2 // one for the indicator (5 in this case) and one for the color index
+            }
             [38, ..] => {
-                match ansi_params.get(1) {
-                    Some(2) => {
-                        let ansi_code = AnsiCode::RGBCode((
-                            *ansi_params.get(2).unwrap() as u8,
-                            *ansi_params.get(3).unwrap() as u8,
-                            *ansi_params.get(4).unwrap() as u8,
-                        ));
-                        *self = self.foreground(Some(ansi_code));
-                        params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-                    }
-                    Some(5) => {
-                        let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-                        *self = self.foreground(Some(ansi_code));
-                        params_used += 2 // one for the indicator (5 in this case) and one for the color index
-                    }
-                    _ => {
-                        // this is a bug
-                        // it means we got a color encoding we don't know how to handle (or is invalid)
-                        params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-                    }
-                };
+                // this is a bug
+                // it means we got a color encoding we don't know how to handle (or is invalid)
+                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
+            }
+            [48, 2, ..] => {
+                let ansi_code = AnsiCode::RGBCode((
+                    *ansi_params.get(2).unwrap() as u8,
+                    *ansi_params.get(3).unwrap() as u8,
+                    *ansi_params.get(4).unwrap() as u8,
+                ));
+                *self = self.background(Some(ansi_code));
+                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
+            }
+            [48, 5, ..] => {
+                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
+                *self = self.background(Some(ansi_code));
+                params_used += 2 // one for the indicator (5 in this case) and one for the color index
             }
             [48, ..] => {
-                match ansi_params.get(1) {
-                    Some(2) => {
-                        let ansi_code = AnsiCode::RGBCode((
-                            *ansi_params.get(2).unwrap() as u8,
-                            *ansi_params.get(3).unwrap() as u8,
-                            *ansi_params.get(4).unwrap() as u8,
-                        ));
-                        *self = self.background(Some(ansi_code));
-                        params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-                    }
-                    Some(5) => {
-                        let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-                        *self = self.background(Some(ansi_code));
-                        params_used += 2 // one for the indicator (5 in this case) and one for the color index
-                    }
-                    _ => {
-                        // this is a bug
-                        // it means we got a color encoding we don't know how to handle (or is invalid)
-                        params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-                    }
-                }
+                // this is a bug
+                // it means we got a color encoding we don't know how to handle (or is invalid)
+                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
             }
             [1, ..] => *self = self.bold(Some(AnsiCode::On)),
             [2, ..] => *self = self.dim(Some(AnsiCode::On)),
