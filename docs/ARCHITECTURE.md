@@ -15,12 +15,12 @@ The TerminalPane has two main roles:
 
 ### Scroll (src/terminal_pane/scroll.rs)
 The Scroll holds the terminal buffer and is in charge of:
-  * Keeping teack of the viewport (which part of it we see) this can change when we scroll up/down
+  * Keeping track of the viewport (which part of it we see) this can change when we scroll up/down
   * Keeping track of the cursor position
   * Controlling line-wrapping
 
 ### Terminal Character (src/terminal_pane/terminal_character.rs)
-The TerminalCharacter represents a single character in the pane. It holds the char itself on the one hand, and an internal `CharacterStyles` struct representing the styling of this character.
+The `TerminalCharacter` represents a single character in the pane. It holds the char itself on the one hand, and an internal `CharacterStyles` struct representing the styling of this character.
 This struct derives the `Copy` trait for performance reasons, because it is moved around quite a bit (eg. when line wrapping).
 
 ### How a terminal emulator draws characters?
