@@ -394,20 +394,17 @@ impl Scroll {
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
-            if self.show_cursor {
-                // scroll region should be ignored if the cursor is hidden
-                if current_canonical_line_index == scroll_region_bottom {
-                    // end of scroll region
-                    // when we have a scroll region set and we're at its bottom
-                    // we need to delete its first line, thus shifting all lines in it upwards
-                    // then we add an empty line at its end which will be filled by the application
-                    // controlling the scroll region (presumably filled by whatever comes next in the
-                    // scroll buffer, but that's not something we control)
-                    self.canonical_lines.remove(scroll_region_top);
-                    self.canonical_lines
-                        .insert(scroll_region_bottom, CanonicalLine::new());
-                    return;
-                }
+            if current_canonical_line_index == scroll_region_bottom {
+                // end of scroll region
+                // when we have a scroll region set and we're at its bottom
+                // we need to delete its first line, thus shifting all lines in it upwards
+                // then we add an empty line at its end which will be filled by the application
+                // controlling the scroll region (presumably filled by whatever comes next in the
+                // scroll buffer, but that's not something we control)
+                self.canonical_lines.remove(scroll_region_top);
+                self.canonical_lines
+                    .insert(scroll_region_bottom, CanonicalLine::new());
+                return;
             }
         }
 

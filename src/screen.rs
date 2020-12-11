@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::Receiver;
 
 use crate::boundaries::Boundaries;
 use crate::boundaries::Rect;
+use crate::errors::ErrorContext;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
-use crate::utils::logging::debug_log_to_file;
-use crate::AppInstruction;
+use crate::{AppInstruction, SenderWithContext};
 
 /*
  * Screen
@@ -78,10 +78,20 @@ pub enum ScreenInstruction {
     NewTab(usize),
 }
 
+<<<<<<< HEAD
 pub struct Tab {
     index: usize,
     terminals: BTreeMap<RawFd, TerminalPane>,
     visible: bool,
+=======
+pub struct Screen {
+    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
+    max_panes: Option<usize>,
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_app_instructions: SenderWithContext<AppInstruction>,
+    full_screen_ws: PositionAndSize,
+    terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
+>>>>>>> 1defd39491849f55629b703671c568c1246d5a0f
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     max_panes: Option<usize>,
@@ -94,7 +104,13 @@ pub struct Tab {
 
 impl Tab {
     pub fn new(
+<<<<<<< HEAD
         index: usize,
+=======
+        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_app_instructions: SenderWithContext<AppInstruction>,
+>>>>>>> 1defd39491849f55629b703671c568c1246d5a0f
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         send_pty_instructions: Sender<PtyInstruction>,

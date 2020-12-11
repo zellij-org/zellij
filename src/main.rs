@@ -15,13 +15,14 @@ mod utils;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
+use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
@@ -31,6 +32,9 @@ use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
+use std::cell::RefCell;
+
+thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::new(ErrorContext::new()));
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -39,6 +43,38 @@ enum ApiCommand {
     SplitVertically,
     MoveFocus,
 }
+
+#[derive(Clone)]
+enum SenderType<T: Clone> {
+    Sender(Sender<(T, ErrorContext)>),
+    SyncSender(SyncSender<(T, ErrorContext)>),
+}
+
+#[derive(Clone)]
+pub struct SenderWithContext<T: Clone> {
+    err_ctx: ErrorContext,
+    sender: SenderType<T>,
+}
+
+impl<T: Clone> SenderWithContext<T> {
+    fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
+        Self { err_ctx, sender }
+    }
+
+    pub fn send(&self, event: T) -> Result<(), SendError<(T, ErrorContext)>> {
+        match self.sender {
+            SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
+            SenderType::SyncSender(ref s) => s.send((event, self.err_ctx)),
+        }
+    }
+
+    pub fn update(&mut self, new_ctx: ErrorContext) {
+        self.err_ctx = new_ctx;
+    }
+}
+
+unsafe impl<T: Clone> Send for SenderWithContext<T> {}
+unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 #[derive(StructOpt, Debug, Default)]
 #[structopt(name = "mosaic")]
@@ -94,6 +130,7 @@ pub fn main() {
     }
 }
 
+#[derive(Clone)]
 pub enum AppInstruction {
     Exit,
     Error(String),
@@ -107,17 +144,24 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (
-        Sender<ScreenInstruction>,
-        Receiver<ScreenInstruction>,
+        Sender<(ScreenInstruction, ErrorContext)>,
+        Receiver<(ScreenInstruction, ErrorContext)>,
     ) = channel();
+    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+    let mut send_screen_instructions =
+        SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
     let (send_pty_instructions, receive_pty_instructions): (
-        Sender<PtyInstruction>,
-        Receiver<PtyInstruction>,
+        Sender<(PtyInstruction, ErrorContext)>,
+        Receiver<(PtyInstruction, ErrorContext)>,
     ) = channel();
+    let mut send_pty_instructions =
+        SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
     let (send_app_instructions, receive_app_instructions): (
-        SyncSender<AppInstruction>,
-        Receiver<AppInstruction>,
+        SyncSender<(AppInstruction, ErrorContext)>,
+        Receiver<(AppInstruction, ErrorContext)>,
     ) = sync_channel(0);
+    let send_app_instructions =
+        SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
     let mut screen = Screen::new(
         receive_screen_instructions,
         send_pty_instructions.clone(),
@@ -156,10 +200,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
 
                     loop {
-                        let event = pty_bus
+                        let (event, mut err_ctx) = pty_bus
                             .receive_pty_instructions
                             .recv()
                             .expect("failed to receive event on channel");
+                        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+                        pty_bus.send_screen_instructions.update(err_ctx);
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
                                 pty_bus.spawn_terminal(file_to_open);
@@ -190,10 +236,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
                 move || loop {
-                    let event = screen
+                    let (event, mut err_ctx) = screen
                         .receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
+                    screen.send_app_instructions.update(err_ctx);
+                    screen.send_pty_instructions.update(err_ctx);
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
                             screen.handle_pty_event(pid, vte_event);
@@ -391,12 +440,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         .name("ipc_server".to_string())
         .spawn({
             use std::io::Read;
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
+            let mut send_pty_instructions = send_pty_instructions.clone();
+            let mut send_screen_instructions = send_screen_instructions.clone();
             move || {
                 std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
                     .expect("could not listen on ipc socket");
+                let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+                err_ctx.add_call(ContextType::IPCServer);
+                send_pty_instructions.update(err_ctx);
+                send_screen_instructions.update(err_ctx);
 
                 for stream in listener.incoming() {
                     match stream {
@@ -459,9 +512,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     #[warn(clippy::never_loop)]
     loop {
-        let app_instruction = receive_app_instructions
+        let (app_instruction, mut err_ctx) = receive_app_instructions
             .recv()
             .expect("failed to receive app instruction on channel");
+
+        err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
+        send_screen_instructions.update(err_ctx);
+        send_pty_instructions.update(err_ctx);
         match app_instruction {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
@@ -469,10 +526,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                os_input.unset_raw_mode(0);
-                println!("{}", backtrace);
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                os_input.unset_raw_mode(0);
+                let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+                let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
+                let _ = os_input
+                    .get_stdout_writer()
+                    .write(error.as_bytes())
+                    .unwrap();
                 for thread_handler in active_threads {
                     let _ = thread_handler.join();
                 }
