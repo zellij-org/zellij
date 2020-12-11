@@ -328,12 +328,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 .unwrap()
                                 .toggle_active_terminal_fullscreen();
                         }
-                        ScreenInstruction::NewTab => {
-                            screen.new_tab()
-                        }
-                        ScreenInstruction::SwitchTab => {
-                            screen.switch_tab()
-                        }
+                        ScreenInstruction::NewTab => screen.new_tab(),
+                        ScreenInstruction::SwitchTab => screen.switch_tab(),
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => screen
                             .get_active_tab_mut()
                             .unwrap()

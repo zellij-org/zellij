@@ -10,8 +10,8 @@ use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
-use crate::{AppInstruction, SenderWithContext};
 use crate::utils::logging::debug_log_to_file;
+use crate::{AppInstruction, SenderWithContext};
 
 /*
  * Screen
@@ -77,7 +77,7 @@ pub enum ScreenInstruction {
     ClosePane(RawFd),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab,
-    SwitchTab
+    SwitchTab,
 }
 
 pub struct Tab {
@@ -1676,12 +1676,10 @@ impl Screen {
         );
         self.active_tab = Some(tab.index);
         self.tabs.push(tab);
-        debug_log_to_file(format!("newtab ||| tab: {:?}, terminals: {:?}", self.active_tab.unwrap(), self.tabs[self.active_tab.unwrap()].terminals.len()));
         self.render();
     }
     pub fn switch_tab(&mut self) {
         self.active_tab = Some(self.active_tab.unwrap() - 1 as usize);
-        debug_log_to_file(format!("switch ||| tab: {:?}, terminals: {:?}", self.active_tab.unwrap(), self.tabs[self.active_tab.unwrap()].terminals.len()));
         self.render();
     }
     pub fn render(&mut self) {
