@@ -148,6 +148,7 @@ pub enum PtyInstruction {
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
     ClosePane(RawFd),
+    NewTab,
     Quit,
 }
 

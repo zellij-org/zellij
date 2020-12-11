@@ -222,6 +222,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 pty_bus.close_pane(id);
                                 command_is_executing.done_closing_pane();
                             }
+                            PtyInstruction::NewTab => {
+                                pty_bus.spawn_terminal_vertically(None);
+                            }
                             PtyInstruction::Quit => {
                                 break;
                             }

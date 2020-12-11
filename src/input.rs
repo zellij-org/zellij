@@ -222,12 +222,14 @@ impl InputHandler {
                 }
                 [49] => {
                     // 1
+                    self.command_is_executing.opening_new_pane();
                     self.send_screen_instructions
                         .send(ScreenInstruction::NewTab)
                         .unwrap();
                     self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                        .send(PtyInstruction::NewTab)
                         .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
                 }
                 [50] => {
                     // 2
