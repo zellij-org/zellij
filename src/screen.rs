@@ -74,22 +74,20 @@ pub enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     ClosePane(RawFd),
-    ApplyLayout((Layout, Vec<RawFd>, usize)),
-    NewTab(usize),
+    ApplyLayout((Layout, Vec<RawFd>)),
 }
 
 pub struct Tab {
     index: usize,
     terminals: BTreeMap<RawFd, TerminalPane>,
-    visible: bool,
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
     os_api: Box<dyn OsApi>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
 impl Tab {
@@ -97,15 +95,14 @@ impl Tab {
         index: usize,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
     ) -> Self {
         Tab {
             index: index,
             terminals: BTreeMap::new(),
             max_panes,
-            visible: false,
             panes_to_hide: HashSet::new(),
             active_terminal: None,
             full_screen_ws: *full_screen_ws,
@@ -115,12 +112,7 @@ impl Tab {
             send_pty_instructions,
         }
     }
-    pub fn hide(&mut self) {
-        self.visible = false;
-    }
-    pub fn show(&mut self) {
-        self.visible = true;
-    }
+
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PositionAndSize {
@@ -1632,23 +1624,21 @@ impl Tab {
 }
 
 pub struct Screen {
-    pub receiver: Receiver<ScreenInstruction>,
+    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
     max_panes: Option<usize>,
     tabs: Vec<Tab>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
-    tabs_to_hide: HashSet<usize>,
     active_tab: Option<usize>,
     os_api: Box<dyn OsApi>,
-    fullscreen_is_active: bool,
 }
 
 impl Screen {
     pub fn new(
-        receive_screen_instructions: Receiver<ScreenInstruction>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
@@ -1669,9 +1659,7 @@ impl Screen {
             full_screen_ws: *full_screen_ws,
             active_tab: Some(tab.index),
             tabs: vec![tab],
-            tabs_to_hide: HashSet::new(),
             os_api,
-            fullscreen_is_active: false,
         }
     }
     pub fn new_tab(&mut self, index: usize) {
@@ -1747,14 +1735,6 @@ impl Screen {
         }
     }
 
-    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
-        // TODO: this should be an attribute on Screen instead of full_screen_ws
-        self.tabs[tab_index].apply_layout(layout, new_pids);
-    }
-
-    pub fn toggle_fullscreen_is_active(&mut self) {
-        self.fullscreen_is_active = !self.fullscreen_is_active;
-    }
     pub fn get_active_tab(&self) -> Option<&Tab> {
         self.tabs.get(self.active_tab.unwrap())
     }
