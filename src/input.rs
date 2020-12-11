@@ -4,6 +4,7 @@ use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
+use crate::utils::logging::debug_log_to_file;
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
 struct InputHandler {
@@ -218,6 +219,16 @@ impl InputHandler {
                     self.send_screen_instructions
                         .send(ScreenInstruction::MoveFocusRight)
                         .unwrap()
+                }
+                [49] => {
+                    // 1
+                    self.send_screen_instructions.send(ScreenInstruction::NewTab)
+                    .unwrap()
+                }
+                [50] => {
+                    // 2
+                    self.send_screen_instructions.send(ScreenInstruction::SwitchTab)
+                    .unwrap()
                 }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}

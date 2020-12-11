@@ -153,6 +153,8 @@ pub enum ScreenContext {
     ToggleActiveTerminalFullscreen,
     ClosePane,
     ApplyLayout,
+    NewTab,
+    SwitchTab
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -183,6 +185,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
+            ScreenInstruction::NewTab => ScreenContext::NewTab,
+            ScreenInstruction::SwitchTab => ScreenContext::SwitchTab
         }
     }
 }
