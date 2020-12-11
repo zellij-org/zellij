@@ -78,20 +78,10 @@ pub enum ScreenInstruction {
     NewTab(usize),
 }
 
-<<<<<<< HEAD
 pub struct Tab {
     index: usize,
     terminals: BTreeMap<RawFd, TerminalPane>,
     visible: bool,
-=======
-pub struct Screen {
-    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
-    max_panes: Option<usize>,
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
-    full_screen_ws: PositionAndSize,
-    terminals: BTreeMap<RawFd, TerminalPane>, // BTreeMap because we need a predictable order when changing focus
->>>>>>> 1defd39491849f55629b703671c568c1246d5a0f
     panes_to_hide: HashSet<RawFd>,
     active_terminal: Option<RawFd>,
     max_panes: Option<usize>,
@@ -104,13 +94,7 @@ pub struct Screen {
 
 impl Tab {
     pub fn new(
-<<<<<<< HEAD
         index: usize,
-=======
-        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
->>>>>>> 1defd39491849f55629b703671c568c1246d5a0f
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         send_pty_instructions: Sender<PtyInstruction>,
