@@ -252,7 +252,7 @@ impl PtyBus {
             debug_to_file,
         }
     }
-    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) {
+    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, RawFd) =
             self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(
@@ -262,37 +262,7 @@ impl PtyBus {
             self.debug_to_file,
         );
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        self.send_screen_instructions
-            .send(ScreenInstruction::NewPane(pid_primary))
-            .unwrap();
-    }
-    pub fn spawn_terminal_vertically(&mut self, file_to_open: Option<PathBuf>) {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(
-            pid_primary,
-            self.send_screen_instructions.clone(),
-            self.os_input.clone(),
-            self.debug_to_file,
-        );
-        self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        self.send_screen_instructions
-            .send(ScreenInstruction::VerticalSplit(pid_primary))
-            .unwrap();
-    }
-    pub fn spawn_terminal_horizontally(&mut self, file_to_open: Option<PathBuf>) {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(
-            pid_primary,
-            self.send_screen_instructions.clone(),
-            self.os_input.clone(),
-            self.debug_to_file,
-        );
-        self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        self.send_screen_instructions
-            .send(ScreenInstruction::HorizontalSplit(pid_primary))
-            .unwrap();
+        pid_primary
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
         let total_panes = layout.total_panes();
@@ -320,19 +290,6 @@ impl PtyBus {
     pub fn close_pane(&mut self, id: RawFd) {
         let child_pid = self.id_to_child_pid.get(&id).unwrap();
         self.os_input.kill(*child_pid).unwrap();
-    }
-    pub fn new_tab(&mut self) {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
-        stream_terminal_bytes(
-            pid_primary,
-            self.send_screen_instructions.clone(),
-            self.os_input.clone(),
-            self.debug_to_file,
-        );
-        self.id_to_child_pid.insert(pid_primary, pid_secondary);
-        self.send_screen_instructions
-            .send(ScreenInstruction::NewTab(pid_primary))
-            .unwrap();
     }
     pub fn close_tab(&mut self, ids: Vec<RawFd>) {
         ids.iter().for_each(|id| self.close_pane(*id));

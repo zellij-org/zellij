@@ -194,10 +194,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let mut command_is_executing = command_is_executing.clone();
                 move || {
                     if let Some(layout) = maybe_layout {
-                        pty_bus.spawn_tab();
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
-                        pty_bus.new_tab();
+                        let pid = pty_bus.spawn_terminal(None);
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::NewTab(pid))
+                            .unwrap();
                     }
 
                     loop {
@@ -209,16 +212,32 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         pty_bus.send_screen_instructions.update(err_ctx);
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
-                                pty_bus.spawn_terminal(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewPane(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                pty_bus.spawn_terminal_vertically(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::VerticalSplit(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                pty_bus.spawn_terminal_horizontally(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::HorizontalSplit(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::NewTab => {
-                                pty_bus.new_tab();
+                                let pid = pty_bus.spawn_terminal(None);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewTab(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);

@@ -10,7 +10,6 @@ use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
-use crate::utils::logging::debug_log_to_file;
 use crate::{AppInstruction, SenderWithContext};
 
 /*
