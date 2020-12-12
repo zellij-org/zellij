@@ -194,6 +194,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let mut command_is_executing = command_is_executing.clone();
                 move || {
                     if let Some(layout) = maybe_layout {
+                        pty_bus.spawn_tab();
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
                         pty_bus.spawn_tab();
