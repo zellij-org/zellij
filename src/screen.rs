@@ -1647,21 +1647,13 @@ impl Screen {
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
     ) -> Self {
-        let tab = Tab::new(
-            0,
-            full_screen_ws,
-            os_api.clone(),
-            send_pty_instructions.clone(),
-            send_app_instructions.clone(),
-            max_panes,
-        );
         Screen {
             receiver: receive_screen_instructions,
             max_panes,
             send_pty_instructions,
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
-            active_tab: Some(tab.index),
+            active_tab: None,
             tabs: BTreeMap::new(),
             os_api,
         }
