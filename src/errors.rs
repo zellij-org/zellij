@@ -154,7 +154,8 @@ pub enum ScreenContext {
     ClosePane,
     ApplyLayout,
     NewTab,
-    SwitchTab,
+    SwitchTabNext,
+    SwitchTabPrev,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -186,7 +187,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab => ScreenContext::NewTab,
-            ScreenInstruction::SwitchTab => ScreenContext::SwitchTab,
+            ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
+            ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
         }
     }
 }

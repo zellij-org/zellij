@@ -319,4 +319,9 @@ impl PtyBus {
         let child_pid = self.id_to_child_pid.get(&id).unwrap();
         self.os_input.kill(*child_pid).unwrap();
     }
+    pub fn spawn_tab(&mut self) {
+        self.send_screen_instructions
+            .send(ScreenInstruction::NewTab)
+            .unwrap();
+    }
 }

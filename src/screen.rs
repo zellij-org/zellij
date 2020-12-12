@@ -77,7 +77,8 @@ pub enum ScreenInstruction {
     ClosePane(RawFd),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab,
-    SwitchTab,
+    SwitchTabNext,
+    SwitchTabPrev,
 }
 
 pub struct Tab {
@@ -96,7 +97,7 @@ pub struct Tab {
 pub struct Screen {
     pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
     max_panes: Option<usize>,
-    tabs: Vec<Tab>,
+    tabs: BTreeMap<usize, Tab>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
@@ -1661,7 +1662,7 @@ impl Screen {
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab: Some(tab.index),
-            tabs: vec![tab],
+            tabs: BTreeMap::new(),
             os_api,
         }
     }
@@ -1675,11 +1676,43 @@ impl Screen {
             self.max_panes,
         );
         self.active_tab = Some(tab.index);
-        self.tabs.push(tab);
+        self.tabs.insert(self.tabs.len(), tab);
         self.render();
     }
-    pub fn switch_tab(&mut self) {
-        self.active_tab = Some(self.active_tab.unwrap() - 1 as usize);
+    pub fn switch_tab_next(&mut self) {
+        let active_tab_id = self.get_active_tab().unwrap().index;
+        let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
+        let first_tab = tab_ids.get(0).unwrap();
+
+        if let Some(next_tab) = tab_ids.get(active_tab_id + 1) {
+            self.active_tab = Some(*next_tab)
+        } else {
+            self.active_tab = Some(*first_tab)
+        }
+
+        self.render();
+    }
+    pub fn switch_tab_prev(&mut self) {
+        let active_tab_id = self.get_active_tab().unwrap().index;
+        let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
+        let first_tab = tab_ids.get(0).unwrap();
+        let last_tab = tab_ids.get(self.tabs.len() - 1).unwrap();
+
+        // a bit messy but it works
+        if active_tab_id == *first_tab {
+            if let Some(prev_tab) = tab_ids.get(*last_tab) {
+                self.active_tab = Some(*prev_tab)
+            } else {
+                self.active_tab = Some(*first_tab)
+            }
+        } else {
+            if let Some(prev_tab) = tab_ids.get(active_tab_id - 1) {
+                self.active_tab = Some(*prev_tab)
+            } else {
+                self.active_tab = Some(*first_tab)
+            }
+        }
+
         self.render();
     }
     pub fn render(&mut self) {
@@ -1743,9 +1776,19 @@ impl Screen {
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
-        self.tabs.get(self.active_tab.unwrap())
+        match self.active_tab {
+            Some(tab) => self.tabs.get(&tab),
+            None => None,
+        }
+    }
+    pub fn get_tabs_mut(&mut self) -> &mut BTreeMap<usize, Tab> {
+        &mut self.tabs
     }
     pub fn get_active_tab_mut(&mut self) -> Option<&mut Tab> {
-        self.tabs.get_mut(self.active_tab.unwrap())
+        let tab = match self.active_tab {
+            Some(tab) => self.get_tabs_mut().get_mut(&tab),
+            None => None,
+        };
+        tab
     }
 }

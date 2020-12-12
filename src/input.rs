@@ -224,12 +224,21 @@ impl InputHandler {
                     // 1
                     self.send_screen_instructions
                         .send(ScreenInstruction::NewTab)
-                        .unwrap()
+                        .unwrap();
+                    self.send_pty_instructions
+                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                        .unwrap();
                 }
                 [50] => {
                     // 2
                     self.send_screen_instructions
-                        .send(ScreenInstruction::SwitchTab)
+                        .send(ScreenInstruction::SwitchTabPrev)
+                        .unwrap()
+                }
+                [51] => {
+                    // 3
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::SwitchTabNext)
                         .unwrap()
                 }
                 //@@@khs26 Write this to the powerbar?

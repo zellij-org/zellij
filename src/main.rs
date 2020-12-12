@@ -196,6 +196,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     if let Some(layout) = maybe_layout {
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
+                        pty_bus.spawn_tab();
                         pty_bus.spawn_terminal_vertically(None);
                     }
 
@@ -329,7 +330,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 .toggle_active_terminal_fullscreen();
                         }
                         ScreenInstruction::NewTab => screen.new_tab(),
-                        ScreenInstruction::SwitchTab => screen.switch_tab(),
+                        ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
+                        ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => screen
                             .get_active_tab_mut()
                             .unwrap()
