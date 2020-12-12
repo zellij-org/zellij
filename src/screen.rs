@@ -1712,20 +1712,6 @@ impl Screen {
             self.active_tab = Some(*prev_tab)
         }
         self.render();
-        // a bit messy but it works
-        /*if active_tab_id == *first_tab {
-            if let Some(prev_tab) = tab_ids.get(*last_tab) {
-                self.active_tab = Some(*prev_tab)
-            } else {
-                self.active_tab = Some(*first_tab)
-            }
-        } else {
-            if let Some(prev_tab) = tab_ids.get(active_tab_id - 1) {
-                self.active_tab = Some(*prev_tab)
-            } else {
-                self.active_tab = Some(*first_tab)
-            }
-        }*/
     }
     pub fn close_tab(&mut self) {
         let active_tab_index = self.active_tab.unwrap();
@@ -1759,63 +1745,6 @@ impl Screen {
         if close_tab {
             self.close_tab();
         }
-        /*let active_tab = self.get_active_tab().unwrap();
-        if active_tab.active_terminal.is_none() {
-            // we might not have an active terminal if we closed the last pane
-            // in that case, we should not render as the app is exiting
-            return;
-        }
-        let mut stdout = self.os_api.get_stdout_writer();
-        let mut boundaries = Boundaries::new(
-            self.full_screen_ws.columns as u16,
-            self.full_screen_ws.rows as u16,
-        );
-        let active_tab = self.get_active_tab_mut().unwrap();
-        for (pid, terminal) in active_tab.terminals.iter_mut() {
-            if !active_tab.panes_to_hide.contains(pid) {
-                boundaries.add_rect(&terminal);
-                if let Some(vte_output) = terminal.buffer_as_vte_output() {
-                    stdout
-                        .write_all(&vte_output.as_bytes())
-                        .expect("cannot write to stdout");
-                }
-            }
-        }
-
-        // TODO: only render (and calculate) boundaries if there was a resize
-        let vte_output = boundaries.vte_output();
-        stdout
-            .write_all(&vte_output.as_bytes())
-            .expect("cannot write to stdout");
-
-        match self
-            .get_active_tab()
-            .unwrap()
-            .get_active_terminal_cursor_position()
-        {
-            Some((cursor_position_x, cursor_position_y)) => {
-                let show_cursor = "\u{1b}[?25h";
-                let goto_cursor_position = format!(
-                    "\u{1b}[{};{}H\u{1b}[m",
-                    cursor_position_y + 1,
-                    cursor_position_x + 1
-                ); // goto row/col
-                stdout
-                    .write_all(&show_cursor.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout
-                    .write_all(&goto_cursor_position.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
-            }
-            None => {
-                let hide_cursor = "\u{1b}[?25l";
-                stdout
-                    .write_all(&hide_cursor.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
-            }
-        }*/
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
