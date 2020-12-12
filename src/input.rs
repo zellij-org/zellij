@@ -223,9 +223,6 @@ impl InputHandler {
                 [49] => {
                     // 1
                     self.command_is_executing.opening_new_pane();
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::NewTab)
-                        .unwrap();
                     self.send_pty_instructions
                         .send(PtyInstruction::NewTab)
                         .unwrap();
@@ -242,6 +239,14 @@ impl InputHandler {
                     self.send_screen_instructions
                         .send(ScreenInstruction::SwitchTabNext)
                         .unwrap()
+                }
+                [52] => {
+                    // 4
+                    self.command_is_executing.closing_pane();
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::CloseTab)
+                        .unwrap();
+                    self.command_is_executing.wait_until_pane_is_closed();
                 }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}

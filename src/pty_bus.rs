@@ -147,8 +147,9 @@ pub enum PtyInstruction {
     SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
-    ClosePane(RawFd),
     NewTab,
+    ClosePane(RawFd),
+    CloseTab(Vec<RawFd>),
     Quit,
 }
 
@@ -320,9 +321,20 @@ impl PtyBus {
         let child_pid = self.id_to_child_pid.get(&id).unwrap();
         self.os_input.kill(*child_pid).unwrap();
     }
-    pub fn spawn_tab(&mut self) {
+    pub fn new_tab(&mut self) {
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
+        stream_terminal_bytes(
+            pid_primary,
+            self.send_screen_instructions.clone(),
+            self.os_input.clone(),
+            self.debug_to_file,
+        );
+        self.id_to_child_pid.insert(pid_primary, pid_secondary);
         self.send_screen_instructions
-            .send(ScreenInstruction::NewTab)
+            .send(ScreenInstruction::NewTab(pid_primary))
             .unwrap();
+    }
+    pub fn close_tab(&mut self, ids: Vec<RawFd>) {
+        ids.iter().for_each(|id| self.close_pane(*id));
     }
 }

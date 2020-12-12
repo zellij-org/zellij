@@ -197,8 +197,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         pty_bus.spawn_tab();
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
-                        pty_bus.spawn_tab();
-                        pty_bus.spawn_terminal_vertically(None);
+                        pty_bus.new_tab();
                     }
 
                     loop {
@@ -218,12 +217,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                                 pty_bus.spawn_terminal_horizontally(file_to_open);
                             }
+                            PtyInstruction::NewTab => {
+                                pty_bus.new_tab();
+                            }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
                                 command_is_executing.done_closing_pane();
                             }
-                            PtyInstruction::NewTab => {
-                                pty_bus.spawn_terminal_vertically(None);
+                            PtyInstruction::CloseTab(ids) => {
+                                pty_bus.close_tab(ids);
+                                command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
                                 break;
@@ -323,9 +326,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::CloseFocusedPane => {
                             screen.get_active_tab_mut().unwrap().close_focused_pane();
+                            screen.render();
                         }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);
+                            screen.render();
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
                             screen
@@ -333,13 +338,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 .unwrap()
                                 .toggle_active_terminal_fullscreen();
                         }
-                        ScreenInstruction::NewTab => screen.new_tab(),
+                        ScreenInstruction::NewTab(pane_id) => {
+                            screen.new_tab(pane_id);
+                            command_is_executing.done_opening_new_pane();
+                        }
                         ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
                         ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
-                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => screen
-                            .get_active_tab_mut()
-                            .unwrap()
-                            .apply_layout(layout, new_pane_pids),
+                        ScreenInstruction::CloseTab => screen.close_tab(),
+                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                            screen.apply_layout(layout, new_pane_pids)
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }

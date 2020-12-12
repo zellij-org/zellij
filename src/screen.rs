@@ -76,9 +76,10 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen,
     ClosePane(RawFd),
     ApplyLayout((Layout, Vec<RawFd>)),
-    NewTab,
+    NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
+    CloseTab,
 }
 
 pub struct Tab {
@@ -103,23 +104,38 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     active_tab: Option<usize>,
     os_api: Box<dyn OsApi>,
+    next_tab_index: usize,
 }
 
 impl Tab {
     pub fn new(
         index: usize,
         full_screen_ws: &PositionAndSize,
-        os_api: Box<dyn OsApi>,
+        mut os_api: Box<dyn OsApi>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
+        pane_id: Option<RawFd>,
     ) -> Self {
+        let terminals = if let Some(pid) = pane_id {
+            let new_terminal = TerminalPane::new(pid, *full_screen_ws, 0, 0);
+            os_api.set_terminal_size_using_fd(
+                new_terminal.pid,
+                new_terminal.get_columns() as u16,
+                new_terminal.get_rows() as u16,
+            );
+            let mut terminals = BTreeMap::new();
+            terminals.insert(pid, new_terminal);
+            terminals
+        } else {
+            BTreeMap::new()
+        };
         Tab {
             index: index,
-            terminals: BTreeMap::new(),
+            terminals,
             max_panes,
             panes_to_hide: HashSet::new(),
-            active_terminal: None,
+            active_terminal: pane_id,
             full_screen_ws: *full_screen_ws,
             fullscreen_is_active: false,
             os_api,
@@ -1243,11 +1259,10 @@ impl Tab {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             if self.panes_exist_to_the_right(&active_terminal_id) {
                 self.increase_pane_and_surroundings_right(&active_terminal_id, count);
-                self.render();
             } else if self.panes_exist_to_the_left(&active_terminal_id) {
                 self.reduce_pane_and_surroundings_right(&active_terminal_id, count);
-                self.render();
             }
+            self.render();
         }
     }
     pub fn resize_left(&mut self) {
@@ -1256,11 +1271,10 @@ impl Tab {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             if self.panes_exist_to_the_right(&active_terminal_id) {
                 self.reduce_pane_and_surroundings_left(&active_terminal_id, count);
-                self.render();
             } else if self.panes_exist_to_the_left(&active_terminal_id) {
                 self.increase_pane_and_surroundings_left(&active_terminal_id, count);
-                self.render();
             }
+            self.render();
         }
     }
     pub fn resize_down(&mut self) {
@@ -1269,11 +1283,10 @@ impl Tab {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             if self.panes_exist_above(&active_terminal_id) {
                 self.reduce_pane_and_surroundings_down(&active_terminal_id, count);
-                self.render();
             } else if self.panes_exist_below(&active_terminal_id) {
                 self.increase_pane_and_surroundings_down(&active_terminal_id, count);
-                self.render();
             }
+            self.render();
         }
     }
     pub fn resize_up(&mut self) {
@@ -1282,11 +1295,10 @@ impl Tab {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             if self.panes_exist_above(&active_terminal_id) {
                 self.increase_pane_and_surroundings_up(&active_terminal_id, count);
-                self.render();
             } else if self.panes_exist_below(&active_terminal_id) {
                 self.reduce_pane_and_surroundings_up(&active_terminal_id, count);
-                self.render();
             }
+            self.render();
         }
     }
     pub fn move_focus(&mut self) {
@@ -1556,10 +1568,12 @@ impl Tab {
             }
         }
     }
+    pub fn get_pane_ids(&mut self) -> Vec<RawFd> {
+        self.terminals.keys().copied().collect::<Vec<RawFd>>()
+    }
     pub fn close_pane(&mut self, id: RawFd) {
         if self.terminals.get(&id).is_some() {
             self.close_pane_without_rerender(id);
-            self.render();
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: RawFd) {
@@ -1604,7 +1618,6 @@ impl Tab {
             self.terminals.remove(&id);
             if self.terminals.is_empty() {
                 self.active_terminal = None;
-                let _ = self.send_app_instructions.send(AppInstruction::Exit);
             }
         }
     }
@@ -1656,42 +1669,51 @@ impl Screen {
             active_tab: None,
             tabs: BTreeMap::new(),
             os_api,
+            next_tab_index: 0,
         }
     }
-    pub fn new_tab(&mut self) {
+    pub fn new_tab(&mut self, pane_id: RawFd) {
         let tab = Tab::new(
-            self.tabs.len(),
+            self.next_tab_index,
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
+            Some(pane_id),
         );
         self.active_tab = Some(tab.index);
-        self.tabs.insert(self.tabs.len(), tab);
+        self.tabs.insert(self.next_tab_index, tab);
+        self.next_tab_index += 1;
         self.render();
     }
     pub fn switch_tab_next(&mut self) {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
         let first_tab = tab_ids.get(0).unwrap();
-
-        if let Some(next_tab) = tab_ids.get(active_tab_id + 1) {
-            self.active_tab = Some(*next_tab)
+        let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
+        if let Some(next_tab) = tab_ids.get(active_tab_id_position + 1) {
+            self.active_tab = Some(*next_tab);
         } else {
-            self.active_tab = Some(*first_tab)
+            self.active_tab = Some(*first_tab);
         }
-
         self.render();
     }
     pub fn switch_tab_prev(&mut self) {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
         let first_tab = tab_ids.get(0).unwrap();
-        let last_tab = tab_ids.get(self.tabs.len() - 1).unwrap();
+        let last_tab = tab_ids.get(tab_ids.len() - 1).unwrap();
 
-        // a bit messy but it works
+        let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
         if active_tab_id == *first_tab {
+            self.active_tab = Some(*last_tab)
+        } else if let Some(prev_tab) = tab_ids.get(active_tab_id_position - 1) {
+            self.active_tab = Some(*prev_tab)
+        }
+        self.render();
+        // a bit messy but it works
+        /*if active_tab_id == *first_tab {
             if let Some(prev_tab) = tab_ids.get(*last_tab) {
                 self.active_tab = Some(*prev_tab)
             } else {
@@ -1703,12 +1725,41 @@ impl Screen {
             } else {
                 self.active_tab = Some(*first_tab)
             }
+        }*/
+    }
+    pub fn close_tab(&mut self) {
+        let active_tab_index = self.active_tab.unwrap();
+        if self.tabs.len() > 1 {
+            self.switch_tab_prev();
         }
-
+        let mut active_tab = self.tabs.remove(&active_tab_index).unwrap();
+        let pane_ids = active_tab.get_pane_ids();
+        self.send_pty_instructions
+            .send(PtyInstruction::CloseTab(pane_ids))
+            .unwrap();
+        if self.tabs.len() == 0 {
+            self.active_tab = None;
+        }
         self.render();
     }
     pub fn render(&mut self) {
-        let active_tab = self.get_active_tab().unwrap();
+        let close_tab = if let Some(active_tab) = self.get_active_tab_mut() {
+            if active_tab.get_active_terminal().is_some() {
+                active_tab.render();
+                false
+            } else {
+                true
+            }
+        } else {
+            self.send_app_instructions
+                .send(AppInstruction::Exit)
+                .unwrap();
+            false
+        };
+        if close_tab {
+            self.close_tab();
+        }
+        /*let active_tab = self.get_active_tab().unwrap();
         if active_tab.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
@@ -1764,7 +1815,7 @@ impl Screen {
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }
-        }
+        }*/
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
@@ -1782,5 +1833,20 @@ impl Screen {
             None => None,
         };
         tab
+    }
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+        let mut tab = Tab::new(
+            self.next_tab_index,
+            &self.full_screen_ws,
+            self.os_api.clone(),
+            self.send_pty_instructions.clone(),
+            self.send_app_instructions.clone(),
+            self.max_panes,
+            None,
+        );
+        tab.apply_layout(layout, new_pids);
+        self.active_tab = Some(tab.index);
+        self.tabs.insert(self.next_tab_index, tab);
+        self.next_tab_index += 1;
     }
 }
