@@ -1,28 +1,27 @@
 /// Module for handling input
-use std::sync::mpsc::{Sender, SyncSender};
-
+use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::AppInstruction;
 use crate::CommandIsExecuting;
+use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
 struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: Sender<ScreenInstruction>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
 impl InputHandler {
     fn new(
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
-        send_screen_instructions: Sender<ScreenInstruction>,
-        send_pty_instructions: Sender<PtyInstruction>,
-        send_app_instructions: SyncSender<AppInstruction>,
+        send_screen_instructions: SenderWithContext<ScreenInstruction>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
@@ -36,6 +35,11 @@ impl InputHandler {
 
     /// Main event loop
     fn get_input(&mut self) {
+        let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+        err_ctx.add_call(ContextType::StdinHandler);
+        self.send_pty_instructions.update(err_ctx);
+        self.send_app_instructions.update(err_ctx);
+        self.send_screen_instructions.update(err_ctx);
         loop {
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),
@@ -263,9 +267,9 @@ pub enum InputMode {
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: Sender<ScreenInstruction>,
-    send_pty_instructions: Sender<PtyInstruction>,
-    send_app_instructions: SyncSender<AppInstruction>,
+    send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_app_instructions: SenderWithContext<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
         os_input,

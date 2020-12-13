@@ -1,3 +1,4 @@
+use crate::utils::logging::debug_log_to_file;
 use ::std::fmt::{self, Debug, Display, Formatter};
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
@@ -19,9 +20,11 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnsiCode {
+    On,
     Reset,
     NamedColor(NamedColor),
-    Code((Option<u16>, Option<u16>)),
+    RGBCode((u8, u8, u8)),
+    ColorIndex(u8),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -297,6 +300,101 @@ impl CharacterStyles {
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
     }
+    pub fn add_style_from_ansi_params(&mut self, ansi_params: &[i64]) {
+        let mut params_used = 1; // if there's a parameter, it is always used
+        match ansi_params {
+            [] | [0, ..] => self.reset_all(),
+            [1, ..] => *self = self.bold(Some(AnsiCode::On)),
+            [2, ..] => *self = self.dim(Some(AnsiCode::On)),
+            [3, ..] => *self = self.italic(Some(AnsiCode::On)),
+            [4, ..] => *self = self.underline(Some(AnsiCode::On)),
+            [5, ..] => *self = self.blink_slow(Some(AnsiCode::On)),
+            [6, ..] => *self = self.blink_fast(Some(AnsiCode::On)),
+            [7, ..] => *self = self.reverse(Some(AnsiCode::On)),
+            [8, ..] => *self = self.hidden(Some(AnsiCode::On)),
+            [9, ..] => *self = self.strike(Some(AnsiCode::On)),
+            [21, ..] => *self = self.bold(Some(AnsiCode::Reset)),
+            [22, ..] => {
+                *self = self.bold(Some(AnsiCode::Reset));
+                *self = self.dim(Some(AnsiCode::Reset));
+            }
+            [23, ..] => *self = self.italic(Some(AnsiCode::Reset)),
+            [24, ..] => *self = self.underline(Some(AnsiCode::Reset)),
+            [25, ..] => {
+                *self = self.blink_slow(Some(AnsiCode::Reset));
+                *self = self.blink_fast(Some(AnsiCode::Reset));
+            }
+            [27, ..] => *self = self.reverse(Some(AnsiCode::Reset)),
+            [28, ..] => *self = self.hidden(Some(AnsiCode::Reset)),
+            [29, ..] => *self = self.strike(Some(AnsiCode::Reset)),
+            [30, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black))),
+            [31, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red))),
+            [32, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green))),
+            [33, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+            [34, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+            [35, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+            [36, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+            [37, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
+            [38, 2, ..] => {
+                let ansi_code = AnsiCode::RGBCode((
+                    *ansi_params.get(2).unwrap() as u8,
+                    *ansi_params.get(3).unwrap() as u8,
+                    *ansi_params.get(4).unwrap() as u8,
+                ));
+                *self = self.foreground(Some(ansi_code));
+                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
+            }
+            [38, 5, ..] => {
+                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
+                *self = self.foreground(Some(ansi_code));
+                params_used += 2 // one for the indicator (5 in this case) and one for the color index
+            }
+            [38, ..] => {
+                // this is a bug
+                // it means we got a color encoding we don't know how to handle (or is invalid)
+                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
+            }
+            [39, ..] => *self = self.foreground(Some(AnsiCode::Reset)),
+            [40, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
+            [41, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
+            [42, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green))),
+            [43, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+            [44, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+            [45, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+            [46, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+            [47, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
+            [48, 2, ..] => {
+                let ansi_code = AnsiCode::RGBCode((
+                    *ansi_params.get(2).unwrap() as u8,
+                    *ansi_params.get(3).unwrap() as u8,
+                    *ansi_params.get(4).unwrap() as u8,
+                ));
+                *self = self.background(Some(ansi_code));
+                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
+            }
+            [48, 5, ..] => {
+                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
+                *self = self.background(Some(ansi_code));
+                params_used += 2 // one for the indicator (5 in this case) and one for the color index
+            }
+            [48, ..] => {
+                // this is a bug
+                // it means we got a color encoding we don't know how to handle (or is invalid)
+                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
+            }
+            [49, ..] => *self = self.background(Some(AnsiCode::Reset)),
+            _ => {
+                // if this happens, it's a bug
+                let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
+                return;
+            }
+        }
+        if let Some(next_params) = ansi_params.get(params_used..) {
+            if next_params.len() > 0 {
+                self.add_style_from_ansi_params(next_params);
+            }
+        }
+    }
 }
 
 impl Display for CharacterStyles {
@@ -318,18 +416,11 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.foreground {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            write!(f, "\u{1b}[38;{};{}m", param1, param2)?;
-                        }
-                        (Some(param1), None) => {
-                            write!(f, "\u{1b}[38;{}m", param1)?;
-                        }
-                        (_, _) => {
-                            // TODO: can this happen?
-                        }
-                    }
+                AnsiCode::RGBCode((r, g, b)) => {
+                    write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
+                }
+                AnsiCode::ColorIndex(color_index) => {
+                    write!(f, "\u{1b}[38;5;{}m", color_index)?;
                 }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[39m")?;
@@ -337,22 +428,16 @@ impl Display for CharacterStyles {
                 AnsiCode::NamedColor(named_color) => {
                     write!(f, "\u{1b}[{}m", named_color.to_foreground_ansi_code())?;
                 }
+                _ => {}
             }
         };
         if let Some(ansi_code) = self.background {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => {
-                    match (param1, param2) {
-                        (Some(param1), Some(param2)) => {
-                            write!(f, "\u{1b}[48;{};{}m", param1, param2)?;
-                        }
-                        (Some(param1), None) => {
-                            write!(f, "\u{1b}[48;{}m", param1)?;
-                        }
-                        (_, _) => {
-                            // TODO: can this happen?
-                        }
-                    }
+                AnsiCode::RGBCode((r, g, b)) => {
+                    write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
+                }
+                AnsiCode::ColorIndex(color_index) => {
+                    write!(f, "\u{1b}[48;5;{}m", color_index)?;
                 }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[49m")?;
@@ -360,21 +445,14 @@ impl Display for CharacterStyles {
                 AnsiCode::NamedColor(named_color) => {
                     write!(f, "\u{1b}[{}m", named_color.to_background_ansi_code())?;
                 }
+                _ => {}
             }
         }
         if let Some(ansi_code) = self.strike {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[9;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[9;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[9m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[9m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[29m")?;
                 }
@@ -383,17 +461,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.hidden {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[8;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[8;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[8m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[8m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[28m")?;
                 }
@@ -402,17 +472,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.reverse {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[7;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[7;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[7m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[7m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[27m")?;
                 }
@@ -421,17 +483,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.fast_blink {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[6;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[6;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[6m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[6m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[25m")?;
                 }
@@ -440,17 +494,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.slow_blink {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[5;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[5;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[5m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[5m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[25m")?;
                 }
@@ -459,20 +505,11 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.bold {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[1;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[1;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[1m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[1m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[22m\u{1b}[24m")?;
-                    // character_ansi_codes.push_str(&format!("\u{1b}[22m"));
                     // TODO: this cancels bold + underline, if this behaviour is indeed correct, we
                     // need to properly handle it in the struct methods etc like dim
                 }
@@ -484,17 +521,9 @@ impl Display for CharacterStyles {
         // otherwise
         if let Some(ansi_code) = self.underline {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[4;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[4;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[4m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[4m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[24m")?;
                 }
@@ -503,17 +532,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.dim {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[2;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[2;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[2m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[2m")?;
+                }
                 AnsiCode::Reset => {
                     if let Some(bold) = self.bold {
                         // we only reset dim if both dim and bold should be reset
@@ -530,17 +551,9 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.italic {
             match ansi_code {
-                AnsiCode::Code((param1, param2)) => match (param1, param2) {
-                    (Some(param1), Some(param2)) => {
-                        write!(f, "\u{1b}[3;{};{}m", param1, param2)?;
-                    }
-                    (Some(param1), None) => {
-                        write!(f, "\u{1b}[3;{}m", param1)?;
-                    }
-                    (_, _) => {
-                        write!(f, "\u{1b}[3m")?;
-                    }
-                },
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[3m")?;
+                }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[23m")?;
                 }

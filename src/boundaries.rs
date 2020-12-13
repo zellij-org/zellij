@@ -18,145 +18,270 @@ pub type BoundaryType = &'static str; // easy way to refer to boundary_type abov
 
 fn combine_symbols(current_symbol: &str, next_symbol: &str) -> Option<&'static str> {
     match (current_symbol, next_symbol) {
-        (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => Some(boundary_type::TOP_RIGHT), // (┐, ┐) => Some(┐)
-        (boundary_type::TOP_RIGHT, boundary_type::VERTICAL) => Some(boundary_type::VERTICAL_LEFT), // (┐, │) => Some(┤)
+        (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => {
+            // (┐, ┐) => Some(┐)
+            Some(boundary_type::TOP_RIGHT)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::VERTICAL) => {
+            // (┐, │) => Some(┤)
+            Some(boundary_type::VERTICAL_LEFT)
+        }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL) => {
+            // (┐, ─) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (┐, ─) => Some(┬)
-        (boundary_type::TOP_RIGHT, boundary_type::TOP_LEFT) => Some(boundary_type::HORIZONTAL_DOWN), // (┐, ┌) => Some(┬)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::TOP_LEFT) => {
+            // (┐, ┌) => Some(┬)
+            Some(boundary_type::HORIZONTAL_DOWN)
+        }
         (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_RIGHT) => {
+            // (┐, ┘) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (┐, ┘) => Some(┤)
-        (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_LEFT) => Some(boundary_type::CROSS), // (┐, └) => Some(┼)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_LEFT) => {
+            // (┐, └) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_LEFT) => {
+            // (┐, ┤) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (┐, ┤) => Some(┤)
-        (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_RIGHT) => Some(boundary_type::CROSS), // (┐, ├) => Some(┼)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_RIGHT) => {
+            // (┐, ├) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
+            // (┐, ┬) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (┐, ┬) => Some(┬)
-        (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_UP) => Some(boundary_type::CROSS), // (┐, ┴) => Some(┼)
-        (boundary_type::TOP_RIGHT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┐, ┼) => Some(┼)
-
-        (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL) => Some(boundary_type::HORIZONTAL), // (─, ─) => Some(─)
-        (boundary_type::HORIZONTAL, boundary_type::VERTICAL) => Some(boundary_type::CROSS), // (─, │) => Some(┼)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_UP) => {
+            // (┐, ┴) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::TOP_RIGHT, boundary_type::CROSS) => {
+            // (┐, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL) => {
+            // (─, ─) => Some(─)
+            Some(boundary_type::HORIZONTAL)
+        }
+        (boundary_type::HORIZONTAL, boundary_type::VERTICAL) => {
+            // (─, │) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::HORIZONTAL, boundary_type::TOP_LEFT) => {
+            // (─, ┌) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (─, ┌) => Some(┬)
+        }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_RIGHT) => {
+            // (─, ┘) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (─, ┘) => Some(┴)
+        }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_LEFT) => {
+            // (─, └) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (─, └) => Some(┴)
-        (boundary_type::HORIZONTAL, boundary_type::VERTICAL_LEFT) => Some(boundary_type::CROSS), // (─, ┤) => Some(┼)
-        (boundary_type::HORIZONTAL, boundary_type::VERTICAL_RIGHT) => Some(boundary_type::CROSS), // (─, ├) => Some(┼)
+        }
+        (boundary_type::HORIZONTAL, boundary_type::VERTICAL_LEFT) => {
+            // (─, ┤) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::HORIZONTAL, boundary_type::VERTICAL_RIGHT) => {
+            // (─, ├) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_DOWN) => {
+            // (─, ┬) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (─, ┬) => Some(┬)
+        }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_UP) => {
+            // (─, ┴) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (─, ┴) => Some(┴)
-        (boundary_type::HORIZONTAL, boundary_type::CROSS) => Some(boundary_type::CROSS), // (─, ┼) => Some(┼)
-
-        (boundary_type::VERTICAL, boundary_type::VERTICAL) => Some(boundary_type::VERTICAL), // (│, │) => Some(│)
-        (boundary_type::VERTICAL, boundary_type::TOP_LEFT) => Some(boundary_type::VERTICAL_RIGHT), // (│, ┌) => Some(├)
+        }
+        (boundary_type::HORIZONTAL, boundary_type::CROSS) => {
+            // (─, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::VERTICAL, boundary_type::VERTICAL) => {
+            // (│, │) => Some(│)
+            Some(boundary_type::VERTICAL)
+        }
+        (boundary_type::VERTICAL, boundary_type::TOP_LEFT) => {
+            // (│, ┌) => Some(├)
+            Some(boundary_type::VERTICAL_RIGHT)
+        }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_RIGHT) => {
+            // (│, ┘) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (│, ┘) => Some(┤)
+        }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_LEFT) => {
+            // (│, └) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (│, └) => Some(├)
+        }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_LEFT) => {
+            // (│, ┤) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (│, ┤) => Some(┤)
+        }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_RIGHT) => {
+            // (│, ├) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (│, ├) => Some(├)
-        (boundary_type::VERTICAL, boundary_type::HORIZONTAL_DOWN) => Some(boundary_type::CROSS), // (│, ┬) => Some(┼)
-        (boundary_type::VERTICAL, boundary_type::HORIZONTAL_UP) => Some(boundary_type::CROSS), // (│, ┴) => Some(┼)
-        (boundary_type::VERTICAL, boundary_type::CROSS) => Some(boundary_type::CROSS), // (│, ┼) => Some(┼)
-
-        (boundary_type::TOP_LEFT, boundary_type::TOP_LEFT) => Some(boundary_type::TOP_LEFT), // (┌, ┌) => Some(┌)
-        (boundary_type::TOP_LEFT, boundary_type::BOTTOM_RIGHT) => Some(boundary_type::CROSS), // (┌, ┘) => Some(┼)
+        }
+        (boundary_type::VERTICAL, boundary_type::HORIZONTAL_DOWN) => {
+            // (│, ┬) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::VERTICAL, boundary_type::HORIZONTAL_UP) => {
+            // (│, ┴) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::VERTICAL, boundary_type::CROSS) => {
+            // (│, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::TOP_LEFT, boundary_type::TOP_LEFT) => {
+            // (┌, ┌) => Some(┌)
+            Some(boundary_type::TOP_LEFT)
+        }
+        (boundary_type::TOP_LEFT, boundary_type::BOTTOM_RIGHT) => {
+            // (┌, ┘) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::TOP_LEFT, boundary_type::BOTTOM_LEFT) => {
+            // (┌, └) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (┌, └) => Some(├)
-        (boundary_type::TOP_LEFT, boundary_type::VERTICAL_LEFT) => Some(boundary_type::CROSS), // (┌, ┤) => Some(┼)
+        }
+        (boundary_type::TOP_LEFT, boundary_type::VERTICAL_LEFT) => {
+            // (┌, ┤) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::TOP_LEFT, boundary_type::VERTICAL_RIGHT) => {
+            // (┌, ├) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (┌, ├) => Some(├)
+        }
         (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_DOWN) => {
+            // (┌, ┬) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (┌, ┬) => Some(┬)
-        (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_UP) => Some(boundary_type::CROSS), // (┌, ┴) => Some(┼)
-        (boundary_type::TOP_LEFT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┌, ┼) => Some(┼)
-
+        }
+        (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_UP) => {
+            // (┌, ┴) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::TOP_LEFT, boundary_type::CROSS) => {
+            // (┌, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_RIGHT) => {
+            // (┘, ┘) => Some(┘)
             Some(boundary_type::BOTTOM_RIGHT)
-        } // (┘, ┘) => Some(┘)
+        }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_LEFT) => {
+            // (┘, └) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (┘, └) => Some(┴)
+        }
         (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_LEFT) => {
+            // (┘, ┤) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (┘, ┤) => Some(┤)
-        (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_RIGHT) => Some(boundary_type::CROSS), // (┘, ├) => Some(┼)
-        (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_DOWN) => Some(boundary_type::CROSS), // (┘, ┬) => Some(┼)
+        }
+        (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_RIGHT) => {
+            // (┘, ├) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
+            // (┘, ┬) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_UP) => {
+            // (┘, ┴) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (┘, ┴) => Some(┴)
-        (boundary_type::BOTTOM_RIGHT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┘, ┼) => Some(┼)
-
+        }
+        (boundary_type::BOTTOM_RIGHT, boundary_type::CROSS) => {
+            // (┘, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::BOTTOM_LEFT, boundary_type::BOTTOM_LEFT) => {
+            // (└, └) => Some(└)
             Some(boundary_type::BOTTOM_LEFT)
-        } // (└, └) => Some(└)
-        (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_LEFT) => Some(boundary_type::CROSS), // (└, ┤) => Some(┼)
+        }
+        (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_LEFT) => {
+            // (└, ┤) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_RIGHT) => {
+            // (└, ├) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (└, ├) => Some(├)
-        (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_DOWN) => Some(boundary_type::CROSS), // (└, ┬) => Some(┼)
+        }
+        (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_DOWN) => {
+            // (└, ┬) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_UP) => {
+            // (└, ┴) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (└, ┴) => Some(┴)
-        (boundary_type::BOTTOM_LEFT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (└, ┼) => Some(┼)
-
+        }
+        (boundary_type::BOTTOM_LEFT, boundary_type::CROSS) => {
+            // (└, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_LEFT) => {
+            // (┤, ┤) => Some(┤)
             Some(boundary_type::VERTICAL_LEFT)
-        } // (┤, ┤) => Some(┤)
-        (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_RIGHT) => Some(boundary_type::CROSS), // (┤, ├) => Some(┼)
+        }
+        (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_RIGHT) => {
+            // (┤, ├) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_DOWN) => {
+            // (┤, ┬) => Some(┼)
             Some(boundary_type::CROSS)
-        } // (┤, ┬) => Some(┼)
+        }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_UP) => {
+            // (┤, ┴) => Some(┼)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (┤, ┴) => Some(┼)
-        (boundary_type::VERTICAL_LEFT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┤, ┼) => Some(┼)
-
+        }
+        (boundary_type::VERTICAL_LEFT, boundary_type::CROSS) => {
+            // (┤, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::VERTICAL_RIGHT, boundary_type::VERTICAL_RIGHT) => {
+            // (├, ├) => Some(├)
             Some(boundary_type::VERTICAL_RIGHT)
-        } // (├, ├) => Some(├)
+        }
         (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
+            // (├, ┬) => Some(┼)
             Some(boundary_type::CROSS)
-        } // (├, ┬) => Some(┼)
-        (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_UP) => Some(boundary_type::CROSS), // (├, ┴) => Some(┼)
-        (boundary_type::VERTICAL_RIGHT, boundary_type::CROSS) => Some(boundary_type::CROSS), // (├, ┼) => Some(┼)
-
+        }
+        (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_UP) => {
+            // (├, ┴) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::VERTICAL_RIGHT, boundary_type::CROSS) => {
+            // (├, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_DOWN) => {
+            // (┬, ┬) => Some(┬)
             Some(boundary_type::HORIZONTAL_DOWN)
-        } // (┬, ┬) => Some(┬)
+        }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_UP) => {
+            // (┬, ┴) => Some(┼)
             Some(boundary_type::CROSS)
-        } // (┬, ┴) => Some(┼)
-        (boundary_type::HORIZONTAL_DOWN, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┬, ┼) => Some(┼)
-
+        }
+        (boundary_type::HORIZONTAL_DOWN, boundary_type::CROSS) => {
+            // (┬, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (boundary_type::HORIZONTAL_UP, boundary_type::HORIZONTAL_UP) => {
+            // (┴, ┴) => Some(┴)
             Some(boundary_type::HORIZONTAL_UP)
-        } // (┴, ┴) => Some(┴)
-        (boundary_type::HORIZONTAL_UP, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┴, ┼) => Some(┼)
-
-        (boundary_type::CROSS, boundary_type::CROSS) => Some(boundary_type::CROSS), // (┼, ┼) => Some(┼)
-
+        }
+        (boundary_type::HORIZONTAL_UP, boundary_type::CROSS) => {
+            // (┴, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
+        (boundary_type::CROSS, boundary_type::CROSS) => {
+            // (┼, ┼) => Some(┼)
+            Some(boundary_type::CROSS)
+        }
         (_, _) => None,
     }
 }

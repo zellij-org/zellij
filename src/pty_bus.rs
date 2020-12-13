@@ -4,15 +4,16 @@ use ::async_std::task::*;
 use ::std::collections::HashMap;
 use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
-use ::std::sync::mpsc::{Receiver, Sender};
+use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
+use crate::errors::{ContextType, ErrorContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
-use crate::ScreenInstruction;
+use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -75,11 +76,11 @@ pub enum VteEvent {
 
 struct VteEventSender {
     id: RawFd,
-    sender: Sender<ScreenInstruction>,
+    sender: SenderWithContext<ScreenInstruction>,
 }
 
 impl VteEventSender {
-    pub fn new(id: RawFd, sender: Sender<ScreenInstruction>) -> Self {
+    pub fn new(id: RawFd, sender: SenderWithContext<ScreenInstruction>) -> Self {
         VteEventSender { id, sender }
     }
 }
@@ -151,8 +152,8 @@ pub enum PtyInstruction {
 }
 
 pub struct PtyBus {
-    pub send_screen_instructions: Sender<ScreenInstruction>,
-    pub receive_pty_instructions: Receiver<PtyInstruction>,
+    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
@@ -160,12 +161,15 @@ pub struct PtyBus {
 
 fn stream_terminal_bytes(
     pid: RawFd,
-    send_screen_instructions: Sender<ScreenInstruction>,
+    mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
     os_input: Box<dyn OsApi>,
     debug: bool,
 ) {
+    let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     task::spawn({
         async move {
+            err_ctx.add_call(ContextType::AsyncTask);
+            send_screen_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
@@ -233,8 +237,8 @@ fn stream_terminal_bytes(
 
 impl PtyBus {
     pub fn new(
-        receive_pty_instructions: Receiver<PtyInstruction>,
-        send_screen_instructions: Sender<ScreenInstruction>,
+        receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
+        send_screen_instructions: SenderWithContext<ScreenInstruction>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,
     ) -> Self {
