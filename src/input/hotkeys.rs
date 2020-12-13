@@ -13,6 +13,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use serde::Serialize;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -22,7 +23,7 @@ use strum_macros::EnumIter;
 /// layouts. I'm sticking with my (UK qwerty) keyboard for now, but do add your own!
 ///
 /// @@@khs26 Not sure you can actually pass all these through - try it out!
-#[derive(Debug, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, PartialEq, Eq, Hash, EnumIter, Serialize)]
 pub enum BaseInputKey {
     Esc,
     F1,
@@ -245,7 +246,7 @@ impl std::string::ToString for BaseInputKey {
 ///
 /// N.B. The EnumIter trait means that the order of the enum members will affect
 /// the order in which the modifiers are displayed (i.e. Ctrl+Alt+<key>, not Alt+Ctrl+<key>)
-#[derive(Debug, PartialEq, Eq, Hash, Clone, EnumIter)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, EnumIter, Serialize)]
 pub enum ModifierKey {
     Control,
     Alt,
@@ -271,7 +272,7 @@ impl std::string::ToString for ModifierKey {
 
 /// Represents a particular key combination that can be input by a user
 /// @@@khs26 We need a key that can implement Eq + Hash
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct InputKey {
     /// Base (keyboard) key
     base_key: BaseInputKey,
