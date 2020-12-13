@@ -10,7 +10,7 @@
 /// Open questions:
 ///   - Do we want to have different base inputs depending on locale (i.e. keyboard map)?
 ///   - Should the user view be a plugin?
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 
 use strum::IntoEnumIterator;
@@ -242,7 +242,7 @@ impl std::string::ToString for BaseInputKey {
 }
 
 /// Modifier keys that can be applied to input keys
-/// 
+///
 /// N.B. The EnumIter trait means that the order of the enum members will affect
 /// the order in which the modifiers are displayed (i.e. Ctrl+Alt+<key>, not Alt+Ctrl+<key>)
 #[derive(Debug, PartialEq, Eq, Hash, Clone, EnumIter)]
@@ -277,20 +277,19 @@ pub struct InputKey {
     base_key: BaseInputKey,
     /// Modifier keys
     modifiers: HashSet<ModifierKey>,
-    /// The character sequence sent when this key is pressed
-    char_sequence: Vec<u8>,
     /// How to display this key to the user
     user_string: String,
+    // The character sequence sent when this key is pressed
+    //@@@khs26 Actually, let's put this in a terminal map struct
+    //char_sequence: Vec<u8>,
 }
 
 impl InputKey {
-    pub fn new(
-        base_key: BaseInputKey,
-        modifiers: HashSet<ModifierKey>,
-        char_sequence: Vec<u8>,
-    ) -> InputKey {
+    pub fn new(base_key: BaseInputKey, modifiers: HashSet<ModifierKey>) -> InputKey {
         let mut user_string_list = vec![];
 
+        // Iterating through ModifierKey rather than through modifiers ensures we
+        // get a canonical ordering
         for modifier in ModifierKey::iter() {
             if modifiers.contains(&modifier) {
                 user_string_list.push(modifier.to_string());
@@ -302,9 +301,17 @@ impl InputKey {
         InputKey {
             base_key,
             modifiers,
-            char_sequence,
             user_string: user_string_list.join("+"),
         }
+    }
+}
+
+impl std::str::FromStr for InputKey {
+    //@@@khs26 What about errors?
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
     }
 }
 
@@ -326,11 +333,14 @@ impl PartialEq for InputKey {
     }
 }
 
-impl Eq for InputKey { }
+impl Eq for InputKey {}
 
 impl std::hash::Hash for InputKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        todo!()
+        self.base_key.hash(state);
+        for modifier in self.modifiers.iter() {
+            modifier.hash(state);
+        }
     }
 }
 
@@ -340,7 +350,7 @@ mod tests {
 
     #[test]
     fn input_key_as_string() {
-        let test_key = InputKey::new(BaseInputKey::A, [].iter().cloned().collect(), vec![0, 1, 2]);
+        let test_key = InputKey::new(BaseInputKey::A, [].iter().cloned().collect());
         assert_eq!("A", test_key.user_string);
 
         let test_key = InputKey::new(
@@ -349,7 +359,6 @@ mod tests {
                 .iter()
                 .cloned()
                 .collect(),
-            vec![0, 1, 2],
         );
         assert_eq!("Ctrl+Shift+G", test_key.user_string);
 
@@ -359,7 +368,6 @@ mod tests {
                 .iter()
                 .cloned()
                 .collect(),
-            vec![0, 1, 2],
         );
         assert_eq!("Ctrl+Alt+Shift+B", test_key.user_string);
     }

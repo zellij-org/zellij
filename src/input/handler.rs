@@ -6,6 +6,8 @@ use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
+use strum_macros::EnumIter;
+
 struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn OsApi>,
@@ -254,7 +256,7 @@ impl InputHandler {
 ///   normal mode
 /// - Exiting means that we should start the shutdown process for mosaic or the given
 ///   input handler
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter)]
 pub enum InputMode {
     Normal,
     Command,
