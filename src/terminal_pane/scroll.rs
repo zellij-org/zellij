@@ -397,7 +397,9 @@ impl Scroll {
     }
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region_absolute_indices() {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             if current_canonical_line_index == scroll_region_bottom {
                 // end of scroll region
                 // when we have a scroll region set and we're at its bottom
@@ -652,7 +654,9 @@ impl Scroll {
         if let Some(lines_outside_of_scroll_region) = self.lines_outside_of_scroll_region.as_mut() {
             self.canonical_lines = lines_outside_of_scroll_region.drain(..).collect();
         }
-        if let Some(cursor_position_outside_of_scroll_region) = self.cursor_position_outside_of_scroll_region {
+        if let Some(cursor_position_outside_of_scroll_region) =
+            self.cursor_position_outside_of_scroll_region
+        {
             self.cursor_position = cursor_position_outside_of_scroll_region;
         }
         self.lines_outside_of_scroll_region = None;
@@ -663,7 +667,7 @@ impl Scroll {
     }
     fn scroll_region_absolute_indices(&mut self) -> Option<(usize, usize)> {
         if self.scroll_region.is_none() {
-            return None
+            return None;
         };
         if self.canonical_lines.len() > self.lines_in_view {
             let absolute_top = self.canonical_lines.len() - 1 - self.lines_in_view;
@@ -674,7 +678,9 @@ impl Scroll {
         }
     }
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region_absolute_indices() {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             let current_canonical_line_index = self.cursor_position.line_index.0;
             if current_canonical_line_index >= scroll_region_top
                 && current_canonical_line_index <= scroll_region_bottom
@@ -692,7 +698,9 @@ impl Scroll {
         }
     }
     pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region_absolute_indices() {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             let current_canonical_line_index = self.cursor_position.line_index.0;
             if current_canonical_line_index >= scroll_region_top
                 && current_canonical_line_index <= scroll_region_bottom
@@ -710,7 +718,9 @@ impl Scroll {
         }
     }
     pub fn move_cursor_up_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region_absolute_indices() {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             // the scroll region indices start at 1, so we need to adjust them
             for _ in 0..count {
                 let current_canonical_line_index = self.cursor_position.line_index.0;
