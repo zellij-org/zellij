@@ -443,6 +443,15 @@ impl vte::Perform for TerminalPane {
                     (params[0] as usize - 1, params[1] as usize - 1)
                 }
             };
+            if params.len() >= 1 && params[0] == 0 {
+                // this is a hack
+                //
+                // the logic should *probably* be:
+                // if we get an instruction to move outside the scroll region
+                // (which is 1 indexed, so if we get 0 it's always(?) outside)
+                // we need to set it to screen size
+                self.scroll.set_scroll_region_to_screen_size();
+            }
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
             // move cursor up until edge of screen
