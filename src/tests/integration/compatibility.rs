@@ -317,3 +317,26 @@ pub fn clear_scroll_region() {
         assert_snapshot!(snapshot);
     }
 }
+
+#[test]
+pub fn display_tab_characters_properly () {
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
+    };
+    let fixture_name = "tab_characters";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
+    start(Box::new(fake_input_output.clone()), Opt::default());
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}

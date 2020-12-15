@@ -368,6 +368,15 @@ impl vte::Perform for TerminalPane {
                 // backspace
                 self.move_cursor_backwards(1);
             }
+            9 => {
+                // tab
+                let terminal_tab_character = TerminalCharacter {
+                    character: '\t',
+                    styles: self.pending_styles,
+                };
+                // TODO: handle better with line wrapping
+                self.scroll.add_character(terminal_tab_character);
+            }
             10 => {
                 // 0a, newline
                 self.add_newline();
