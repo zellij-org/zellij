@@ -2,6 +2,7 @@
 source: src/tests/integration/resize_up.rs
 expression: snapshot
 ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
 a                             │line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
@@ -39,6 +40,5 @@ line15-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb     
 line16-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb     │line17-bbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
 line17-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb     │line18-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 line18-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb     │line19-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
-line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│prompt $                          │prompt $      │line19-bbbbbbbbbbbbbbbbbbbbbb
+line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbb│prompt $ █                        │prompt $      │line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │prompt $  │                                  │              │prompt $                     
-Bye from Mosaic!█                                                                                                        
