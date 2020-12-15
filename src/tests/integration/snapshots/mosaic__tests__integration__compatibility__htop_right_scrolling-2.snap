@@ -2,6 +2,7 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+                                                                                                                    
   1  [||||||||||                                 16.9%]   Tasks: 110, 512 thr; 1 running                            
   2  [||||||||||                                 17.1%]   Load average: 1.04 1.30 1.29                              
   3  [|||||||                                    13.9%]   Uptime: 6 days, 07:01:39                                  
@@ -29,4 +30,3 @@ expression: snapshot
     20   0 1635M 56148 20460 S  0.0  0.3  1:40.77 /usr/bin/dockerd -H fd://                                         
     20   0 1635M 56148 20460 S  0.0  0.3  1:47.26 /usr/bin/dockerd -H fd://                                         
 F1Help  F2Setup F3SearchF4FilterF5Tree  F6SortByF7Nice -F8Nice +F9Kill  F10Quit                                     
-Bye from Mosaic!█                                                                                                   

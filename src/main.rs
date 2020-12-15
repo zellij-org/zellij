@@ -194,11 +194,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let mut command_is_executing = command_is_executing.clone();
                 move || {
                     if let Some(layout) = maybe_layout {
-                        pty_bus.spawn_tab();
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
-                        pty_bus.spawn_tab();
-                        pty_bus.spawn_terminal_vertically(None);
+                        let pid = pty_bus.spawn_terminal(None);
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::NewTab(pid))
+                            .unwrap();
                     }
 
                     loop {
@@ -210,16 +212,39 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         pty_bus.send_screen_instructions.update(err_ctx);
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
-                                pty_bus.spawn_terminal(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewPane(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                pty_bus.spawn_terminal_vertically(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::VerticalSplit(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                pty_bus.spawn_terminal_horizontally(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::HorizontalSplit(pid))
+                                    .unwrap();
+                            }
+                            PtyInstruction::NewTab => {
+                                let pid = pty_bus.spawn_terminal(None);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewTab(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
+                                command_is_executing.done_closing_pane();
+                            }
+                            PtyInstruction::CloseTab(ids) => {
+                                pty_bus.close_tab(ids);
                                 command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
@@ -320,9 +345,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         }
                         ScreenInstruction::CloseFocusedPane => {
                             screen.get_active_tab_mut().unwrap().close_focused_pane();
+                            screen.render();
                         }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);
+                            screen.render();
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
                             screen
@@ -330,13 +357,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 .unwrap()
                                 .toggle_active_terminal_fullscreen();
                         }
-                        ScreenInstruction::NewTab => screen.new_tab(),
+                        ScreenInstruction::NewTab(pane_id) => {
+                            screen.new_tab(pane_id);
+                            command_is_executing.done_opening_new_pane();
+                        }
                         ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
                         ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
-                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => screen
-                            .get_active_tab_mut()
-                            .unwrap()
-                            .apply_layout(layout, new_pane_pids),
+                        ScreenInstruction::CloseTab => screen.close_tab(),
+                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                            screen.apply_layout(layout, new_pane_pids)
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }

@@ -21,7 +21,7 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             │line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                      │prompt $ █                                                  │prompt $                     
+prompt $ █                    │prompt $                                                    │prompt $                     
 ──────────────────────────────┼──────────────────────────────┬──────────────┬──────────────┼─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbb│line2-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 line3-bbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line3-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb

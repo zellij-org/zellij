@@ -13,7 +13,7 @@ a                                                           │line19-bbbbbbbbbb
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $                      │line18-bbbbbbbbbbbbbbbbbbbbbb
 a                                                           ├───────────────┬──────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $ █                                                  │line18-bbbbbbbb│line12-bbbbbbb│prompt $                     
+prompt $                                                    │line18-bbbbbbbb│line12-bbbbbbb│prompt $                     
 ────────────────────────────────────────────────────────────┤bbbbbbbbbbbbbbb│line13-bbbbbbb├─────────────────────────────
 line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line14-bbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line15-bbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
@@ -21,4 +21,4 @@ a                                                           │line19-bbbbbbbb�
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                                                           │bbbbbbbbbbbbbbb│line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                                                    │prompt $       │prompt $      │prompt $                     
+prompt $                                                    │prompt $       │prompt $ █    │prompt $                     

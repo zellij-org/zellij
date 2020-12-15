@@ -3,7 +3,6 @@ use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::utils::logging::debug_log_to_file;
 use crate::CommandIsExecuting;
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
@@ -222,12 +221,11 @@ impl InputHandler {
                 }
                 [49] => {
                     // 1
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::NewTab)
-                        .unwrap();
+                    self.command_is_executing.opening_new_pane();
                     self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                        .send(PtyInstruction::NewTab)
                         .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
                 }
                 [50] => {
                     // 2
@@ -240,6 +238,14 @@ impl InputHandler {
                     self.send_screen_instructions
                         .send(ScreenInstruction::SwitchTabNext)
                         .unwrap()
+                }
+                [52] => {
+                    // 4
+                    self.command_is_executing.closing_pane();
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::CloseTab)
+                        .unwrap();
+                    self.command_is_executing.wait_until_pane_is_closed();
                 }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}

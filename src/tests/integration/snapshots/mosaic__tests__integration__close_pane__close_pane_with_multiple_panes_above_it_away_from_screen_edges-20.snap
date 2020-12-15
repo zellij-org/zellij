@@ -2,17 +2,17 @@
 source: src/tests/integration/close_pane.rs
 expression: snapshot
 ---
-a                                                           │bbbbbbbbbbbbbbb│█             │line13-bbbbbbbbbbbbbbbbbbbbbb
-line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbb│              │line14-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line15-bbbbbbbbbbbbbbbbbbbbbb
-a                                                           │bbbbbbbbbbbbbbb│              │line16-bbbbbbbbbbbbbbbbbbbbbb
-line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line17-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbb│              │line18-bbbbbbbbbbbbbbbbbbbbbb
-a                                                           │bbbbbbbbbbbbbbb│              │line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                                                    │bbbbbbbbbbbbbbb│              │prompt $                     
-────────────────────────────────────────────────────────────┤bbbbbbbbbbbbbbb│              ├─────────────────────────────
-a                                                           │prompt $       │              │line10-bbbbbbbbbbbbbbbbbbbbbb
-line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa├───────────────┴──────────────┤line11-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line16-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │line17-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                                                    │line19-bbbbbbbbbbbbbbbbbbbbbbb│prompt $                     
+────────────────────────────────────────────────────────────┤bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb├─────────────────────────────
+a                                                           │prompt $ █                    │line10-bbbbbbbbbbbbbbbbbbbbbb
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa├──────────────────────────────┤line11-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line16-bbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
 a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
 line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb

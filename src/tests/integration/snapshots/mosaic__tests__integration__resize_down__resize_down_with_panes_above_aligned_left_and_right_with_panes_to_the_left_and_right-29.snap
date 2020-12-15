@@ -41,4 +41,4 @@ line16-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbbb│b             
 line17-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbb│line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 line18-bbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                      │prompt $                      │prompt $      │prompt $      │prompt $ █                   
+prompt $ █                    │prompt $                      │prompt $      │prompt $      │prompt $                     

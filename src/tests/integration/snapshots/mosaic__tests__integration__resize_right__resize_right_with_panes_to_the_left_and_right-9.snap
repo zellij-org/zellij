@@ -2,6 +2,7 @@
 source: src/tests/integration/resize_right.rs
 expression: snapshot
 ---
+a                                                           │bbbbbbbbbbbbbbbbbbbb                    │bbbbbbbbbb         
 line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbb                    │bbbbbbbbbb         
 a                                                           │line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbb
@@ -20,5 +21,4 @@ a                                                           │line18-bbbbbbbbbb
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbb                    │bbbbbbbbbb         
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbb
 a                                                           │bbbbbbbbbbbbbbbbbbbb                    │bbbbbbbbbb         
-prompt $                                                    │prompt $                                │prompt $           
-Bye from Mosaic!█                                                                                                        
+prompt $                                                    │prompt $ █                              │prompt $           
