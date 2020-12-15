@@ -2,6 +2,7 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+ Total Up / Down: 46Bps / 57Bps                                                                                     
 ┌Utilization by process name───────────────────────────────────────────────────────────────────────────────────────┐
 │Process                                              Connections              Up / Down                           │
 │                                                                                                                  │
@@ -29,4 +30,3 @@ expression: snapshot
 │                                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  Press <SPACE> to pause. Use <TAB> to rearrange tables. (DNS queries hidden).                                       
-Bye from Mosaic!█                                                                                                   
