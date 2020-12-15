@@ -319,7 +319,7 @@ pub fn clear_scroll_region() {
 }
 
 #[test]
-pub fn display_tab_characters_properly () {
+pub fn display_tab_characters_properly() {
     let fake_win_size = PositionAndSize {
         columns: 116,
         rows: 28,
