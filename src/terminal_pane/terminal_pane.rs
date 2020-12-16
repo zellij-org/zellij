@@ -473,7 +473,8 @@ impl vte::Perform for TerminalPane {
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(&1049) => {
-                        self.scroll.override_current_buffer_with_alternative_buffer();
+                        self.scroll
+                            .override_current_buffer_with_alternative_buffer();
                     }
                     Some(&25) => {
                         self.scroll.hide_cursor();
