@@ -292,6 +292,11 @@ impl CursorPosition {
             self.line_index = (current_canonical_line_position - count, 0);
         }
     }
+    pub fn move_down_by_canonical_lines(&mut self, count: usize) {
+        // this method does not verify that we will not overflow
+        let current_canonical_line_position = self.line_index.0;
+        self.line_index = (current_canonical_line_position + count, 0);
+    }
     pub fn move_to_canonical_line(&mut self, index: usize) {
         self.line_index = (index, 0);
     }
@@ -504,6 +509,12 @@ impl Scroll {
     }
     pub fn move_cursor_up(&mut self, count: usize) {
         self.cursor_position.move_up_by_canonical_lines(count);
+    }
+    pub fn move_cursor_down(&mut self, count: usize) {
+        let current_canonical_line = self.cursor_position.line_index.0;
+        let max_count = (self.canonical_lines.len() - 1) - current_canonical_line;
+        let count = std::cmp::min(count, max_count);
+        self.cursor_position.move_down_by_canonical_lines(count);
     }
     pub fn change_size(&mut self, columns: usize, lines: usize) {
         for canonical_line in self.canonical_lines.iter_mut() {
