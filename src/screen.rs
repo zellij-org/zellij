@@ -1724,8 +1724,8 @@ impl Screen {
             .unwrap();
         if self.tabs.len() == 0 {
             self.active_tab = None;
+            self.render();
         }
-        self.render();
     }
     pub fn render(&mut self) {
         let close_tab = if let Some(active_tab) = self.get_active_tab_mut() {
