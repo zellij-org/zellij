@@ -384,7 +384,7 @@ impl Scroll {
             .get_mut(wrapped_fragment_index_in_line)
             .expect("cursor out of bounds");
 
-        if cursor_position_in_line <= self.total_columns {
+        if cursor_position_in_line < self.total_columns {
             current_wrapped_fragment.add_character(terminal_character, cursor_position_in_line);
             self.cursor_position.move_forward(1);
         } else {

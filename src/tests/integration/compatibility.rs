@@ -363,3 +363,28 @@ pub fn neovim_insert_mode() {
         assert_snapshot!(snapshot);
     }
 }
+
+#[test]
+pub fn bash_cursor_linewrap() {
+    // this test makes sure that when we enter a command that is beyond the screen border, that it
+    // immediately goes down one line
+    let fake_win_size = PositionAndSize {
+        columns: 116,
+        rows: 28,
+        x: 0,
+        y: 0,
+    };
+    let fixture_name = "bash_cursor_linewrap";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
+    start(Box::new(fake_input_output.clone()), Opt::default());
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
