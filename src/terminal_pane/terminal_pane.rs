@@ -457,6 +457,10 @@ impl vte::Perform for TerminalPane {
             // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
             self.scroll.move_cursor_up(move_up_count as usize);
+        } else if c == 'B' {
+            // move cursor down until edge of screen
+            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
+            self.scroll.move_cursor_down(move_down_count as usize);
         } else if c == 'D' {
             let move_back_count = if params[0] == 0 {
                 1
