@@ -144,22 +144,17 @@ impl Screen {
         }
     }
     pub fn render(&mut self) {
-        let close_tab = if let Some(active_tab) = self.get_active_tab_mut() {
+        if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_terminal().is_some() {
                 active_tab.render();
-                false
             } else {
-                true
+                self.close_tab();
             }
         } else {
             self.send_app_instructions
                 .send(AppInstruction::Exit)
                 .unwrap();
-            false
         };
-        if close_tab {
-            self.close_tab();
-        }
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
