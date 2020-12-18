@@ -6,8 +6,7 @@ use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};
 
 use crate::tests::utils::commands::{
-    COMMAND_TOGGLE, MOVE_FOCUS_DOWN, MOVE_FOCUS_UP, QUIT,
-    SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
+    COMMAND_TOGGLE, MOVE_FOCUS_DOWN, MOVE_FOCUS_UP, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
