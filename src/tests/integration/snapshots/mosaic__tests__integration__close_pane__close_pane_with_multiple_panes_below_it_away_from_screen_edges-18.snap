@@ -12,13 +12,13 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbb
 a                                                           │line19-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $                      │line18-bbbbbbbbbbbbbbbbbbbbbb
-a                                                           ├───────────────┬──────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                                                    │line18-bbbbbbbb│█             │prompt $                     
-────────────────────────────────────────────────────────────┤bbbbbbbbbbbbbbb│              ├─────────────────────────────
-line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line14-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line15-bbbbbbbbbbbbbbbbbbbbbb
-a                                                           │line19-bbbbbbbb│              │line16-bbbbbbbbbbbbbbbbbbbbbb
-line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line17-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│              │line18-bbbbbbbbbbbbbbbbbbbbbb
-a                                                           │bbbbbbbbbbbbbbb│              │line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                                                    │prompt $       │              │prompt $                     
+a                                                           ├──────────────────────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                                                    │line16-bbbbbbbbbbbbbbbbbbbbbbb│prompt $                     
+────────────────────────────────────────────────────────────┤bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb├─────────────────────────────
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │line18-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                                                    │prompt $ █                    │prompt $                     

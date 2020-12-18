@@ -2,6 +2,7 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+                                                                                                                    
  OS: 5.9.13-arch1-1 GNU/Linux                                                                                       
  Uptime: 10 hours, 42 minutes                                                                                       
  Hostname: kingdom                                                                                                  
@@ -15,7 +16,7 @@ df: /run/user/1000/doc: Operation not permitted
                                                                                                                     
 	wlp2s0  192.168.0.3                                                                                                
                                                                                                                     
-[I] [20:07] kingdom:mosaic (main) |                                                                                 
+[I] [20:07] kingdom:mosaic (main) | █                                                                               
                                                                                                                     
                                                                                                                     
                                                                                                                     
@@ -29,4 +30,3 @@ df: /run/user/1000/doc: Operation not permitted
                                                                                                                     
                                                                                                                     
                                                                                                                     
-Bye from Mosaic!█                                                                                                   

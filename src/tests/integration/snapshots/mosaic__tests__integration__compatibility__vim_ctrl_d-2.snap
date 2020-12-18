@@ -2,9 +2,10 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+  3 line14                                                                                                          
   2 line15                                                                                                          
   1 line16                                                                                                          
-17  line17                                                                                                          
+17  █ine17                                                                                                          
   1 line18                                                                                                          
   2 line19                                                                                                          
   3 line20                                                                                                          
@@ -29,4 +30,3 @@ expression: snapshot
  22 line39                                                                                                          
  NORMAL  testfile.rs                                                              unix | utf-8 | rust   40%   17:1  
                                                                                                                     
-Bye from Mosaic!█                                                                                                   

@@ -75,4 +75,12 @@ pub mod commands {
     pub const MOVE_FOCUS_UP: [u8; 1] = [105];
     /// o
     pub const MOVE_FOCUS_RIGHT: [u8; 1] = [111];
+    /// 1
+    pub const NEW_TAB: [u8; 1] = [49];
+    /// 2
+    pub const SWITCH_PREV_TAB: [u8; 1] = [50];
+    /// 3
+    pub const SWITCH_NEXT_TAB: [u8; 1] = [51];
+    /// 4
+    pub const CLOSE_TAB: [u8; 1] = [52];
 }
