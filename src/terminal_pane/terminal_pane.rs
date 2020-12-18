@@ -452,20 +452,15 @@ impl vte::Perform for TerminalPane {
                     (params[0] as usize - 1, params[1] as usize - 1)
                 }
             };
-            if params.len() >= 1 && params[0] == 0 {
-                // this is a hack
-                //
-                // the logic should *probably* be:
-                // if we get an instruction to move outside the scroll region
-                // (which is 1 indexed, so if we get 0 it's always(?) outside)
-                // we need to set it to screen size
-                self.scroll.set_scroll_region_to_screen_size();
-            }
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
             // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
             self.scroll.move_cursor_up(move_up_count as usize);
+        } else if c == 'B' {
+            // move cursor down until edge of screen
+            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
+            self.scroll.move_cursor_down(move_down_count as usize);
         } else if c == 'D' {
             let move_back_count = if params[0] == 0 {
                 1
@@ -481,6 +476,10 @@ impl vte::Perform for TerminalPane {
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
+                    Some(&1049) => {
+                        self.scroll
+                            .override_current_buffer_with_alternative_buffer();
+                    }
                     Some(&25) => {
                         self.scroll.hide_cursor();
                         self.mark_for_rerender();
@@ -502,6 +501,9 @@ impl vte::Perform for TerminalPane {
                     Some(&25) => {
                         self.scroll.show_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(&1049) => {
+                        self.scroll.move_current_buffer_to_alternative_buffer();
                     }
                     Some(&1) => {
                         self.cursor_key_mode = true;

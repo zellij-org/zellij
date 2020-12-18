@@ -292,6 +292,11 @@ impl CursorPosition {
             self.line_index = (current_canonical_line_position - count, 0);
         }
     }
+    pub fn move_down_by_canonical_lines(&mut self, count: usize) {
+        // this method does not verify that we will not overflow
+        let current_canonical_line_position = self.line_index.0;
+        self.line_index = (current_canonical_line_position + count, 0);
+    }
     pub fn move_to_canonical_line(&mut self, index: usize) {
         self.line_index = (index, 0);
     }
@@ -312,8 +317,8 @@ pub struct Scroll {
     viewport_bottom_offset: Option<usize>,
     scroll_region: Option<(usize, usize)>, // start line, end line (if set, this is the area the will scroll)
     show_cursor: bool,
-    lines_outside_of_scroll_region: Option<Vec<CanonicalLine>>,
-    cursor_position_outside_of_scroll_region: Option<CursorPosition>,
+    alternative_buffer: Option<Vec<CanonicalLine>>,
+    alternative_cursor_position: Option<CursorPosition>,
 }
 
 impl Scroll {
@@ -329,8 +334,8 @@ impl Scroll {
             viewport_bottom_offset: None,
             scroll_region: None,
             show_cursor: true,
-            lines_outside_of_scroll_region: None,
-            cursor_position_outside_of_scroll_region: None,
+            alternative_buffer: None,
+            alternative_cursor_position: None,
         }
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -379,7 +384,7 @@ impl Scroll {
             .get_mut(wrapped_fragment_index_in_line)
             .expect("cursor out of bounds");
 
-        if cursor_position_in_line <= self.total_columns {
+        if cursor_position_in_line < self.total_columns {
             current_wrapped_fragment.add_character(terminal_character, cursor_position_in_line);
             self.cursor_position.move_forward(1);
         } else {
@@ -504,6 +509,12 @@ impl Scroll {
     }
     pub fn move_cursor_up(&mut self, count: usize) {
         self.cursor_position.move_up_by_canonical_lines(count);
+    }
+    pub fn move_cursor_down(&mut self, count: usize) {
+        let current_canonical_line = self.cursor_position.line_index.0;
+        let max_count = (self.canonical_lines.len() - 1) - current_canonical_line;
+        let count = std::cmp::min(count, max_count);
+        self.cursor_position.move_down_by_canonical_lines(count);
     }
     pub fn change_size(&mut self, columns: usize, lines: usize) {
         for canonical_line in self.canonical_lines.iter_mut() {
@@ -638,32 +649,26 @@ impl Scroll {
         let current_column = self.cursor_position.column_index;
         self.move_cursor_to(line, current_column);
     }
-    pub fn set_scroll_region(&mut self, top_line: usize, bottom_line: usize) {
-        if self.scroll_region.is_none() {
-            self.lines_outside_of_scroll_region = Some(self.canonical_lines.drain(..).collect());
-            self.cursor_position_outside_of_scroll_region = Some(self.cursor_position);
+    pub fn move_current_buffer_to_alternative_buffer(&mut self) {
+        self.alternative_buffer = Some(self.canonical_lines.drain(..).collect());
+        self.alternative_cursor_position = Some(self.cursor_position);
+        self.cursor_position.reset();
+    }
+    pub fn override_current_buffer_with_alternative_buffer(&mut self) {
+        if let Some(alternative_buffer) = self.alternative_buffer.as_mut() {
+            self.canonical_lines = alternative_buffer.drain(..).collect();
         }
+        if let Some(alternative_cursor_position) = self.alternative_cursor_position {
+            self.cursor_position = alternative_cursor_position;
+        }
+        self.alternative_buffer = None;
+        self.alternative_cursor_position = None;
+    }
+    pub fn set_scroll_region(&mut self, top_line: usize, bottom_line: usize) {
         self.scroll_region = Some((top_line, bottom_line));
     }
     pub fn clear_scroll_region(&mut self) {
-        if let Some(scroll_region) = self.scroll_region_absolute_indices() {
-            self.canonical_lines.drain(scroll_region.0..scroll_region.1);
-            self.cursor_position.reset();
-            self.scroll_region = None;
-        }
-        if let Some(lines_outside_of_scroll_region) = self.lines_outside_of_scroll_region.as_mut() {
-            self.canonical_lines = lines_outside_of_scroll_region.drain(..).collect();
-        }
-        if let Some(cursor_position_outside_of_scroll_region) =
-            self.cursor_position_outside_of_scroll_region
-        {
-            self.cursor_position = cursor_position_outside_of_scroll_region;
-        }
-        self.lines_outside_of_scroll_region = None;
-        self.cursor_position_outside_of_scroll_region = None;
-    }
-    pub fn set_scroll_region_to_screen_size(&mut self) {
-        self.scroll_region = Some((0, self.lines_in_view - 1)); // these are indices
+        self.scroll_region = None;
     }
     fn scroll_region_absolute_indices(&mut self) -> Option<(usize, usize)> {
         if self.scroll_region.is_none() {
