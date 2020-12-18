@@ -10,6 +10,15 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
 use crate::{AppInstruction, SenderWithContext};
 
+/*
+ * Tab
+ *
+ * this holds multiple panes (currently terminal panes) which are currently displayed
+ * when this tab is active.
+ * it tracks their coordinates (x/y) and size, as well as how they should be resized
+ *
+ */
+
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 type BorderAndPaneIds = (usize, Vec<RawFd>);
