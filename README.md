@@ -45,7 +45,7 @@ The keys and behavior will update when the project matures a bit, but for now:
 In command mode:
   * n - split focused pane vertically
   * b - split focused pane horizontally
-  * m - split largest terminal on screen (vertically or horizontally)
+  * z - split largest terminal on screen (vertically or horizontally)
   * j - resize focused pane down
   * k - resize focused pane up 
   * h - resize focused pane left
@@ -53,6 +53,9 @@ In command mode:
   * p - move focus to next pane
   * PgUp - scroll up in focused pane
   * PgDown - scroll down in focused pane
+  * 1 - new tab
+  * 2 - switch to next tab
+  * 3 - switch to previous tab
   * x - close focused pane
   * q - quit Mosaic
 
