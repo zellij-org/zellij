@@ -1,0 +1,32 @@
+---
+source: src/tests/integration/compatibility.rs
+expression: snapshot
+---
+ 21 line5                                                                                                           
+ 20 line6                                                                                                           
+ 19 line7                                                                                                           
+ 18 line8                                                                                                           
+ 17 line9                                                                                                           
+ 16 line10                                                                                                          
+ 15 line11                                                                                                          
+ 14 line12                                                                                                          
+ 13 line13                                                                                                          
+ 12 line14                                                                                                          
+ 11 line15                                                                                                          
+ 10 line16                                                                                                          
+  9 line17                                                                                                          
+  8 line18                                                                                                          
+  7 line19                                                                                                          
+  6 line20                                                                                                          
+  5 line21                                                                                                          
+  4 line22                                                                                                          
+  3 line23                                                                                                          
+  2 line24                                                                                                          
+  1 line25                                                                                                          
+26  line26                                                                                                          
+  1 line27                                                                                                          
+  2 line28                                                                                                          
+  3 line29                                                                                                          
+ NORMAL  testfile.rs                                                              unix | utf-8 | rust   61%   26:1  
+                                                                                                                    
+Bye from Mosaic!█                                                                                                   

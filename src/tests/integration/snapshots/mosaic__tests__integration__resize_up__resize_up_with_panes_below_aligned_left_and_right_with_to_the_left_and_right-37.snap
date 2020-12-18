@@ -2,6 +2,7 @@
 source: src/tests/integration/resize_up.rs
 expression: snapshot
 ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb     │line3-bbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb     │line4-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb     │line5-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
 a                             │bbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb     │line6-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
@@ -18,7 +19,7 @@ a                             │bbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb     
 line19-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb     │line17-bbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb     │line18-bbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb     │line19-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $  │prompt $                          │prompt $      │line18-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $  │prompt $ █                        │prompt $      │line18-bbbbbbbbbbbbbbbbbbbbbb
 a                             ├──────────┴──────────────────────────────────┴──────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │line1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│prompt $                     
 ──────────────────────────────┤line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb├─────────────────────────────
@@ -41,4 +42,3 @@ line17-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 line18-bbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 line19-bbbbbbbbbbbbbbbbbbbbbbb│prompt $                                                    │line19-bbbbbbbbbbbbbbbbbbbbbb
 prompt $                      │                                                            │prompt $                     
-Bye from Mosaic!█                                                                                                        

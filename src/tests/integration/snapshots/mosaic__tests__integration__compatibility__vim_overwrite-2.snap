@@ -2,6 +2,7 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+1   █                                                                                                               
   1 line 1                                                                                                          
   2 line 2                                                                                                          
   3 line 3                                                                                                          
@@ -29,4 +30,3 @@ expression: snapshot
  25 line 25                                                                                                         
  NORMAL  some-file                                                               unix | utf-8 | no ft    1%    1:1  
                                                                                                                     
-Bye from Mosaic!█                                                                                                   

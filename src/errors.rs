@@ -153,6 +153,10 @@ pub enum ScreenContext {
     ToggleActiveTerminalFullscreen,
     ClosePane,
     ApplyLayout,
+    NewTab,
+    SwitchTabNext,
+    SwitchTabPrev,
+    CloseTab,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -183,6 +187,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
+            ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
+            ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
+            ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
+            ScreenInstruction::CloseTab => ScreenContext::CloseTab,
         }
     }
 }
@@ -192,7 +200,9 @@ pub enum PtyContext {
     SpawnTerminal,
     SpawnTerminalVertically,
     SpawnTerminalHorizontally,
+    NewTab,
     ClosePane,
+    CloseTab,
     Quit,
 }
 
@@ -203,6 +213,8 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalVertically(_) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
+            PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
+            PtyInstruction::NewTab => PtyContext::NewTab,
             PtyInstruction::Quit => PtyContext::Quit,
         }
     }
