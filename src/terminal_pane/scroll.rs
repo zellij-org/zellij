@@ -284,14 +284,6 @@ impl CursorPosition {
         self.column_index = 0;
         self.line_index.1 = 0;
     }
-    pub fn move_up_by_canonical_lines(&mut self, count: usize) {
-        let current_canonical_line_position = self.line_index.0;
-        if count > current_canonical_line_position {
-            self.line_index = (0, 0);
-        } else {
-            self.line_index = (current_canonical_line_position - count, 0);
-        }
-    }
     pub fn move_down_by_canonical_lines(&mut self, count: usize) {
         // this method does not verify that we will not overflow
         let current_canonical_line_position = self.line_index.0;
@@ -508,7 +500,24 @@ impl Scroll {
         self.cursor_position.move_backwards(count);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
-        self.cursor_position.move_up_by_canonical_lines(count);
+        for _ in 0..count {
+            let (current_canonical_line_index, current_line_wrap_index) =
+                self.cursor_position.line_index;
+            if current_line_wrap_index > 0 {
+                // go up one line-wrap
+                self.cursor_position.line_index.1 -= 1;
+            } else if current_canonical_line_index > 0 {
+                // go up to previous canonical line
+                self.cursor_position.line_index.0 -= 1;
+                let current_canonical_line = self
+                    .canonical_lines
+                    .get(self.cursor_position.line_index.0)
+                    .unwrap();
+                let wraps_in_current_line = current_canonical_line.wrapped_fragments.len();
+                // make sure to only go up to the last wrap of the previous line
+                self.cursor_position.line_index.1 = wraps_in_current_line - 1;
+            }
+        }
     }
     pub fn move_cursor_down(&mut self, count: usize) {
         let current_canonical_line = self.cursor_position.line_index.0;
