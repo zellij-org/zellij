@@ -13,8 +13,9 @@ use crate::{AppInstruction, SenderWithContext};
 /*
  * Screen
  *
- * this holds multiple panes (currently terminal panes) which are currently displayed on screen
- * it tracks their coordinates (x/y) and size, as well as how they should be resized
+ * this holds multiple tabs, each one holding multiple panes
+ * it tracks the active tab and controls tab switching, all the rest
+ * is performed in Tab
  *
  */
 
