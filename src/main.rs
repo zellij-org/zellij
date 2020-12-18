@@ -9,6 +9,7 @@ mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
+mod tab;
 mod terminal_pane;
 mod utils;
 
