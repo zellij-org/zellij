@@ -58,7 +58,6 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     active_tab_index: Option<usize>,
     os_api: Box<dyn OsApi>,
-    next_tab_index: usize,
 }
 
 impl Screen {
@@ -79,12 +78,12 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
-            next_tab_index: 0,
         }
     }
     pub fn new_tab(&mut self, pane_id: RawFd) {
+        let tab_index = self.get_next_tab_index();
         let tab = Tab::new(
-            self.next_tab_index,
+            tab_index,
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -92,10 +91,16 @@ impl Screen {
             self.max_panes,
             Some(pane_id),
         );
-        self.active_tab_index = Some(tab.index);
-        self.tabs.insert(self.next_tab_index, tab);
-        self.next_tab_index += 1;
+        self.active_tab_index = Some(tab_index);
+        self.tabs.insert(tab_index, tab);
         self.render();
+    }
+    fn get_next_tab_index(&self) -> usize {
+        if let Some(index) = self.tabs.keys().last() {
+            *index + 1
+        } else {
+            0
+        }
     }
     pub fn switch_tab_next(&mut self) {
         let active_tab_id = self.get_active_tab().unwrap().index;
@@ -139,22 +144,17 @@ impl Screen {
         }
     }
     pub fn render(&mut self) {
-        let close_tab = if let Some(active_tab) = self.get_active_tab_mut() {
+        if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_terminal().is_some() {
                 active_tab.render();
-                false
             } else {
-                true
+                self.close_tab();
             }
         } else {
             self.send_app_instructions
                 .send(AppInstruction::Exit)
                 .unwrap();
-            false
         };
-        if close_tab {
-            self.close_tab();
-        }
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
@@ -174,8 +174,9 @@ impl Screen {
         tab
     }
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+        let tab_index = self.get_next_tab_index();
         let mut tab = Tab::new(
-            self.next_tab_index,
+            tab_index,
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -184,8 +185,7 @@ impl Screen {
             None,
         );
         tab.apply_layout(layout, new_pids);
-        self.active_tab_index = Some(tab.index);
-        self.tabs.insert(self.next_tab_index, tab);
-        self.next_tab_index += 1;
+        self.active_tab_index = Some(tab_index);
+        self.tabs.insert(tab_index, tab);
     }
 }
