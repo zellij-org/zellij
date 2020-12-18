@@ -2,7 +2,6 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
-                                                                                                                                                     
  OS: 5.9.14-arch1-1 GNU/Linux                                                                                                                        
  Uptime: 12 hours, 21 minutes                                                                                                                        
  Hostname: kingdom                                                                                                                                   
@@ -23,10 +22,11 @@ df: /run/user/1000/doc: Operation not permitted
 )$/\\\\e[0;33m\1\\\\e[0m/' | \                                                                                                                       
 )                                                                                                                                                    
                                             paste -sd ''\                                                                                            
-                                        )█                                                                                                           
+                                        )                                                                                                            
                                                                                                                                                      
                                                                                                                                                      
                                                                                                                                                      
                                                                                                                                                      
                                                                                                                                                      
                                                                                                                                                      
+Bye from Mosaic!█                                                                                                                                    
