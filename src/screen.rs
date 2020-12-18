@@ -56,7 +56,7 @@ pub struct Screen {
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
-    active_tab: Option<usize>,
+    active_tab_index: Option<usize>,
     os_api: Box<dyn OsApi>,
     next_tab_index: usize,
 }
@@ -76,7 +76,7 @@ impl Screen {
             send_pty_instructions,
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
-            active_tab: None,
+            active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
             next_tab_index: 0,
@@ -92,7 +92,7 @@ impl Screen {
             self.max_panes,
             Some(pane_id),
         );
-        self.active_tab = Some(tab.index);
+        self.active_tab_index = Some(tab.index);
         self.tabs.insert(self.next_tab_index, tab);
         self.next_tab_index += 1;
         self.render();
@@ -103,9 +103,9 @@ impl Screen {
         let first_tab = tab_ids.get(0).unwrap();
         let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
         if let Some(next_tab) = tab_ids.get(active_tab_id_position + 1) {
-            self.active_tab = Some(*next_tab);
+            self.active_tab_index = Some(*next_tab);
         } else {
-            self.active_tab = Some(*first_tab);
+            self.active_tab_index = Some(*first_tab);
         }
         self.render();
     }
@@ -117,14 +117,14 @@ impl Screen {
 
         let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
         if active_tab_id == *first_tab {
-            self.active_tab = Some(*last_tab)
+            self.active_tab_index = Some(*last_tab)
         } else if let Some(prev_tab) = tab_ids.get(active_tab_id_position - 1) {
-            self.active_tab = Some(*prev_tab)
+            self.active_tab_index = Some(*prev_tab)
         }
         self.render();
     }
     pub fn close_tab(&mut self) {
-        let active_tab_index = self.active_tab.unwrap();
+        let active_tab_index = self.active_tab_index.unwrap();
         if self.tabs.len() > 1 {
             self.switch_tab_prev();
         }
@@ -134,7 +134,7 @@ impl Screen {
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();
         if self.tabs.len() == 0 {
-            self.active_tab = None;
+            self.active_tab_index = None;
             self.render();
         }
     }
@@ -158,7 +158,7 @@ impl Screen {
     }
 
     pub fn get_active_tab(&self) -> Option<&Tab> {
-        match self.active_tab {
+        match self.active_tab_index {
             Some(tab) => self.tabs.get(&tab),
             None => None,
         }
@@ -167,7 +167,7 @@ impl Screen {
         &mut self.tabs
     }
     pub fn get_active_tab_mut(&mut self) -> Option<&mut Tab> {
-        let tab = match self.active_tab {
+        let tab = match self.active_tab_index {
             Some(tab) => self.get_tabs_mut().get_mut(&tab),
             None => None,
         };
@@ -184,7 +184,7 @@ impl Screen {
             None,
         );
         tab.apply_layout(layout, new_pids);
-        self.active_tab = Some(tab.index);
+        self.active_tab_index = Some(tab.index);
         self.tabs.insert(self.next_tab_index, tab);
         self.next_tab_index += 1;
     }

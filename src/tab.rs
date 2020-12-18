@@ -101,7 +101,6 @@ impl Tab {
         self.panes_to_hide.clear();
         let positions_in_layout = layout.position_panes_in_space(&free_space);
         let mut positions_and_size = positions_in_layout.iter();
-        //let active_tab = self.get_active_tab_mut().unwrap();
         for (pid, terminal_pane) in self.terminals.iter_mut() {
             match positions_and_size.next() {
                 Some(position_and_size) => {
