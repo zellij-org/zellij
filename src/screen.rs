@@ -135,7 +135,7 @@ impl Screen {
             self.switch_tab_prev();
         }
         let mut active_tab = self.tabs.remove(&active_tab_index).unwrap();
-        let pane_ids = active_tab.get_pane_ids();
+        let pane_ids = active_tab.get_terminal_pane_ids();
         self.send_pty_instructions
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();
