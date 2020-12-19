@@ -68,15 +68,6 @@ pub struct Tab {
 }
 
 impl Tab {
-    fn get_terminals(&self) -> Vec<(RawFd, &TerminalPane)> {
-        self.panes
-            .iter()
-            .filter_map(|(pane_kind, terminal_pane)| match pane_kind {
-                PaneKind::Terminal(pid) => Some((*pid, terminal_pane)),
-                _ => None,
-            })
-            .collect()
-    }
     pub fn new(
         index: usize,
         full_screen_ws: &PositionAndSize,
@@ -547,6 +538,15 @@ impl Tab {
                 stdout.flush().expect("could not flush");
             }
         }
+    }
+    fn get_terminals(&self) -> Vec<(RawFd, &TerminalPane)> {
+        self.panes
+            .iter()
+            .filter_map(|(pane_kind, terminal_pane)| match pane_kind {
+                PaneKind::Terminal(pid) => Some((*pid, terminal_pane)),
+                _ => None,
+            })
+            .collect()
     }
     fn terminal_ids_directly_left_of(&self, id: &RawFd) -> Option<Vec<RawFd>> {
         let mut ids = vec![];
