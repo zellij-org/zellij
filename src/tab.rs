@@ -86,7 +86,7 @@ impl Tab {
             );
             let mut panes = BTreeMap::new();
             panes.insert(PaneKind::Terminal(pid), new_terminal);
-            panes 
+            panes
         } else {
             BTreeMap::new()
         };
@@ -540,7 +540,7 @@ impl Tab {
             }
         }
     }
-    fn get_terminals(&self) -> impl Iterator<Item=(RawFd, &TerminalPane)> {
+    fn get_terminals(&self) -> impl Iterator<Item = (RawFd, &TerminalPane)> {
         self.panes
             .iter()
             .filter_map(|(pane_kind, terminal_pane)| match pane_kind {
