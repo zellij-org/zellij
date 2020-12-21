@@ -693,9 +693,7 @@ impl Scroll {
     }
     fn scroll_region_absolute_indices_or_screen_edges(&mut self) -> (usize, usize) {
         match self.scroll_region {
-            Some(_scroll_region) => {
-                self.scroll_region_absolute_indices().unwrap()
-            },
+            Some(_scroll_region) => self.scroll_region_absolute_indices().unwrap(),
             None => {
                 // indices of screen top and bottom edge
                 // TODO: what if we don't have enough lines?
@@ -747,7 +745,8 @@ impl Scroll {
         }
     }
     pub fn move_cursor_up_in_scroll_region(&mut self, count: usize) {
-        let (scroll_region_top, scroll_region_bottom) = self.scroll_region_absolute_indices_or_screen_edges();
+        let (scroll_region_top, scroll_region_bottom) =
+            self.scroll_region_absolute_indices_or_screen_edges();
         for _ in 0..count {
             let current_canonical_line_index = self.cursor_position.line_index.0;
             if current_canonical_line_index == scroll_region_top {
