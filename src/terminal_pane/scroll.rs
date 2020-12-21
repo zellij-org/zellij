@@ -661,7 +661,7 @@ impl Scroll {
     pub fn move_current_buffer_to_alternative_buffer(&mut self) {
         self.alternative_buffer = Some(self.canonical_lines.drain(..).collect());
         self.alternative_cursor_position = Some(self.cursor_position);
-        self.cursor_position.reset();
+        self.clear_all();
     }
     pub fn override_current_buffer_with_alternative_buffer(&mut self) {
         if let Some(alternative_buffer) = self.alternative_buffer.as_mut() {
@@ -689,6 +689,19 @@ impl Scroll {
             Some((absolute_top, absolute_bottom))
         } else {
             Some((self.scroll_region.unwrap().0, self.scroll_region.unwrap().1))
+        }
+    }
+    fn scroll_region_absolute_indices_or_screen_edges(&mut self) -> (usize, usize) {
+        match self.scroll_region {
+            Some(_scroll_region) => self.scroll_region_absolute_indices().unwrap(),
+            None => {
+                // indices of screen top and bottom edge
+                // TODO: what if we don't have enough lines?
+                // let absolute_top = self.canonical_lines.len() - 1 - self.lines_in_view;
+                let absolute_top = self.canonical_lines.len() - self.lines_in_view;
+                let absolute_bottom = self.canonical_lines.len() - 1;
+                (absolute_top, absolute_bottom)
+            }
         }
     }
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
@@ -732,23 +745,20 @@ impl Scroll {
         }
     }
     pub fn move_cursor_up_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) =
-            self.scroll_region_absolute_indices()
-        {
-            // the scroll region indices start at 1, so we need to adjust them
-            for _ in 0..count {
-                let current_canonical_line_index = self.cursor_position.line_index.0;
-                if current_canonical_line_index == scroll_region_top {
-                    // if we're at the top line, we create a new line and remove the last line that
-                    // would otherwise overflow
-                    self.canonical_lines.remove(scroll_region_bottom);
-                    self.canonical_lines
-                        .insert(current_canonical_line_index, CanonicalLine::new());
-                } else if current_canonical_line_index > scroll_region_top
-                    && current_canonical_line_index <= scroll_region_bottom
-                {
-                    self.move_cursor_up(count);
-                }
+        let (scroll_region_top, scroll_region_bottom) =
+            self.scroll_region_absolute_indices_or_screen_edges();
+        for _ in 0..count {
+            let current_canonical_line_index = self.cursor_position.line_index.0;
+            if current_canonical_line_index == scroll_region_top {
+                // if we're at the top line, we create a new line and remove the last line that
+                // would otherwise overflow
+                self.canonical_lines.remove(scroll_region_bottom);
+                self.canonical_lines
+                    .insert(current_canonical_line_index, CanonicalLine::new());
+            } else if current_canonical_line_index > scroll_region_top
+                && current_canonical_line_index <= scroll_region_bottom
+            {
+                self.move_cursor_up(count);
             }
         }
     }
