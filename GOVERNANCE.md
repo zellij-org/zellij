@@ -24,3 +24,4 @@ Once the organization reaches 10 members, a reasonable and achievable process mu
 * Doron Tsur <qballer@gmail.com>
 * Brooks Rady <b.j.rady@gmail.com>
 * Denis Maximov <denis_maxim0v@protonmail.com>
+* Kunal Mohan <kunalmohan99@gmail.com>
