@@ -897,6 +897,7 @@ dependencies = [
  "bincode",
  "futures",
  "insta",
+ "lazy_static",
  "libc",
  "nix",
  "nom",
