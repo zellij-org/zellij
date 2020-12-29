@@ -27,11 +27,11 @@ version = "1.3.0"
 features = ["unstable"]
 
 [dependencies.wasmer]
-git = "https://github.com/wasmerio/wasmer.git"
+version = "1.0.0-rc"
 optional = true
 
 [dependencies.wasmer-wasi]
-git = "https://github.com/wasmerio/wasmer.git"
+version = "1.0.0-rc"
 optional = true
 
 [features]
