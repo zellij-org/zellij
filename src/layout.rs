@@ -140,6 +140,8 @@ pub struct Layout {
     pub parts: Vec<Layout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split_size: Option<SplitSize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PathBuf>,
 }
 
 impl Layout {
@@ -171,6 +173,18 @@ impl Layout {
         }
         total_panes
     }
+
+    // FIXME: I probably shouldn't exist, much less with PathBuf (use &Path)
+    #[cfg(feature = "wasm-wip")]
+    pub fn list_plugins(&self) -> Vec<&PathBuf> {
+        dbg!(&self);
+        let mut plugins: Vec<_> = self.parts.iter().flat_map(Layout::list_plugins).collect();
+        if let Some(path) = &self.plugin {
+            plugins.push(path);
+        }
+        plugins
+    }
+
     pub fn position_panes_in_space(&self, space: &PositionAndSize) -> Vec<PositionAndSize> {
         split_space(space, &self)
     }
