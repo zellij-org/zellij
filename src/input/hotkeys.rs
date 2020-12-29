@@ -12,9 +12,11 @@
 ///   - Should the user view be a plugin?
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::str::FromStr;
 
 use lazy_static::lazy_static;
 
+use nom;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -25,7 +27,7 @@ use strum_macros::EnumIter;
 /// layouts. I'm sticking with my (UK qwerty) keyboard for now, but do add your own!
 ///
 /// @@@khs26 Not sure you can actually pass all these through - try it out!
-#[derive(Debug, PartialEq, Eq, Hash, EnumIter, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, Serialize)]
 pub enum BaseInputKey {
     Esc,
     F1,
@@ -244,19 +246,17 @@ lazy_static! {
     static ref BASE_INPUT_KEY_TO_STRING: HashMap<BaseInputKey, &'static str> = {
         let mut map = HashMap::new();
         for (key, key_string) in BASE_INPUT_KEY_STRINGS.iter() {
-            map.insert(key, *key_string);
+            map.insert(*key, *key_string);
         }
         map
     };
-
     static ref STRING_TO_BASE_INPUT_KEY: HashMap<&'static str, BaseInputKey> = {
         let mut map = HashMap::new();
         for (key, key_string) in BASE_INPUT_KEY_STRINGS.iter() {
-            map.insert(*key_string, key);
+            map.insert(*key_string, *key);
         }
         map
     };
-
 }
 
 impl std::string::ToString for BaseInputKey {
@@ -269,7 +269,7 @@ impl std::string::ToString for BaseInputKey {
 ///
 /// N.B. The EnumIter trait means that the order of the enum members will affect
 /// the order in which the modifiers are displayed (i.e. Ctrl+Alt+<key>, not Alt+Ctrl+<key>)
-#[derive(Debug, PartialEq, Eq, Hash, Clone, EnumIter, Serialize)]
+#[derive(Copy, Debug, PartialEq, Eq, Hash, Clone, EnumIter, Serialize)]
 pub enum ModifierKey {
     Control,
     Alt,
@@ -280,21 +280,39 @@ pub enum ModifierKey {
     RightControl,
 }
 
+static MODIFIER_KEY_STRINGS: [(ModifierKey, &str); 6] = [
+    (ModifierKey::Control, "Ctrl"),
+    (ModifierKey::Alt, "Alt"),
+    (ModifierKey::Shift, "Shift"),
+    (ModifierKey::AltGr, "AltGr"),
+    (ModifierKey::RightShift, "RShift"),
+    (ModifierKey::RightControl, "RCtrl"),
+];
+
+lazy_static! {
+    static ref MODIFIER_KEY_TO_STRING: HashMap<ModifierKey, &'static str> = {
+        let mut map = HashMap::new();
+        for (key, key_string) in MODIFIER_KEY_STRINGS.iter() {
+            map.insert(*key, *key_string);
+        }
+        map
+    };
+    static ref STRING_TO_MODIFIER_KEY: HashMap<&'static str, ModifierKey> = {
+        let mut map = HashMap::new();
+        for (key, key_string) in MODIFIER_KEY_STRINGS.iter() {
+            map.insert(*key_string, *key);
+        }
+        map
+    };
+}
+
 impl std::string::ToString for ModifierKey {
     fn to_string(&self) -> String {
-        match self {
-            ModifierKey::Control => String::from("Ctrl"),
-            ModifierKey::Alt => String::from("Alt"),
-            ModifierKey::Shift => String::from("Shift"),
-            ModifierKey::AltGr => String::from("AltGr"),
-            ModifierKey::RightShift => String::from("RShift"),
-            ModifierKey::RightControl => String::from("RCtrl"),
-        }
+        String::from(*MODIFIER_KEY_TO_STRING.get(self).unwrap())
     }
 }
 
 /// Represents a particular key combination that can be input by a user
-/// @@@khs26 We need a key that can implement Eq + Hash
 #[derive(Debug, Serialize)]
 pub struct InputKey {
     /// Base (keyboard) key
@@ -335,8 +353,28 @@ impl std::str::FromStr for InputKey {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        if let Ok(parsed) = nom::sequence::pair(nom::multi::many0(parse_modifier), parse_base_input)(s) {
+            let new_key = InputKey::new(
+                parsed.1.1,
+                parsed.1.0.iter().cloned().collect());
+            Ok(new_key)
+        } else {
+            Err(())
+        }
     }
+}
+
+fn parse_modifier(s: &str) -> nom::IResult<&str, ModifierKey> {
+    let (s, parsed) = nom::sequence::terminated(
+        nom::character::complete::alpha1,
+        nom::bytes::complete::tag("+"),
+    )(s)?;
+    Ok((s, *STRING_TO_MODIFIER_KEY.get(parsed).unwrap()))
+}
+
+fn parse_base_input(s: &str) -> nom::IResult<&str, BaseInputKey> {
+    let (s, parsed) = nom::character::complete::alpha1(s)?;
+    Ok((s, *STRING_TO_BASE_INPUT_KEY.get(parsed).unwrap()))
 }
 
 impl fmt::Display for InputKey {
@@ -394,5 +432,31 @@ mod tests {
                 .collect(),
         );
         assert_eq!("Ctrl+Alt+Shift+B", test_key.user_string);
+    }
+
+    #[test]
+    fn input_key_from_string() {
+        assert_eq!(("Alt+A", ModifierKey::Control), parse_modifier("Ctrl+Alt+A").unwrap());
+        assert_eq!(("A", ModifierKey::Alt), parse_modifier("Alt+A").unwrap());
+        assert_eq!(("", BaseInputKey::A), parse_base_input("A").unwrap());
+
+        assert_eq!(("Alt+Esc", ModifierKey::Control), parse_modifier("Ctrl+Alt+Esc").unwrap());
+        assert_eq!(("Esc", ModifierKey::Alt), parse_modifier("Alt+Esc").unwrap());
+        assert_eq!(("", BaseInputKey::Esc), parse_base_input("Esc").unwrap());
+
+        let test_key = InputKey::new(
+            BaseInputKey::B,
+            [ModifierKey::Control, ModifierKey::Alt, ModifierKey::Shift]
+                .iter()
+                .cloned()
+                .collect(),
+        );
+        assert_eq!(test_key, InputKey::from_str("Ctrl+Alt+Shift+B").unwrap());
+
+        let test_key = InputKey::new(
+            BaseInputKey::LeftSquareBracket,
+            HashSet::new()
+        );
+        assert_eq!(test_key, InputKey::from_str("[").unwrap());
     }
 }
