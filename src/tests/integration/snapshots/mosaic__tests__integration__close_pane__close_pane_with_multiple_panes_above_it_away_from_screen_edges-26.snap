@@ -2,6 +2,7 @@
 source: src/tests/integration/close_pane.rs
 expression: snapshot
 ---
+a                                                           │bbbbbbbbbbbbbbb│line1-bbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
 line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line2-bbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line3-bbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
 a                                                           │line16-bbbbbbbb│line4-bbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
@@ -20,5 +21,4 @@ a                                                           │line19-bbbbbbbb�
 line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbb│line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 a                                                           │bbbbbbbbbbbbbbb│line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                                                    │prompt $       │prompt $      │prompt $                     
-Bye from Mosaic!█                                                                                                        
+prompt $                                                    │prompt $       │prompt $ █    │prompt $                     

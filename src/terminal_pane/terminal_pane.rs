@@ -368,6 +368,15 @@ impl vte::Perform for TerminalPane {
                 // backspace
                 self.move_cursor_backwards(1);
             }
+            9 => {
+                // tab
+                let terminal_tab_character = TerminalCharacter {
+                    character: '\t',
+                    styles: self.pending_styles,
+                };
+                // TODO: handle better with line wrapping
+                self.scroll.add_character(terminal_tab_character);
+            }
             10 => {
                 // 0a, newline
                 self.add_newline();
@@ -448,6 +457,10 @@ impl vte::Perform for TerminalPane {
             // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
             self.scroll.move_cursor_up(move_up_count as usize);
+        } else if c == 'B' {
+            // move cursor down until edge of screen
+            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
+            self.scroll.move_cursor_down(move_down_count as usize);
         } else if c == 'D' {
             let move_back_count = if params[0] == 0 {
                 1
@@ -463,6 +476,10 @@ impl vte::Perform for TerminalPane {
             };
             if first_intermediate_is_questionmark {
                 match params.get(0) {
+                    Some(&1049) => {
+                        self.scroll
+                            .override_current_buffer_with_alternative_buffer();
+                    }
                     Some(&25) => {
                         self.scroll.hide_cursor();
                         self.mark_for_rerender();
@@ -484,6 +501,9 @@ impl vte::Perform for TerminalPane {
                     Some(&25) => {
                         self.scroll.show_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(&1049) => {
+                        self.scroll.move_current_buffer_to_alternative_buffer();
                     }
                     Some(&1) => {
                         self.cursor_key_mode = true;

@@ -248,7 +248,7 @@ impl Debug for WrappedFragment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct CursorPosition {
     line_index: (usize, usize), // (canonical line index, fragment index in line)
     column_index: usize,        // 0 is the first character from the pane edge
@@ -284,13 +284,10 @@ impl CursorPosition {
         self.column_index = 0;
         self.line_index.1 = 0;
     }
-    pub fn move_up_by_canonical_lines(&mut self, count: usize) {
+    pub fn move_down_by_canonical_lines(&mut self, count: usize) {
+        // this method does not verify that we will not overflow
         let current_canonical_line_position = self.line_index.0;
-        if count > current_canonical_line_position {
-            self.line_index = (0, 0);
-        } else {
-            self.line_index = (current_canonical_line_position - count, 0);
-        }
+        self.line_index = (current_canonical_line_position + count, 0);
     }
     pub fn move_to_canonical_line(&mut self, index: usize) {
         self.line_index = (index, 0);
@@ -312,6 +309,8 @@ pub struct Scroll {
     viewport_bottom_offset: Option<usize>,
     scroll_region: Option<(usize, usize)>, // start line, end line (if set, this is the area the will scroll)
     show_cursor: bool,
+    alternative_buffer: Option<Vec<CanonicalLine>>,
+    alternative_cursor_position: Option<CursorPosition>,
 }
 
 impl Scroll {
@@ -327,6 +326,8 @@ impl Scroll {
             viewport_bottom_offset: None,
             scroll_region: None,
             show_cursor: true,
+            alternative_buffer: None,
+            alternative_cursor_position: None,
         }
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -375,7 +376,7 @@ impl Scroll {
             .get_mut(wrapped_fragment_index_in_line)
             .expect("cursor out of bounds");
 
-        if cursor_position_in_line <= self.total_columns {
+        if cursor_position_in_line < self.total_columns {
             current_wrapped_fragment.add_character(terminal_character, cursor_position_in_line);
             self.cursor_position.move_forward(1);
         } else {
@@ -393,7 +394,9 @@ impl Scroll {
     }
     pub fn add_canonical_line(&mut self) {
         let current_canonical_line_index = self.cursor_position.line_index.0;
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             if current_canonical_line_index == scroll_region_bottom {
                 // end of scroll region
                 // when we have a scroll region set and we're at its bottom
@@ -497,20 +500,41 @@ impl Scroll {
         self.cursor_position.move_backwards(count);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
-        self.cursor_position.move_up_by_canonical_lines(count);
+        for _ in 0..count {
+            let (current_canonical_line_index, current_line_wrap_index) =
+                self.cursor_position.line_index;
+            if current_line_wrap_index > 0 {
+                // go up one line-wrap
+                self.cursor_position.line_index.1 -= 1;
+            } else if current_canonical_line_index > 0 {
+                // go up to previous canonical line
+                self.cursor_position.line_index.0 -= 1;
+                let current_canonical_line = self
+                    .canonical_lines
+                    .get(self.cursor_position.line_index.0)
+                    .unwrap();
+                let wraps_in_current_line = current_canonical_line.wrapped_fragments.len();
+                // make sure to only go up to the last wrap of the previous line
+                self.cursor_position.line_index.1 = wraps_in_current_line - 1;
+            }
+        }
+    }
+    pub fn move_cursor_down(&mut self, count: usize) {
+        let current_canonical_line = self.cursor_position.line_index.0;
+        let max_count = (self.canonical_lines.len() - 1) - current_canonical_line;
+        let count = std::cmp::min(count, max_count);
+        self.cursor_position.move_down_by_canonical_lines(count);
     }
     pub fn change_size(&mut self, columns: usize, lines: usize) {
-        if self.scroll_region.is_none() {
-            for canonical_line in self.canonical_lines.iter_mut() {
-                canonical_line.change_width(columns);
-            }
-            let cursor_line = self
-                .canonical_lines
-                .get(self.cursor_position.line_index.0)
-                .expect("cursor out of bounds");
-            if cursor_line.wrapped_fragments.len() <= self.cursor_position.line_index.1 {
-                self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len() - 1;
-            }
+        for canonical_line in self.canonical_lines.iter_mut() {
+            canonical_line.change_width(columns);
+        }
+        let cursor_line = self
+            .canonical_lines
+            .get(self.cursor_position.line_index.0)
+            .expect("cursor out of bounds");
+        if cursor_line.wrapped_fragments.len() <= self.cursor_position.line_index.1 {
+            self.cursor_position.line_index.1 = cursor_line.wrapped_fragments.len() - 1;
         }
         self.lines_in_view = lines;
         self.total_columns = columns;
@@ -597,13 +621,18 @@ impl Scroll {
         self.cursor_position.reset();
     }
     pub fn move_cursor_to(&mut self, line: usize, col: usize) {
-        if self.canonical_lines.len() > line {
-            self.cursor_position.move_to_canonical_line(line);
+        let line_on_screen = if self.canonical_lines.len() > self.lines_in_view {
+            line + (self.canonical_lines.len() - self.lines_in_view)
         } else {
-            for _ in self.canonical_lines.len()..=line {
+            line
+        };
+        if self.canonical_lines.len() > line_on_screen {
+            self.cursor_position.move_to_canonical_line(line_on_screen);
+        } else {
+            for _ in self.canonical_lines.len()..=line_on_screen {
                 self.canonical_lines.push(CanonicalLine::new());
             }
-            self.cursor_position.move_to_canonical_line(line);
+            self.cursor_position.move_to_canonical_line(line_on_screen);
         }
         let (current_canonical_line_index, current_line_wrap_position) =
             self.cursor_position.line_index;
@@ -629,15 +658,56 @@ impl Scroll {
         let current_column = self.cursor_position.column_index;
         self.move_cursor_to(line, current_column);
     }
+    pub fn move_current_buffer_to_alternative_buffer(&mut self) {
+        self.alternative_buffer = Some(self.canonical_lines.drain(..).collect());
+        self.alternative_cursor_position = Some(self.cursor_position);
+        self.clear_all();
+    }
+    pub fn override_current_buffer_with_alternative_buffer(&mut self) {
+        if let Some(alternative_buffer) = self.alternative_buffer.as_mut() {
+            self.canonical_lines = alternative_buffer.drain(..).collect();
+        }
+        if let Some(alternative_cursor_position) = self.alternative_cursor_position {
+            self.cursor_position = alternative_cursor_position;
+        }
+        self.alternative_buffer = None;
+        self.alternative_cursor_position = None;
+    }
     pub fn set_scroll_region(&mut self, top_line: usize, bottom_line: usize) {
         self.scroll_region = Some((top_line, bottom_line));
-        // TODO: clear linewraps in scroll region?
     }
     pub fn clear_scroll_region(&mut self) {
         self.scroll_region = None;
     }
+    fn scroll_region_absolute_indices(&mut self) -> Option<(usize, usize)> {
+        if self.scroll_region.is_none() {
+            return None;
+        };
+        if self.canonical_lines.len() > self.lines_in_view {
+            let absolute_top = self.canonical_lines.len() - 1 - self.lines_in_view;
+            let absolute_bottom = self.canonical_lines.len() - 1;
+            Some((absolute_top, absolute_bottom))
+        } else {
+            Some((self.scroll_region.unwrap().0, self.scroll_region.unwrap().1))
+        }
+    }
+    fn scroll_region_absolute_indices_or_screen_edges(&mut self) -> (usize, usize) {
+        match self.scroll_region {
+            Some(_scroll_region) => self.scroll_region_absolute_indices().unwrap(),
+            None => {
+                // indices of screen top and bottom edge
+                // TODO: what if we don't have enough lines?
+                // let absolute_top = self.canonical_lines.len() - 1 - self.lines_in_view;
+                let absolute_top = self.canonical_lines.len() - self.lines_in_view;
+                let absolute_bottom = self.canonical_lines.len() - 1;
+                (absolute_top, absolute_bottom)
+            }
+        }
+    }
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             let current_canonical_line_index = self.cursor_position.line_index.0;
             if current_canonical_line_index >= scroll_region_top
                 && current_canonical_line_index <= scroll_region_bottom
@@ -655,7 +725,9 @@ impl Scroll {
         }
     }
     pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) =
+            self.scroll_region_absolute_indices()
+        {
             let current_canonical_line_index = self.cursor_position.line_index.0;
             if current_canonical_line_index >= scroll_region_top
                 && current_canonical_line_index <= scroll_region_bottom
@@ -673,28 +745,27 @@ impl Scroll {
         }
     }
     pub fn move_cursor_up_in_scroll_region(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
-            // the scroll region indices start at 1, so we need to adjust them
-            for _ in 0..count {
-                let current_canonical_line_index = self.cursor_position.line_index.0;
-                if current_canonical_line_index == scroll_region_top {
-                    // if we're at the top line, we create a new line and remove the last line that
-                    // would otherwise overflow
-                    self.canonical_lines.remove(scroll_region_bottom);
-                    self.canonical_lines
-                        .insert(current_canonical_line_index, CanonicalLine::new());
-                } else if current_canonical_line_index > scroll_region_top
-                    && current_canonical_line_index <= scroll_region_bottom
-                {
-                    self.move_cursor_up(count);
-                }
+        let (scroll_region_top, scroll_region_bottom) =
+            self.scroll_region_absolute_indices_or_screen_edges();
+        for _ in 0..count {
+            let current_canonical_line_index = self.cursor_position.line_index.0;
+            if current_canonical_line_index == scroll_region_top {
+                // if we're at the top line, we create a new line and remove the last line that
+                // would otherwise overflow
+                self.canonical_lines.remove(scroll_region_bottom);
+                self.canonical_lines
+                    .insert(current_canonical_line_index, CanonicalLine::new());
+            } else if current_canonical_line_index > scroll_region_top
+                && current_canonical_line_index <= scroll_region_bottom
+            {
+                self.move_cursor_up(count);
             }
         }
     }
     /// [scroll_up](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L261)
     /// This function takes the first line of the scroll region and moves it to the bottom (count times)
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        if let Some((_, scroll_region_bottom)) = self.scroll_region {
+        if let Some((_, scroll_region_bottom)) = self.scroll_region_absolute_indices() {
             if self.show_cursor {
                 let scroll_region_bottom_index = scroll_region_bottom - 1;
                 self.cursor_position
@@ -714,7 +785,7 @@ impl Scroll {
     /// [scroll_down](https://github.com/alacritty/alacritty/blob/ec42b42ce601808070462111c0c28edb0e89babb/alacritty_terminal/src/grid/mod.rs#L221)
     /// This function takes the last line of the scroll region and moves it to the top (count times)
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        if let Some((scroll_region_top, _)) = self.scroll_region {
+        if let Some((scroll_region_top, _)) = self.scroll_region_absolute_indices() {
             if self.show_cursor {
                 let scroll_region_top_index = scroll_region_top - 1;
                 self.cursor_position

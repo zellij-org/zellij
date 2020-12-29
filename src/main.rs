@@ -9,6 +9,7 @@ mod layout;
 mod os_input_output;
 mod pty_bus;
 mod screen;
+mod tab;
 mod terminal_pane;
 mod utils;
 
@@ -196,7 +197,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     if let Some(layout) = maybe_layout {
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
-                        pty_bus.spawn_terminal_vertically(None);
+                        let pid = pty_bus.spawn_terminal(None);
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::NewTab(pid))
+                            .unwrap();
                     }
 
                     loop {
@@ -208,16 +213,39 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         pty_bus.send_screen_instructions.update(err_ctx);
                         match event {
                             PtyInstruction::SpawnTerminal(file_to_open) => {
-                                pty_bus.spawn_terminal(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewPane(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                pty_bus.spawn_terminal_vertically(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::VerticalSplit(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                pty_bus.spawn_terminal_horizontally(file_to_open);
+                                let pid = pty_bus.spawn_terminal(file_to_open);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::HorizontalSplit(pid))
+                                    .unwrap();
+                            }
+                            PtyInstruction::NewTab => {
+                                let pid = pty_bus.spawn_terminal(None);
+                                pty_bus
+                                    .send_screen_instructions
+                                    .send(ScreenInstruction::NewTab(pid))
+                                    .unwrap();
                             }
                             PtyInstruction::ClosePane(id) => {
                                 pty_bus.close_pane(id);
+                                command_is_executing.done_closing_pane();
+                            }
+                            PtyInstruction::CloseTab(ids) => {
+                                pty_bus.close_tab(ids);
                                 command_is_executing.done_closing_pane();
                             }
                             PtyInstruction::Quit => {
@@ -245,71 +273,98 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     screen.send_pty_instructions.update(err_ctx);
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
-                            screen.handle_pty_event(pid, vte_event);
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .handle_pty_event(pid, vte_event);
                         }
                         ScreenInstruction::Render => {
                             screen.render();
                         }
                         ScreenInstruction::NewPane(pid) => {
-                            screen.new_pane(pid);
+                            screen.get_active_tab_mut().unwrap().new_pane(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
-                            screen.horizontal_split(pid);
+                            screen.get_active_tab_mut().unwrap().horizontal_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
-                            screen.vertical_split(pid);
+                            screen.get_active_tab_mut().unwrap().vertical_split(pid);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
-                            screen.write_to_active_terminal(bytes);
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .write_to_active_terminal(bytes);
                         }
                         ScreenInstruction::ResizeLeft => {
-                            screen.resize_left();
+                            screen.get_active_tab_mut().unwrap().resize_left();
                         }
                         ScreenInstruction::ResizeRight => {
-                            screen.resize_right();
+                            screen.get_active_tab_mut().unwrap().resize_right();
                         }
                         ScreenInstruction::ResizeDown => {
-                            screen.resize_down();
+                            screen.get_active_tab_mut().unwrap().resize_down();
                         }
                         ScreenInstruction::ResizeUp => {
-                            screen.resize_up();
+                            screen.get_active_tab_mut().unwrap().resize_up();
                         }
                         ScreenInstruction::MoveFocus => {
-                            screen.move_focus();
+                            screen.get_active_tab_mut().unwrap().move_focus();
                         }
                         ScreenInstruction::MoveFocusLeft => {
-                            screen.move_focus_left();
+                            screen.get_active_tab_mut().unwrap().move_focus_left();
                         }
                         ScreenInstruction::MoveFocusDown => {
-                            screen.move_focus_down();
+                            screen.get_active_tab_mut().unwrap().move_focus_down();
                         }
                         ScreenInstruction::MoveFocusRight => {
-                            screen.move_focus_right();
+                            screen.get_active_tab_mut().unwrap().move_focus_right();
                         }
                         ScreenInstruction::MoveFocusUp => {
-                            screen.move_focus_up();
+                            screen.get_active_tab_mut().unwrap().move_focus_up();
                         }
                         ScreenInstruction::ScrollUp => {
-                            screen.scroll_active_terminal_up();
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_up();
                         }
                         ScreenInstruction::ScrollDown => {
-                            screen.scroll_active_terminal_down();
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_down();
                         }
                         ScreenInstruction::ClearScroll => {
-                            screen.clear_active_terminal_scroll();
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .clear_active_terminal_scroll();
                         }
                         ScreenInstruction::CloseFocusedPane => {
-                            screen.close_focused_pane();
+                            screen.get_active_tab_mut().unwrap().close_focused_pane();
+                            screen.render();
                         }
                         ScreenInstruction::ClosePane(id) => {
-                            screen.close_pane(id);
+                            screen.get_active_tab_mut().unwrap().close_pane(id);
+                            screen.render();
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
-                            screen.toggle_active_terminal_fullscreen();
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .toggle_active_terminal_fullscreen();
                         }
+                        ScreenInstruction::NewTab(pane_id) => {
+                            screen.new_tab(pane_id);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
+                        ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
+                        ScreenInstruction::CloseTab => screen.close_tab(),
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(layout, new_pane_pids)
                         }

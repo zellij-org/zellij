@@ -221,6 +221,34 @@ impl InputHandler {
                         .send(ScreenInstruction::MoveFocusRight)
                         .unwrap()
                 }
+                [49] => {
+                    // 1
+                    self.command_is_executing.opening_new_pane();
+                    self.send_pty_instructions
+                        .send(PtyInstruction::NewTab)
+                        .unwrap();
+                    self.command_is_executing.wait_until_new_pane_is_opened();
+                }
+                [50] => {
+                    // 2
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::SwitchTabPrev)
+                        .unwrap()
+                }
+                [51] => {
+                    // 3
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::SwitchTabNext)
+                        .unwrap()
+                }
+                [52] => {
+                    // 4
+                    self.command_is_executing.closing_pane();
+                    self.send_screen_instructions
+                        .send(ScreenInstruction::CloseTab)
+                        .unwrap();
+                    self.command_is_executing.wait_until_pane_is_closed();
+                }
                 //@@@khs26 Write this to the powerbar?
                 _ => {}
             }
