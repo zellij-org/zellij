@@ -12,6 +12,8 @@ mod screen;
 mod tab;
 mod terminal_pane;
 mod utils;
+#[cfg(feature = "wasm-wip")]
+mod wasm_vm;
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -387,12 +389,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn(move || {
                 // TODO: Clone shared state here
                 move || -> Result<(), Box<dyn std::error::Error>> {
-                    use std::{
-                        io,
-                        process::{Command, Stdio},
-                    };
-                    use wasmer::{Exports, Function, Instance, Module, Store, Value};
-                    use wasmer_wasi::{Pipe, WasiEnv, WasiState};
+                    use crate::wasm_vm::{mosaic_imports, wasi_stdout};
+                    use std::io;
+                    use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+                    use wasmer_wasi::{Pipe, WasiState};
 
                     let store = Store::default();
 
@@ -419,15 +419,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         .stdout(Box::new(output))
                         .finalize()?;
 
-                    let mut import_object = wasi_env.import_object(&module)?;
-                    // FIXME: Upstream an `ImportObject` merge method
-                    let mut host_exports = Exports::new();
-                    host_exports.insert(
-                        "host_open_file",
-                        Function::new_native_with_env(&store, wasi_env.clone(), host_open_file),
-                    );
-                    import_object.register("mosaic", host_exports);
-                    let instance = Instance::new(&module, &import_object)?;
+                    let wasi = wasi_env.import_object(&module)?;
+                    let mosaic = mosaic_imports(&store, &wasi_env);
+                    let instance = Instance::new(&module, &mosaic.chain_back(wasi))?;
 
                     let start = instance.exports.get_function("_start")?;
                     let handle_key = instance.exports.get_function("handle_key")?;
@@ -464,33 +458,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         } */
                         break;
                     }
-
-                    fn host_open_file(wasi_env: &WasiEnv) {
-                        Command::new("xdg-open")
-                            .arg(format!(
-                                "./{}",
-                                wasi_stdout(wasi_env).lines().next().unwrap()
-                            ))
-                            .stderr(Stdio::null())
-                            .spawn()
-                            .unwrap();
-                    }
-
-                    // FIXME: Unwrap city
-                    fn wasi_stdout(wasi_env: &WasiEnv) -> String {
-                        let mut state = wasi_env.state();
-                        let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();
-                        let mut buf = String::new();
-                        wasi_file.read_to_string(&mut buf).unwrap();
-                        buf
-                    }
-
-                    fn _wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
-                        let mut state = wasi_env.state();
-                        let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
-                        writeln!(wasi_file, "{}\r", buf).unwrap();
-                    }
-
                     debug_log_to_file("WASM module loaded and exited cleanly :)".to_string())?;
                     Ok(())
                 }()
