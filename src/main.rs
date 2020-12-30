@@ -12,6 +12,8 @@ mod screen;
 mod tab;
 mod terminal_pane;
 mod utils;
+#[cfg(feature = "wasm-wip")]
+mod wasm_vm;
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -396,51 +398,39 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn(move || {
                 // TODO: Clone shared state here
                 move || -> Result<(), Box<dyn std::error::Error>> {
+                    use crate::wasm_vm::{mosaic_imports, wasi_stdout};
                     use std::io;
-                    use std::sync::{Arc, Mutex};
-                    use wasmer::{Exports, Function, Instance, Module, Store, Value};
-                    use wasmer_wasi::WasiState;
+                    use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+                    use wasmer_wasi::{Pipe, WasiState};
+
                     let store = Store::default();
 
                     println!("Compiling module...");
-                    // FIXME: Switch to a higher performance compiler (`Store::default()`) and cache this on disk
-                    // I could use `(de)serialize_to_file()` for that
+                    // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
                     let module = if let Ok(m) = Module::from_file(&store, "strider.wasm") {
                         m
                     } else {
                         return Ok(()); // Just abort this thread quietly if the WASM isn't found
                     };
 
-                    // FIXME: Upstream the `Pipe` struct
-                    //let output = fluff::Pipe::new();
-                    //let input = fluff::Pipe::new();
+                    let output = Pipe::new();
+                    let input = Pipe::new();
                     let mut wasi_env = WasiState::new("mosaic")
                         .env("CLICOLOR_FORCE", "1")
                         .preopen(|p| {
-                            p.directory(".") // TODO: Change this to a more meaningful dir
+                            p.directory(".") // FIXME: Change this to a more meaningful dir
                                 .alias(".")
                                 .read(true)
                                 .write(true)
                                 .create(true)
                         })?
-                        //.stdin(Box::new(input))
-                        //.stdout(Box::new(output))
+                        .stdin(Box::new(input))
+                        .stdout(Box::new(output))
                         .finalize()?;
 
-                    let mut import_object = wasi_env.import_object(&module)?;
-                    // FIXME: Upstream an `ImportObject` merge method
-                    let mut host_exports = Exports::new();
-                    /* host_exports.insert(
-                        "host_open_file",
-                        Function::new_native_with_env(&store, Arc::clone(&wasi_env.state), host_open_file),
-                    ); */
-                    fn noop() {}
-                    host_exports.insert("host_open_file", Function::new_native(&store, noop));
-                    import_object.register("mosaic", host_exports);
-                    let instance = Instance::new(&module, &import_object)?;
-
-                    // WASI requires to explicitly set the memory for the `WasiEnv`
-                    wasi_env.set_memory(instance.exports.get_memory("memory")?.clone());
+                    let wasi = wasi_env.import_object(&module)?;
+                    let mosaic = mosaic_imports(&store, &wasi_env);
+                    let instance = Instance::new(&module, &mosaic.chain_back(wasi))?;
 
                     let start = instance.exports.get_function("_start")?;
                     let handle_key = instance.exports.get_function("handle_key")?;
@@ -451,39 +441,31 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
                     #[warn(clippy::never_loop)]
                     loop {
-                        break;
-                        //let (cols, rows) = terminal::size()?;
-                        //draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])?;
+                        let (cols, rows) = (80, 24); //terminal::size()?;
+                        draw.call(&[Value::I32(rows), Value::I32(cols)])?;
 
-                        // FIXME: This downcasting mess needs to be abstracted away
-                        /* let mut state = wasi_env.state();
-                        let wasi_file = state.fs.stdout_mut()?.as_mut().unwrap();
-                        let output: &mut fluff::Pipe = wasi_file.downcast_mut().unwrap();
                         // Needed because raw mode doesn't implicitly return to the start of the line
                         write!(
                             io::stdout(),
                             "{}\n\r",
-                            output.to_string().lines().collect::<Vec<_>>().join("\n\r")
+                            wasi_stdout(&wasi_env)
+                                .lines()
+                                .collect::<Vec<_>>()
+                                .join("\n\r")
                         )?;
-                        output.clear();
 
-                        let wasi_file = state.fs.stdin_mut()?.as_mut().unwrap();
-                        let input: &mut fluff::Pipe = wasi_file.downcast_mut().unwrap();
-                        input.clear(); */
-
-                        /* match event::read()? {
+                        /* match event::read().unwrap() {
                             Event::Key(KeyEvent {
                                 code: KeyCode::Char('q'),
                                 ..
                             }) => break,
                             Event::Key(e) => {
-                                writeln!(input, "{}\r", serde_json::to_string(&e)?)?;
-                                drop(state);
-                                // Need to release the implicit `state` mutex or I deadlock!
+                                wasi_write_string(&wasi_env, serde_json::to_string(&e).unwrap());
                                 handle_key.call(&[])?;
                             }
                             _ => (),
                         } */
+                        break;
                     }
                     debug_log_to_file("WASM module loaded and exited cleanly :)".to_string())?;
                     Ok(())
