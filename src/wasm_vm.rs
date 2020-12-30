@@ -1,6 +1,16 @@
-use std::process::{Command, Stdio};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 use wasmer::{imports, Function, ImportObject, Store};
 use wasmer_wasi::WasiEnv;
+
+#[derive(Clone, Debug)]
+pub enum PluginInstruction {
+    Load(PathBuf),
+    Unload(u32),
+    Quit,
+}
 
 // Plugin API -----------------------------------------------------------------
 
