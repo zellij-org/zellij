@@ -1,17 +1,19 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, SenderWithContext, OPENCALLS};
+use crate::utils::consts::MOSAIC_IPC_PIPE;
+use crate::{ApiCommand, AppInstruction, OPENCALLS};
 use backtrace::Backtrace;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use std::io::Write;
+use std::os::unix::net::UnixStream;
 use std::panic::PanicInfo;
+use std::sync::mpsc::SyncSender;
 use std::{process, thread};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
-pub fn handle_panic(
-    info: &PanicInfo<'_>,
-    send_app_instructions: &SenderWithContext<AppInstruction>,
-) {
+pub fn handle_panic(info: &PanicInfo<'_>, panic_sender: Option<&SyncSender<AppInstruction>>) {
     let backtrace = Backtrace::new();
     let thread = thread::current();
     let thread = thread.name().unwrap_or("unnamed");
@@ -51,17 +53,21 @@ pub fn handle_panic(
         ),
     };
 
-    if thread == "main" {
-        println!("{}", backtrace);
-        process::exit(1);
+    if let Some(sender) = panic_sender {
+        if thread == "main" {
+            println!("{}", backtrace);
+            process::exit(1);
+        } else {
+            sender.send(AppInstruction::Error(backtrace)).unwrap();
+        }
     } else {
-        send_app_instructions
-            .send(AppInstruction::Error(backtrace))
-            .unwrap();
+        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
+        let api_command = bincode::serialize(&ApiCommand::Error(backtrace)).unwrap();
+        stream.write_all(&api_command).unwrap();
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
@@ -97,7 +103,7 @@ impl Display for ErrorContext {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
@@ -132,7 +138,7 @@ impl Display for ContextType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyEvent,
     Render,
@@ -199,7 +205,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
     SpawnTerminal,
     SpawnTerminalVertically,
@@ -228,7 +234,7 @@ impl From<&PtyInstruction> for PtyContext {
 #[cfg(feature = "wasm-wip")]
 use crate::wasm_vm::PluginInstruction;
 #[cfg(feature = "wasm-wip")]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PluginContext {
     Load,
     Unload,
@@ -246,7 +252,7 @@ impl From<&PluginInstruction> for PluginContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum AppContext {
     Exit,
     Error,

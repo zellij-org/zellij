@@ -4,9 +4,10 @@ use ::async_std::task::*;
 use ::std::collections::HashMap;
 use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
-use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use ::vte;
+use ipc_channel::ipc::IpcReceiver;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::errors::{ContextType, ErrorContext};
@@ -61,7 +62,7 @@ impl Stream for ReadFromPid {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum VteEvent {
     // TODO: try not to allocate Vecs
     Print(char),
@@ -142,7 +143,7 @@ impl vte::Perform for VteEventSender {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PtyInstruction {
     SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),
@@ -155,7 +156,7 @@ pub enum PtyInstruction {
 
 pub struct PtyBus {
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
+    pub receive_pty_instructions: IpcReceiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
@@ -239,7 +240,7 @@ fn stream_terminal_bytes(
 
 impl PtyBus {
     pub fn new(
-        receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
+        receive_pty_instructions: IpcReceiver<(PtyInstruction, ErrorContext)>,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,

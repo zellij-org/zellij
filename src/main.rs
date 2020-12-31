@@ -3,6 +3,7 @@ mod tests;
 
 mod boundaries;
 mod command_is_executing;
+mod daemon;
 mod errors;
 mod input;
 mod layout;
@@ -18,13 +19,17 @@ mod wasm_vm;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
+use std::process::Command;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
+use ipc_channel::ipc::{channel, IpcReceiver, IpcSender};
+use ipc_channel::Error;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
+use crate::daemon::start_daemon;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
 use crate::input::input_loop;
 use crate::layout::Layout;
@@ -45,39 +50,29 @@ enum ApiCommand {
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+    Error(String),
+    Exit,
 }
 
-#[derive(Clone)]
-enum SenderType<T: Clone> {
-    Sender(Sender<(T, ErrorContext)>),
-    SyncSender(SyncSender<(T, ErrorContext)>),
-}
-
-#[derive(Clone)]
-pub struct SenderWithContext<T: Clone> {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SenderWithContext<T: Serialize> {
     err_ctx: ErrorContext,
-    sender: SenderType<T>,
+    sender: IpcSender<(T, ErrorContext)>,
 }
 
-impl<T: Clone> SenderWithContext<T> {
-    fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
+impl<T: Serialize> SenderWithContext<T> {
+    fn new(err_ctx: ErrorContext, sender: IpcSender<(T, ErrorContext)>) -> Self {
         Self { err_ctx, sender }
     }
 
-    pub fn send(&self, event: T) -> Result<(), SendError<(T, ErrorContext)>> {
-        match self.sender {
-            SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
-            SenderType::SyncSender(ref s) => s.send((event, self.err_ctx)),
-        }
+    pub fn send(&self, event: T) -> Result<(), Error> {
+        self.sender.send((event, self.err_ctx))
     }
 
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
 }
-
-unsafe impl<T: Clone> Send for SenderWithContext<T> {}
-unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 #[derive(StructOpt, Debug, Default)]
 #[structopt(name = "mosaic")]
@@ -99,11 +94,16 @@ pub struct Opt {
     layout: Option<PathBuf>,
     #[structopt(short, long)]
     debug: bool,
+    #[structopt(long)]
+    daemon: bool,
 }
 
 pub fn main() {
     let opts = Opt::from_args();
-    if let Some(split_dir) = opts.split {
+    if opts.daemon {
+        let os_input = get_os_input();
+        start_daemon(Box::new(os_input));
+    } else if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
                 let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
@@ -133,13 +133,23 @@ pub fn main() {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum AppInstruction {
     Exit,
     Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
+    let mut stream = if let Ok(stream) = UnixStream::connect(MOSAIC_IPC_PIPE) {
+        stream
+    } else {
+        let _ = Command::new(std::env::current_exe().unwrap())
+            .arg("--daemon")
+            .spawn()
+            .unwrap();
+        while UnixStream::connect(MOSAIC_IPC_PIPE).is_err() {}
+        UnixStream::connect(MOSAIC_IPC_PIPE).unwrap()
+    };
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
@@ -147,37 +157,31 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): (
-        Sender<(ScreenInstruction, ErrorContext)>,
-        Receiver<(ScreenInstruction, ErrorContext)>,
-    ) = channel();
+        IpcSender<(ScreenInstruction, ErrorContext)>,
+        IpcReceiver<(ScreenInstruction, ErrorContext)>,
+    ) = channel().unwrap();
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-    let mut send_screen_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
+    let mut send_screen_instructions = SenderWithContext::new(err_ctx, send_screen_instructions);
     let (send_pty_instructions, receive_pty_instructions): (
-        Sender<(PtyInstruction, ErrorContext)>,
-        Receiver<(PtyInstruction, ErrorContext)>,
-    ) = channel();
-    let mut send_pty_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
+        IpcSender<(PtyInstruction, ErrorContext)>,
+        IpcReceiver<(PtyInstruction, ErrorContext)>,
+    ) = channel().unwrap();
+    let mut send_pty_instructions = SenderWithContext::new(err_ctx, send_pty_instructions);
 
     #[cfg(feature = "wasm-wip")]
     use crate::wasm_vm::PluginInstruction;
     #[cfg(feature = "wasm-wip")]
     let (send_plugin_instructions, receive_plugin_instructions): (
-        Sender<(PluginInstruction, ErrorContext)>,
-        Receiver<(PluginInstruction, ErrorContext)>,
+        IpcSender<(PluginInstruction, ErrorContext)>,
+        IpcReceiver<(PluginInstruction, ErrorContext)>,
     ) = channel();
     #[cfg(feature = "wasm-wip")]
-    let send_plugin_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
-
+    let send_plugin_instructions = SenderWithContext::new(err_ctx, send_plugin_instructions);
     let (send_app_instructions, receive_app_instructions): (
-        SyncSender<(AppInstruction, ErrorContext)>,
-        Receiver<(AppInstruction, ErrorContext)>,
-    ) = sync_channel(0);
-    let send_app_instructions =
-        SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
-
+        IpcSender<(AppInstruction, ErrorContext)>,
+        IpcReceiver<(AppInstruction, ErrorContext)>,
+    ) = channel().unwrap();
+    let send_app_instructions = SenderWithContext::new(err_ctx, send_app_instructions);
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
         send_screen_instructions.clone(),
@@ -186,12 +190,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     );
     let maybe_layout = opts.layout.map(Layout::new);
 
+    let (panic_sender, panic_receiver): (SyncSender<AppInstruction>, Receiver<AppInstruction>) =
+        sync_channel(0);
     #[cfg(not(test))]
     std::panic::set_hook({
         use crate::errors::handle_panic;
-        let send_app_instructions = send_app_instructions.clone();
         Box::new(move |info| {
-            handle_panic(info, &send_app_instructions);
+            handle_panic(info, Some(&panic_sender));
         })
     });
 
@@ -501,67 +506,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         ).unwrap(),
     );
 
-    // TODO: currently we don't push this into active_threads
-    // because otherwise the app will hang. Need to fix this so it both
-    // listens to the ipc-bus and is able to quit cleanly
-    #[cfg(not(test))]
-    let _ipc_thread = thread::Builder::new()
-        .name("ipc_server".to_string())
-        .spawn({
-            use std::io::Read;
-            let mut send_pty_instructions = send_pty_instructions.clone();
-            let mut send_screen_instructions = send_screen_instructions.clone();
-            move || {
-                std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
-                let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
-                    .expect("could not listen on ipc socket");
-                let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-                err_ctx.add_call(ContextType::IPCServer);
-                send_pty_instructions.update(err_ctx);
-                send_screen_instructions.update(err_ctx);
-
-                for stream in listener.incoming() {
-                    match stream {
-                        Ok(mut stream) => {
-                            let mut buffer = [0; 65535]; // TODO: more accurate
-                            let _ = stream
-                                .read(&mut buffer)
-                                .expect("failed to parse ipc message");
-                            let decoded: ApiCommand = bincode::deserialize(&buffer)
-                                .expect("failed to deserialize ipc message");
-                            match &decoded {
-                                ApiCommand::OpenFile(file_name) => {
-                                    let path = PathBuf::from(file_name);
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminal(Some(path)))
-                                        .unwrap();
-                                }
-                                ApiCommand::SplitHorizontally => {
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                                        .unwrap();
-                                }
-                                ApiCommand::SplitVertically => {
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalVertically(None))
-                                        .unwrap();
-                                }
-                                ApiCommand::MoveFocus => {
-                                    send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
-                                        .unwrap();
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            panic!("err {:?}", err);
-                        }
-                    }
-                }
-            }
-        })
-        .unwrap();
-
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
@@ -581,37 +525,48 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
     #[warn(clippy::never_loop)]
     loop {
-        let (app_instruction, mut err_ctx) = receive_app_instructions
-            .recv()
-            .expect("failed to receive app instruction on channel");
-
-        err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
-        send_screen_instructions.update(err_ctx);
-        send_pty_instructions.update(err_ctx);
-        match app_instruction {
-            AppInstruction::Exit => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
-                break;
-            }
-            AppInstruction::Error(backtrace) => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
-                os_input.unset_raw_mode(0);
-                let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-                let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
-                let _ = os_input
-                    .get_stdout_writer()
-                    .write(error.as_bytes())
-                    .unwrap();
-                for thread_handler in active_threads {
-                    let _ = thread_handler.join();
+        let app_instruction = panic_receiver.try_recv().map_or_else(
+            |_| {
+                receive_app_instructions
+                    .try_recv()
+                    .ok()
+                    .map(|(app_instruction, mut err_ctx)| {
+                        err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
+                        send_screen_instructions.update(err_ctx);
+                        send_pty_instructions.update(err_ctx);
+                        app_instruction
+                    })
+            },
+            |a| Some(a),
+        );
+        if let Some(instr) = app_instruction {
+            match instr {
+                AppInstruction::Exit => {
+                    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                    let api_command = bincode::serialize(&ApiCommand::Exit).unwrap();
+                    stream.write_all(&api_command).unwrap();
+                    #[cfg(feature = "wasm-wip")]
+                    let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                    break;
                 }
-                std::process::exit(1);
+                AppInstruction::Error(backtrace) => {
+                    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                    #[cfg(feature = "wasm-wip")]
+                    let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                    os_input.unset_raw_mode(0);
+                    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+                    let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
+                    let _ = os_input
+                        .get_stdout_writer()
+                        .write(error.as_bytes())
+                        .unwrap();
+                    for thread_handler in active_threads {
+                        let _ = thread_handler.join();
+                    }
+                    std::process::exit(1);
+                }
             }
         }
     }

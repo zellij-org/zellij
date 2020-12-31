@@ -1,6 +1,7 @@
+use ipc_channel::ipc::IpcReceiver;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::Receiver;
 
 use crate::errors::ErrorContext;
 use crate::layout::Layout;
@@ -19,7 +20,7 @@ use crate::{AppInstruction, SenderWithContext};
  *
  */
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
@@ -51,7 +52,7 @@ pub enum ScreenInstruction {
 }
 
 pub struct Screen {
-    pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
+    pub receiver: IpcReceiver<(ScreenInstruction, ErrorContext)>,
     max_panes: Option<usize>,
     tabs: BTreeMap<usize, Tab>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -63,7 +64,7 @@ pub struct Screen {
 
 impl Screen {
     pub fn new(
-        receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
+        receive_screen_instructions: IpcReceiver<(ScreenInstruction, ErrorContext)>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,

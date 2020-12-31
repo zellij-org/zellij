@@ -4,7 +4,7 @@ use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios::{cfmakeraw, tcdrain, tcgetattr, tcsetattr, SetArg, Termios};
 use nix::sys::wait::waitpid;
-use nix::unistd::{read, write, ForkResult, Pid};
+use nix::unistd::{daemon, read, write, ForkResult, Pid};
 use std::io::prelude::*;
 use std::io::{stdin, Write};
 use std::os::unix::io::RawFd;
@@ -213,4 +213,8 @@ pub fn get_os_input() -> OsInputOutput {
     let current_termios = tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
     OsInputOutput { orig_termios }
+}
+
+pub fn daemonize(nochdir: bool, noclose: bool) {
+    daemon(nochdir, noclose).unwrap();
 }
