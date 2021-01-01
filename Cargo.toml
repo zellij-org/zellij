@@ -39,3 +39,6 @@ wasm-wip = ["wasmer", "wasmer-wasi"]
 
 [dev-dependencies]
 insta = "0.16.1"
+
+[build-dependencies]
+structopt = "0.3"
