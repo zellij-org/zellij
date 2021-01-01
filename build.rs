@@ -8,13 +8,15 @@ const BIN_NAME: &str = "mosaic";
 fn main() {
     let mut clap_app = Opt::clap();
     println!("cargo:rerun-if-changed=src/app.rs");
-    let out_dir = std::env::var_os("SHELL_COMPLETION_DIR").or(std::env::var_os("OUT_DIR"));
-    let out_dir = match out_dir {
-        None => return,
-        Some(out_dir) => out_dir,
-    };
+    let mut out_dir = std::env::var_os("CARGO_MANIFEST_DIR")
+        .unwrap()
+        .to_os_string();
+    out_dir.push("/assets/completions");
 
-    println!("{:?}", out_dir);
+    println!(
+        "Completion files will to added to this location: {:?}",
+        out_dir
+    );
     fs::create_dir_all(&out_dir).unwrap();
     clap_app.gen_completions(BIN_NAME, Shell::Bash, &out_dir);
     clap_app.gen_completions(BIN_NAME, Shell::Zsh, &out_dir);
