@@ -31,7 +31,7 @@ pub fn start_daemon(os_input: Box<dyn OsApi>, opts: Opt) {
         })
     });
 
-    //daemonize(true, false);
+    daemonize(true, true);
 
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let (send_pty_instructions, receive_pty_instructions): (
@@ -101,7 +101,6 @@ pub fn start_daemon(os_input: Box<dyn OsApi>, opts: Opt) {
         .unwrap();
 
     let mut clients = BTreeMap::new();
-
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {

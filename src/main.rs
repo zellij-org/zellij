@@ -19,7 +19,7 @@ mod wasm_vm;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
@@ -117,13 +117,11 @@ pub fn main() {
     if opts.daemon {
         let os_input = get_os_input();
         start_daemon(Box::new(os_input), opts);
-    }
-    /*else if let Some(file_to_open) = opts.open_file {
+    } else if let Some(file_to_open) = opts.open_file {
         let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
         let server_instr = bincode::serialize(&ServerInstruction::OpenFile(file_to_open)).unwrap();
         stream.write_all(&server_instr).unwrap();
-    }*/
-    else {
+    } else {
         let os_input = get_os_input();
         atomic_create_dir(MOSAIC_TMP_DIR).unwrap();
         atomic_create_dir(MOSAIC_TMP_LOG_DIR).unwrap();
@@ -146,8 +144,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut stream = if let Ok(stream) = UnixStream::connect(MOSAIC_IPC_PIPE) {
         stream
     } else {
-        let _ = Command::new(std::env::current_exe().unwrap())
+        let x = Command::new(std::env::current_exe().unwrap())
             .arg("--daemon")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .unwrap();
         while UnixStream::connect(MOSAIC_IPC_PIPE).is_err() {}
