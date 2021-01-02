@@ -14,7 +14,7 @@ use crate::errors::{ContextType, ErrorContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
-use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
+use crate::{ClientId, ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -145,9 +145,12 @@ impl vte::Perform for VteEventSender {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PtyInstruction {
+    NewScreen(SenderWithContext<ScreenInstruction>),
+    RemoveScreen(ClientId),
     SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
+    SpawnLayout(Layout),
     NewTab,
     ClosePane(RawFd),
     CloseTab(Vec<RawFd>),
@@ -155,9 +158,9 @@ pub enum PtyInstruction {
 }
 
 pub struct PtyBus {
-    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub receive_pty_instructions: IpcReceiver<(PtyInstruction, ErrorContext)>,
+    pub receive_pty_instructions: IpcReceiver<(ClientId, PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
+    screen_senders: HashMap<ClientId, SenderWithContext<ScreenInstruction>>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
 }
@@ -172,7 +175,7 @@ fn stream_terminal_bytes(
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
-            send_screen_instructions.update(err_ctx);
+            send_screen_instructions.update_ctx(err_ctx);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
@@ -240,32 +243,39 @@ fn stream_terminal_bytes(
 
 impl PtyBus {
     pub fn new(
-        receive_pty_instructions: IpcReceiver<(PtyInstruction, ErrorContext)>,
-        send_screen_instructions: SenderWithContext<ScreenInstruction>,
+        receive_pty_instructions: IpcReceiver<(ClientId, PtyInstruction, ErrorContext)>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
-            send_screen_instructions,
             receive_pty_instructions,
             os_input,
+            screen_senders: HashMap::new(),
             id_to_child_pid: HashMap::new(),
             debug_to_file,
         }
     }
-    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
+    pub fn spawn_terminal(
+        &mut self,
+        file_to_open: Option<PathBuf>,
+        screen_sender: &SenderWithContext<ScreenInstruction>,
+    ) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, RawFd) =
             self.os_input.spawn_terminal(file_to_open);
         stream_terminal_bytes(
             pid_primary,
-            self.send_screen_instructions.clone(),
+            screen_sender.clone(),
             self.os_input.clone(),
             self.debug_to_file,
         );
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
+    pub fn spawn_terminals_for_layout(
+        &mut self,
+        layout: Layout,
+        screen_sender: SenderWithContext<ScreenInstruction>,
+    ) {
         let total_panes = layout.total_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
@@ -273,7 +283,7 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        self.send_screen_instructions
+        screen_sender
             .send(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
@@ -282,7 +292,7 @@ impl PtyBus {
         for id in new_pane_pids {
             stream_terminal_bytes(
                 id,
-                self.send_screen_instructions.clone(),
+                screen_sender.clone(),
                 self.os_input.clone(),
                 self.debug_to_file,
             );
@@ -294,5 +304,24 @@ impl PtyBus {
     }
     pub fn close_tab(&mut self, ids: Vec<RawFd>) {
         ids.iter().for_each(|id| self.close_pane(*id));
+    }
+    pub fn add_screen(
+        &mut self,
+        client_id: ClientId,
+        sender: SenderWithContext<ScreenInstruction>,
+    ) {
+        self.screen_senders.insert(client_id, sender);
+    }
+    pub fn remove_screen(&mut self, client_id: ClientId) {
+        self.screen_senders.remove(&client_id);
+    }
+    pub fn get_screen_sender(&self, client_id: ClientId) -> &SenderWithContext<ScreenInstruction> {
+        self.screen_senders.get(&client_id).unwrap()
+    }
+    pub fn get_screen_sender_mut(
+        &mut self,
+        client_id: ClientId,
+    ) -> &mut SenderWithContext<ScreenInstruction> {
+        self.screen_senders.get_mut(&client_id).unwrap()
     }
 }

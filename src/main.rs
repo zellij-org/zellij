@@ -23,18 +23,18 @@ use std::process::Command;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
-use ipc_channel::ipc::{channel, IpcReceiver, IpcSender};
+use ipc_channel::ipc::{channel, IpcOneShotServer, IpcReceiver, IpcSender};
 use ipc_channel::Error;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::command_is_executing::CommandIsExecuting;
-use crate::daemon::start_daemon;
-use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
+use crate::daemon::{start_daemon, ServerInstruction};
+use crate::errors::{AppContext, ContextType, ErrorContext, ScreenContext};
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
-use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
@@ -44,33 +44,47 @@ use std::cell::RefCell;
 
 thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::new(ErrorContext::new()));
 
-#[derive(Serialize, Deserialize, Debug)]
-enum ApiCommand {
-    OpenFile(PathBuf),
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
-    Error(String),
-    Exit,
-}
+pub type ClientId = usize;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SenderWithContext<T: Serialize> {
+    client_id: ClientId,
     err_ctx: ErrorContext,
-    sender: IpcSender<(T, ErrorContext)>,
+    sender: IpcSender<(ClientId, T, ErrorContext)>,
 }
 
 impl<T: Serialize> SenderWithContext<T> {
-    fn new(err_ctx: ErrorContext, sender: IpcSender<(T, ErrorContext)>) -> Self {
-        Self { err_ctx, sender }
+    fn new(
+        client_id: ClientId,
+        err_ctx: ErrorContext,
+        sender: IpcSender<(ClientId, T, ErrorContext)>,
+    ) -> Self {
+        Self {
+            client_id,
+            err_ctx,
+            sender,
+        }
     }
 
     pub fn send(&self, event: T) -> Result<(), Error> {
-        self.sender.send((event, self.err_ctx))
+        self.sender.send((self.client_id, event, self.err_ctx))
     }
 
-    pub fn update(&mut self, new_ctx: ErrorContext) {
+    pub fn update_ctx(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
+    }
+
+    pub fn update_id(&mut self, new_id: ClientId) {
+        self.client_id = new_id;
+    }
+}
+
+impl<T: Serialize> std::fmt::Debug for SenderWithContext<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SenderWithContext")
+            .field("err_ctx", &self.err_ctx)
+            .field("sender", &String::from(".."))
+            .finish()
     }
 }
 
@@ -102,30 +116,14 @@ pub fn main() {
     let opts = Opt::from_args();
     if opts.daemon {
         let os_input = get_os_input();
-        start_daemon(Box::new(os_input));
-    } else if let Some(split_dir) = opts.split {
-        match split_dir {
-            'h' => {
-                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-                let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
-                stream.write_all(&api_command).unwrap();
-            }
-            'v' => {
-                let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-                let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
-                stream.write_all(&api_command).unwrap();
-            }
-            _ => {}
-        };
-    } else if opts.move_focus {
+        start_daemon(Box::new(os_input), opts);
+    }
+    /*else if let Some(file_to_open) = opts.open_file {
         let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-        let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
-        stream.write_all(&api_command).unwrap();
-    } else if let Some(file_to_open) = opts.open_file {
-        let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-        let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
-        stream.write_all(&api_command).unwrap();
-    } else {
+        let server_instr = bincode::serialize(&ServerInstruction::OpenFile(file_to_open)).unwrap();
+        stream.write_all(&server_instr).unwrap();
+    }*/
+    else {
         let os_input = get_os_input();
         atomic_create_dir(MOSAIC_TMP_DIR).unwrap();
         atomic_create_dir(MOSAIC_TMP_LOG_DIR).unwrap();
@@ -133,8 +131,13 @@ pub fn main() {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppInstruction {
+    InitClient {
+        app_sender: SenderWithContext<AppInstruction>,
+        pty_sender: SenderWithContext<PtyInstruction>,
+        client_id: ClientId,
+    },
     Exit,
     Error(String),
 }
@@ -150,44 +153,61 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         while UnixStream::connect(MOSAIC_IPC_PIPE).is_err() {}
         UnixStream::connect(MOSAIC_IPC_PIPE).unwrap()
     };
+
+    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+
+    let (app_server, token) =
+        IpcOneShotServer::<(ClientId, AppInstruction, ErrorContext)>::new().unwrap();
+    let server_instr = bincode::serialize(&ServerInstruction::NewClient(token)).unwrap();
+    stream.write_all(&server_instr).unwrap();
+
+    let (send_screen_instructions, receive_screen_instructions): (
+        IpcSender<(ClientId, ScreenInstruction, ErrorContext)>,
+        IpcReceiver<(ClientId, ScreenInstruction, ErrorContext)>,
+    ) = channel().unwrap();
+    let mut send_screen_instructions = SenderWithContext::new(0, err_ctx, send_screen_instructions);
+
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.into_raw_mode(0);
-    let (send_screen_instructions, receive_screen_instructions): (
-        IpcSender<(ScreenInstruction, ErrorContext)>,
-        IpcReceiver<(ScreenInstruction, ErrorContext)>,
-    ) = channel().unwrap();
-    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-    let mut send_screen_instructions = SenderWithContext::new(err_ctx, send_screen_instructions);
-    let (send_pty_instructions, receive_pty_instructions): (
-        IpcSender<(PtyInstruction, ErrorContext)>,
-        IpcReceiver<(PtyInstruction, ErrorContext)>,
-    ) = channel().unwrap();
-    let mut send_pty_instructions = SenderWithContext::new(err_ctx, send_pty_instructions);
+
+    let (receive_app_instructions, app_instr) = app_server.accept().unwrap();
+    let (mut send_app_instructions, mut send_pty_instructions, client_id) = match app_instr {
+        (
+            _,
+            AppInstruction::InitClient {
+                app_sender,
+                pty_sender,
+                client_id,
+            },
+            _,
+        ) => (app_sender, pty_sender, client_id),
+        _ => panic!("Received wrong message from server"),
+    };
+
+    send_app_instructions.update_id(client_id);
+    send_app_instructions.update_ctx(err_ctx);
+    send_screen_instructions.update_id(client_id);
+    send_pty_instructions.update_id(client_id);
+
+    send_pty_instructions
+        .send(PtyInstruction::NewScreen(send_screen_instructions.clone()))
+        .unwrap();
 
     #[cfg(feature = "wasm-wip")]
     use crate::wasm_vm::PluginInstruction;
     #[cfg(feature = "wasm-wip")]
     let (send_plugin_instructions, receive_plugin_instructions): (
-        IpcSender<(PluginInstruction, ErrorContext)>,
-        IpcReceiver<(PluginInstruction, ErrorContext)>,
+        IpcSender<(ClientId, PluginInstruction, ErrorContext)>,
+        IpcReceiver<(ClientId, PluginInstruction, ErrorContext)>,
     ) = channel();
     #[cfg(feature = "wasm-wip")]
-    let send_plugin_instructions = SenderWithContext::new(err_ctx, send_plugin_instructions);
-    let (send_app_instructions, receive_app_instructions): (
-        IpcSender<(AppInstruction, ErrorContext)>,
-        IpcReceiver<(AppInstruction, ErrorContext)>,
-    ) = channel().unwrap();
-    let send_app_instructions = SenderWithContext::new(err_ctx, send_app_instructions);
-    let mut pty_bus = PtyBus::new(
-        receive_pty_instructions,
-        send_screen_instructions.clone(),
-        os_input.clone(),
-        opts.debug,
-    );
+    let send_plugin_instructions =
+        SenderWithContext::new(client_id, err_ctx, send_plugin_instructions);
+
     let maybe_layout = opts.layout.map(Layout::new);
 
     let (panic_sender, panic_receiver): (SyncSender<AppInstruction>, Receiver<AppInstruction>) =
@@ -200,84 +220,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         })
     });
 
-    active_threads.push(
-        thread::Builder::new()
-            .name("pty".to_string())
-            .spawn({
-                let mut command_is_executing = command_is_executing.clone();
-                #[cfg(feature = "wasm-wip")]
-                let send_plugin_instructions = send_plugin_instructions.clone();
-                move || {
-                    if let Some(layout) = maybe_layout {
-                        #[cfg(feature = "wasm-wip")]
-                        for plugin_path in layout.list_plugins() {
-                            dbg!(send_plugin_instructions
-                                .send(PluginInstruction::Load(plugin_path.clone())))
-                            .unwrap();
-                        }
+    if let Some(layout) = maybe_layout {
+        #[cfg(feature = "wasm-wip")]
+        for plugin_path in layout.list_plugins() {
+            dbg!(send_plugin_instructions.send(PluginInstruction::Load(plugin_path.clone())))
+                .unwrap();
+        }
 
-                        pty_bus.spawn_terminals_for_layout(layout);
-                    } else {
-                        let pid = pty_bus.spawn_terminal(None);
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::NewTab(pid))
-                            .unwrap();
-                    }
-
-                    loop {
-                        let (event, mut err_ctx) = pty_bus
-                            .receive_pty_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                        pty_bus.send_screen_instructions.update(err_ctx);
-                        match event {
-                            PtyInstruction::SpawnTerminal(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::NewPane(pid))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::VerticalSplit(pid))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::HorizontalSplit(pid))
-                                    .unwrap();
-                            }
-                            PtyInstruction::NewTab => {
-                                let pid = pty_bus.spawn_terminal(None);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::NewTab(pid))
-                                    .unwrap();
-                            }
-                            PtyInstruction::ClosePane(id) => {
-                                pty_bus.close_pane(id);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::CloseTab(ids) => {
-                                pty_bus.close_tab(ids);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::Quit => {
-                                break;
-                            }
-                        }
-                    }
-                }
-            })
-            .unwrap(),
-    );
+        send_pty_instructions
+            .send(PtyInstruction::SpawnLayout(layout))
+            .unwrap();
+    } else {
+        send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+    }
 
     active_threads.push(
         thread::Builder::new()
@@ -299,13 +254,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         max_panes,
                     );
                     loop {
-                        let (event, mut err_ctx) = screen
+                        let (_, event, mut err_ctx) = screen
                             .receiver
                             .recv()
                             .expect("failed to receive event on channel");
                         err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
-                        screen.send_app_instructions.update(err_ctx);
-                        screen.send_pty_instructions.update(err_ctx);
+                        screen.send_app_instructions.update_ctx(err_ctx);
+                        screen.send_pty_instructions.update_ctx(err_ctx);
                         match event {
                             ScreenInstruction::Pty(pid, vte_event) => {
                                 screen
@@ -381,6 +336,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             ScreenInstruction::CloseFocusedPane => {
                                 screen.get_active_tab_mut().unwrap().close_focused_pane();
+                                command_is_executing.done_closing_pane();
                                 screen.render();
                             }
                             ScreenInstruction::ClosePane(id) => {
@@ -399,7 +355,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             }
                             ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
                             ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
-                            ScreenInstruction::CloseTab => screen.close_tab(),
+                            ScreenInstruction::CloseTab => {
+                                screen.close_tab();
+                                command_is_executing.done_closing_pane();
+                            }
                             ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                                 screen.apply_layout(layout, new_pane_pids)
                             }
@@ -435,8 +394,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
                     // FIXME: Clueless on how many of these lines I need...
-                    // screen.send_app_instructions.update(err_ctx);
-                    // screen.send_pty_instructions.update(err_ctx);
+                    // screen.send_app_instructions.update_ctx(err_ctx);
+                    // screen.send_pty_instructions.update_ctx(err_ctx);
                     match event {
                         PluginInstruction::Load(path) => {
                             // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
@@ -530,10 +489,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 receive_app_instructions
                     .try_recv()
                     .ok()
-                    .map(|(app_instruction, mut err_ctx)| {
+                    .map(|(_, app_instruction, mut err_ctx)| {
                         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
-                        send_screen_instructions.update(err_ctx);
-                        send_pty_instructions.update(err_ctx);
+                        send_screen_instructions.update_ctx(err_ctx);
+                        send_pty_instructions.update_ctx(err_ctx);
                         app_instruction
                     })
             },
@@ -543,8 +502,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             match instr {
                 AppInstruction::Exit => {
                     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                    let api_command = bincode::serialize(&ApiCommand::Exit).unwrap();
+                    let api_command =
+                        bincode::serialize(&ServerInstruction::ClientExit(client_id)).unwrap();
                     stream.write_all(&api_command).unwrap();
                     #[cfg(feature = "wasm-wip")]
                     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
@@ -552,9 +511,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 }
                 AppInstruction::Error(backtrace) => {
                     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                    let _ = send_pty_instructions.send(PtyInstruction::Quit);
                     #[cfg(feature = "wasm-wip")]
                     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                    let api_command =
+                        bincode::serialize(&ServerInstruction::ClientExit(client_id)).unwrap();
+                    stream.write_all(&api_command);
                     os_input.unset_raw_mode(0);
                     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                     let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
@@ -567,6 +528,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     }
                     std::process::exit(1);
                 }
+                _ => panic!("Received unexpected message: {:?}", instr),
             }
         }
     }

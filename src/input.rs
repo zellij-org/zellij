@@ -37,9 +37,9 @@ impl InputHandler {
     fn get_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        self.send_pty_instructions.update(err_ctx);
-        self.send_app_instructions.update(err_ctx);
-        self.send_screen_instructions.update(err_ctx);
+        self.send_pty_instructions.update_ctx(err_ctx);
+        self.send_app_instructions.update_ctx(err_ctx);
+        self.send_screen_instructions.update_ctx(err_ctx);
         loop {
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),

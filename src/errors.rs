@@ -1,7 +1,8 @@
+use crate::daemon::ServerInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::utils::consts::MOSAIC_IPC_PIPE;
-use crate::{ApiCommand, AppInstruction, OPENCALLS};
+use crate::{AppInstruction, OPENCALLS};
 use backtrace::Backtrace;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -62,12 +63,12 @@ pub fn handle_panic(info: &PanicInfo<'_>, panic_sender: Option<&SyncSender<AppIn
         }
     } else {
         let mut stream = UnixStream::connect(MOSAIC_IPC_PIPE).unwrap();
-        let api_command = bincode::serialize(&ApiCommand::Error(backtrace)).unwrap();
+        let api_command = bincode::serialize(&ServerInstruction::Error(backtrace)).unwrap();
         stream.write_all(&api_command).unwrap();
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
@@ -103,7 +104,7 @@ impl Display for ErrorContext {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
@@ -207,6 +208,9 @@ impl From<&ScreenInstruction> for ScreenContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
+    NewScreen,
+    RemoveScreen,
+    SpawnLayout,
     SpawnTerminal,
     SpawnTerminalVertically,
     SpawnTerminalHorizontally,
@@ -219,6 +223,9 @@ pub enum PtyContext {
 impl From<&PtyInstruction> for PtyContext {
     fn from(pty_instruction: &PtyInstruction) -> Self {
         match *pty_instruction {
+            PtyInstruction::NewScreen(..) => PtyContext::NewScreen,
+            PtyInstruction::RemoveScreen(_) => PtyContext::RemoveScreen,
+            PtyInstruction::SpawnLayout(_) => PtyContext::SpawnLayout,
             PtyInstruction::SpawnTerminal(_) => PtyContext::SpawnTerminal,
             PtyInstruction::SpawnTerminalVertically(_) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
@@ -256,6 +263,7 @@ impl From<&PluginInstruction> for PluginContext {
 pub enum AppContext {
     Exit,
     Error,
+    InitClient,
 }
 
 impl From<&AppInstruction> for AppContext {
@@ -263,6 +271,7 @@ impl From<&AppInstruction> for AppContext {
         match *app_instruction {
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
+            AppInstruction::InitClient { .. } => AppContext::InitClient,
         }
     }
 }
