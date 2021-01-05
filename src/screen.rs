@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
 
-use crate::errors::ErrorContext;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::tab::Tab;
 use crate::terminal_pane::PositionAndSize;
+use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{AppInstruction, SenderWithContext};
 
 /*
@@ -55,6 +55,7 @@ pub struct Screen {
     max_panes: Option<usize>,
     tabs: BTreeMap<usize, Tab>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
     active_tab_index: Option<usize>,
@@ -65,6 +66,7 @@ impl Screen {
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
@@ -74,6 +76,7 @@ impl Screen {
             receiver: receive_screen_instructions,
             max_panes,
             send_pty_instructions,
+            send_plugin_instructions,
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab_index: None,
@@ -88,6 +91,7 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
+            self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
             Some(pane_id),
@@ -181,6 +185,7 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
+            self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
             None,

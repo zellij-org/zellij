@@ -58,30 +58,11 @@ impl Pane for TerminalPane {
         self.reflow_lines();
         self.mark_for_rerender();
     }
-    fn change_size_p(&mut self, position_and_size: &PositionAndSize) {
+    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
         self.reflow_lines();
         self.mark_for_rerender();
     }
-    fn get_rows(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows as usize,
-        }
-    }
-    fn get_columns(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.columns,
-            None => self.position_and_size.columns as usize,
-        }
-    }
-    fn change_size(&mut self, ws: &PositionAndSize) {
-        self.position_and_size.columns = ws.columns;
-        self.position_and_size.rows = ws.rows;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
         let position_and_size_override = PositionAndSize {
             x,
@@ -179,8 +160,7 @@ impl Pane for TerminalPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.should_render = should_render;
     }
-    fn buffer_as_vte_output(&mut self) -> Option<String> {
-        // TODO: rename to render
+    fn render(&mut self) -> Option<String> {
         // if self.should_render {
         if true {
             // while checking should_render rather than rendering each pane every time

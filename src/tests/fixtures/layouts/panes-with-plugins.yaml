@@ -12,8 +12,7 @@ parts:
           Percent: 80
     split_size:
       Percent: 80
-    plugin: strider.wasm
   - direction: Vertical
     split_size:
       Percent: 20
-    plugin: strider.wasm
+    #plugin: strider.wasm

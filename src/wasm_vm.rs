@@ -1,13 +1,16 @@
 use std::{
     path::PathBuf,
     process::{Command, Stdio},
+    sync::mpsc::Sender,
 };
 use wasmer::{imports, Function, ImportObject, Store};
 use wasmer_wasi::WasiEnv;
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(PathBuf),
+    Load(Sender<u32>, PathBuf), // FIXME: Maybe send a channel handle?
+    // String buffer, plugin id, rows, cols
+    Draw(Sender<String>, u32, usize, usize), // FIXME: This is super gross
     Unload(u32),
     Quit,
 }

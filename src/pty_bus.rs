@@ -265,7 +265,7 @@ impl PtyBus {
         pid_primary
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
-        let total_panes = layout.total_panes();
+        let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
             let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);

@@ -21,21 +21,12 @@ termios = "0.3"
 unicode-truncate = "0.1.1"
 unicode-width = "0.1.8"
 vte = "0.8.0"
+wasmer = "1.0.0-rc"
+wasmer-wasi = "1.0.0-rc"
 
 [dependencies.async-std]
 version = "1.3.0"
 features = ["unstable"]
-
-[dependencies.wasmer]
-version = "1.0.0-rc"
-optional = true
-
-[dependencies.wasmer-wasi]
-version = "1.0.0-rc"
-optional = true
-
-[features]
-wasm-wip = ["wasmer", "wasmer-wasi"]
 
 [dev-dependencies]
 insta = "0.16.1"

@@ -12,7 +12,7 @@ mod screen;
 mod tab;
 mod terminal_pane;
 mod utils;
-#[cfg(feature = "wasm-wip")]
+
 mod wasm_vm;
 
 use std::io::Write;
@@ -160,14 +160,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut send_pty_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
 
-    #[cfg(feature = "wasm-wip")]
     use crate::wasm_vm::PluginInstruction;
-    #[cfg(feature = "wasm-wip")]
+
     let (send_plugin_instructions, receive_plugin_instructions): (
         Sender<(PluginInstruction, ErrorContext)>,
         Receiver<(PluginInstruction, ErrorContext)>,
     ) = channel();
-    #[cfg(feature = "wasm-wip")]
+
     let send_plugin_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
 
@@ -200,17 +199,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .name("pty".to_string())
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
-                #[cfg(feature = "wasm-wip")]
-                let send_plugin_instructions = send_plugin_instructions.clone();
                 move || {
                     if let Some(layout) = maybe_layout {
-                        #[cfg(feature = "wasm-wip")]
-                        for plugin_path in layout.list_plugins() {
-                            dbg!(send_plugin_instructions
-                                .send(PluginInstruction::Load(plugin_path.clone())))
-                            .unwrap();
-                        }
-
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
                         let pid = pty_bus.spawn_terminal(None);
@@ -281,6 +271,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                 let mut command_is_executing = command_is_executing.clone();
                 let os_input = os_input.clone();
                 let send_pty_instructions = send_pty_instructions.clone();
+                let send_plugin_instructions = send_plugin_instructions.clone();
                 let send_app_instructions = send_app_instructions.clone();
                 let max_panes = opts.max_panes;
 
@@ -288,6 +279,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     let mut screen = Screen::new(
                         receive_screen_instructions,
                         send_pty_instructions,
+                        send_plugin_instructions,
                         send_app_instructions,
                         &full_screen_ws,
                         os_input,
@@ -411,14 +403,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     // Here be dragons! This is very much a work in progress, and isn't quite functional
     // yet. It's being left out of the tests because is slows them down massively (by
     // recompiling a WASM module for every single test). Stay tuned for more updates!
-    #[cfg(feature = "wasm-wip")]
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
             .spawn(move || {
                 use crate::errors::PluginContext;
                 use crate::wasm_vm::{mosaic_imports, wasi_stdout};
-                use std::{io, collections::HashMap};
+                use std::collections::HashMap;
                 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
                 use wasmer_wasi::{Pipe, WasiState};
 
@@ -436,7 +427,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                     // screen.send_app_instructions.update(err_ctx);
                     // screen.send_pty_instructions.update(err_ctx);
                     match event {
-                        PluginInstruction::Load(path) => {
+                        PluginInstruction::Load(pid_tx, path) => {
                             // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
                             let module = Module::from_file(&store, &path).unwrap();
 
@@ -459,50 +450,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             let mosaic = mosaic_imports(&store, &wasi_env);
                             let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
-                            debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
-                            plugin_map.insert(plugin_id, instance);
-                            plugin_id += 1;
-
-                            // FIXME: End the loading block here
-
-                            // FIXME: Yucky line
-                            let instance = plugin_map.get(&(plugin_id - 1)).unwrap();
-
                             let start = instance.exports.get_function("_start").unwrap();
-                            let handle_key = instance.exports.get_function("handle_key").unwrap();
-                            let draw = instance.exports.get_function("draw").unwrap();
 
                             // This eventually calls the `.init()` method
                             start.call(&[]).unwrap();
 
-                            #[warn(clippy::never_loop)]
-                            loop {
-                                let (cols, rows) = (80, 24); //terminal::size()?;
-                                draw.call(&[Value::I32(rows), Value::I32(cols)]).unwrap();
+                            debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
+                            plugin_map.insert(plugin_id, (instance, wasi_env));
+                            pid_tx.send(plugin_id).unwrap();
+                            plugin_id += 1;
+                        }
+                        PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                            let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
 
-                                // Needed because raw mode doesn't implicitly return to the start of the line
-                                write!(
-                                    io::stdout(),
-                                    "{}\n\r",
-                                    wasi_stdout(&wasi_env)
-                                        .lines()
-                                        .collect::<Vec<_>>()
-                                        .join("\n\r")
-                                ).unwrap();
+                            let draw = instance.exports.get_function("draw").unwrap();
 
-                                /* match event::read().unwrap() {
-                                    Event::Key(KeyEvent {
-                                        code: KeyCode::Char('q'),
-                                        ..
-                                    }) => break,
-                                    Event::Key(e) => {
-                                        wasi_write_string(&wasi_env, serde_json::to_string(&e).unwrap());
-                                        handle_key.call(&[])?;
-                                    }
-                                    _ => (),
-                                } */
-                                break;
-                            }
+                            draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
+
+                            buf_tx.send(format!(
+                                "{}\n\r",
+                                wasi_stdout(&wasi_env)
+                                    .lines()
+                                    .collect::<Vec<_>>()
+                                    .join("\n\r")
+                            )).unwrap();
                         }
                         PluginInstruction::Quit => break,
                         i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
@@ -603,14 +574,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
+
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
+
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
