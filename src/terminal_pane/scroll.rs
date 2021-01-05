@@ -1,4 +1,4 @@
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 use std::fmt::{self, Debug, Formatter};
 
 use crate::terminal_pane::terminal_character::{
