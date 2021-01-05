@@ -401,8 +401,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     );
 
     // Here be dragons! This is very much a work in progress, and isn't quite functional
-    // yet. It's being left out of the tests because is slows them down massively (by
-    // recompiling a WASM module for every single test). Stay tuned for more updates!
+    // yet. Stay tuned for more updates!
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
