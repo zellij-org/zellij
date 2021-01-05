@@ -418,24 +418,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .spawn(move || {
                 use crate::errors::PluginContext;
                 use crate::wasm_vm::{mosaic_imports, wasi_stdout};
-                use std::io;
+                use std::{io, collections::HashMap};
                 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
                 use wasmer_wasi::{Pipe, WasiState};
 
                 let store = Store::default();
+
+                let mut plugin_id = 0;
+                let mut plugin_map = HashMap::new();
 
                 loop {
                     let (event, mut err_ctx) = receive_plugin_instructions
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                    // FIXME: Clueless on how many of these lines I need...
+                    // FIXME: Add a line for every other thread that this one calls out to
                     // screen.send_app_instructions.update(err_ctx);
                     // screen.send_pty_instructions.update(err_ctx);
                     match event {
                         PluginInstruction::Load(path) => {
                             // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                            let module = Module::from_file(&store, path).unwrap();
+                            let module = Module::from_file(&store, &path).unwrap();
 
                             let output = Pipe::new();
                             let input = Pipe::new();
@@ -455,6 +458,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             let wasi = wasi_env.import_object(&module).unwrap();
                             let mosaic = mosaic_imports(&store, &wasi_env);
                             let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+
+                            debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
+                            plugin_map.insert(plugin_id, instance);
+                            plugin_id += 1;
+
+                            // FIXME: End the loading block here
+
+                            // FIXME: Yucky line
+                            let instance = plugin_map.get(&(plugin_id - 1)).unwrap();
 
                             let start = instance.exports.get_function("_start").unwrap();
                             let handle_key = instance.exports.get_function("handle_key").unwrap();
@@ -491,7 +503,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 } */
                                 break;
                             }
-                            debug_log_to_file("WASM module loaded and exited cleanly :)".to_string()).unwrap();
                         }
                         PluginInstruction::Quit => break,
                         i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),

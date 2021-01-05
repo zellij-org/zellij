@@ -177,7 +177,6 @@ impl Layout {
     // FIXME: I probably shouldn't exist, much less with PathBuf (use &Path)
     #[cfg(feature = "wasm-wip")]
     pub fn list_plugins(&self) -> Vec<&PathBuf> {
-        dbg!(&self);
         let mut plugins: Vec<_> = self.parts.iter().flat_map(Layout::list_plugins).collect();
         if let Some(path) = &self.plugin {
             plugins.push(path);
