@@ -1,6 +1,6 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::tab::Pane;
+use crate::{tab::Pane, utils::shared::ansi_len};
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;

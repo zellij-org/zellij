@@ -555,8 +555,7 @@ impl Tab {
                         terminal.y() + 1,
                         terminal.x() + 1,
                         pad_to_size(&vte_output, terminal.rows(), terminal.columns())
-                    )
-                    .expect("cannot write to stdout");
+                    ).expect("cannot write to stdout");
                 }
             }
         }
