@@ -1,14 +1,21 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::{tab::Pane, utils::shared::ansi_len};
+use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
 
-use crate::terminal_pane::terminal_character::{CharacterStyles, NamedColor, TerminalCharacter};
+use crate::terminal_pane::terminal_character::{CharacterStyles, TerminalCharacter};
 use crate::terminal_pane::Scroll;
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
+
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub enum PaneId {
+    Terminal(RawFd),
+    Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
+    BuiltIn(u32),
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionAndSize {
@@ -200,8 +207,8 @@ impl Pane for TerminalPane {
             None
         }
     }
-    fn pid(&self) -> RawFd {
-        self.pid
+    fn pid(&self) -> PaneId {
+        PaneId::Terminal(self.pid)
     }
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
@@ -279,7 +286,8 @@ impl TerminalPane {
     pub fn mark_for_rerender(&mut self) {
         self.should_render = true;
     }
-    pub fn handle_event(&mut self, event: VteEvent) {
+    // FIXME: Should this be removed?
+    pub fn _handle_event(&mut self, event: VteEvent) {
         match event {
             VteEvent::Print(c) => {
                 self.print(c);

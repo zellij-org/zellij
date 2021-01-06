@@ -9,10 +9,13 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
-use crate::errors::{ContextType, ErrorContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
+use crate::{
+    errors::{ContextType, ErrorContext},
+    terminal_pane::PaneId,
+};
 use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
@@ -148,8 +151,8 @@ pub enum PtyInstruction {
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
     NewTab,
-    ClosePane(RawFd),
-    CloseTab(Vec<RawFd>),
+    ClosePane(PaneId),
+    CloseTab(Vec<PaneId>),
     Quit,
 }
 
@@ -231,7 +234,7 @@ fn stream_terminal_bytes(
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
             send_screen_instructions
-                .send(ScreenInstruction::ClosePane(pid))
+                .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
         }
     });
@@ -287,11 +290,13 @@ impl PtyBus {
             );
         }
     }
-    pub fn close_pane(&mut self, id: RawFd) {
-        let child_pid = self.id_to_child_pid.get(&id).unwrap();
-        self.os_input.kill(*child_pid).unwrap();
+    pub fn close_pane(&mut self, id: PaneId) {
+        if let PaneId::Terminal(id) = id {
+            let child_pid = self.id_to_child_pid.get(&id).unwrap();
+            self.os_input.kill(*child_pid).unwrap();
+        }
     }
-    pub fn close_tab(&mut self, ids: Vec<RawFd>) {
+    pub fn close_tab(&mut self, ids: Vec<PaneId>) {
         ids.iter().for_each(|id| self.close_pane(*id));
     }
 }

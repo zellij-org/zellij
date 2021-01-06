@@ -1,12 +1,10 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::{
-    pty_bus::VteEvent, tab::Pane, utils::shared::*, wasm_vm::PluginInstruction, SenderWithContext,
-};
+use crate::{pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction, SenderWithContext};
 
-use std::{iter, os::unix::prelude::RawFd, sync::mpsc::channel};
+use std::{sync::mpsc::channel, unimplemented};
 
-use crate::terminal_pane::PositionAndSize;
+use crate::terminal_pane::{PaneId, PositionAndSize};
 
 pub struct PluginPane {
     pub pid: u32,
@@ -75,14 +73,14 @@ impl Pane for PluginPane {
         self.position_and_size_override = Some(position_and_size_override);
         self.should_render = true;
     }
-    fn handle_event(&mut self, event: VteEvent) {
-        todo!()
+    fn handle_event(&mut self, _event: VteEvent) {
+        unimplemented!()
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
-        todo!() // FIXME: Shouldn't need this implmented?
+    fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
+        unimplemented!() // FIXME: Shouldn't need this implmented?
     }
 
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
@@ -118,10 +116,8 @@ impl Pane for PluginPane {
             None
         }
     }
-    // FIXME: Really shouldn't be in this trait...
-    fn pid(&self) -> RawFd {
-        // FIXME: This looks like a really bad idea!
-        100 + self.pid as RawFd
+    fn pid(&self) -> PaneId {
+        PaneId::Plugin(self.pid)
     }
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
@@ -159,13 +155,13 @@ impl Pane for PluginPane {
         self.position_and_size.columns += count;
         self.should_render = true;
     }
-    fn scroll_up(&mut self, count: usize) {
-        todo!()
+    fn scroll_up(&mut self, _count: usize) {
+        unimplemented!()
     }
-    fn scroll_down(&mut self, count: usize) {
-        todo!()
+    fn scroll_down(&mut self, _count: usize) {
+        unimplemented!()
     }
     fn clear_scroll(&mut self) {
-        todo!()
+        unimplemented!()
     }
 }

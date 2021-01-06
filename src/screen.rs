@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
 
-use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::tab::Tab;
 use crate::terminal_pane::PositionAndSize;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
+use crate::{layout::Layout, terminal_pane::PaneId};
 use crate::{AppInstruction, SenderWithContext};
 
 /*
@@ -23,9 +23,9 @@ use crate::{AppInstruction, SenderWithContext};
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
-    NewPane(RawFd),
-    HorizontalSplit(RawFd),
-    VerticalSplit(RawFd),
+    NewPane(PaneId),
+    HorizontalSplit(PaneId),
+    VerticalSplit(PaneId),
     WriteCharacter(Vec<u8>),
     ResizeLeft,
     ResizeRight,
@@ -42,7 +42,7 @@ pub enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
-    ClosePane(RawFd),
+    ClosePane(PaneId),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab(RawFd),
     SwitchTabNext,
@@ -94,7 +94,7 @@ impl Screen {
             self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
-            Some(pane_id),
+            Some(PaneId::Terminal(pane_id)),
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -139,7 +139,7 @@ impl Screen {
             self.switch_tab_prev();
         }
         let mut active_tab = self.tabs.remove(&active_tab_index).unwrap();
-        let pane_ids = active_tab.get_terminal_pane_ids();
+        let pane_ids = active_tab.get_pane_ids();
         self.send_pty_instructions
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();

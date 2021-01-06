@@ -23,6 +23,7 @@ use std::thread;
 
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use terminal_pane::PaneId;
 
 use crate::command_is_executing::CommandIsExecuting;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
@@ -222,21 +223,21 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::NewPane(pid))
+                                    .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::VerticalSplit(pid))
+                                    .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::HorizontalSplit(pid))
+                                    .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::NewTab => {
@@ -378,7 +379,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .toggle_active_terminal_fullscreen();
+                                    .toggle_active_pane_fullscreen();
                             }
                             ScreenInstruction::NewTab(pane_id) => {
                                 screen.new_tab(pane_id);
