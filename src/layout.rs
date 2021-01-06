@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,

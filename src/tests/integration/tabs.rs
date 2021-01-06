@@ -2,8 +2,8 @@ use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
+use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
 use crate::{start, Opt};
-use crate::{terminal_pane::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
 
 use crate::tests::utils::commands::{
     CLOSE_TAB, COMMAND_TOGGLE, NEW_TAB, QUIT, SPLIT_HORIZONTALLY, SWITCH_NEXT_TAB, SWITCH_PREV_TAB,

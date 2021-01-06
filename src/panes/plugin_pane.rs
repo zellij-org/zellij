@@ -4,7 +4,7 @@ use crate::{pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction, SenderWith
 
 use std::{sync::mpsc::channel, unimplemented};
 
-use crate::terminal_pane::{PaneId, PositionAndSize};
+use crate::panes::{PaneId, PositionAndSize};
 
 pub struct PluginPane {
     pub pid: u32,

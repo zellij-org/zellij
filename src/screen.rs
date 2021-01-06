@@ -3,11 +3,11 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
 
 use crate::os_input_output::OsApi;
+use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::tab::Tab;
-use crate::terminal_pane::PositionAndSize;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
-use crate::{layout::Layout, terminal_pane::PaneId};
+use crate::{layout::Layout, panes::PaneId};
 use crate::{AppInstruction, SenderWithContext};
 
 /*

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Debug, Formatter};
 
-use crate::terminal_pane::terminal_character::{
+use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 

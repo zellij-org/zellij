@@ -1,6 +1,6 @@
 use ::insta::assert_snapshot;
 
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, Opt};

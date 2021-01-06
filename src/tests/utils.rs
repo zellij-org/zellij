@@ -1,5 +1,5 @@
-use crate::terminal_pane::PositionAndSize;
-use crate::terminal_pane::TerminalPane;
+use crate::panes::PositionAndSize;
+use crate::panes::TerminalPane;
 
 pub fn get_output_frame_snapshots(
     output_frames: &[Vec<u8>],

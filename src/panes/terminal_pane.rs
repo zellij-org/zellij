@@ -5,8 +5,8 @@ use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
 
-use crate::terminal_pane::terminal_character::{CharacterStyles, TerminalCharacter};
-use crate::terminal_pane::Scroll;
+use crate::panes::terminal_character::{CharacterStyles, TerminalCharacter};
+use crate::panes::Scroll;
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
 

@@ -1,4 +1,4 @@
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};

@@ -1,7 +1,7 @@
 use insta::assert_snapshot;
 use std::path::PathBuf;
 
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
 use crate::tests::utils::get_output_frame_snapshots;

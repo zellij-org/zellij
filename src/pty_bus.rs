@@ -14,7 +14,7 @@ use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     errors::{ContextType, ErrorContext},
-    terminal_pane::PaneId,
+    panes::PaneId,
 };
 use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 

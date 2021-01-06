@@ -7,10 +7,10 @@ mod errors;
 mod input;
 mod layout;
 mod os_input_output;
+mod panes;
 mod pty_bus;
 mod screen;
 mod tab;
-mod terminal_pane;
 mod utils;
 
 mod wasm_vm;
@@ -21,9 +21,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
 
+use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use terminal_pane::PaneId;
 
 use crate::command_is_executing::CommandIsExecuting;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};

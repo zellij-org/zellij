@@ -1,6 +1,6 @@
+use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::terminal_pane::{PaneId, PositionAndSize, TerminalPane};
-use crate::{boundaries::Boundaries, terminal_pane::PluginPane};
+use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use crate::{AppInstruction, SenderWithContext};
@@ -161,7 +161,7 @@ impl Tab {
             BTreeMap::new()
         };
         Tab {
-            index: index,
+            index,
             panes,
             max_panes,
             panes_to_hide: HashSet::new(),
