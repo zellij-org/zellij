@@ -563,6 +563,7 @@ impl Tab {
                     // TBD
                 }
                 PaneKind::PluginPane(_) => {
+                    boundaries.add_rect(&terminal);
                     if let Some(output) = terminal.render() {
                         write!(
                             stdout,
