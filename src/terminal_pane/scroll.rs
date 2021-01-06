@@ -266,7 +266,7 @@ impl CursorPosition {
         self.column_index += count;
     }
     pub fn move_backwards(&mut self, count: usize) {
-        self.column_index -= count;
+        self.column_index = u32::overflowing_sub(self.column_index as u32, count as u32).0 as usize;
     }
     pub fn move_to_next_linewrap(&mut self) {
         self.line_index.1 += 1;
