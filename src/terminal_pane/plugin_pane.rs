@@ -113,11 +113,7 @@ impl Pane for PluginPane {
                 .unwrap();
 
             self.should_render = false;
-            let goto_plugin_coordinates = format!("\u{1b}[{};{}H", self.y() + 1, self.x() + 1); // goto row/col and reset styles
-            let reset_styles = "\u{1b}[m";
-            let buf = pad_to_size(&buf_rx.recv().unwrap(), self.rows(), self.columns());
-            let vte_output = format!("{}{}{}", goto_plugin_coordinates, reset_styles, buf);
-            Some(vte_output)
+            Some(buf_rx.recv().unwrap())
         } else {
             None
         }

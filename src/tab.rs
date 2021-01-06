@@ -544,17 +544,22 @@ impl Tab {
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );
-        for (_, terminal) in self.panes.iter_mut() {
+        for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 boundaries.add_rect(&terminal);
                 if let Some(vte_output) = terminal.render() {
+                    let vte_output = if let PaneKind::Terminal(_) = kind {
+                        vte_output
+                    } else {
+                        pad_to_size(&vte_output, terminal.rows(), terminal.columns())
+                    };
                     // FIXME: Use Termion for cursor and style clearing?
                     write!(
                         stdout,
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         terminal.y() + 1,
                         terminal.x() + 1,
-                        pad_to_size(&vte_output, terminal.rows(), terminal.columns())
+                        vte_output
                     ).expect("cannot write to stdout");
                 }
             }
