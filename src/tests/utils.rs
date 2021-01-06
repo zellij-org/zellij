@@ -7,9 +7,7 @@ pub fn get_output_frame_snapshots(
 ) -> Vec<String> {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
-    let x = 0;
-    let y = 0;
-    let mut terminal_output = TerminalPane::new(main_pid, *win_size, x, y);
+    let mut terminal_output = TerminalPane::new(main_pid, *win_size);
 
     let mut snapshots = vec![];
     for frame in output_frames.iter() {

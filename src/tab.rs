@@ -30,6 +30,7 @@ fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Positi
     } else {
         first_rect.columns = width_of_each_half;
     }
+    second_rect.x = first_rect.x + first_rect.columns + 1;
     second_rect.columns = width_of_each_half;
     (first_rect, second_rect)
 }
@@ -43,6 +44,7 @@ fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Posi
     } else {
         first_rect.rows = height_of_each_half;
     }
+    second_rect.y = first_rect.y + first_rect.rows + 1;
     second_rect.rows = height_of_each_half;
     (first_rect, second_rect)
 }
@@ -152,7 +154,7 @@ impl Tab {
         pane_id: Option<RawFd>,
     ) -> Self {
         let panes = if let Some(pid) = pane_id {
-            let new_terminal = TerminalPane::new(pid, *full_screen_ws, 0, 0);
+            let new_terminal = TerminalPane::new(pid, *full_screen_ws);
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -233,13 +235,7 @@ impl Tab {
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let mut new_terminal = TerminalPane::new(
-                    *pid,
-                    self.full_screen_ws,
-                    position_and_size.x,
-                    position_and_size.y,
-                );
-                new_terminal.change_pos_and_size(position_and_size);
+                let mut new_terminal = TerminalPane::new(*pid, *position_and_size);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -273,9 +269,7 @@ impl Tab {
             self.toggle_active_terminal_fullscreen();
         }
         if !self.has_terminal_panes() {
-            let x = 0;
-            let y = 0;
-            let new_terminal = TerminalPane::new(pid, self.full_screen_ws, x, y);
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -312,9 +306,7 @@ impl Tab {
             };
             if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns() {
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-                let bottom_half_y = terminal_ws.y + top_winsize.rows + 1;
-                let new_terminal =
-                    TerminalPane::new(pid, bottom_winsize, terminal_ws.x, bottom_half_y);
+                let new_terminal = TerminalPane::new(pid, bottom_winsize);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     bottom_winsize.columns as u16,
@@ -331,9 +323,7 @@ impl Tab {
                 self.active_terminal = Some(pid);
             } else {
                 let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
-                let right_side_x = (terminal_ws.x + left_winszie.columns + 1) as usize;
-                let new_terminal =
-                    TerminalPane::new(pid, right_winsize, right_side_x, terminal_ws.y);
+                let new_terminal = TerminalPane::new(pid, right_winsize);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     right_winsize.columns as u16,
@@ -358,9 +348,7 @@ impl Tab {
             self.toggle_active_terminal_fullscreen();
         }
         if !self.has_terminal_panes() {
-            let x = 0;
-            let y = 0;
-            let new_terminal = TerminalPane::new(pid, self.full_screen_ws, x, y);
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -371,37 +359,26 @@ impl Tab {
             self.active_terminal = Some(pid);
         } else {
             // TODO: check minimum size of active terminal
-            let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
-                let active_terminal = &self.get_active_terminal().unwrap();
-                (
-                    PositionAndSize {
-                        rows: active_terminal.rows(),
-                        columns: active_terminal.columns(),
-                        x: 0,
-                        y: 0,
-                    },
-                    active_terminal.x(),
-                    active_terminal.y(),
-                )
+            let active_terminal_id = &self.get_active_terminal_id().unwrap();
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneKind::Terminal(*active_terminal_id))
+                .unwrap();
+            let terminal_ws = PositionAndSize {
+                x: active_terminal.x(),
+                y: active_terminal.y(),
+                rows: active_terminal.rows(),
+                columns: active_terminal.columns(),
             };
-            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&active_terminal_ws);
-            let bottom_half_y = active_terminal_y + top_winsize.rows + 1;
-            let new_terminal =
-                TerminalPane::new(pid, bottom_winsize, active_terminal_x, bottom_half_y);
+            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+            let new_terminal = TerminalPane::new(pid, bottom_winsize);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 bottom_winsize.columns as u16,
                 bottom_winsize.rows as u16,
             );
 
-            {
-                let active_terminal_id = &self.get_active_terminal_id().unwrap();
-                let active_terminal = &mut self
-                    .panes
-                    .get_mut(&PaneKind::Terminal(*active_terminal_id))
-                    .unwrap();
-                active_terminal.change_pos_and_size(&top_winsize);
-            }
+            active_terminal.change_pos_and_size(&top_winsize);
 
             self.panes
                 .insert(PaneKind::Terminal(pid), Box::new(new_terminal));
@@ -421,9 +398,7 @@ impl Tab {
             self.toggle_active_terminal_fullscreen();
         }
         if !self.has_terminal_panes() {
-            let x = 0;
-            let y = 0;
-            let new_terminal = TerminalPane::new(pid, self.full_screen_ws, x, y);
+            let new_terminal = TerminalPane::new(pid, self.full_screen_ws);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -434,37 +409,26 @@ impl Tab {
             self.active_terminal = Some(pid);
         } else {
             // TODO: check minimum size of active terminal
-            let (active_terminal_ws, active_terminal_x, active_terminal_y) = {
-                let active_terminal = &self.get_active_terminal().unwrap();
-                (
-                    PositionAndSize {
-                        rows: active_terminal.rows(),
-                        columns: active_terminal.columns(),
-                        x: 0,
-                        y: 0,
-                    },
-                    active_terminal.x(),
-                    active_terminal.y(),
-                )
+            let active_terminal_id = &self.get_active_terminal_id().unwrap();
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneKind::Terminal(*active_terminal_id))
+                .unwrap();
+            let terminal_ws = PositionAndSize {
+                x: active_terminal.x(),
+                y: active_terminal.y(),
+                rows: active_terminal.rows(),
+                columns: active_terminal.columns(),
             };
-            let (left_winszie, right_winsize) = split_vertically_with_gap(&active_terminal_ws);
-            let right_side_x = active_terminal_x + left_winszie.columns + 1;
-            let new_terminal =
-                TerminalPane::new(pid, right_winsize, right_side_x, active_terminal_y);
+            let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
+            let new_terminal = TerminalPane::new(pid, right_winsize);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 right_winsize.columns as u16,
                 right_winsize.rows as u16,
             );
 
-            {
-                let active_terminal_id = &self.get_active_terminal_id().unwrap();
-                let active_terminal = &mut self
-                    .panes
-                    .get_mut(&PaneKind::Terminal(*active_terminal_id))
-                    .unwrap();
-                active_terminal.change_pos_and_size(&left_winszie);
-            }
+            active_terminal.change_pos_and_size(&left_winszie);
 
             self.panes
                 .insert(PaneKind::Terminal(pid), Box::new(new_terminal));

@@ -59,7 +59,8 @@ impl Pane for TerminalPane {
         self.mark_for_rerender();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
-        self.position_and_size = *position_and_size;
+        self.position_and_size.columns = position_and_size.columns;
+        self.position_and_size.rows = position_and_size.rows;
         self.reflow_lines();
         self.mark_for_rerender();
     }
@@ -261,15 +262,10 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, ws: PositionAndSize, x: usize, y: usize) -> TerminalPane {
-        let scroll = Scroll::new(ws.columns, ws.rows);
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
+        let scroll = Scroll::new(position_and_size.columns, position_and_size.rows);
         let pending_styles = CharacterStyles::new();
-        let position_and_size = PositionAndSize {
-            x,
-            y,
-            rows: ws.rows,
-            columns: ws.columns,
-        };
+
         TerminalPane {
             pid,
             scroll,
