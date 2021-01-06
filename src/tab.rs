@@ -440,9 +440,9 @@ impl Tab {
             }
         }
     }
-    pub fn get_active_terminal(&self) -> Option<&Box<dyn Pane>> {
-        match self.get_active_terminal_id() {
-            Some(active_terminal) => self.panes.get(&PaneId::Terminal(active_terminal)),
+    pub fn get_active_pane(&self) -> Option<&Box<dyn Pane>> {
+        match self.get_active_pane_id() {
+            Some(active_pane) => self.panes.get(&active_pane),
             None => None,
         }
     }
@@ -469,7 +469,7 @@ impl Tab {
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         if let Some(active_terminal_id) = &self.get_active_terminal_id() {
-            let active_terminal = self.get_active_terminal().unwrap();
+            let active_terminal = self.get_active_pane().unwrap();
             let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
             self.os_api
                 .write_to_tty_stdin(*active_terminal_id, &mut adjusted_input)
@@ -481,7 +481,7 @@ impl Tab {
     }
     pub fn get_active_terminal_cursor_position(&self) -> Option<(usize, usize)> {
         // (x, y)
-        let active_terminal = &self.get_active_terminal()?;
+        let active_terminal = &self.get_active_pane()?;
         active_terminal
             .cursor_coordinates()
             .map(|(x_in_terminal, y_in_terminal)| {
@@ -493,7 +493,7 @@ impl Tab {
     pub fn toggle_active_pane_fullscreen(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self
-                .get_active_terminal()
+                .get_active_pane()
                 .unwrap()
                 .position_and_size_override()
                 .is_some()
@@ -1415,7 +1415,7 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_terminal = self.get_active_terminal();
+        let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
             let terminals = self.get_panes();
             let next_index = terminals
@@ -1445,7 +1445,7 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_terminal = self.get_active_terminal();
+        let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
             let terminals = self.get_panes();
             let next_index = terminals
@@ -1475,7 +1475,7 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_terminal = self.get_active_terminal();
+        let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
             let terminals = self.get_panes();
             let next_index = terminals
@@ -1505,7 +1505,7 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_terminal = self.get_active_terminal();
+        let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
             let terminals = self.get_panes();
             let next_index = terminals

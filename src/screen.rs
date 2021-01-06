@@ -150,7 +150,7 @@ impl Screen {
     }
     pub fn render(&mut self) {
         if let Some(active_tab) = self.get_active_tab_mut() {
-            if active_tab.get_active_terminal().is_some() {
+            if active_tab.get_active_pane().is_some() {
                 active_tab.render();
             } else {
                 self.close_tab();
