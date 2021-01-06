@@ -140,6 +140,7 @@ pub trait Pane {
 }
 
 impl Tab {
+    // FIXME: Too many arguments here! Maybe bundle all of the senders for the whole program in a struct?
     pub fn new(
         index: usize,
         full_screen_ws: &PositionAndSize,
