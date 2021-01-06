@@ -390,7 +390,7 @@ impl CharacterStyles {
             }
         }
         if let Some(next_params) = ansi_params.get(params_used..) {
-            if next_params.len() > 0 {
+            if !next_params.is_empty() {
                 self.add_style_from_ansi_params(next_params);
             }
         }
@@ -536,14 +536,9 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[2m")?;
                 }
                 AnsiCode::Reset => {
-                    if let Some(bold) = self.bold {
+                    if let Some(AnsiCode::Reset) = self.bold {
                         // we only reset dim if both dim and bold should be reset
-                        match bold {
-                            AnsiCode::Reset => {
-                                write!(f, "\u{1b}[22m")?;
-                            }
-                            _ => {}
-                        }
+                        write!(f, "\u{1b}[22m")?;
                     }
                 }
                 _ => {}

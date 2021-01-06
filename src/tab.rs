@@ -4,8 +4,11 @@ use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use crate::{AppInstruction, SenderWithContext};
-use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashSet},
+};
 use std::{io::Write, sync::mpsc::channel};
 
 /*
@@ -98,30 +101,30 @@ pub trait Pane {
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
     }
-    fn is_directly_right_of(&self, other: &Box<dyn Pane>) -> bool {
+    fn is_directly_right_of(&self, other: &dyn Pane) -> bool {
         self.x() == other.x() + other.columns() + 1
     }
-    fn is_directly_left_of(&self, other: &Box<dyn Pane>) -> bool {
+    fn is_directly_left_of(&self, other: &dyn Pane) -> bool {
         self.x() + self.columns() + 1 == other.x()
     }
-    fn is_directly_below(&self, other: &Box<dyn Pane>) -> bool {
+    fn is_directly_below(&self, other: &dyn Pane) -> bool {
         self.y() == other.y() + other.rows() + 1
     }
-    fn is_directly_above(&self, other: &Box<dyn Pane>) -> bool {
+    fn is_directly_above(&self, other: &dyn Pane) -> bool {
         self.y() + self.rows() + 1 == other.y()
     }
-    fn horizontally_overlaps_with(&self, other: &Box<dyn Pane>) -> bool {
+    fn horizontally_overlaps_with(&self, other: &dyn Pane) -> bool {
         (self.y() >= other.y() && self.y() <= (other.y() + other.rows()))
             || ((self.y() + self.rows()) <= (other.y() + other.rows())
                 && (self.y() + self.rows()) > other.y())
             || (self.y() <= other.y() && (self.y() + self.rows() >= (other.y() + other.rows())))
             || (other.y() <= self.y() && (other.y() + other.rows() >= (self.y() + self.rows())))
     }
-    fn get_horizontal_overlap_with(&self, other: &Box<dyn Pane>) -> usize {
+    fn get_horizontal_overlap_with(&self, other: &dyn Pane) -> usize {
         std::cmp::min(self.y() + self.rows(), other.y() + other.rows())
             - std::cmp::max(self.y(), other.y())
     }
-    fn vertically_overlaps_with(&self, other: &Box<dyn Pane>) -> bool {
+    fn vertically_overlaps_with(&self, other: &dyn Pane) -> bool {
         (self.x() >= other.x() && self.x() <= (other.x() + other.columns()))
             || ((self.x() + self.columns()) <= (other.x() + other.columns())
                 && (self.x() + self.columns()) > other.x())
@@ -130,7 +133,7 @@ pub trait Pane {
             || (other.x() <= self.x()
                 && (other.x() + other.columns() >= (self.x() + self.columns())))
     }
-    fn get_vertical_overlap_with(&self, other: &Box<dyn Pane>) -> usize {
+    fn get_vertical_overlap_with(&self, other: &dyn Pane) -> usize {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
     }
@@ -440,9 +443,9 @@ impl Tab {
             }
         }
     }
-    pub fn get_active_pane(&self) -> Option<&Box<dyn Pane>> {
+    pub fn get_active_pane(&self) -> Option<&dyn Pane> {
         match self.get_active_pane_id() {
-            Some(active_pane) => self.panes.get(&active_pane),
+            Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
             None => None,
         }
     }
@@ -551,7 +554,7 @@ impl Tab {
         );
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
-                boundaries.add_rect(&terminal);
+                boundaries.add_rect(terminal.as_ref());
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output
@@ -668,37 +671,37 @@ impl Tab {
             Some(ids)
         }
     }
-    fn panes_top_aligned_with_pane(&self, pane: &Box<dyn Pane>) -> Vec<&Box<dyn Pane>> {
+    fn panes_top_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap())
+            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
             .filter(|terminal| terminal.pid() != pane.pid() && terminal.y() == pane.y())
             .collect()
     }
-    fn panes_bottom_aligned_with_pane(&self, pane: &Box<dyn Pane>) -> Vec<&Box<dyn Pane>> {
+    fn panes_bottom_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap())
+            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
             .filter(|terminal| {
                 terminal.pid() != pane.pid()
                     && terminal.y() + terminal.rows() == pane.y() + pane.rows()
             })
             .collect()
     }
-    fn panes_right_aligned_with_pane(&self, pane: &Box<dyn Pane>) -> Vec<&Box<dyn Pane>> {
+    fn panes_right_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap())
+            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
             .filter(|terminal| {
                 terminal.pid() != pane.pid()
                     && terminal.x() + terminal.columns() == pane.x() + pane.columns()
             })
             .collect()
     }
-    fn panes_left_aligned_with_pane(&self, pane: &&Box<dyn Pane>) -> Vec<&Box<dyn Pane>> {
+    fn panes_left_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap())
+            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
             .filter(|terminal| terminal.pid() != pane.pid() && terminal.x() == pane.x())
             .collect()
     }
@@ -708,10 +711,14 @@ impl Tab {
         terminal_borders_to_the_right: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).expect("terminal id does not exist");
-        let mut right_aligned_terminals = self.panes_right_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self
+            .panes
+            .get(id)
+            .expect("terminal id does not exist")
+            .as_ref();
+        let mut right_aligned_terminals = self.panes_right_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        right_aligned_terminals.sort_by(|a, b| b.y().cmp(&a.y()));
+        right_aligned_terminals.sort_by_key(|a| Reverse(a.y()));
         for terminal in right_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.y() + terminal.rows() + 1 == terminal_to_check.y() {
@@ -747,10 +754,14 @@ impl Tab {
         terminal_borders_to_the_right: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).expect("terminal id does not exist");
-        let mut right_aligned_terminals = self.panes_right_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self
+            .panes
+            .get(id)
+            .expect("terminal id does not exist")
+            .as_ref();
+        let mut right_aligned_terminals = self.panes_right_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        right_aligned_terminals.sort_by(|a, b| a.y().cmp(&b.y()));
+        right_aligned_terminals.sort_by_key(|a| a.y());
         for terminal in right_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.y() == terminal_to_check.y() + terminal_to_check.rows() + 1 {
@@ -786,10 +797,14 @@ impl Tab {
         terminal_borders_to_the_left: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).expect("terminal id does not exist");
-        let mut left_aligned_terminals = self.panes_left_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self
+            .panes
+            .get(id)
+            .expect("terminal id does not exist")
+            .as_ref();
+        let mut left_aligned_terminals = self.panes_left_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        left_aligned_terminals.sort_by(|a, b| b.y().cmp(&a.y()));
+        left_aligned_terminals.sort_by_key(|a| Reverse(a.y()));
         for terminal in left_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.y() + terminal.rows() + 1 == terminal_to_check.y() {
@@ -825,10 +840,14 @@ impl Tab {
         terminal_borders_to_the_left: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).expect("terminal id does not exist");
-        let mut left_aligned_terminals = self.panes_left_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self
+            .panes
+            .get(id)
+            .expect("terminal id does not exist")
+            .as_ref();
+        let mut left_aligned_terminals = self.panes_left_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        left_aligned_terminals.sort_by(|a, b| a.y().cmp(&b.y()));
+        left_aligned_terminals.sort_by_key(|a| a.y());
         for terminal in left_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.y() == terminal_to_check.y() + terminal_to_check.rows() + 1 {
@@ -867,10 +886,14 @@ impl Tab {
         terminal_borders_above: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).expect("terminal id does not exist");
-        let mut top_aligned_terminals = self.panes_top_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self
+            .panes
+            .get(id)
+            .expect("terminal id does not exist")
+            .as_ref();
+        let mut top_aligned_terminals = self.panes_top_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        top_aligned_terminals.sort_by(|a, b| b.x().cmp(&a.x()));
+        top_aligned_terminals.sort_by_key(|a| Reverse(a.x()));
         for terminal in top_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.x() + terminal.columns() + 1 == terminal_to_check.x() {
@@ -906,10 +929,10 @@ impl Tab {
         terminal_borders_above: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        let mut top_aligned_terminals = self.panes_top_aligned_with_pane(&terminal_to_check);
+        let terminal_to_check = self.panes.get(id).unwrap().as_ref();
+        let mut top_aligned_terminals = self.panes_top_aligned_with_pane(terminal_to_check);
         // terminals that are next to each other up to current
-        top_aligned_terminals.sort_by(|a, b| a.x().cmp(&b.x()));
+        top_aligned_terminals.sort_by_key(|a| a.x());
         for terminal in top_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
             if terminal.x() == terminal_to_check.x() + terminal_to_check.columns() + 1 {
@@ -945,9 +968,9 @@ impl Tab {
         terminal_borders_below: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(&terminal_to_check);
-        bottom_aligned_terminals.sort_by(|a, b| b.x().cmp(&a.x()));
+        let terminal_to_check = self.panes.get(id).unwrap().as_ref();
+        let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(terminal_to_check);
+        bottom_aligned_terminals.sort_by_key(|a| Reverse(a.x()));
         // terminals that are next to each other up to current
         for terminal in bottom_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
@@ -984,9 +1007,9 @@ impl Tab {
         terminal_borders_below: &HashSet<usize>,
     ) -> BorderAndPaneIds {
         let mut terminals = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(&terminal_to_check);
-        bottom_aligned_terminals.sort_by(|a, b| a.x().cmp(&b.x()));
+        let terminal_to_check = self.panes.get(id).unwrap().as_ref();
+        let mut bottom_aligned_terminals = self.panes_bottom_aligned_with_pane(terminal_to_check);
+        bottom_aligned_terminals.sort_by_key(|a| a.x());
         // terminals that are next to each other up to current
         for terminal in bottom_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
@@ -1421,9 +1444,9 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_left_of(&active) && c.horizontally_overlaps_with(&active)
+                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(active))
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1451,9 +1474,9 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_below(&active) && c.vertically_overlaps_with(&active)
+                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(active))
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1481,9 +1504,9 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_above(&active) && c.vertically_overlaps_with(&active)
+                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(&active))
+                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(active))
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1511,9 +1534,9 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_right_of(&active) && c.horizontally_overlaps_with(&active)
+                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(&active))
+                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(active))
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {

@@ -75,6 +75,7 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
+            // FIXME: We need to handle more signals here!
             match signal {
                 signal_hook::SIGINT => {
                     child.kill().unwrap();
@@ -141,7 +142,7 @@ pub struct OsInputOutput {
 pub trait OsApi: Send + Sync {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize;
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
-    fn into_raw_mode(&mut self, pid: RawFd);
+    fn set_raw_mode(&mut self, pid: RawFd);
     fn unset_raw_mode(&mut self, pid: RawFd);
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
@@ -160,7 +161,7 @@ impl OsApi for OsInputOutput {
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(pid, cols, rows);
     }
-    fn into_raw_mode(&mut self, pid: RawFd) {
+    fn set_raw_mode(&mut self, pid: RawFd) {
         into_raw_mode(pid);
     }
     fn unset_raw_mode(&mut self, pid: RawFd) {

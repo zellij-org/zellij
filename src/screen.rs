@@ -123,7 +123,7 @@ impl Screen {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
         let first_tab = tab_ids.get(0).unwrap();
-        let last_tab = tab_ids.get(tab_ids.len() - 1).unwrap();
+        let last_tab = tab_ids.last().unwrap();
 
         let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
         if active_tab_id == *first_tab {
@@ -143,7 +143,7 @@ impl Screen {
         self.send_pty_instructions
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();
-        if self.tabs.len() == 0 {
+        if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.render();
         }

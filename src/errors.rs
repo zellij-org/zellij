@@ -89,6 +89,12 @@ impl ErrorContext {
     }
 }
 
+impl Default for ErrorContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Display for ErrorContext {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         writeln!(f, "Originating Thread(s):")?;

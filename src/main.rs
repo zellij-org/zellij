@@ -24,6 +24,7 @@ use std::thread;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use wasm_vm::PluginInstruction;
 
 use crate::command_is_executing::CommandIsExecuting;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
@@ -38,7 +39,7 @@ use crate::utils::{
 };
 use std::cell::RefCell;
 
-thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::new(ErrorContext::new()));
+thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -47,6 +48,9 @@ enum ApiCommand {
     SplitVertically,
     MoveFocus,
 }
+
+pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
+pub type SyncChannelWithContext<T> = (SyncSender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
 
 #[derive(Clone)]
 enum SenderType<T: Clone> {
@@ -146,35 +150,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    os_input.into_raw_mode(0);
-    let (send_screen_instructions, receive_screen_instructions): (
-        Sender<(ScreenInstruction, ErrorContext)>,
-        Receiver<(ScreenInstruction, ErrorContext)>,
-    ) = channel();
+    os_input.set_raw_mode(0);
+    let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
+        ScreenInstruction,
+    > = channel();
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
-    let (send_pty_instructions, receive_pty_instructions): (
-        Sender<(PtyInstruction, ErrorContext)>,
-        Receiver<(PtyInstruction, ErrorContext)>,
-    ) = channel();
+
+    let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
+        channel();
     let mut send_pty_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
 
-    use crate::wasm_vm::PluginInstruction;
-
-    let (send_plugin_instructions, receive_plugin_instructions): (
-        Sender<(PluginInstruction, ErrorContext)>,
-        Receiver<(PluginInstruction, ErrorContext)>,
-    ) = channel();
-
+    let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
+        PluginInstruction,
+    > = channel();
     let send_plugin_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
 
-    let (send_app_instructions, receive_app_instructions): (
-        SyncSender<(AppInstruction, ErrorContext)>,
-        Receiver<(AppInstruction, ErrorContext)>,
-    ) = sync_channel(0);
+    let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
+        sync_channel(0);
     let send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 

@@ -442,12 +442,10 @@ impl vte::Perform for TerminalPane {
                 } else {
                     (params[0] as usize - 1, params[0] as usize)
                 }
+            } else if params[0] == 0 {
+                (0, params[1] as usize - 1)
             } else {
-                if params[0] == 0 {
-                    (0, params[1] as usize - 1)
-                } else {
-                    (params[0] as usize - 1, params[1] as usize - 1)
-                }
+                (params[0] as usize - 1, params[1] as usize - 1)
             };
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
@@ -607,11 +605,8 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        match (byte, intermediates.get(0)) {
-            (b'M', None) => {
-                self.scroll.move_cursor_up_in_scroll_region(1);
-            }
-            _ => {}
+        if let (b'M', None) = (byte, intermediates.get(0)) {
+            self.scroll.move_cursor_up_in_scroll_region(1);
         }
     }
 }

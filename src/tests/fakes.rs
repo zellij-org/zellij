@@ -130,7 +130,7 @@ impl OsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn into_raw_mode(&mut self, pid: RawFd) {
+    fn set_raw_mode(&mut self, pid: RawFd) {
         self.io_events
             .lock()
             .unwrap()
