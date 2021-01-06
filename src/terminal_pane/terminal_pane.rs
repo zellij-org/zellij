@@ -193,6 +193,7 @@ impl Pane for TerminalPane {
                     }
                 }
                 character_styles.clear();
+                vte_output.push('\n');
             }
             self.mark_for_rerender();
             Some(vte_output)

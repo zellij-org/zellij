@@ -1,8 +1,10 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::{pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction, SenderWithContext};
+use crate::{
+    pty_bus::VteEvent, tab::Pane, utils::shared::*, wasm_vm::PluginInstruction, SenderWithContext,
+};
 
-use std::{os::unix::prelude::RawFd, sync::mpsc::channel};
+use std::{iter, os::unix::prelude::RawFd, sync::mpsc::channel};
 
 use crate::terminal_pane::PositionAndSize;
 
@@ -111,9 +113,10 @@ impl Pane for PluginPane {
                 .unwrap();
 
             self.should_render = false;
-            let goto_plugin_coordinates = format!("\u{1b}[{};{}H", self.position_and_size.y + 1, self.position_and_size.x + 1); // goto row/col and reset styles
+            let goto_plugin_coordinates = format!("\u{1b}[{};{}H", self.y() + 1, self.x() + 1); // goto row/col and reset styles
             let reset_styles = "\u{1b}[m";
-            let vte_output = format!("{}{}{}", goto_plugin_coordinates, reset_styles, buf_rx.recv().unwrap());
+            let buf = pad_to_size(&buf_rx.recv().unwrap(), self.rows(), self.columns());
+            let vte_output = format!("{}{}{}", goto_plugin_coordinates, reset_styles, buf);
             Some(vte_output)
         } else {
             None
@@ -121,7 +124,8 @@ impl Pane for PluginPane {
     }
     // FIXME: Really shouldn't be in this trait...
     fn pid(&self) -> RawFd {
-        todo!()
+        // FIXME: This looks like a really bad idea!
+        100 + self.pid as RawFd
     }
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;

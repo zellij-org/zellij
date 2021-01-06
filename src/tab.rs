@@ -1,8 +1,8 @@
-use crate::os_input_output::OsApi;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::terminal_pane::{PositionAndSize, TerminalPane};
 use crate::{boundaries::Boundaries, terminal_pane::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
+use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use crate::{AppInstruction, SenderWithContext};
 use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
@@ -215,10 +215,8 @@ impl Tab {
         }
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
-            dbg!("Loopy", &layout.plugin, position_and_size);
             // Just a regular terminal
             if let Some(plugin) = &layout.plugin {
-                dbg!("Starting here!");
                 let (pid_tx, pid_rx) = channel();
                 self.send_plugin_instructions
                     .send(PluginInstruction::Load(pid_tx, plugin.clone()))
@@ -229,13 +227,12 @@ impl Tab {
                     *position_and_size,
                     self.send_plugin_instructions.clone(),
                 );
-                dbg!(pid, position_and_size, plugin);
                 self.panes
                     .insert(PaneKind::PluginPane(pid), Box::new(new_plugin));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let mut new_terminal = TerminalPane::new(*pid, *position_and_size);
+                let new_terminal = TerminalPane::new(*pid, *position_and_size);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -547,31 +544,19 @@ impl Tab {
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );
-        for (pane_kind, terminal) in self.panes.iter_mut() {
-            match pane_kind {
-                PaneKind::Terminal(pid) => {
-                    if !self.panes_to_hide.contains(pid) {
-                        boundaries.add_rect(&terminal);
-                        if let Some(vte_output) = terminal.render() {
-                            stdout
-                                .write_all(&vte_output.as_bytes())
-                                .expect("cannot write to stdout");
-                        }
-                    }
-                }
-                PaneKind::BuiltInPane(builtin_id) => {
-                    // TBD
-                }
-                PaneKind::PluginPane(_) => {
-                    boundaries.add_rect(&terminal);
-                    if let Some(output) = terminal.render() {
-                        write!(
-                            stdout,
-                            "{}\n\r",
-                            output.lines().collect::<Vec<_>>().join("\n\r")
-                        )
-                        .unwrap();
-                    }
+        for (_, terminal) in self.panes.iter_mut() {
+            if !self.panes_to_hide.contains(&terminal.pid()) {
+                boundaries.add_rect(&terminal);
+                if let Some(vte_output) = terminal.render() {
+                    // FIXME: Use Termion for cursor and style clearing?
+                    write!(
+                        stdout,
+                        "\u{1b}[{};{}H\u{1b}[m{}",
+                        terminal.y() + 1,
+                        terminal.x() + 1,
+                        pad_to_size(&vte_output, terminal.rows(), terminal.columns())
+                    )
+                    .expect("cannot write to stdout");
                 }
             }
         }

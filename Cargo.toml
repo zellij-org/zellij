@@ -16,6 +16,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 signal-hook = "0.1.10"
+strip-ansi-escapes = "0.1.0"
 structopt = "0.3"
 termios = "0.3"
 unicode-truncate = "0.1.1"

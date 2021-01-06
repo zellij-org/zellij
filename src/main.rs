@@ -466,13 +466,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
                             draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
 
-                            buf_tx.send(format!(
-                                "{}\n\r",
-                                wasi_stdout(&wasi_env)
-                                    .lines()
-                                    .collect::<Vec<_>>()
-                                    .join("\n\r")
-                            )).unwrap();
+                            buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
                         }
                         PluginInstruction::Quit => break,
                         i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
