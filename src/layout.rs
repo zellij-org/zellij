@@ -91,7 +91,7 @@ fn split_space(
             let mut part_positions = split_space(&part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {
-            pane_positions.push((part.clone(), *part_position_and_size)); // FIXME: Probably doesn't need to be cloned
+            pane_positions.push((part.clone(), *part_position_and_size));
         }
     }
     pane_positions
@@ -178,16 +178,6 @@ impl Layout {
             }
         }
         total_panes
-    }
-
-    // FIXME: I probably shouldn't exist, much less with PathBuf (use &Path)
-
-    pub fn list_plugins(&self) -> Vec<&PathBuf> {
-        let mut plugins: Vec<_> = self.parts.iter().flat_map(Layout::list_plugins).collect();
-        if let Some(path) = &self.plugin {
-            plugins.push(path);
-        }
-        plugins
     }
 
     pub fn position_panes_in_space(

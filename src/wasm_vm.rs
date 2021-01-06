@@ -8,9 +8,8 @@ use wasmer_wasi::WasiEnv;
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Sender<u32>, PathBuf), // FIXME: Maybe send a channel handle?
-    // String buffer, plugin id, rows, cols
-    Draw(Sender<String>, u32, usize, usize), // FIXME: This is super gross
+    Load(Sender<u32>, PathBuf),
+    Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
     Quit,
 }

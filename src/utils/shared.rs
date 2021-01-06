@@ -2,7 +2,6 @@ use std::{iter, str::from_utf8};
 
 use strip_ansi_escapes::strip;
 
-// FIXME: Should this be an extension trait? Or here at all?
 pub fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
         .unwrap()

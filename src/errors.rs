@@ -1,17 +1,22 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, SenderWithContext, OPENCALLS};
-use backtrace::Backtrace;
+use crate::{AppInstruction, OPENCALLS};
+
 use std::fmt::{Display, Error, Formatter};
-use std::panic::PanicInfo;
-use std::{process, thread};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
+#[cfg(not(test))]
+use crate::SenderWithContext;
+#[cfg(not(test))]
+use std::panic::PanicInfo;
+#[cfg(not(test))]
 pub fn handle_panic(
     info: &PanicInfo<'_>,
     send_app_instructions: &SenderWithContext<AppInstruction>,
 ) {
+    use backtrace::Backtrace;
+    use std::{process, thread};
     let backtrace = Backtrace::new();
     let thread = thread::current();
     let thread = thread.name().unwrap_or("unnamed");

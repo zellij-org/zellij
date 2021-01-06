@@ -423,9 +423,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                    // FIXME: Add a line for every other thread that this one calls out to
-                    // screen.send_app_instructions.update(err_ctx);
-                    // screen.send_pty_instructions.update(err_ctx);
                     match event {
                         PluginInstruction::Load(pid_tx, path) => {
                             // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
