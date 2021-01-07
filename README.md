@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="logo.png" alt="logo" width="200">
+  <img src="assets/logo.png" alt="logo" width="200">
   <br>
   Mosaic
   <br>
@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <img src="demo.gif" alt="demo">
+  <img src="assets/demo.gif" alt="demo">
 </p>
 
 <p align="center">
