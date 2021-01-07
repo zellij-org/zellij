@@ -467,7 +467,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
 
                             let handle_key = instance.exports.get_function("handle_key").unwrap();
-                            dbg!(input_bytes.keys().collect::<Vec<_>>());
+                            for key in input_bytes.keys() {
+                                if let Ok(key) = key {
+                                    dbg!(key);
+                                }
+                            }
                         }
                         PluginInstruction::Quit => break,
                         i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
