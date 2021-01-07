@@ -472,15 +472,23 @@ impl Tab {
         }
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
-        if let Some(active_terminal_id) = &self.get_active_terminal_id() {
-            let active_terminal = self.get_active_pane().unwrap();
-            let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-            self.os_api
-                .write_to_tty_stdin(*active_terminal_id, &mut adjusted_input)
-                .expect("failed to write to terminal");
-            self.os_api
-                .tcdrain(*active_terminal_id)
-                .expect("failed to drain terminal");
+        match self.get_active_pane_id() {
+            Some(PaneId::Terminal(active_terminal_id)) => {
+                let active_terminal = self.get_active_pane().unwrap();
+                let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
+                self.os_api
+                    .write_to_tty_stdin(active_terminal_id, &mut adjusted_input)
+                    .expect("failed to write to terminal");
+                self.os_api
+                    .tcdrain(active_terminal_id)
+                    .expect("failed to drain terminal");
+            }
+            Some(PaneId::Plugin(pid)) => {
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Input(pid, input_bytes))
+                    .unwrap();
+            }
+            _ => {}
         }
     }
     pub fn get_active_terminal_cursor_position(&self) -> Option<(usize, usize)> {

@@ -10,6 +10,7 @@ use wasmer_wasi::WasiEnv;
 pub enum PluginInstruction {
     Load(Sender<u32>, PathBuf),
     Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
+    Input(u32, Vec<u8>),                     // plugin id, input bytes
     Unload(u32),
     Quit,
 }
@@ -24,6 +25,7 @@ pub fn mosaic_imports(store: &Store, wasi_env: &WasiEnv) -> ImportObject {
     }
 }
 
+// FIXME: Bundle up all of the channels! Pair that with WasiEnv?
 fn host_open_file(wasi_env: &WasiEnv) {
     Command::new("xdg-open")
         .arg(format!(
@@ -46,7 +48,7 @@ pub fn wasi_stdout(wasi_env: &WasiEnv) -> String {
     buf
 }
 
-pub fn _wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
+pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
     let mut state = wasi_env.state();
     let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
     writeln!(wasi_file, "{}\r", buf).unwrap();

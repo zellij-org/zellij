@@ -15,6 +15,7 @@ mod utils;
 
 mod wasm_vm;
 
+use std::cell::RefCell;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -24,6 +25,7 @@ use std::thread;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use termion::input::TermRead;
 use wasm_vm::PluginInstruction;
 
 use crate::command_is_executing::CommandIsExecuting;
@@ -37,7 +39,6 @@ use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
-use std::cell::RefCell;
 
 thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
 
@@ -461,6 +462,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
 
                             buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
+                        }
+                        PluginInstruction::Input(pid, input_bytes) => {
+                            let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
+
+                            let handle_key = instance.exports.get_function("handle_key").unwrap();
+                            dbg!(input_bytes.keys().collect::<Vec<_>>());
                         }
                         PluginInstruction::Quit => break,
                         i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),

@@ -243,6 +243,7 @@ use crate::wasm_vm::PluginInstruction;
 pub enum PluginContext {
     Load,
     Draw,
+    Input,
     Unload,
     Quit,
 }
@@ -252,6 +253,7 @@ impl From<&PluginInstruction> for PluginContext {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Draw(..) => PluginContext::Draw,
+            PluginInstruction::Input(..) => PluginContext::Input,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
         }
