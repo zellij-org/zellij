@@ -16,6 +16,7 @@ mod utils;
 mod wasm_vm;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -26,10 +27,13 @@ use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use termion::input::TermRead;
-use wasm_vm::PluginInstruction;
+use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+use wasmer_wasi::{Pipe, WasiState};
 
 use crate::command_is_executing::CommandIsExecuting;
-use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
+use crate::errors::{
+    AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext,
+};
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
@@ -39,6 +43,7 @@ use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
+use crate::wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
 thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
 
@@ -403,81 +408,83 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
-            .spawn(move || {
-                use crate::errors::PluginContext;
-                use crate::wasm_vm::{mosaic_imports, wasi_stdout};
-                use std::collections::HashMap;
-                use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-                use wasmer_wasi::{Pipe, WasiState};
+            .spawn({
+                let mut send_screen_instructions = send_screen_instructions.clone();
 
-                let store = Store::default();
+                move || {
+                    let store = Store::default();
 
-                let mut plugin_id = 0;
-                let mut plugin_map = HashMap::new();
+                    let mut plugin_id = 0;
+                    let mut plugin_map = HashMap::new();
 
-                loop {
-                    let (event, mut err_ctx) = receive_plugin_instructions
-                        .recv()
-                        .expect("failed to receive event on channel");
-                    err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                    match event {
-                        PluginInstruction::Load(pid_tx, path) => {
-                            // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                            let module = Module::from_file(&store, &path).unwrap();
+                    loop {
+                        let (event, mut err_ctx) = receive_plugin_instructions
+                            .recv()
+                            .expect("failed to receive event on channel");
+                        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                        send_screen_instructions.update(err_ctx);
+                        match event {
+                            PluginInstruction::Load(pid_tx, path) => {
+                                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                                let module = Module::from_file(&store, &path).unwrap();
 
-                            let output = Pipe::new();
-                            let input = Pipe::new();
-                            let mut wasi_env = WasiState::new("mosaic")
-                                .env("CLICOLOR_FORCE", "1")
-                                .preopen(|p| {
-                                    p.directory(".") // FIXME: Change this to a more meaningful dir
-                                        .alias(".")
-                                        .read(true)
-                                        .write(true)
-                                        .create(true)
-                                }).unwrap()
-                                .stdin(Box::new(input))
-                                .stdout(Box::new(output))
-                                .finalize().unwrap();
+                                let output = Pipe::new();
+                                let input = Pipe::new();
+                                let mut wasi_env = WasiState::new("mosaic")
+                                    .env("CLICOLOR_FORCE", "1")
+                                    .preopen(|p| {
+                                        p.directory(".") // FIXME: Change this to a more meaningful dir
+                                            .alias(".")
+                                            .read(true)
+                                            .write(true)
+                                            .create(true)
+                                    }).unwrap()
+                                    .stdin(Box::new(input))
+                                    .stdout(Box::new(output))
+                                    .finalize().unwrap();
 
-                            let wasi = wasi_env.import_object(&module).unwrap();
-                            let mosaic = mosaic_imports(&store, &wasi_env);
-                            let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+                                let wasi = wasi_env.import_object(&module).unwrap();
+                                let mosaic = mosaic_imports(&store, &wasi_env);
+                                let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
-                            let start = instance.exports.get_function("_start").unwrap();
+                                let start = instance.exports.get_function("_start").unwrap();
 
-                            // This eventually calls the `.init()` method
-                            start.call(&[]).unwrap();
+                                // This eventually calls the `.init()` method
+                                start.call(&[]).unwrap();
 
-                            debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
-                            plugin_map.insert(plugin_id, (instance, wasi_env));
-                            pid_tx.send(plugin_id).unwrap();
-                            plugin_id += 1;
-                        }
-                        PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
-                            let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
-
-                            let draw = instance.exports.get_function("draw").unwrap();
-
-                            draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
-
-                            buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
-                        }
-                        PluginInstruction::Input(pid, input_bytes) => {
-                            let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
-
-                            let handle_key = instance.exports.get_function("handle_key").unwrap();
-                            for key in input_bytes.keys() {
-                                if let Ok(key) = key {
-                                    dbg!(serde_json::to_string(&key));
-                                }
+                                debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
+                                plugin_map.insert(plugin_id, (instance, wasi_env));
+                                pid_tx.send(plugin_id).unwrap();
+                                plugin_id += 1;
                             }
+                            PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                                let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
+
+                                let draw = instance.exports.get_function("draw").unwrap();
+
+                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
+
+                                buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
+                            }
+                            PluginInstruction::Input(pid, input_bytes) => {
+                                let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
+
+                                let handle_key = instance.exports.get_function("handle_key").unwrap();
+                                for key in input_bytes.keys() {
+                                    if let Ok(key) = key {
+                                        wasi_write_string(wasi_env, &serde_json::to_string(&key).unwrap());
+                                        handle_key.call(&[]).unwrap();
+                                    }
+                                }
+
+                                send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                            }
+                            PluginInstruction::Quit => break,
+                            i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
                         }
-                        PluginInstruction::Quit => break,
-                        i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
                     }
                 }
-            }
+        }
         ).unwrap(),
     );
 
