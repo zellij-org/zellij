@@ -5,7 +5,7 @@ use crate::terminal_pane::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
 use crate::tests::utils::get_output_frame_snapshots;
-use crate::{start, Opt};
+use crate::{start, CliArgs};
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -21,7 +21,7 @@ pub fn accepts_basic_layout() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
-    let mut opts = Opt::default();
+    let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
@@ -63,7 +63,7 @@ pub fn should_throw_for_more_than_100_percent_total() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
 
-    let mut opts = Opt::default();
+    let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/parts-total-more-than-100-percent.yaml",
     ));
@@ -83,7 +83,7 @@ pub fn should_throw_for_less_than_100_percent_total() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
 
-    let mut opts = Opt::default();
+    let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/parts-total-less-than-100-percent.yaml",
     ));

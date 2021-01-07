@@ -119,7 +119,7 @@ pub enum AppInstruction {
     Error(String),
 }
 
-pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
+pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();

@@ -497,7 +497,13 @@ impl Scroll {
         self.cursor_position.move_to_beginning_of_canonical_line();
     }
     pub fn move_cursor_backwards(&mut self, count: usize) {
-        self.cursor_position.move_backwards(count);
+        // TODO: We should not need to check every time.
+        let current_cursor_column_position = self.cursor_position.column_index;
+        if current_cursor_column_position < count {
+            self.cursor_position.move_to_beginning_of_linewrap();
+        } else {
+            self.cursor_position.move_backwards(count);
+        }
     }
     pub fn move_cursor_up(&mut self, count: usize) {
         for _ in 0..count {
