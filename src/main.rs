@@ -2,6 +2,7 @@
 mod tests;
 
 mod boundaries;
+mod cli;
 mod command_is_executing;
 mod errors;
 mod input;
@@ -24,6 +25,7 @@ use std::thread;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
+use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
 use crate::input::input_loop;
@@ -79,30 +81,8 @@ impl<T: Clone> SenderWithContext<T> {
 unsafe impl<T: Clone> Send for SenderWithContext<T> {}
 unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
-#[derive(StructOpt, Debug, Default)]
-#[structopt(name = "mosaic")]
-pub struct Opt {
-    #[structopt(short, long)]
-    /// Send "split (direction h == horizontal / v == vertical)" to active mosaic session
-    split: Option<char>,
-    #[structopt(short, long)]
-    /// Send "move focused pane" to active mosaic session
-    move_focus: bool,
-    #[structopt(short, long)]
-    /// Send "open file in new pane" to active mosaic session
-    open_file: Option<PathBuf>,
-    #[structopt(long)]
-    /// Maximum panes on screen, caution: opening more panes will close old ones
-    max_panes: Option<usize>,
-    #[structopt(short, long)]
-    /// Path to a layout yaml file
-    layout: Option<PathBuf>,
-    #[structopt(short, long)]
-    debug: bool,
-}
-
 pub fn main() {
-    let opts = Opt::from_args();
+    let opts = CliArgs::from_args();
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
@@ -139,7 +119,7 @@ pub enum AppInstruction {
     Error(String),
 }
 
-pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
+pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
