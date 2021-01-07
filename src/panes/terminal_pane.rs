@@ -24,8 +24,8 @@ pub struct PositionAndSize {
     pub columns: usize,
 }
 
-impl PositionAndSize {
-    pub fn from(winsize: Winsize) -> PositionAndSize {
+impl From<Winsize> for PositionAndSize {
+    fn from(winsize: Winsize) -> PositionAndSize {
         PositionAndSize {
             columns: winsize.ws_col as usize,
             rows: winsize.ws_row as usize,
