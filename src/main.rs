@@ -183,6 +183,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
         send_screen_instructions.clone(),
+        send_plugin_instructions.clone(),
         os_input.clone(),
         opts.debug,
     );
@@ -438,21 +439,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                             .read(true)
                                             .write(true)
                                             .create(true)
-                                    }).unwrap()
+                                    })
+                                    .unwrap()
                                     .stdin(Box::new(input))
                                     .stdout(Box::new(output))
-                                    .finalize().unwrap();
+                                    .finalize()
+                                    .unwrap();
 
                                 let wasi = wasi_env.import_object(&module).unwrap();
                                 let mosaic = mosaic_imports(&store, &wasi_env);
-                                let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+                                let instance =
+                                    Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
                                 let start = instance.exports.get_function("_start").unwrap();
 
                                 // This eventually calls the `.init()` method
                                 start.call(&[]).unwrap();
 
-                                debug_log_to_file(format!("Loaded {}({}) from {}", instance.module().name().unwrap(), plugin_id, path.display())).unwrap();
                                 plugin_map.insert(plugin_id, (instance, wasi_env));
                                 pid_tx.send(plugin_id).unwrap();
                                 plugin_id += 1;
@@ -462,30 +465,37 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
 
                                 let draw = instance.exports.get_function("draw").unwrap();
 
-                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)]).unwrap();
+                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                                    .unwrap();
 
                                 buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
                             }
                             PluginInstruction::Input(pid, input_bytes) => {
                                 let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
 
-                                let handle_key = instance.exports.get_function("handle_key").unwrap();
+                                let handle_key =
+                                    instance.exports.get_function("handle_key").unwrap();
                                 for key in input_bytes.keys() {
                                     if let Ok(key) = key {
-                                        wasi_write_string(wasi_env, &serde_json::to_string(&key).unwrap());
+                                        wasi_write_string(
+                                            wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
                                         handle_key.call(&[]).unwrap();
                                     }
                                 }
 
-                                send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                                send_screen_instructions
+                                    .send(ScreenInstruction::Render)
+                                    .unwrap();
                             }
+                            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                             PluginInstruction::Quit => break,
-                            i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
                         }
                     }
                 }
-        }
-        ).unwrap(),
+            })
+            .unwrap(),
     );
 
     // TODO: currently we don't push this into active_threads

@@ -9,13 +9,13 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
-use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     errors::{ContextType, ErrorContext},
     panes::PaneId,
 };
+use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
@@ -158,6 +158,7 @@ pub enum PtyInstruction {
 
 pub struct PtyBus {
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
@@ -244,11 +245,13 @@ impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
             send_screen_instructions,
+            send_plugin_instructions,
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
@@ -291,9 +294,15 @@ impl PtyBus {
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
-        if let PaneId::Terminal(id) = id {
-            let child_pid = self.id_to_child_pid.get(&id).unwrap();
-            self.os_input.kill(*child_pid).unwrap();
+        match id {
+            PaneId::Terminal(id) => {
+                let child_pid = self.id_to_child_pid.get(&id).unwrap();
+                self.os_input.kill(*child_pid).unwrap();
+            }
+            PaneId::Plugin(pid) => self
+                .send_plugin_instructions
+                .send(PluginInstruction::Unload(pid))
+                .unwrap(),
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) {

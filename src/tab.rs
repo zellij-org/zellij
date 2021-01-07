@@ -1689,7 +1689,7 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
-        if let Some(terminal_to_close) = &self.panes.get(&id) {
+        if let Some(terminal_to_close) = self.panes.get(&id) {
             let terminal_to_close_width = terminal_to_close.columns();
             let terminal_to_close_height = terminal_to_close.rows();
             if let Some(terminals) = self.panes_to_the_left_between_aligning_borders(id) {
