@@ -357,34 +357,26 @@ impl Tab {
             // FIXME: This could use a second look
             if let PaneId::Terminal(term_pid) = pid {
                 // TODO: check minimum size of active terminal
-                let active_terminal_id = &self.get_active_terminal_id().unwrap();
-                let active_terminal = self
-                    .panes
-                    .get_mut(&PaneId::Terminal(*active_terminal_id))
-                    .unwrap();
+                let active_pane_id = &self.get_active_pane_id().unwrap();
+                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
                 let terminal_ws = PositionAndSize {
-                    x: active_terminal.x(),
-                    y: active_terminal.y(),
-                    rows: active_terminal.rows(),
-                    columns: active_terminal.columns(),
+                    x: active_pane.x(),
+                    y: active_pane.y(),
+                    rows: active_pane.rows(),
+                    columns: active_pane.columns(),
                 };
                 let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+
+                active_pane.change_pos_and_size(&top_winsize);
+
                 let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     bottom_winsize.columns as u16,
                     bottom_winsize.rows as u16,
                 );
-
-                active_terminal.change_pos_and_size(&top_winsize);
-
                 self.panes.insert(pid, Box::new(new_terminal));
-                let active_terminal_pid = self.get_active_terminal_id().unwrap();
-                self.os_api.set_terminal_size_using_fd(
-                    active_terminal_pid,
-                    top_winsize.columns as u16,
-                    top_winsize.rows as u16,
-                );
+
                 self.active_terminal = Some(pid);
                 self.render();
             }
@@ -411,18 +403,18 @@ impl Tab {
             // FIXME: This could use a second look
             if let PaneId::Terminal(term_pid) = pid {
                 // TODO: check minimum size of active terminal
-                let active_terminal_id = &self.get_active_terminal_id().unwrap();
-                let active_terminal = self
-                    .panes
-                    .get_mut(&PaneId::Terminal(*active_terminal_id))
-                    .unwrap();
+                let active_pane_id = &self.get_active_pane_id().unwrap();
+                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
                 let terminal_ws = PositionAndSize {
-                    x: active_terminal.x(),
-                    y: active_terminal.y(),
-                    rows: active_terminal.rows(),
-                    columns: active_terminal.columns(),
+                    x: active_pane.x(),
+                    y: active_pane.y(),
+                    rows: active_pane.rows(),
+                    columns: active_pane.columns(),
                 };
-                let (left_winszie, right_winsize) = split_vertically_with_gap(&terminal_ws);
+                let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
+
+                active_pane.change_pos_and_size(&left_winsize);
+
                 let new_terminal = TerminalPane::new(term_pid, right_winsize);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
@@ -430,21 +422,15 @@ impl Tab {
                     right_winsize.rows as u16,
                 );
 
-                active_terminal.change_pos_and_size(&left_winszie);
-
                 self.panes.insert(pid, Box::new(new_terminal));
-                let active_terminal_pid = self.get_active_terminal_id().unwrap();
-                self.os_api.set_terminal_size_using_fd(
-                    active_terminal_pid,
-                    left_winszie.columns as u16,
-                    left_winszie.rows as u16,
-                );
+
                 self.active_terminal = Some(pid);
                 self.render();
             }
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
+        // FIXME: Could use Option::map() here
         match self.get_active_pane_id() {
             Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
             None => None,

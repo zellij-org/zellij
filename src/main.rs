@@ -404,8 +404,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
             .unwrap(),
     );
 
-    // Here be dragons! This is very much a work in progress, and isn't quite functional
-    // yet. Stay tuned for more updates!
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
