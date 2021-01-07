@@ -1454,14 +1454,14 @@ dependencies = [
 
 [[package]]
 name = "termion"
-version = "1.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c22cec9d8978d906be5ac94bceb5a010d885c626c4c8855721a4dbd20e3ac905"
+version = "1.6.0"
+source = "git+https://gitlab.com/TheLostLambda/termion.git#70159e07c59c02dc681db3b38dea16c295610ffa"
 dependencies = [
  "libc",
  "numtoa",
  "redox_syscall",
  "redox_termios",
+ "serde",
 ]
 
 [[package]]

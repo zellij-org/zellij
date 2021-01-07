@@ -469,7 +469,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             let handle_key = instance.exports.get_function("handle_key").unwrap();
                             for key in input_bytes.keys() {
                                 if let Ok(key) = key {
-                                    dbg!(key);
+                                    dbg!(serde_json::to_string(&key));
                                 }
                             }
                         }

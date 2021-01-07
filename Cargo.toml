@@ -18,7 +18,7 @@ serde_yaml = "0.8"
 signal-hook = "0.1.10"
 strip-ansi-escapes = "0.1.0"
 structopt = "0.3"
-termion = "1.5.5"
+termion = { git = "https://gitlab.com/TheLostLambda/termion.git", features = ["serde"] }
 termios = "0.3"
 unicode-truncate = "0.1.1"
 unicode-width = "0.1.8"
@@ -32,3 +32,6 @@ features = ["unstable"]
 
 [dev-dependencies]
 insta = "0.16.1"
+
+[profile.release]
+lto = true
