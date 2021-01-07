@@ -16,8 +16,7 @@ pub enum PaneId {
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
     BuiltIn(u32),
 }
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
@@ -30,8 +29,7 @@ impl PositionAndSize {
         PositionAndSize {
             columns: winsize.ws_col as usize,
             rows: winsize.ws_row as usize,
-            x: winsize.ws_xpixel as usize,
-            y: winsize.ws_ypixel as usize,
+            ..Default::default()
         }
     }
 }
