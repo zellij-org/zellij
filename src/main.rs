@@ -13,7 +13,7 @@ impl MosaicTile for State {
     }
 
     fn draw(&mut self, rows: usize, cols: usize) {
-        for i in 0..rows - 1 {
+        for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
             }
@@ -39,23 +39,23 @@ impl MosaicTile for State {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Up => {
+    fn handle_key(&mut self, key: Key) {
+        match key {
+            Key::Up => {
                 *self.selected_mut() = self.selected().saturating_sub(1);
             }
-            KeyCode::Down => {
+            Key::Down => {
                 let next = self.selected().saturating_add(1);
                 *self.selected_mut() = min(self.files.len() - 1, next);
             }
-            KeyCode::Right | KeyCode::Enter => match self.files[self.selected()].clone() {
+            Key::Right | Key::Char('\n') => match self.files[self.selected()].clone() {
                 FsEntry::Dir(p, _) => {
                     self.path = p;
                     refresh_directory(self);
                 }
                 FsEntry::File(p, _) => open_file(&p),
             },
-            KeyCode::Left => {
+            Key::Left => {
                 self.path.pop();
                 refresh_directory(self);
             }
