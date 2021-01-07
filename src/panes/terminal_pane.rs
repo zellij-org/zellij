@@ -14,7 +14,6 @@ use crate::VteEvent;
 pub enum PaneId {
     Terminal(RawFd),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
-    BuiltIn(u32),
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {

@@ -297,6 +297,6 @@ impl PtyBus {
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) {
-        ids.iter().for_each(|id| self.close_pane(*id));
+        ids.iter().for_each(|&id| self.close_pane(id));
     }
 }
