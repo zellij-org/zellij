@@ -1,13 +1,11 @@
-mod keys;
 mod shim;
 
-pub use keys::*;
 pub use shim::*;
 
 pub trait MosaicTile {
     fn init(&mut self);
     fn draw(&mut self, rows: usize, cols: usize);
-    fn handle_key(&mut self, key: KeyEvent);
+    fn handle_key(&mut self, key: Key);
 }
 
 #[macro_export]
