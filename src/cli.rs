@@ -3,7 +3,7 @@ use structopt::StructOpt;
 
 #[derive(StructOpt, Debug, Default)]
 #[structopt(name = "mosaic")]
-pub struct Opt {
+pub struct CliArgs {
     /// Send "split (direction h == horizontal / v == vertical)" to active mosaic session
     #[structopt(short, long)]
     pub split: Option<char>,

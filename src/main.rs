@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-mod app;
 mod boundaries;
+mod cli;
 mod command_is_executing;
 mod errors;
 mod input;
@@ -25,7 +25,7 @@ use std::thread;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
-use crate::app::*;
+use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
 use crate::input::input_loop;
@@ -82,7 +82,7 @@ unsafe impl<T: Clone> Send for SenderWithContext<T> {}
 unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 pub fn main() {
-    let opts = Opt::from_args();
+    let opts = CliArgs::from_args();
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
