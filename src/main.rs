@@ -27,6 +27,7 @@ use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use termion::input::TermRead;
+use wasm_vm::PluginEnv;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
@@ -408,6 +409,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
         thread::Builder::new()
             .name("wasm".to_string())
             .spawn({
+                let mut send_pty_instructions = send_pty_instructions.clone();
                 let mut send_screen_instructions = send_screen_instructions.clone();
 
                 move || {
@@ -422,6 +424,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                             .expect("failed to receive event on channel");
                         err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
                         send_screen_instructions.update(err_ctx);
+                        send_pty_instructions.update(err_ctx);
                         match event {
                             PluginInstruction::Load(pid_tx, path) => {
                                 // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
@@ -445,7 +448,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                     .unwrap();
 
                                 let wasi = wasi_env.import_object(&module).unwrap();
-                                let mosaic = mosaic_imports(&store, &wasi_env);
+
+                                let plugin_env = PluginEnv {
+                                    send_pty_instructions: send_pty_instructions.clone(),
+                                    wasi_env,
+                                };
+
+                                let mosaic = mosaic_imports(&store, &plugin_env);
                                 let instance =
                                     Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
@@ -454,29 +463,29 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: Opt) {
                                 // This eventually calls the `.init()` method
                                 start.call(&[]).unwrap();
 
-                                plugin_map.insert(plugin_id, (instance, wasi_env));
+                                plugin_map.insert(plugin_id, (instance, plugin_env));
                                 pid_tx.send(plugin_id).unwrap();
                                 plugin_id += 1;
                             }
                             PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
-                                let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
                                 let draw = instance.exports.get_function("draw").unwrap();
 
                                 draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
                                     .unwrap();
 
-                                buf_tx.send(wasi_stdout(&wasi_env)).unwrap();
+                                buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                             }
                             PluginInstruction::Input(pid, input_bytes) => {
-                                let (instance, wasi_env) = plugin_map.get(&pid).unwrap();
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
                                 let handle_key =
                                     instance.exports.get_function("handle_key").unwrap();
                                 for key in input_bytes.keys() {
                                     if let Ok(key) = key {
                                         wasi_write_string(
-                                            wasi_env,
+                                            &plugin_env.wasi_env,
                                             &serde_json::to_string(&key).unwrap(),
                                         );
                                         handle_key.call(&[]).unwrap();
