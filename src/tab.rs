@@ -377,6 +377,14 @@ impl Tab {
                 );
                 self.panes.insert(pid, Box::new(new_terminal));
 
+                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                    self.os_api.set_terminal_size_using_fd(
+                        *active_terminal_pid,
+                        top_winsize.columns as u16,
+                        top_winsize.rows as u16,
+                    );
+                }
+
                 self.active_terminal = Some(pid);
                 self.render();
             }
@@ -421,8 +429,15 @@ impl Tab {
                     right_winsize.columns as u16,
                     right_winsize.rows as u16,
                 );
-
                 self.panes.insert(pid, Box::new(new_terminal));
+
+                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                    self.os_api.set_terminal_size_using_fd(
+                        *active_terminal_pid,
+                        left_winsize.columns as u16,
+                        left_winsize.rows as u16,
+                    );
+                }
 
                 self.active_terminal = Some(pid);
                 self.render();
