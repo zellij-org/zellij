@@ -8,9 +8,7 @@ const BIN_NAME: &str = "mosaic";
 fn main() {
     let mut clap_app = CliArgs::clap();
     println!("cargo:rerun-if-changed=src/app.rs");
-    let mut out_dir = std::env::var_os("CARGO_MANIFEST_DIR")
-        .unwrap()
-        .to_os_string();
+    let mut out_dir = std::env::var_os("CARGO_MANIFEST_DIR").unwrap();
     out_dir.push("/assets/completions");
 
     println!(

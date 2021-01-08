@@ -8,26 +8,35 @@ mod errors;
 mod input;
 mod layout;
 mod os_input_output;
+mod panes;
 mod pty_bus;
 mod screen;
 mod tab;
-mod terminal_pane;
 mod utils;
-#[cfg(feature = "wasm-wip")]
+
 mod wasm_vm;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
 
+use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use termion::input::TermRead;
+use wasm_vm::PluginEnv;
+use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::errors::{AppContext, ContextType, ErrorContext, PtyContext, ScreenContext};
+use crate::errors::{
+    AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext,
+};
 use crate::input::input_loop;
 use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
@@ -37,9 +46,9 @@ use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
-use std::cell::RefCell;
+use crate::wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
-thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::new(ErrorContext::new()));
+thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
 
 #[derive(Serialize, Deserialize, Debug)]
 enum ApiCommand {
@@ -48,6 +57,9 @@ enum ApiCommand {
     SplitVertically,
     MoveFocus,
 }
+
+pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
+pub type SyncChannelWithContext<T> = (SyncSender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
 
 #[derive(Clone)]
 enum SenderType<T: Clone> {
@@ -125,42 +137,34 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    os_input.into_raw_mode(0);
-    let (send_screen_instructions, receive_screen_instructions): (
-        Sender<(ScreenInstruction, ErrorContext)>,
-        Receiver<(ScreenInstruction, ErrorContext)>,
-    ) = channel();
+    os_input.set_raw_mode(0);
+    let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
+        ScreenInstruction,
+    > = channel();
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
-    let (send_pty_instructions, receive_pty_instructions): (
-        Sender<(PtyInstruction, ErrorContext)>,
-        Receiver<(PtyInstruction, ErrorContext)>,
-    ) = channel();
+
+    let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
+        channel();
     let mut send_pty_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
 
-    #[cfg(feature = "wasm-wip")]
-    use crate::wasm_vm::PluginInstruction;
-    #[cfg(feature = "wasm-wip")]
-    let (send_plugin_instructions, receive_plugin_instructions): (
-        Sender<(PluginInstruction, ErrorContext)>,
-        Receiver<(PluginInstruction, ErrorContext)>,
-    ) = channel();
-    #[cfg(feature = "wasm-wip")]
+    let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
+        PluginInstruction,
+    > = channel();
     let send_plugin_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
 
-    let (send_app_instructions, receive_app_instructions): (
-        SyncSender<(AppInstruction, ErrorContext)>,
-        Receiver<(AppInstruction, ErrorContext)>,
-    ) = sync_channel(0);
+    let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
+        sync_channel(0);
     let send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
         send_screen_instructions.clone(),
+        send_plugin_instructions.clone(),
         os_input.clone(),
         opts.debug,
     );
@@ -180,17 +184,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .name("pty".to_string())
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
-                #[cfg(feature = "wasm-wip")]
-                let send_plugin_instructions = send_plugin_instructions.clone();
                 move || {
                     if let Some(layout) = maybe_layout {
-                        #[cfg(feature = "wasm-wip")]
-                        for plugin_path in layout.list_plugins() {
-                            dbg!(send_plugin_instructions
-                                .send(PluginInstruction::Load(plugin_path.clone())))
-                            .unwrap();
-                        }
-
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
                         let pid = pty_bus.spawn_terminal(None);
@@ -212,21 +207,21 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::NewPane(pid))
+                                    .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::VerticalSplit(pid))
+                                    .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                                 let pid = pty_bus.spawn_terminal(file_to_open);
                                 pty_bus
                                     .send_screen_instructions
-                                    .send(ScreenInstruction::HorizontalSplit(pid))
+                                    .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                                     .unwrap();
                             }
                             PtyInstruction::NewTab => {
@@ -261,6 +256,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 let mut command_is_executing = command_is_executing.clone();
                 let os_input = os_input.clone();
                 let send_pty_instructions = send_pty_instructions.clone();
+                let send_plugin_instructions = send_plugin_instructions.clone();
                 let send_app_instructions = send_app_instructions.clone();
                 let max_panes = opts.max_panes;
 
@@ -268,6 +264,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     let mut screen = Screen::new(
                         receive_screen_instructions,
                         send_pty_instructions,
+                        send_plugin_instructions,
                         send_app_instructions,
                         &full_screen_ws,
                         os_input,
@@ -366,7 +363,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .toggle_active_terminal_fullscreen();
+                                    .toggle_active_pane_fullscreen();
                             }
                             ScreenInstruction::NewTab(pane_id) => {
                                 screen.new_tab(pane_id);
@@ -388,97 +385,104 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .unwrap(),
     );
 
-    // Here be dragons! This is very much a work in progress, and isn't quite functional
-    // yet. It's being left out of the tests because is slows them down massively (by
-    // recompiling a WASM module for every single test). Stay tuned for more updates!
-    #[cfg(feature = "wasm-wip")]
     active_threads.push(
         thread::Builder::new()
             .name("wasm".to_string())
-            .spawn(move || {
-                use crate::errors::PluginContext;
-                use crate::wasm_vm::{mosaic_imports, wasi_stdout};
-                use std::io;
-                use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-                use wasmer_wasi::{Pipe, WasiState};
+            .spawn({
+                let mut send_pty_instructions = send_pty_instructions.clone();
+                let mut send_screen_instructions = send_screen_instructions.clone();
 
-                let store = Store::default();
+                move || {
+                    let store = Store::default();
 
-                loop {
-                    let (event, mut err_ctx) = receive_plugin_instructions
-                        .recv()
-                        .expect("failed to receive event on channel");
-                    err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                    // FIXME: Clueless on how many of these lines I need...
-                    // screen.send_app_instructions.update(err_ctx);
-                    // screen.send_pty_instructions.update(err_ctx);
-                    match event {
-                        PluginInstruction::Load(path) => {
-                            // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                            let module = Module::from_file(&store, path).unwrap();
+                    let mut plugin_id = 0;
+                    let mut plugin_map = HashMap::new();
 
-                            let output = Pipe::new();
-                            let input = Pipe::new();
-                            let mut wasi_env = WasiState::new("mosaic")
-                                .env("CLICOLOR_FORCE", "1")
-                                .preopen(|p| {
-                                    p.directory(".") // FIXME: Change this to a more meaningful dir
-                                        .alias(".")
-                                        .read(true)
-                                        .write(true)
-                                        .create(true)
-                                }).unwrap()
-                                .stdin(Box::new(input))
-                                .stdout(Box::new(output))
-                                .finalize().unwrap();
+                    loop {
+                        let (event, mut err_ctx) = receive_plugin_instructions
+                            .recv()
+                            .expect("failed to receive event on channel");
+                        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                        send_screen_instructions.update(err_ctx);
+                        send_pty_instructions.update(err_ctx);
+                        match event {
+                            PluginInstruction::Load(pid_tx, path) => {
+                                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                                let module = Module::from_file(&store, &path).unwrap();
 
-                            let wasi = wasi_env.import_object(&module).unwrap();
-                            let mosaic = mosaic_imports(&store, &wasi_env);
-                            let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+                                let output = Pipe::new();
+                                let input = Pipe::new();
+                                let mut wasi_env = WasiState::new("mosaic")
+                                    .env("CLICOLOR_FORCE", "1")
+                                    .preopen(|p| {
+                                        p.directory(".") // FIXME: Change this to a more meaningful dir
+                                            .alias(".")
+                                            .read(true)
+                                            .write(true)
+                                            .create(true)
+                                    })
+                                    .unwrap()
+                                    .stdin(Box::new(input))
+                                    .stdout(Box::new(output))
+                                    .finalize()
+                                    .unwrap();
 
-                            let start = instance.exports.get_function("_start").unwrap();
-                            let handle_key = instance.exports.get_function("handle_key").unwrap();
-                            let draw = instance.exports.get_function("draw").unwrap();
+                                let wasi = wasi_env.import_object(&module).unwrap();
 
-                            // This eventually calls the `.init()` method
-                            start.call(&[]).unwrap();
+                                let plugin_env = PluginEnv {
+                                    send_pty_instructions: send_pty_instructions.clone(),
+                                    wasi_env,
+                                };
 
-                            #[warn(clippy::never_loop)]
-                            loop {
-                                let (cols, rows) = (80, 24); //terminal::size()?;
-                                draw.call(&[Value::I32(rows), Value::I32(cols)]).unwrap();
+                                let mosaic = mosaic_imports(&store, &plugin_env);
+                                let instance =
+                                    Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
-                                // Needed because raw mode doesn't implicitly return to the start of the line
-                                write!(
-                                    io::stdout(),
-                                    "{}\n\r",
-                                    wasi_stdout(&wasi_env)
-                                        .lines()
-                                        .collect::<Vec<_>>()
-                                        .join("\n\r")
-                                ).unwrap();
+                                let start = instance.exports.get_function("_start").unwrap();
 
-                                /* match event::read().unwrap() {
-                                    Event::Key(KeyEvent {
-                                        code: KeyCode::Char('q'),
-                                        ..
-                                    }) => break,
-                                    Event::Key(e) => {
-                                        wasi_write_string(&wasi_env, serde_json::to_string(&e).unwrap());
-                                        handle_key.call(&[])?;
-                                    }
-                                    _ => (),
-                                } */
-                                break;
+                                // This eventually calls the `.init()` method
+                                start.call(&[]).unwrap();
+
+                                plugin_map.insert(plugin_id, (instance, plugin_env));
+                                pid_tx.send(plugin_id).unwrap();
+                                plugin_id += 1;
                             }
-                            debug_log_to_file("WASM module loaded and exited cleanly :)".to_string()).unwrap();
+                            PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                                let draw = instance.exports.get_function("draw").unwrap();
+
+                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                                    .unwrap();
+
+                                buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                            }
+                            PluginInstruction::Input(pid, input_bytes) => {
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                                let handle_key =
+                                    instance.exports.get_function("handle_key").unwrap();
+                                for key in input_bytes.keys() {
+                                    if let Ok(key) = key {
+                                        wasi_write_string(
+                                            &plugin_env.wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
+                                        handle_key.call(&[]).unwrap();
+                                    }
+                                }
+
+                                send_screen_instructions
+                                    .send(ScreenInstruction::Render)
+                                    .unwrap();
+                            }
+                            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+                            PluginInstruction::Quit => break,
                         }
-                        PluginInstruction::Quit => break,
-                        i => panic!("Yo, dawg, nice job calling the wasm thread!\n {:?} is defo not implemented yet...", i),
                     }
                 }
-            }
-        ).unwrap(),
+            })
+            .unwrap(),
     );
 
     // TODO: currently we don't push this into active_threads
@@ -572,14 +576,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
+
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                #[cfg(feature = "wasm-wip")]
+
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);

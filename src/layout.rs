@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,
@@ -61,8 +61,11 @@ fn split_space_to_parts_horizontally(
     split_parts
 }
 
-fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<PositionAndSize> {
-    let mut pane_positions: Vec<PositionAndSize> = vec![];
+fn split_space(
+    space_to_split: &PositionAndSize,
+    layout: &Layout,
+) -> Vec<(Layout, PositionAndSize)> {
+    let mut pane_positions = Vec::new();
     let percentages: Vec<u8> = layout
         .parts
         .iter()
@@ -88,7 +91,7 @@ fn split_space(space_to_split: &PositionAndSize, layout: &Layout) -> Vec<Positio
             let mut part_positions = split_space(&part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {
-            pane_positions.push(*part_position_and_size);
+            pane_positions.push((part.clone(), *part_position_and_size));
         }
     }
     pane_positions
@@ -165,27 +168,22 @@ impl Layout {
             panic!("The total percent for each part should equal 100.");
         }
     }
-    pub fn total_panes(&self) -> usize {
+
+    pub fn total_terminal_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
         for part in self.parts.iter() {
-            total_panes += part.total_panes();
+            if part.plugin.is_none() {
+                total_panes += part.total_terminal_panes();
+            }
         }
         total_panes
     }
 
-    // FIXME: I probably shouldn't exist, much less with PathBuf (use &Path)
-    #[cfg(feature = "wasm-wip")]
-    pub fn list_plugins(&self) -> Vec<&PathBuf> {
-        dbg!(&self);
-        let mut plugins: Vec<_> = self.parts.iter().flat_map(Layout::list_plugins).collect();
-        if let Some(path) = &self.plugin {
-            plugins.push(path);
-        }
-        plugins
-    }
-
-    pub fn position_panes_in_space(&self, space: &PositionAndSize) -> Vec<PositionAndSize> {
+    pub fn position_panes_in_space(
+        &self,
+        space: &PositionAndSize,
+    ) -> Vec<(Layout, PositionAndSize)> {
         split_space(space, &self)
     }
 }

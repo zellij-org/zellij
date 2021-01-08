@@ -1,7 +1,10 @@
 use std::collections::VecDeque;
-use std::fmt::{self, Debug, Formatter};
+use std::{
+    cmp::max,
+    fmt::{self, Debug, Formatter},
+};
 
-use crate::terminal_pane::terminal_character::{
+use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 
@@ -341,10 +344,8 @@ impl Scroll {
                 if lines_to_skip > 0 {
                     lines_to_skip -= 1;
                 } else {
-                    for _ in line.len()..self.total_columns {
-                        // pad line if needed
-                        line.push(EMPTY_TERMINAL_CHARACTER);
-                    }
+                    // pad line if needed
+                    line.resize(self.total_columns, EMPTY_TERMINAL_CHARACTER);
                     lines.push_front(line);
                 }
                 if lines.len() == self.lines_in_view {
@@ -477,9 +478,14 @@ impl Scroll {
             count
         };
 
-        for _ in current_fragment.characters.len()..current_cursor_column_position + move_count {
-            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
-        }
+        current_fragment.characters.resize(
+            max(
+                current_fragment.characters.len(),
+                current_cursor_column_position + move_count,
+            ),
+            EMPTY_TERMINAL_CHARACTER,
+        );
+
         self.cursor_position.move_forward(move_count);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
@@ -645,9 +651,10 @@ impl Scroll {
             .get_mut(current_line_wrap_position)
             .expect("cursor out of bounds");
 
-        for _ in current_fragment.characters.len()..col {
-            current_fragment.characters.push(EMPTY_TERMINAL_CHARACTER);
-        }
+        current_fragment.characters.resize(
+            max(current_fragment.characters.len(), col),
+            EMPTY_TERMINAL_CHARACTER,
+        );
         self.cursor_position.move_to_column(col);
     }
     pub fn move_cursor_to_column(&mut self, col: usize) {
@@ -680,9 +687,7 @@ impl Scroll {
         self.scroll_region = None;
     }
     fn scroll_region_absolute_indices(&mut self) -> Option<(usize, usize)> {
-        if self.scroll_region.is_none() {
-            return None;
-        };
+        self.scroll_region?;
         if self.canonical_lines.len() > self.lines_in_view {
             let absolute_top = self.canonical_lines.len() - 1 - self.lines_in_view;
             let absolute_bottom = self.canonical_lines.len() - 1;

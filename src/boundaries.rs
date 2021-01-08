@@ -372,7 +372,7 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &Box<dyn Pane>) {
+    pub fn add_rect(&mut self, rect: &dyn Pane) {
         if self.rect_right_boundary_is_before_screen_edge(rect) {
             // let boundary_x_coords = self.rect_right_boundary_x_coords(rect);
             let boundary_x_coords = rect.right_boundary_x_coords();
@@ -429,20 +429,20 @@ impl Boundaries {
         }
         vte_output
     }
-    fn rect_right_boundary_is_before_screen_edge(&self, rect: &Box<dyn Pane>) -> bool {
+    fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.x() + rect.columns() < self.columns
     }
-    fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &Box<dyn Pane>) -> bool {
+    fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.y() + rect.rows() < self.rows
     }
-    fn rect_right_boundary_row_start(&self, rect: &Box<dyn Pane>) -> usize {
+    fn rect_right_boundary_row_start(&self, rect: &dyn Pane) -> usize {
         if rect.y() == 0 {
             0
         } else {
             rect.y() - 1
         }
     }
-    fn rect_right_boundary_row_end(&self, rect: &Box<dyn Pane>) -> usize {
+    fn rect_right_boundary_row_end(&self, rect: &dyn Pane) -> usize {
         let rect_bottom_row = rect.y() + rect.rows();
         // we do this because unless we're on the screen edge, we'd like to go one extra row to
         // connect to whatever boundary is beneath us
@@ -452,14 +452,14 @@ impl Boundaries {
             rect_bottom_row + 1
         }
     }
-    fn rect_bottom_boundary_col_start(&self, rect: &Box<dyn Pane>) -> usize {
+    fn rect_bottom_boundary_col_start(&self, rect: &dyn Pane) -> usize {
         if rect.x() == 0 {
             0
         } else {
             rect.x() - 1
         }
     }
-    fn rect_bottom_boundary_col_end(&self, rect: &Box<dyn Pane>) -> usize {
+    fn rect_bottom_boundary_col_end(&self, rect: &dyn Pane) -> usize {
         let rect_right_col = rect.x() + rect.columns();
         // we do this because unless we're on the screen edge, we'd like to go one extra column to
         // connect to whatever boundary is right of us

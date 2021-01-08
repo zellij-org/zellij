@@ -1,17 +1,22 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, SenderWithContext, OPENCALLS};
-use backtrace::Backtrace;
+use crate::{AppInstruction, OPENCALLS};
+
 use std::fmt::{Display, Error, Formatter};
-use std::panic::PanicInfo;
-use std::{process, thread};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
+#[cfg(not(test))]
+use crate::SenderWithContext;
+#[cfg(not(test))]
+use std::panic::PanicInfo;
+#[cfg(not(test))]
 pub fn handle_panic(
     info: &PanicInfo<'_>,
     send_app_instructions: &SenderWithContext<AppInstruction>,
 ) {
+    use backtrace::Backtrace;
+    use std::{process, thread};
     let backtrace = Backtrace::new();
     let thread = thread::current();
     let thread = thread.name().unwrap_or("unnamed");
@@ -84,6 +89,12 @@ impl ErrorContext {
     }
 }
 
+impl Default for ErrorContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Display for ErrorContext {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         writeln!(f, "Originating Thread(s):")?;
@@ -101,7 +112,7 @@ impl Display for ErrorContext {
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
-    #[cfg(feature = "wasm-wip")]
+
     Plugin(PluginContext),
     App(AppContext),
     IPCServer,
@@ -117,7 +128,7 @@ impl Display for ContextType {
         match *self {
             ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
             ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
-            #[cfg(feature = "wasm-wip")]
+
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
             ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
             ContextType::IPCServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
@@ -225,21 +236,24 @@ impl From<&PtyInstruction> for PtyContext {
 }
 
 // FIXME: This whole pattern *needs* a macro eventually, it's soul-crushing to write
-#[cfg(feature = "wasm-wip")]
+
 use crate::wasm_vm::PluginInstruction;
-#[cfg(feature = "wasm-wip")]
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginContext {
     Load,
+    Draw,
+    Input,
     Unload,
     Quit,
 }
 
-#[cfg(feature = "wasm-wip")]
 impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
-            PluginInstruction::Load(_) => PluginContext::Load,
+            PluginInstruction::Load(..) => PluginContext::Load,
+            PluginInstruction::Draw(..) => PluginContext::Draw,
+            PluginInstruction::Input(..) => PluginContext::Input,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
         }
