@@ -1,6 +1,6 @@
 [package]
 name = "mosaic-tile"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2018"
 description = "A small client-side library for writing mosaic plugins (tiles)"
