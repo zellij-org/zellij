@@ -1,5 +1,7 @@
 /// Module for handling input
 use crate::errors::ContextType;
+use crate::input::actions::Action;
+use crate::input::keybinds::get_default_keybinds;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
@@ -7,6 +9,9 @@ use crate::CommandIsExecuting;
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
 use strum_macros::EnumIter;
+use termion::input::TermReadEventsAndRaw;
+
+use super::keybinds::key_to_action;
 
 struct InputHandler {
     mode: InputMode,
@@ -42,222 +47,146 @@ impl InputHandler {
         self.send_pty_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
-        loop {
-            match self.mode {
-                InputMode::Normal => self.read_normal_mode(),
-                InputMode::Command => self.read_command_mode(false),
-                InputMode::CommandPersistent => self.read_command_mode(true),
-                InputMode::Exiting => {
-                    self.exit();
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Read input to the terminal (or switch to command mode)
-    fn read_normal_mode(&mut self) {
-        assert_eq!(self.mode, InputMode::Normal);
-
-        loop {
-            let stdin_buffer = self.os_input.read_from_stdin();
-            match stdin_buffer.as_slice() {
-                [7] => {
-                    // ctrl-g
-                    self.mode = InputMode::Command;
-                    return;
-                }
-                _ => {
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ClearScroll)
-                        .unwrap();
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::WriteCharacter(stdin_buffer))
-                        .unwrap();
-                }
-            }
-        }
-    }
-
-    /// Read input and parse it as commands for mosaic
-    fn read_command_mode(&mut self, persistent: bool) {
-        //@@@khs26 Add a powerbar type thing that we can write output to
-        if persistent {
-            assert_eq!(self.mode, InputMode::CommandPersistent);
-        } else {
-            assert_eq!(self.mode, InputMode::Command);
-        }
-
-        loop {
-            let stdin_buffer = self.os_input.read_from_stdin();
-            // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
-            // debug_log_to_file(format!("buffer {:?}", stdin_buffer));
-
-            match stdin_buffer.as_slice() {
-                [7] => {
-                    // Ctrl-g
-                    // If we're in command mode, this will let us switch to persistent command mode, to execute
-                    // multiple commands. If we're already in persistent mode, it'll return us to normal mode.
-                    match self.mode {
-                        InputMode::Command => self.mode = InputMode::CommandPersistent,
-                        InputMode::CommandPersistent => {
-                            self.mode = InputMode::Normal;
-                            return;
-                        }
-                        _ => panic!(),
+        if let Ok(keybinds) = get_default_keybinds() {
+            loop {
+                //@@@ I think this should actually just iterate over stdin directly
+                let stdin_buffer = self.os_input.read_from_stdin();
+                for key_result in stdin_buffer.events_and_raw() {
+                    match key_result {
+                        Ok((event, raw_bytes)) => match event {
+                            termion::event::Event::Key(key) => {
+                                let should_break = self.dispatch_action(key_to_action(
+                                    &key, raw_bytes, &self.mode, &keybinds,
+                                ));
+                                if should_break {
+                                    break;
+                                }
+                            }
+                            termion::event::Event::Mouse(_)
+                            | termion::event::Event::Unsupported(_) => {
+                                unimplemented!("Mouse and unsupported events aren't supported!");
+                            }
+                        },
+                        Err(err) => panic!("Encountered read error: {:?}", err),
                     }
                 }
-                [27] => {
-                    // Esc
-                    self.mode = InputMode::Normal;
-                    return;
-                }
-                [106] => {
-                    // j
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeDown)
-                        .unwrap();
-                }
-                [107] => {
-                    // k
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeUp)
-                        .unwrap();
-                }
-                [112] => {
-                    // p
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocus)
-                        .unwrap();
-                }
-                [104] => {
-                    // h
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeLeft)
-                        .unwrap();
-                }
-                [108] => {
-                    // l
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ResizeRight)
-                        .unwrap();
-                }
-                [122] => {
-                    // z
-                    self.command_is_executing.opening_new_pane();
-                    self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminal(None))
-                        .unwrap();
-                    self.command_is_executing.wait_until_new_pane_is_opened();
-                }
-                [110] => {
-                    // n
-                    self.command_is_executing.opening_new_pane();
-                    self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalVertically(None))
-                        .unwrap();
-                    self.command_is_executing.wait_until_new_pane_is_opened();
-                }
-                [98] => {
-                    // b
-                    self.command_is_executing.opening_new_pane();
-                    self.send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                        .unwrap();
-                    self.command_is_executing.wait_until_new_pane_is_opened();
-                }
-                [113] => {
-                    // q
-                    self.mode = InputMode::Exiting;
-                    return;
-                }
-                [27, 91, 53, 126] => {
-                    // PgUp
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ScrollUp)
-                        .unwrap();
-                }
-                [27, 91, 54, 126] => {
-                    // PgDown
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ScrollDown)
-                        .unwrap();
-                }
-                [120] => {
-                    // x
-                    self.command_is_executing.closing_pane();
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::CloseFocusedPane)
-                        .unwrap();
-                    self.command_is_executing.wait_until_pane_is_closed();
-                }
-                [101] => {
-                    // e
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
-                        .unwrap();
-                }
-                [121] => {
-                    // y
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusLeft)
-                        .unwrap()
-                }
-                [117] => {
-                    // u
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusDown)
-                        .unwrap()
-                }
-                [105] => {
-                    // i
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusUp)
-                        .unwrap()
-                }
-                [111] => {
-                    // o
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::MoveFocusRight)
-                        .unwrap()
-                }
-                [49] => {
-                    // 1
-                    self.command_is_executing.opening_new_pane();
-                    self.send_pty_instructions
-                        .send(PtyInstruction::NewTab)
-                        .unwrap();
-                    self.command_is_executing.wait_until_new_pane_is_opened();
-                }
-                [50] => {
-                    // 2
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::SwitchTabPrev)
-                        .unwrap()
-                }
-                [51] => {
-                    // 3
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::SwitchTabNext)
-                        .unwrap()
-                }
-                [52] => {
-                    // 4
-                    self.command_is_executing.closing_pane();
-                    self.send_screen_instructions
-                        .send(ScreenInstruction::CloseTab)
-                        .unwrap();
-                    self.command_is_executing.wait_until_pane_is_closed();
-                }
-                //@@@khs26 Write this to the powerbar?
-                _ => {}
             }
+        } else {
+            //@@@ Error handling?
+            self.exit();
+        }
+    }
 
-            if self.mode == InputMode::Command {
-                self.mode = InputMode::Normal;
-                return;
+    fn dispatch_action(&mut self, action: &Action) -> bool {
+        let mut interrupt_loop = false;
+
+        match action {
+            Action::Write(val) => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::ClearScroll)
+                    .unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::WriteCharacter(*val))
+                    .unwrap();
+            }
+            Action::Quit => {
+                self.exit();
+                interrupt_loop = true;
+            }
+            Action::SwitchToMode(mode) => {
+                self.mode = *mode;
+            }
+            Action::Resize(direction) => {
+                let screen_instr = match direction {
+                    super::actions::Direction::Left => ScreenInstruction::ResizeLeft,
+                    super::actions::Direction::Right => ScreenInstruction::ResizeRight,
+                    super::actions::Direction::Up => ScreenInstruction::ResizeUp,
+                    super::actions::Direction::Down => ScreenInstruction::ResizeDown,
+                };
+                self.send_screen_instructions.send(screen_instr).unwrap();
+            }
+            Action::SwitchFocus(_) => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::MoveFocus)
+                    .unwrap();
+            }
+            Action::MoveFocus(direction) => {
+                let screen_instr = match direction {
+                    super::actions::Direction::Left => ScreenInstruction::MoveFocusLeft,
+                    super::actions::Direction::Right => ScreenInstruction::MoveFocusRight,
+                    super::actions::Direction::Up => ScreenInstruction::MoveFocusUp,
+                    super::actions::Direction::Down => ScreenInstruction::MoveFocusDown,
+                };
+                self.send_screen_instructions.send(screen_instr).unwrap();
+            }
+            Action::ScrollUp => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::ScrollUp)
+                    .unwrap();
+            }
+            Action::ScrollDown => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::ScrollDown)
+                    .unwrap();
+            }
+            Action::ToggleFocusFullscreen => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                    .unwrap();
+            }
+            Action::NewPane(direction) => {
+                let pty_instr = match direction {
+                    super::actions::Direction::Left => {
+                        PtyInstruction::SpawnTerminalVertically(None)
+                    }
+                    super::actions::Direction::Right => {
+                        PtyInstruction::SpawnTerminalVertically(None)
+                    }
+                    super::actions::Direction::Up => {
+                        PtyInstruction::SpawnTerminalHorizontally(None)
+                    }
+                    super::actions::Direction::Down => {
+                        PtyInstruction::SpawnTerminalHorizontally(None)
+                    }
+                };
+                self.command_is_executing.opening_new_pane();
+                self.send_pty_instructions.send(pty_instr).unwrap();
+                self.command_is_executing.wait_until_new_pane_is_opened();
+            }
+            Action::CloseFocus => {
+                self.command_is_executing.closing_pane();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::CloseFocusedPane)
+                    .unwrap();
+                self.command_is_executing.wait_until_pane_is_closed();
+            }
+            Action::NewTab => {
+                self.command_is_executing.opening_new_pane();
+                self.send_pty_instructions
+                    .send(PtyInstruction::NewTab)
+                    .unwrap();
+                self.command_is_executing.wait_until_new_pane_is_opened();
+            }
+            Action::GoToNextTab => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::SwitchTabNext)
+                    .unwrap();
+            }
+            Action::GoToPreviousTab => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::SwitchTabPrev)
+                    .unwrap();
+            }
+            Action::CloseTab => {
+                self.command_is_executing.closing_pane();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::CloseTab)
+                    .unwrap();
+                self.command_is_executing.wait_until_pane_is_closed();
             }
         }
+
+        interrupt_loop
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
@@ -282,14 +211,11 @@ impl InputHandler {
 ///   back to normal mode
 /// - Persistent command mode is the same as command mode, but doesn't return automatically to
 ///   normal mode
-/// - Exiting means that we should start the shutdown process for mosaic or the given
-///   input handler
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter)]
 pub enum InputMode {
     Normal,
     Command,
     CommandPersistent,
-    Exiting,
 }
 
 /// Entry point to the module that instantiates a new InputHandler and calls its

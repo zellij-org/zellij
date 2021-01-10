@@ -12,12 +12,16 @@ pub enum Direction {
 pub enum Action {
     /// Quit mosaic
     Quit,
+    /// Write to terminal
+    Write(Vec<u8>),
     /// Switch to the specified input mode
-    ToMode(handler::InputMode),
+    SwitchToMode(handler::InputMode),
     /// Resize focus pane in specified direction
     Resize(Direction),
     /// Switch focus to next pane in specified direction
     SwitchFocus(Direction),
+    /// Move the focus pane in specified direction
+    MoveFocus(Direction),
     /// Scroll up in focus pane
     ScrollUp,
     /// Scroll down in focus pane
@@ -28,4 +32,12 @@ pub enum Action {
     NewPane(Direction),
     /// Close focus pane
     CloseFocus,
+    // Create a new tab
+    NewTab,
+    // Go to next tab
+    GoToNextTab,
+    // Go to previous tab
+    GoToPreviousTab,
+    // Close the current tab
+    CloseTab,
 }

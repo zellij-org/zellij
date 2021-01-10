@@ -110,7 +110,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "miniz_oxide",
- "object 0.22.0",
+ "object",
  "rustc-demangle",
 ]
 
@@ -341,7 +341,7 @@ dependencies = [
  "const_fn",
  "crossbeam-utils 0.8.0",
  "lazy_static",
- "memoffset",
+ "memoffset 0.5.6",
  "scopeguard",
 ]
 
@@ -494,9 +494,9 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "funty"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba62103ce691c2fd80fbae2213dfdda9ce60804973ac6b6e97de818ea7f52c8"
+checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 
 [[package]]
 name = "futures"
@@ -864,10 +864,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
 
 [[package]]
+name = "memmap2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e73be3b7d04a0123e933fea1d50d126cc7196bbc0362c0ce426694f777194eee"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "memoffset"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "157b4208e3059a8f9e78d559edc658e13df41410cb3ae03979c83130067fdd87"
 dependencies = [
  "autocfg",
 ]
@@ -908,6 +926,7 @@ dependencies = [
  "structopt",
  "strum",
  "strum_macros",
+ "termion",
  "termios",
  "unicode-truncate",
  "unicode-width",
@@ -961,20 +980,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "object"
-version = "0.21.1"
+name = "numtoa"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37fd5004feb2ce328a52b0b3d01dbf4ffff72583493900ed15f22d4111c51693"
-dependencies = [
- "crc32fast",
- "indexmap",
-]
+checksum = "b8f8bdf33df195859076e54ab11ee78a1b208382d3a26ec40d142ffc1ecc49ef"
 
 [[package]]
 name = "object"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
+dependencies = [
+ "crc32fast",
+ "indexmap",
+]
 
 [[package]]
 name = "once_cell"
@@ -1174,6 +1193,15 @@ name = "redox_syscall"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
+
+[[package]]
+name = "redox_termios"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e891cfe48e9100a70a3b6eb652fef28920c117d366339687bd5576160db0f76"
+dependencies = [
+ "redox_syscall",
+]
 
 [[package]]
 name = "regalloc"
@@ -1498,6 +1526,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "termion"
+version = "1.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c22cec9d8978d906be5ac94bceb5a010d885c626c4c8855721a4dbd20e3ac905"
+dependencies = [
+ "libc",
+ "numtoa",
+ "redox_syscall",
+ "redox_termios",
+]
+
+[[package]]
 name = "termios"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1761,8 +1801,8 @@ checksum = "93b162580e34310e5931c4b792560108b10fd14d64915d7fff8ff00180e70092"
 
 [[package]]
 name = "wasmer"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "cfg-if 0.1.10",
  "indexmap",
@@ -1771,6 +1811,7 @@ dependencies = [
  "thiserror",
  "wasmer-compiler",
  "wasmer-compiler-cranelift",
+ "wasmer-derive",
  "wasmer-engine",
  "wasmer-engine-jit",
  "wasmer-engine-native",
@@ -1782,8 +1823,8 @@ dependencies = [
 
 [[package]]
 name = "wasmer-compiler"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "enumset",
  "raw-cpuid",
@@ -1799,8 +1840,8 @@ dependencies = [
 
 [[package]]
 name = "wasmer-compiler-cranelift"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "cranelift-codegen",
  "cranelift-frontend",
@@ -1816,13 +1857,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmer-derive"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "wasmer-engine"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "backtrace",
  "bincode",
  "lazy_static",
+ "memmap2",
  "more-asserts",
  "rustc-demangle",
  "serde",
@@ -1836,8 +1889,8 @@ dependencies = [
 
 [[package]]
 name = "wasmer-engine-jit"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "bincode",
  "cfg-if 0.1.10",
@@ -1853,8 +1906,8 @@ dependencies = [
 
 [[package]]
 name = "wasmer-engine-native"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "bincode",
  "cfg-if 0.1.10",
@@ -1873,10 +1926,10 @@ dependencies = [
 
 [[package]]
 name = "wasmer-object"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
- "object 0.21.1",
+ "object",
  "thiserror",
  "wasmer-compiler",
  "wasmer-types",
@@ -1884,24 +1937,25 @@ dependencies = [
 
 [[package]]
 name = "wasmer-types"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "cranelift-entity",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
 name = "wasmer-vm"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "backtrace",
  "cc",
  "cfg-if 0.1.10",
  "indexmap",
  "libc",
- "memoffset",
+ "memoffset 0.6.1",
  "more-asserts",
  "region",
  "serde",
@@ -1912,8 +1966,8 @@ dependencies = [
 
 [[package]]
 name = "wasmer-wasi"
-version = "1.0.0-alpha5"
-source = "git+https://github.com/wasmerio/wasmer.git#5e2dc65463a49b08c14bf9fb48eb45fa7d79d4c2"
+version = "1.0.0"
+source = "git+https://github.com/wasmerio/wasmer.git#d711c84458564166a8f3cc298a14d4ddfbea1da3"
 dependencies = [
  "bincode",
  "byteorder",
