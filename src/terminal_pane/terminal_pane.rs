@@ -434,6 +434,8 @@ impl vte::Perform for TerminalPane {
                 char_to_replace.styles = self.pending_styles;
                 self.grid
                     .replace_characters_in_line_before_cursor(char_to_replace);
+            } else if params[0] == 2 {
+                self.grid.clear_cursor_line();
             }
         // TODO: implement 2
         } else if c == 'J' {

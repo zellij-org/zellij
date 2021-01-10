@@ -254,7 +254,18 @@ impl Grid {
                 } else if row.is_canonical {
                     viewport_canonical_lines.push(row);
                 } else {
-                    viewport_canonical_lines.last_mut().unwrap().append(&mut row.columns);
+                    match viewport_canonical_lines.last_mut() {
+                        Some(last_line) => {
+                            last_line.append(&mut row.columns);
+                        },
+                        None => {
+                            // the state is corrupted somehow
+                            // this is a bug and I'm not yet sure why it happens
+                            // usually it fixes itself and is a result of some race
+                            // TODO: investigate why this happens and solve it
+                            return;
+                        }
+                    }
                 }
             }
             let mut new_viewport_rows = vec![];
@@ -316,7 +327,9 @@ impl Grid {
         }
         self.height = new_rows;
         self.width = new_columns;
-        self.set_scroll_region_to_viewport_size();
+        if self.scroll_region.is_some() {
+            self.set_scroll_region_to_viewport_size();
+        }
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         let mut lines: Vec<Vec<TerminalCharacter>> = self.viewport.iter().map(|r| {
@@ -454,6 +467,9 @@ impl Grid {
         self.viewport.get_mut(self.cursor.y).unwrap().truncate(self.cursor.x);
         self.viewport.truncate(self.cursor.y + 1);
     }
+    pub fn clear_cursor_line(&mut self) {
+        self.viewport.get_mut(self.cursor.y).unwrap().truncate(0);
+    }
     pub fn clear_all(&mut self) {
         self.viewport.clear();
         self.viewport.push(Row::new().canonical());
@@ -497,11 +513,20 @@ impl Grid {
         }
     }
     pub fn move_cursor_down(&mut self, count: usize) {
-        self.cursor.y = if self.cursor.y + count > self.height {
-            self.height
+        let lines_to_add = if self.cursor.y + count > self.height - 1 {
+            (self.cursor.y + count) - (self.height - 1)
+        } else {
+            0
+        };
+        self.cursor.y = if self.cursor.y + count > self.height - 1 {
+            self.height - 1
         } else {
             self.cursor.y + count
         };
+        for _ in 0..lines_to_add {
+            self.add_canonical_line();
+        }
+        self.pad_lines_until(self.cursor.y);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
         if self.cursor.x < count {
