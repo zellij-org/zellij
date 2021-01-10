@@ -458,17 +458,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                             }
                             PluginInstruction::Input(pid, input_bytes) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                                let handle_key =
-                                    instance.exports.get_function("handle_key").unwrap();
-                                for key in input_bytes.keys() {
-                                    if let Ok(key) = key {
-                                        wasi_write_string(
-                                            &plugin_env.wasi_env,
-                                            &serde_json::to_string(&key).unwrap(),
-                                        );
-                                        handle_key.call(&[]).unwrap();
+                                // FIXME: Set up an event subscription system, and timed callbacks
+                                for (&id, (instance, plugin_env)) in &plugin_map {
+                                    let handler = if PaneId::Plugin(id) == pid {
+                                        "handle_key"
+                                    } else {
+                                        "handle_global_key"
+                                    };
+                                    let handler = instance.exports.get_function(handler).unwrap();
+                                    for key in input_bytes.keys() {
+                                        if let Ok(key) = key {
+                                            wasi_write_string(
+                                                &plugin_env.wasi_env,
+                                                &serde_json::to_string(&key).unwrap(),
+                                            );
+                                            handler.call(&[]).unwrap();
+                                        }
                                     }
                                 }
 

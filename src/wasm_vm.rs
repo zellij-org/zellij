@@ -2,13 +2,13 @@ use std::{path::PathBuf, sync::mpsc::Sender};
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
-use crate::{pty_bus::PtyInstruction, SenderWithContext};
+use crate::{panes::PaneId, pty_bus::PtyInstruction, SenderWithContext};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(Sender<u32>, PathBuf),
     Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Input(u32, Vec<u8>),                     // plugin id, input bytes
+    Input(PaneId, Vec<u8>),                  // pane id, input bytes
     Unload(u32),
     Quit,
 }
