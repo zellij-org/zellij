@@ -274,7 +274,11 @@ impl Grid {
                 new_cursor_y += rows_pulled;
             } else if current_viewport_row_count > self.height {
                 let row_count_to_transfer = current_viewport_row_count - self.height;
-                new_cursor_y -= row_count_to_transfer;
+                if row_count_to_transfer > new_cursor_y {
+                    new_cursor_y = 0;
+                } else {
+                    new_cursor_y -= row_count_to_transfer;
+                }
                 transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(new_columns), None);
             }
             self.cursor.y = new_cursor_y;
@@ -289,7 +293,11 @@ impl Grid {
                 self.cursor.y += rows_pulled;
             } else if current_viewport_row_count > new_rows {
                 let row_count_to_transfer = current_viewport_row_count - new_rows;
-                self.cursor.y -= row_count_to_transfer;
+                if row_count_to_transfer > self.cursor.y {
+                    self.cursor.y = 0;
+                } else {
+                    self.cursor.y -= row_count_to_transfer;
+                }
                 transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(new_columns), None);
             }
         }
