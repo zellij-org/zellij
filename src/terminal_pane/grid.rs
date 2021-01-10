@@ -136,16 +136,29 @@ fn transfer_rows_up(
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Grid {
     lines_above: Vec<Row>,
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
-    cursor: Cursor,
-    scroll_region: Option<(usize, usize)>,
+    pub cursor: Cursor, // TODO: depubify these
+    pub scroll_region: Option<(usize, usize)>,
     width: usize,
     height: usize,
     pid: RawFd, // TODO: REMOVEME
+}
+
+impl Debug for Grid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (i, row) in self.viewport.iter().enumerate() {
+            if row.is_canonical {
+                writeln!(f, "{:?} (C): {:?}", i, row)?;
+            } else {
+                writeln!(f, "{:?} (W): {:?}", i, row)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Grid {
@@ -303,6 +316,7 @@ impl Grid {
         }
         self.height = new_rows;
         self.width = new_columns;
+        self.set_scroll_region_to_viewport_size();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         let mut lines: Vec<Vec<TerminalCharacter>> = self.viewport.iter().map(|r| {
@@ -373,7 +387,7 @@ impl Grid {
         } else {
             self.cursor.y += 1;
         }
-        self.cursor.x = 0;
+        // self.cursor.x = 0;
     }
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;
@@ -442,7 +456,7 @@ impl Grid {
     }
     pub fn clear_all(&mut self) {
         self.viewport.clear();
-        // TODO: insert single empty line?
+        self.viewport.push(Row::new().canonical());
     }
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
@@ -507,6 +521,9 @@ impl Grid {
     }
     pub fn clear_scroll_region(&mut self) {
         self.scroll_region = None;
+    }
+    pub fn set_scroll_region_to_viewport_size(&mut self) {
+        self.scroll_region = Some((0, self.height - 1));
     }
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
