@@ -1,9 +1,9 @@
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::get_output_frame_snapshots;
-use crate::{start, Opt};
-use crate::{terminal_pane::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
+use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
+use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
     CLOSE_TAB, COMMAND_TOGGLE, NEW_TAB, QUIT, SPLIT_HORIZONTALLY, SWITCH_NEXT_TAB, SWITCH_PREV_TAB,
@@ -30,7 +30,7 @@ pub fn open_new_tab() {
         &NEW_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -60,7 +60,7 @@ pub fn switch_to_prev_tab() {
         &SWITCH_PREV_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -90,7 +90,7 @@ pub fn switch_to_next_tab() {
         &SWITCH_NEXT_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -119,7 +119,7 @@ pub fn close_tab() {
         &CLOSE_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -151,7 +151,7 @@ pub fn close_last_pane_in_a_tab() {
         &CLOSE_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -185,7 +185,7 @@ pub fn close_the_middle_tab() {
         &SWITCH_NEXT_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -220,7 +220,7 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         &SWITCH_NEXT_TAB,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -249,7 +249,7 @@ pub fn closing_last_tab_exits_the_app() {
         &CLOSE_TAB,
         &CLOSE_TAB,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
         .stdout_writer

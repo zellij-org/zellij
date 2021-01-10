@@ -1,3 +1,4 @@
+#![allow(clippy::mutex_atomic)]
 use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Clone)]

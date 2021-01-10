@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
 
-use crate::errors::ErrorContext;
-use crate::layout::Layout;
 use crate::os_input_output::OsApi;
+use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::tab::Tab;
-use crate::terminal_pane::PositionAndSize;
+use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
+use crate::{layout::Layout, panes::PaneId};
 use crate::{AppInstruction, SenderWithContext};
 
 /*
@@ -23,9 +23,9 @@ use crate::{AppInstruction, SenderWithContext};
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
     Render,
-    NewPane(RawFd),
-    HorizontalSplit(RawFd),
-    VerticalSplit(RawFd),
+    NewPane(PaneId),
+    HorizontalSplit(PaneId),
+    VerticalSplit(PaneId),
     WriteCharacter(Vec<u8>),
     ResizeLeft,
     ResizeRight,
@@ -42,7 +42,7 @@ pub enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
-    ClosePane(RawFd),
+    ClosePane(PaneId),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab(RawFd),
     SwitchTabNext,
@@ -55,6 +55,7 @@ pub struct Screen {
     max_panes: Option<usize>,
     tabs: BTreeMap<usize, Tab>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     full_screen_ws: PositionAndSize,
     active_tab_index: Option<usize>,
@@ -65,6 +66,7 @@ impl Screen {
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
@@ -74,6 +76,7 @@ impl Screen {
             receiver: receive_screen_instructions,
             max_panes,
             send_pty_instructions,
+            send_plugin_instructions,
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab_index: None,
@@ -88,9 +91,10 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
+            self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
-            Some(pane_id),
+            Some(PaneId::Terminal(pane_id)),
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -119,7 +123,7 @@ impl Screen {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
         let first_tab = tab_ids.get(0).unwrap();
-        let last_tab = tab_ids.get(tab_ids.len() - 1).unwrap();
+        let last_tab = tab_ids.last().unwrap();
 
         let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
         if active_tab_id == *first_tab {
@@ -135,18 +139,18 @@ impl Screen {
             self.switch_tab_prev();
         }
         let mut active_tab = self.tabs.remove(&active_tab_index).unwrap();
-        let pane_ids = active_tab.get_terminal_pane_ids();
+        let pane_ids = active_tab.get_pane_ids();
         self.send_pty_instructions
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();
-        if self.tabs.len() == 0 {
+        if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.render();
         }
     }
     pub fn render(&mut self) {
         if let Some(active_tab) = self.get_active_tab_mut() {
-            if active_tab.get_active_terminal().is_some() {
+            if active_tab.get_active_pane().is_some() {
                 active_tab.render();
             } else {
                 self.close_tab();
@@ -181,6 +185,7 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
+            self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
             None,

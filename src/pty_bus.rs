@@ -9,10 +9,13 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
-use crate::errors::{ContextType, ErrorContext};
-use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
+use crate::{
+    errors::{ContextType, ErrorContext},
+    panes::PaneId,
+};
+use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
@@ -148,13 +151,14 @@ pub enum PtyInstruction {
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
     NewTab,
-    ClosePane(RawFd),
-    CloseTab(Vec<RawFd>),
+    ClosePane(PaneId),
+    CloseTab(Vec<PaneId>),
     Quit,
 }
 
 pub struct PtyBus {
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
@@ -231,7 +235,7 @@ fn stream_terminal_bytes(
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
             send_screen_instructions
-                .send(ScreenInstruction::ClosePane(pid))
+                .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
         }
     });
@@ -241,11 +245,13 @@ impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         os_input: Box<dyn OsApi>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
             send_screen_instructions,
+            send_plugin_instructions,
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
@@ -265,7 +271,7 @@ impl PtyBus {
         pid_primary
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
-        let total_panes = layout.total_panes();
+        let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
             let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
@@ -287,11 +293,19 @@ impl PtyBus {
             );
         }
     }
-    pub fn close_pane(&mut self, id: RawFd) {
-        let child_pid = self.id_to_child_pid.get(&id).unwrap();
-        self.os_input.kill(*child_pid).unwrap();
+    pub fn close_pane(&mut self, id: PaneId) {
+        match id {
+            PaneId::Terminal(id) => {
+                let child_pid = self.id_to_child_pid.get(&id).unwrap();
+                self.os_input.kill(*child_pid).unwrap();
+            }
+            PaneId::Plugin(pid) => self
+                .send_plugin_instructions
+                .send(PluginInstruction::Unload(pid))
+                .unwrap(),
+        }
     }
-    pub fn close_tab(&mut self, ids: Vec<RawFd>) {
-        ids.iter().for_each(|id| self.close_pane(*id));
+    pub fn close_tab(&mut self, ids: Vec<PaneId>) {
+        ids.iter().for_each(|&id| self.close_pane(id));
     }
 }

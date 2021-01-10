@@ -1,18 +1,21 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
+use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
 
-use crate::boundaries::Rect;
-use crate::terminal_pane::terminal_character::{
-    AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
-};
-use crate::terminal_pane::Scroll;
+use crate::panes::terminal_character::{CharacterStyles, TerminalCharacter};
+use crate::panes::Scroll;
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub enum PaneId {
+    Terminal(RawFd),
+    Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
+}
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
@@ -20,13 +23,12 @@ pub struct PositionAndSize {
     pub columns: usize,
 }
 
-impl PositionAndSize {
-    pub fn from(winsize: Winsize) -> PositionAndSize {
+impl From<Winsize> for PositionAndSize {
+    fn from(winsize: Winsize) -> PositionAndSize {
         PositionAndSize {
             columns: winsize.ws_col as usize,
             rows: winsize.ws_row as usize,
-            x: winsize.ws_xpixel as usize,
-            y: winsize.ws_ypixel as usize,
+            ..Default::default()
         }
     }
 }
@@ -42,7 +44,7 @@ pub struct TerminalPane {
     pending_styles: CharacterStyles,
 }
 
-impl Rect for TerminalPane {
+impl Pane for TerminalPane {
     fn x(&self) -> usize {
         self.get_x()
     }
@@ -55,47 +57,29 @@ impl Rect for TerminalPane {
     fn columns(&self) -> usize {
         self.get_columns()
     }
-}
-
-impl Rect for &mut TerminalPane {
-    fn x(&self) -> usize {
-        self.get_x()
+    fn reset_size_and_position_override(&mut self) {
+        self.position_and_size_override = None;
+        self.reflow_lines();
+        self.mark_for_rerender();
     }
-    fn y(&self) -> usize {
-        self.get_y()
+    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
+        self.position_and_size.columns = position_and_size.columns;
+        self.position_and_size.rows = position_and_size.rows;
+        self.reflow_lines();
+        self.mark_for_rerender();
     }
-    fn rows(&self) -> usize {
-        self.get_rows()
-    }
-    fn columns(&self) -> usize {
-        self.get_columns()
-    }
-}
-
-impl TerminalPane {
-    pub fn new(pid: RawFd, ws: PositionAndSize, x: usize, y: usize) -> TerminalPane {
-        let scroll = Scroll::new(ws.columns, ws.rows);
-        let pending_styles = CharacterStyles::new();
-        let position_and_size = PositionAndSize {
+    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
+        let position_and_size_override = PositionAndSize {
             x,
             y,
-            rows: ws.rows,
-            columns: ws.columns,
+            rows: size.rows,
+            columns: size.columns,
         };
-        TerminalPane {
-            pid,
-            scroll,
-            should_render: true,
-            pending_styles,
-            position_and_size,
-            position_and_size_override: None,
-            cursor_key_mode: false,
-        }
+        self.position_and_size_override = Some(position_and_size_override);
+        self.reflow_lines();
+        self.mark_for_rerender();
     }
-    pub fn mark_for_rerender(&mut self) {
-        self.should_render = true;
-    }
-    pub fn handle_event(&mut self, event: VteEvent) {
+    fn handle_event(&mut self, event: VteEvent) {
         match event {
             VteEvent::Print(c) => {
                 self.print(c);
@@ -125,175 +109,11 @@ impl TerminalPane {
             }
         }
     }
-    pub fn reduce_width_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.position_and_size.columns -= count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.columns -= count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn increase_width_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.position_and_size.columns += count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.columns += count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn reduce_height_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.position_and_size.rows -= count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn increase_height_down(&mut self, count: usize) {
-        self.position_and_size.rows += count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn increase_height_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.position_and_size.rows += count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn reduce_height_up(&mut self, count: usize) {
-        self.position_and_size.rows -= count;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn change_size_p(&mut self, position_and_size: &PositionAndSize) {
-        self.position_and_size = *position_and_size;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    // TODO: merge these two methods
-    pub fn change_size(&mut self, ws: &PositionAndSize) {
-        self.position_and_size.columns = ws.columns;
-        self.position_and_size.rows = ws.rows;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn get_x(&self) -> usize {
-        match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.x,
-            None => self.position_and_size.x as usize,
-        }
-    }
-    pub fn get_y(&self) -> usize {
-        match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.y,
-            None => self.position_and_size.y as usize,
-        }
-    }
-    pub fn get_columns(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.columns,
-            None => self.position_and_size.columns as usize,
-        }
-    }
-    pub fn get_rows(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows as usize,
-        }
-    }
-    fn reflow_lines(&mut self) {
-        let rows = self.get_rows();
-        let columns = self.get_columns();
-        self.scroll.change_size(columns, rows);
-    }
-    pub fn buffer_as_vte_output(&mut self) -> Option<String> {
-        // TODO: rename to render
-        // if self.should_render {
-        if true {
-            // while checking should_render rather than rendering each pane every time
-            // is more performant, it causes some problems when the pane to the left should be
-            // rendered and has wide characters (eg. Chinese characters or emoji)
-            // as a (hopefully) temporary hack, we render all panes until we find a better solution
-            let mut vte_output = String::new();
-            let buffer_lines = &self.read_buffer_as_lines();
-            let display_cols = self.get_columns();
-            let mut character_styles = CharacterStyles::new();
-            for (row, line) in buffer_lines.iter().enumerate() {
-                let x = self.get_x();
-                let y = self.get_y();
-                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, y + row + 1, x + 1); // goto row/col and reset styles
-                for (col, t_character) in line.iter().enumerate() {
-                    if col < display_cols {
-                        // in some cases (eg. while resizing) some characters will spill over
-                        // before they are corrected by the shell (for the prompt) or by reflowing
-                        // lines
-                        if let Some(new_styles) =
-                            character_styles.update_and_return_diff(&t_character.styles)
-                        {
-                            // the terminal keeps the previous styles as long as we're in the same
-                            // line, so we only want to update the new styles here (this also
-                            // includes resetting previous styles as needed)
-                            vte_output = format!("{}{}", vte_output, new_styles);
-                        }
-                        vte_output.push(t_character.character);
-                    }
-                }
-                character_styles.clear();
-            }
-            self.mark_for_rerender();
-            Some(vte_output)
-        } else {
-            None
-        }
-    }
-    pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
-        self.scroll.as_character_lines()
-    }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.scroll.cursor_coordinates_on_screen()
     }
-    pub fn scroll_up(&mut self, count: usize) {
-        self.scroll.move_viewport_up(count);
-        self.mark_for_rerender();
-    }
-    pub fn scroll_down(&mut self, count: usize) {
-        self.scroll.move_viewport_down(count);
-        self.mark_for_rerender();
-    }
-    pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        self.scroll.rotate_scroll_region_up(count);
-        self.mark_for_rerender();
-    }
-    pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        self.scroll.rotate_scroll_region_down(count);
-        self.mark_for_rerender();
-    }
-    pub fn clear_scroll(&mut self) {
-        self.scroll.reset_viewport();
-        self.mark_for_rerender();
-    }
-    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
-        let position_and_size_override = PositionAndSize {
-            x,
-            y,
-            rows: size.rows,
-            columns: size.columns,
-        };
-        self.position_and_size_override = Some(position_and_size_override);
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn reset_size_and_position_override(&mut self) {
-        self.position_and_size_override = None;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
@@ -334,6 +154,180 @@ impl TerminalPane {
             _ => {}
         };
         input_bytes
+    }
+
+    fn position_and_size_override(&self) -> Option<PositionAndSize> {
+        self.position_and_size_override
+    }
+    fn should_render(&self) -> bool {
+        self.should_render
+    }
+    fn set_should_render(&mut self, should_render: bool) {
+        self.should_render = should_render;
+    }
+    fn render(&mut self) -> Option<String> {
+        // if self.should_render {
+        if true {
+            // while checking should_render rather than rendering each pane every time
+            // is more performant, it causes some problems when the pane to the left should be
+            // rendered and has wide characters (eg. Chinese characters or emoji)
+            // as a (hopefully) temporary hack, we render all panes until we find a better solution
+            let mut vte_output = String::new();
+            let buffer_lines = &self.read_buffer_as_lines();
+            let display_cols = self.get_columns();
+            let mut character_styles = CharacterStyles::new();
+            for (row, line) in buffer_lines.iter().enumerate() {
+                let x = self.get_x();
+                let y = self.get_y();
+                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, y + row + 1, x + 1); // goto row/col and reset styles
+                for (col, t_character) in line.iter().enumerate() {
+                    if col < display_cols {
+                        // in some cases (eg. while resizing) some characters will spill over
+                        // before they are corrected by the shell (for the prompt) or by reflowing
+                        // lines
+                        if let Some(new_styles) =
+                            character_styles.update_and_return_diff(&t_character.styles)
+                        {
+                            // the terminal keeps the previous styles as long as we're in the same
+                            // line, so we only want to update the new styles here (this also
+                            // includes resetting previous styles as needed)
+                            vte_output = format!("{}{}", vte_output, new_styles);
+                        }
+                        vte_output.push(t_character.character);
+                    }
+                }
+                character_styles.clear();
+            }
+            self.mark_for_rerender();
+            Some(vte_output)
+        } else {
+            None
+        }
+    }
+    fn pid(&self) -> PaneId {
+        PaneId::Terminal(self.pid)
+    }
+    fn reduce_height_down(&mut self, count: usize) {
+        self.position_and_size.y += count;
+        self.position_and_size.rows -= count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn increase_height_down(&mut self, count: usize) {
+        self.position_and_size.rows += count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn increase_height_up(&mut self, count: usize) {
+        self.position_and_size.y -= count;
+        self.position_and_size.rows += count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn reduce_height_up(&mut self, count: usize) {
+        self.position_and_size.rows -= count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn reduce_width_right(&mut self, count: usize) {
+        self.position_and_size.x += count;
+        self.position_and_size.columns -= count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn reduce_width_left(&mut self, count: usize) {
+        self.position_and_size.columns -= count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn increase_width_left(&mut self, count: usize) {
+        self.position_and_size.x -= count;
+        self.position_and_size.columns += count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn increase_width_right(&mut self, count: usize) {
+        self.position_and_size.columns += count;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn scroll_up(&mut self, count: usize) {
+        self.scroll.move_viewport_up(count);
+        self.mark_for_rerender();
+    }
+    fn scroll_down(&mut self, count: usize) {
+        self.scroll.move_viewport_down(count);
+        self.mark_for_rerender();
+    }
+    fn clear_scroll(&mut self) {
+        self.scroll.reset_viewport();
+        self.mark_for_rerender();
+    }
+}
+
+impl TerminalPane {
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
+        let scroll = Scroll::new(position_and_size.columns, position_and_size.rows);
+        let pending_styles = CharacterStyles::new();
+
+        TerminalPane {
+            pid,
+            scroll,
+            should_render: true,
+            pending_styles,
+            position_and_size,
+            position_and_size_override: None,
+            cursor_key_mode: false,
+        }
+    }
+    pub fn mark_for_rerender(&mut self) {
+        self.should_render = true;
+    }
+    pub fn get_x(&self) -> usize {
+        match self.position_and_size_override {
+            Some(position_and_size_override) => position_and_size_override.x,
+            None => self.position_and_size.x as usize,
+        }
+    }
+    pub fn get_y(&self) -> usize {
+        match self.position_and_size_override {
+            Some(position_and_size_override) => position_and_size_override.y,
+            None => self.position_and_size.y as usize,
+        }
+    }
+    pub fn get_columns(&self) -> usize {
+        match &self.position_and_size_override.as_ref() {
+            Some(position_and_size_override) => position_and_size_override.columns,
+            None => self.position_and_size.columns as usize,
+        }
+    }
+    pub fn get_rows(&self) -> usize {
+        match &self.position_and_size_override.as_ref() {
+            Some(position_and_size_override) => position_and_size_override.rows,
+            None => self.position_and_size.rows as usize,
+        }
+    }
+    fn reflow_lines(&mut self) {
+        let rows = self.get_rows();
+        let columns = self.get_columns();
+        self.scroll.change_size(columns, rows);
+    }
+
+    pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
+        self.scroll.as_character_lines()
+    }
+    #[cfg(test)]
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+        // (x, y)
+        self.scroll.cursor_coordinates_on_screen()
+    }
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_up(count);
+        self.mark_for_rerender();
+    }
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        self.scroll.rotate_scroll_region_down(count);
+        self.mark_for_rerender();
     }
     fn add_newline(&mut self) {
         self.scroll.add_canonical_line();
@@ -445,12 +439,10 @@ impl vte::Perform for TerminalPane {
                 } else {
                     (params[0] as usize - 1, params[0] as usize)
                 }
+            } else if params[0] == 0 {
+                (0, params[1] as usize - 1)
             } else {
-                if params[0] == 0 {
-                    (0, params[1] as usize - 1)
-                } else {
-                    (params[0] as usize - 1, params[1] as usize - 1)
-                }
+                (params[0] as usize - 1, params[1] as usize - 1)
             };
             self.scroll.move_cursor_to(row, col);
         } else if c == 'A' {
@@ -610,11 +602,8 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        match (byte, intermediates.get(0)) {
-            (b'M', None) => {
-                self.scroll.move_cursor_up_in_scroll_region(1);
-            }
-            _ => {}
+        if let (b'M', None) = (byte, intermediates.get(0)) {
+            self.scroll.move_cursor_up_in_scroll_region(1);
         }
     }
 }
