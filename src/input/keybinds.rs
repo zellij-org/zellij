@@ -84,9 +84,9 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
     Ok(defaults)
 }
 
-pub fn key_to_action<'a>(key: &Key, input: Vec<u8>, mode: &InputMode, keybinds: &'a Keybinds) -> &'a Action {
+pub fn key_to_action(key: &Key, input: Vec<u8>, mode: &InputMode, keybinds: &Keybinds) -> Action {
     if let Some(mode_keybinds) = keybinds.get(mode) {
-        mode_keybinds.get(key).unwrap_or(&Action::Write(input))
+        mode_keybinds.get(key).cloned().unwrap_or(Action::Write(input))
     } else {
         // Unrecognized mode - panic?
         panic!("Unrecognized mode: {:?}", mode);

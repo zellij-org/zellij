@@ -77,7 +77,7 @@ impl InputHandler {
         }
     }
 
-    fn dispatch_action(&mut self, action: &Action) -> bool {
+    fn dispatch_action(&mut self, action: Action) -> bool {
         let mut interrupt_loop = false;
 
         match action {
@@ -86,7 +86,7 @@ impl InputHandler {
                     .send(ScreenInstruction::ClearScroll)
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::WriteCharacter(*val))
+                    .send(ScreenInstruction::WriteCharacter(val))
                     .unwrap();
             }
             Action::Quit => {
@@ -94,7 +94,7 @@ impl InputHandler {
                 interrupt_loop = true;
             }
             Action::SwitchToMode(mode) => {
-                self.mode = *mode;
+                self.mode = mode;
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {

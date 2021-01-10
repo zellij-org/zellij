@@ -2,6 +2,7 @@
 /// and also passing actions back to the handler for dispatch.
 use super::handler;
 
+#[derive(Clone)]
 pub enum Direction {
     Left,
     Right,
@@ -9,6 +10,7 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone)]
 pub enum Action {
     /// Quit mosaic
     Quit,
