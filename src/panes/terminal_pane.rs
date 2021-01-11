@@ -4,9 +4,13 @@ use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
+use std::fmt::{self, Debug, Formatter};
 
-use crate::panes::terminal_character::{CharacterStyles, TerminalCharacter};
-use crate::panes::Scroll;
+use crate::boundaries::Rect;
+use crate::panes::grid::{Grid, Row};
+use crate::panes::terminal_character::{
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+};
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
 
@@ -35,8 +39,9 @@ impl From<Winsize> for PositionAndSize {
 
 #[derive(Debug)]
 pub struct TerminalPane {
+    pub grid: Grid,
+    pub alternative_grid: Option<Grid>, // for 1049h/l instructions which tell us to switch between these two
     pub pid: RawFd,
-    pub scroll: Scroll,
     pub should_render: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
@@ -111,7 +116,7 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
-        self.scroll.cursor_coordinates_on_screen()
+        self.grid.cursor_coordinates()
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
@@ -252,27 +257,28 @@ impl Pane for TerminalPane {
         self.mark_for_rerender();
     }
     fn scroll_up(&mut self, count: usize) {
-        self.scroll.move_viewport_up(count);
+        self.grid.move_viewport_up(count);
         self.mark_for_rerender();
     }
     fn scroll_down(&mut self, count: usize) {
-        self.scroll.move_viewport_down(count);
+        self.grid.move_viewport_down(count);
         self.mark_for_rerender();
     }
     fn clear_scroll(&mut self) {
-        self.scroll.reset_viewport();
+        self.grid.reset_viewport();
         self.mark_for_rerender();
     }
 }
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
-        let scroll = Scroll::new(position_and_size.columns, position_and_size.rows);
+        let grid = Grid::new(position_and_size.rows, position_and_size.columns);
         let pending_styles = CharacterStyles::new();
 
         TerminalPane {
             pid,
-            scroll,
+            grid,
+            alternative_grid: None,
             should_render: true,
             pending_styles,
             position_and_size,
@@ -310,35 +316,108 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_rows();
         let columns = self.get_columns();
-        self.scroll.change_size(columns, rows);
+        self.grid.change_size(rows, columns);
+        if let Some(alternative_grid) = self.alternative_grid.as_mut() {
+            alternative_grid.change_size(rows, columns);
+        }
     }
 
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
-        self.scroll.as_character_lines()
+        self.grid.as_character_lines()
     }
     #[cfg(test)]
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
-        self.scroll.cursor_coordinates_on_screen()
+        self.grid.cursor_coordinates()
+    }
+    pub fn scroll_up(&mut self, count: usize) {
+        self.grid.move_viewport_up(count);
+        self.mark_for_rerender();
+    }
+    pub fn scroll_down(&mut self, count: usize) {
+        self.grid.move_viewport_down(count);
+        self.mark_for_rerender();
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        self.scroll.rotate_scroll_region_up(count);
+        self.grid.rotate_scroll_region_up(count);
         self.mark_for_rerender();
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        self.scroll.rotate_scroll_region_down(count);
+        self.grid.rotate_scroll_region_down(count);
         self.mark_for_rerender();
     }
+    pub fn clear_scroll(&mut self) {
+        self.grid.reset_viewport();
+        self.mark_for_rerender();
+    }
+    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
+        let position_and_size_override = PositionAndSize {
+            x,
+            y,
+            rows: size.rows,
+            columns: size.columns,
+        };
+        self.position_and_size_override = Some(position_and_size_override);
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    pub fn reset_size_and_position_override(&mut self) {
+        self.position_and_size_override = None;
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    pub fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+        // there are some cases in which the terminal state means that input sent to it
+        // needs to be adjusted.
+        // here we match against those cases - if need be, we adjust the input and if not
+        // we send back the original input
+        match input_bytes.as_slice() {
+            [27, 91, 68] => {
+                // left arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OD".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 67] => {
+                // right arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OC".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 65] => {
+                // up arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OA".as_bytes().to_vec();
+                }
+            }
+            [27, 91, 66] => {
+                // down arrow
+                if self.cursor_key_mode {
+                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
+                    // some editors will not show this
+                    return "OB".as_bytes().to_vec();
+                }
+            }
+            _ => {}
+        };
+        input_bytes
+    }
     fn add_newline(&mut self) {
-        self.scroll.add_canonical_line();
+        self.grid.add_canonical_line();
         // self.reset_all_ansi_codes(); // TODO: find out if we should be resetting here or not
         self.mark_for_rerender();
     }
     fn move_to_beginning_of_line(&mut self) {
-        self.scroll.move_cursor_to_beginning_of_linewrap();
+        self.grid.move_cursor_to_beginning_of_line();
     }
     fn move_cursor_backwards(&mut self, count: usize) {
-        self.scroll.move_cursor_backwards(count);
+        self.grid.move_cursor_backwards(count);
     }
     fn _reset_all_ansi_codes(&mut self) {
         self.pending_styles.clear();
@@ -353,7 +432,7 @@ impl vte::Perform for TerminalPane {
             character: c,
             styles: self.pending_styles,
         };
-        self.scroll.add_character(terminal_character);
+        self.grid.add_character(terminal_character);
     }
 
     fn execute(&mut self, byte: u8) {
@@ -369,7 +448,7 @@ impl vte::Perform for TerminalPane {
                     styles: self.pending_styles,
                 };
                 // TODO: handle better with line wrapping
-                self.scroll.add_character(terminal_tab_character);
+                self.grid.add_character(terminal_tab_character);
             }
             10 => {
                 // 0a, newline
@@ -409,23 +488,28 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll.move_cursor_forward(move_by);
+            self.grid.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if params[0] == 0 {
-                self.scroll
-                    .clear_canonical_line_right_of_cursor(self.pending_styles);
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                char_to_replace.styles = self.pending_styles;
+                self.grid
+                    .replace_characters_in_line_after_cursor(char_to_replace);
             } else if params[0] == 1 {
-                self.scroll
-                    .clear_canonical_line_left_of_cursor(self.pending_styles);
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                char_to_replace.styles = self.pending_styles;
+                self.grid
+                    .replace_characters_in_line_before_cursor(char_to_replace);
+            } else if params[0] == 2 {
+                self.grid.clear_cursor_line();
             }
-        // TODO: implement 2
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
-                self.scroll.clear_all_after_cursor();
+                self.grid.clear_all_after_cursor();
             } else if params[0] == 2 {
-                self.scroll.clear_all();
+                self.grid.clear_all();
             }
         // TODO: implement 1
         } else if c == 'H' {
@@ -444,22 +528,22 @@ impl vte::Perform for TerminalPane {
             } else {
                 (params[0] as usize - 1, params[1] as usize - 1)
             };
-            self.scroll.move_cursor_to(row, col);
+            self.grid.move_cursor_to(col, row);
         } else if c == 'A' {
             // move cursor up until edge of screen
             let move_up_count = if params[0] == 0 { 1 } else { params[0] };
-            self.scroll.move_cursor_up(move_up_count as usize);
+            self.grid.move_cursor_up(move_up_count as usize);
         } else if c == 'B' {
             // move cursor down until edge of screen
             let move_down_count = if params[0] == 0 { 1 } else { params[0] };
-            self.scroll.move_cursor_down(move_down_count as usize);
+            self.grid.move_cursor_down(move_down_count as usize);
         } else if c == 'D' {
             let move_back_count = if params[0] == 0 {
                 1
             } else {
                 params[0] as usize
             };
-            self.scroll.move_cursor_back(move_back_count);
+            self.grid.move_cursor_back(move_back_count);
         } else if c == 'l' {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
                 Some(b'?') => true,
@@ -469,11 +553,14 @@ impl vte::Perform for TerminalPane {
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(&1049) => {
-                        self.scroll
-                            .override_current_buffer_with_alternative_buffer();
+                        if let Some(alternative_grid) = self.alternative_grid.as_mut() {
+                            std::mem::swap(&mut self.grid, alternative_grid);
+                            // self.grid = alternative_grid;
+                        }
+                        self.alternative_grid = None;
                     }
                     Some(&25) => {
-                        self.scroll.hide_cursor();
+                        self.grid.hide_cursor();
                         self.mark_for_rerender();
                     }
                     Some(&1) => {
@@ -491,11 +578,21 @@ impl vte::Perform for TerminalPane {
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(&25) => {
-                        self.scroll.show_cursor();
+                        self.grid.show_cursor();
                         self.mark_for_rerender();
                     }
                     Some(&1049) => {
-                        self.scroll.move_current_buffer_to_alternative_buffer();
+                        let columns = self
+                            .position_and_size_override
+                            .map(|x| x.columns)
+                            .unwrap_or(self.position_and_size.columns);
+                        let rows = self
+                            .position_and_size_override
+                            .map(|x| x.rows)
+                            .unwrap_or(self.position_and_size.rows);
+                        let current_grid =
+                            std::mem::replace(&mut self.grid, Grid::new(rows, columns));
+                        self.alternative_grid = Some(current_grid);
                     }
                     Some(&1) => {
                         self.cursor_key_mode = true;
@@ -508,11 +605,11 @@ impl vte::Perform for TerminalPane {
                 // minus 1 because these are 1 indexed
                 let top_line_index = params[0] as usize - 1;
                 let bottom_line_index = params[1] as usize - 1;
-                self.scroll
+                self.grid
                     .set_scroll_region(top_line_index, bottom_line_index);
-                self.scroll.show_cursor();
+                self.grid.show_cursor();
             } else {
-                self.scroll.clear_scroll_region();
+                self.grid.clear_scroll_region();
             }
         } else if c == 't' {
             // TBD - title?
@@ -527,7 +624,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll
+            self.grid
                 .delete_lines_in_scroll_region(line_count_to_delete);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
@@ -536,7 +633,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll
+            self.grid
                 .add_empty_lines_in_scroll_region(line_count_to_add);
         } else if c == 'q' {
             // ignore for now to run on mac
@@ -544,10 +641,9 @@ impl vte::Perform for TerminalPane {
             let column = if params[0] == 0 {
                 0
             } else {
-                // params[0] as usize
                 params[0] as usize - 1
             };
-            self.scroll.move_cursor_to_column(column);
+            self.grid.move_cursor_to_column(column);
         } else if c == 'd' {
             // goto line
             let line = if params[0] == 0 {
@@ -556,7 +652,7 @@ impl vte::Perform for TerminalPane {
                 // minus 1 because this is 1 indexed
                 params[0] as usize - 1
             };
-            self.scroll.move_cursor_to_line(line);
+            self.grid.move_cursor_to_line(line);
         } else if c == 'P' {
             // erase characters
             let count = if params[0] == 0 {
@@ -564,7 +660,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll.erase_characters(count, self.pending_styles);
+            self.grid.erase_characters(count, self.pending_styles);
         } else if c == 'X' {
             // erase characters and replace with empty characters of current style
             let count = if params[0] == 0 {
@@ -572,7 +668,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll
+            self.grid
                 .replace_with_empty_chars(count, self.pending_styles);
         } else if c == 'T' {
             /*
@@ -594,16 +690,19 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            self.scroll.delete_lines_in_scroll_region(count);
-            self.scroll.add_empty_lines_in_scroll_region(count);
+            self.grid.delete_lines_in_scroll_region(count);
+            self.grid.add_empty_lines_in_scroll_region(count);
         } else {
             let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
         }
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        if let (b'M', None) = (byte, intermediates.get(0)) {
-            self.scroll.move_cursor_up_in_scroll_region(1);
+        match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.grid.move_cursor_up_with_scrolling(1);
+            }
+            _ => {}
         }
     }
 }
