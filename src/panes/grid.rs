@@ -1,8 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use crate::panes::terminal_character::{
-    CharacterStyles, TerminalCharacter,
-    EMPTY_TERMINAL_CHARACTER
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
@@ -18,7 +17,7 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
         Some(index_of_last_non_canonical_row) => {
             rows.drain(..=index_of_last_non_canonical_row).collect()
         }
-        None => vec![]
+        None => vec![],
     }
 }
 
@@ -36,7 +35,7 @@ fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
         Some(index_of_last_non_canonical_row) => {
             rows.drain(index_of_last_non_canonical_row..).collect()
         }
-        None => vec![]
+        None => vec![],
     }
 }
 
@@ -45,7 +44,7 @@ fn transfer_rows_down(
     destination: &mut Vec<Row>,
     count: usize,
     max_src_width: Option<usize>,
-    max_dst_width: Option<usize>
+    max_dst_width: Option<usize>,
 ) {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_destination: isize = 0;
@@ -61,10 +60,12 @@ fn transfer_rows_down(
                     next_lines.push(next_line);
                     next_lines.append(&mut top_non_canonical_rows_in_dst);
                     next_lines = match max_dst_width {
-                        Some(max_row_width) => Row::from_rows(next_lines).split_to_rows_of_length(max_row_width),
-                        None => vec![Row::from_rows(next_lines)]
+                        Some(max_row_width) => {
+                            Row::from_rows(next_lines).split_to_rows_of_length(max_row_width)
+                        }
+                        None => vec![Row::from_rows(next_lines)],
                     };
-                },
+                }
                 None => break, // no more rows
             }
         }
@@ -74,9 +75,10 @@ fn transfer_rows_down(
     if !next_lines.is_empty() {
         match max_src_width {
             Some(max_row_width) => {
-                let mut excess_rows = Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
+                let mut excess_rows =
+                    Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
                 source.append(&mut excess_rows);
-            },
+            }
             None => {
                 let excess_row = Row::from_rows(next_lines);
                 source.push(excess_row);
@@ -98,16 +100,19 @@ fn transfer_rows_up(
             if source.len() > 0 {
                 let next_line = source.remove(0);
                 if !next_line.is_canonical {
-                    let mut bottom_canonical_row_and_wraps_in_dst = get_bottom_canonical_row_and_wraps(destination);
+                    let mut bottom_canonical_row_and_wraps_in_dst =
+                        get_bottom_canonical_row_and_wraps(destination);
                     next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
                 }
                 next_lines.push(next_line);
                 next_lines = match max_dst_width {
-                    Some(max_row_width) => Row::from_rows(next_lines).split_to_rows_of_length(max_row_width),
-                    None => vec![Row::from_rows(next_lines)]
+                    Some(max_row_width) => {
+                        Row::from_rows(next_lines).split_to_rows_of_length(max_row_width)
+                    }
+                    None => vec![Row::from_rows(next_lines)],
                 };
             } else {
-                break // no more rows
+                break; // no more rows
             }
         }
         destination.push(next_lines.remove(0));
@@ -119,7 +124,7 @@ fn transfer_rows_up(
                 for row in excess_rows {
                     source.insert(0, row);
                 }
-            },
+            }
             None => {
                 let excess_row = Row::from_rows(next_lines);
                 source.insert(0, excess_row);
@@ -236,7 +241,10 @@ impl Grid {
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
             let mut viewport_canonical_lines = vec![];
             for mut row in self.viewport.drain(..) {
-                if !row.is_canonical && viewport_canonical_lines.is_empty() && self.lines_above.len() > 0 {
+                if !row.is_canonical
+                    && viewport_canonical_lines.is_empty()
+                    && self.lines_above.len() > 0
+                {
                     let mut first_line_above = self.lines_above.pop().unwrap();
                     first_line_above.append(&mut row.columns);
                     viewport_canonical_lines.push(first_line_above);
@@ -247,7 +255,7 @@ impl Grid {
                     match viewport_canonical_lines.last_mut() {
                         Some(last_line) => {
                             last_line.append(&mut row.columns);
-                        },
+                        }
                         None => {
                             // the state is corrupted somehow
                             // this is a bug and I'm not yet sure why it happens
@@ -271,7 +279,11 @@ impl Grid {
                     // if there are no more parts, this row is canonical as long as it originall
                     // was canonical (it might not have been for example if it's the first row in
                     // the viewport, and the actual canonical row is above it in the scrollback)
-                    let row = if canonical_line_parts.len() == 0 && canonical_line.is_canonical { row.canonical() } else { row };
+                    let row = if canonical_line_parts.len() == 0 && canonical_line.is_canonical {
+                        row.canonical()
+                    } else {
+                        row
+                    };
                     canonical_line_parts.push(row);
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
@@ -279,11 +291,18 @@ impl Grid {
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
-            let new_cursor_x = (cursor_index_in_canonical_line / new_columns) + (cursor_index_in_canonical_line % new_columns);
+            let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
+                + (cursor_index_in_canonical_line % new_columns);
             let current_viewport_row_count = self.viewport.len();
             if current_viewport_row_count < self.height {
                 let row_count_to_transfer = self.height - current_viewport_row_count;
-                transfer_rows_down(&mut self.lines_above, &mut self.viewport, row_count_to_transfer, None, Some(new_columns));
+                transfer_rows_down(
+                    &mut self.lines_above,
+                    &mut self.viewport,
+                    row_count_to_transfer,
+                    None,
+                    Some(new_columns),
+                );
                 let rows_pulled = self.viewport.len() - current_viewport_row_count;
                 new_cursor_y += rows_pulled;
             } else if current_viewport_row_count > self.height {
@@ -293,7 +312,13 @@ impl Grid {
                 } else {
                     new_cursor_y -= row_count_to_transfer;
                 }
-                transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(new_columns), None);
+                transfer_rows_up(
+                    &mut self.viewport,
+                    &mut self.lines_above,
+                    row_count_to_transfer,
+                    Some(new_columns),
+                    None,
+                );
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
@@ -302,7 +327,13 @@ impl Grid {
             let current_viewport_row_count = self.viewport.len();
             if current_viewport_row_count < new_rows {
                 let row_count_to_transfer = new_rows - current_viewport_row_count;
-                transfer_rows_down(&mut self.lines_above, &mut self.viewport, row_count_to_transfer, None, Some(new_columns));
+                transfer_rows_down(
+                    &mut self.lines_above,
+                    &mut self.viewport,
+                    row_count_to_transfer,
+                    None,
+                    Some(new_columns),
+                );
                 let rows_pulled = self.viewport.len() - current_viewport_row_count;
                 self.cursor.y += rows_pulled;
             } else if current_viewport_row_count > new_rows {
@@ -312,7 +343,13 @@ impl Grid {
                 } else {
                     self.cursor.y -= row_count_to_transfer;
                 }
-                transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(new_columns), None);
+                transfer_rows_up(
+                    &mut self.viewport,
+                    &mut self.lines_above,
+                    row_count_to_transfer,
+                    Some(new_columns),
+                    None,
+                );
             }
         }
         self.height = new_rows;
@@ -322,14 +359,18 @@ impl Grid {
         }
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
-        let mut lines: Vec<Vec<TerminalCharacter>> = self.viewport.iter().map(|r| {
-            let mut line: Vec<TerminalCharacter> = r.columns.iter().copied().collect();
-            for _ in line.len()..self.width {
-                // pad line
-                line.push(EMPTY_TERMINAL_CHARACTER);
-            }
-            line
-        }).collect();
+        let mut lines: Vec<Vec<TerminalCharacter>> = self
+            .viewport
+            .iter()
+            .map(|r| {
+                let mut line: Vec<TerminalCharacter> = r.columns.iter().copied().collect();
+                for _ in line.len()..self.width {
+                    // pad line
+                    line.push(EMPTY_TERMINAL_CHARACTER);
+                }
+                line
+            })
+            .collect();
         let empty_row = vec![EMPTY_TERMINAL_CHARACTER; self.width];
         for _ in lines.len()..self.height {
             lines.push(empty_row.clone());
@@ -386,7 +427,13 @@ impl Grid {
         }
         if self.cursor.y == self.height - 1 {
             let row_count_to_transfer = 1;
-            transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(self.width), None);
+            transfer_rows_up(
+                &mut self.viewport,
+                &mut self.lines_above,
+                row_count_to_transfer,
+                Some(self.width),
+                None,
+            );
         } else {
             self.cursor.y += 1;
         }
@@ -409,12 +456,13 @@ impl Grid {
                 for _ in self.viewport.len()..self.cursor.y {
                     self.viewport.push(Row::new().canonical());
                 }
-                self.viewport.push(Row::new().with_character(terminal_character).canonical());
+                self.viewport
+                    .push(Row::new().with_character(terminal_character).canonical());
             }
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
-        // TODO: try to separate adding characters from moving the cursors in this function 
+        // TODO: try to separate adding characters from moving the cursors in this function
         if self.cursor.x < self.width {
             self.insert_character_at_cursor_position(terminal_character);
         } else {
@@ -422,7 +470,13 @@ impl Grid {
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
                 let row_count_to_transfer = 1;
-                transfer_rows_up(&mut self.viewport, &mut self.lines_above, row_count_to_transfer, Some(self.width), None);
+                transfer_rows_up(
+                    &mut self.viewport,
+                    &mut self.lines_above,
+                    row_count_to_transfer,
+                    Some(self.width),
+                    None,
+                );
                 let wrapped_row = Row::new();
                 self.viewport.push(wrapped_row);
             } else {
@@ -441,10 +495,16 @@ impl Grid {
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        self.viewport.get_mut(self.cursor.y).unwrap().truncate(self.cursor.x);
+        self.viewport
+            .get_mut(self.cursor.y)
+            .unwrap()
+            .truncate(self.cursor.x);
         if self.cursor.x < self.width - 1 {
             let mut characters_to_append = vec![replace_with; self.width - self.cursor.x];
-            self.viewport.get_mut(self.cursor.y).unwrap().append(&mut characters_to_append);
+            self.viewport
+                .get_mut(self.cursor.y)
+                .unwrap()
+                .append(&mut characters_to_append);
         }
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
@@ -453,7 +513,10 @@ impl Grid {
         row.replace_beginning_with(line_part);
     }
     pub fn clear_all_after_cursor(&mut self) {
-        self.viewport.get_mut(self.cursor.y).unwrap().truncate(self.cursor.x);
+        self.viewport
+            .get_mut(self.cursor.y)
+            .unwrap()
+            .truncate(self.cursor.x);
         self.viewport.truncate(self.cursor.y + 1);
     }
     pub fn clear_cursor_line(&mut self) {
@@ -481,7 +544,11 @@ impl Grid {
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
-        self.cursor.y = if self.cursor.y < count { 0 } else { self.cursor.y - count };
+        self.cursor.y = if self.cursor.y < count {
+            0
+        } else {
+            self.cursor.y - count
+        };
     }
     pub fn move_cursor_up_with_scrolling(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) =
@@ -492,8 +559,7 @@ impl Grid {
                 // if we're at the top line, we create a new line and remove the last line that
                 // would otherwise overflow
                 self.viewport.remove(scroll_region_bottom);
-                self.viewport
-                    .insert(current_line_index, Row::new()); // TODO: .canonical() ?
+                self.viewport.insert(current_line_index, Row::new()); // TODO: .canonical() ?
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
             {
@@ -527,7 +593,7 @@ impl Grid {
     pub fn hide_cursor(&mut self) {
         self.cursor.is_hidden = true;
     }
-    pub fn show_cursor (&mut self) {
+    pub fn show_cursor(&mut self) {
         self.cursor.is_hidden = false;
     }
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: usize) {
@@ -542,8 +608,7 @@ impl Grid {
     pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
-            if current_line_index >= scroll_region_top
-                && current_line_index <= scroll_region_bottom
+            if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
             {
                 // when deleting lines inside the scroll region, we must make sure it stays the
                 // same size (and that other lines below it aren't shifted inside it)
@@ -551,8 +616,7 @@ impl Grid {
                 // region
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::new());
+                    self.viewport.insert(scroll_region_bottom, Row::new());
                 }
             }
         }
@@ -560,8 +624,7 @@ impl Grid {
     pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
-            if current_line_index >= scroll_region_top
-                && current_line_index <= scroll_region_bottom
+            if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
             {
                 // when adding empty lines inside the scroll region, we must make sure it stays the
                 // same size and that lines don't "leak" outside of it
@@ -569,8 +632,7 @@ impl Grid {
                 // of the scroll region
                 for _ in 0..count {
                     self.viewport.remove(scroll_region_bottom);
-                    self.viewport
-                        .insert(current_line_index, Row::new());
+                    self.viewport.insert(current_line_index, Row::new());
                 }
             }
         }
@@ -602,14 +664,17 @@ impl Grid {
             current_row.delete_character(self.cursor.x);
         }
         let mut empty_space_to_append = vec![empty_character; count];
-        self.viewport.get_mut(self.cursor.y).unwrap().append(&mut empty_space_to_append);
+        self.viewport
+            .get_mut(self.cursor.y)
+            .unwrap()
+            .append(&mut empty_space_to_append);
     }
 }
 
 #[derive(Clone)]
 pub struct Row {
     pub columns: Vec<TerminalCharacter>,
-    pub is_canonical: bool
+    pub is_canonical: bool,
 }
 
 impl Debug for Row {
@@ -631,7 +696,7 @@ impl Row {
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
         Row {
             columns,
-            is_canonical: false
+            is_canonical: false,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -724,7 +789,7 @@ impl Cursor {
         Cursor {
             x,
             y,
-            is_hidden: false
+            is_hidden: false,
         }
     }
 }

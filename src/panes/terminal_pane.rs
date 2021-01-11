@@ -8,7 +8,9 @@ use std::fmt::{self, Debug, Formatter};
 
 use crate::boundaries::Rect;
 use crate::panes::grid::{Grid, Row};
-use crate::panes::terminal_character::{CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+use crate::panes::terminal_character::{
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+};
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
 
@@ -580,9 +582,16 @@ impl vte::Perform for TerminalPane {
                         self.mark_for_rerender();
                     }
                     Some(&1049) => {
-                        let columns = self.position_and_size_override.map(|x| x.columns).unwrap_or(self.position_and_size.columns);
-                        let rows = self.position_and_size_override.map(|x| x.rows).unwrap_or(self.position_and_size.rows);
-                        let current_grid = std::mem::replace(&mut self.grid, Grid::new(rows, columns));
+                        let columns = self
+                            .position_and_size_override
+                            .map(|x| x.columns)
+                            .unwrap_or(self.position_and_size.columns);
+                        let rows = self
+                            .position_and_size_override
+                            .map(|x| x.rows)
+                            .unwrap_or(self.position_and_size.rows);
+                        let current_grid =
+                            std::mem::replace(&mut self.grid, Grid::new(rows, columns));
                         self.alternative_grid = Some(current_grid);
                     }
                     Some(&1) => {
