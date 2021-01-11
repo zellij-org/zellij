@@ -266,6 +266,8 @@ impl From<&PluginInstruction> for PluginContext {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
+    GetState,
+    SetState,
     Exit,
     Error,
 }
@@ -273,6 +275,8 @@ pub enum AppContext {
 impl From<&AppInstruction> for AppContext {
     fn from(app_instruction: &AppInstruction) -> Self {
         match *app_instruction {
+            AppInstruction::GetState(_) => AppContext::GetState,
+            AppInstruction::SetState(_) => AppContext::SetState,
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
         }

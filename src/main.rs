@@ -16,14 +16,15 @@ mod utils;
 
 mod wasm_vm;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
+use std::{cell::RefCell, sync::mpsc::TrySendError};
 
+use input::InputMode;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
@@ -85,6 +86,14 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
+    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
+        if let SenderType::SyncSender(ref s) = self.sender {
+            s.try_send((event, self.err_ctx))
+        } else {
+            panic!("try_send can only be called on SyncSenders!")
+        }
+    }
+
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
@@ -125,13 +134,44 @@ pub fn main() {
     }
 }
 
+// FIXME: It would be good to add some more things to this over time
+#[derive(Debug, Clone)]
+pub struct AppState {
+    pub input_mode: InputMode,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            input_mode: InputMode::Normal,
+        }
+    }
+}
+
+// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
+// from self instead of being explicitly passed here
+pub fn update_state(
+    app_tx: &SenderWithContext<AppInstruction>,
+    update_fn: impl FnOnce(AppState) -> AppState,
+) {
+    let (state_tx, state_rx) = channel();
+
+    drop(app_tx.send(AppInstruction::GetState(state_tx)));
+    let state = state_rx.recv().unwrap();
+
+    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
+}
+
 #[derive(Clone)]
 pub enum AppInstruction {
+    GetState(Sender<AppState>),
+    SetState(AppState),
     Exit,
     Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
+    let mut app_state = AppState::default();
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
@@ -399,6 +439,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .spawn({
                 let mut send_pty_instructions = send_pty_instructions.clone();
                 let mut send_screen_instructions = send_screen_instructions.clone();
+                let mut send_app_instructions = send_app_instructions.clone();
 
                 move || {
                     let store = Store::default();
@@ -413,6 +454,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
                         send_screen_instructions.update(err_ctx);
                         send_pty_instructions.update(err_ctx);
+                        send_app_instructions.update(err_ctx);
                         match event {
                             PluginInstruction::Load(pid_tx, path) => {
                                 // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
@@ -441,6 +483,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                     plugin_id,
                                     send_pty_instructions: send_pty_instructions.clone(),
                                     send_screen_instructions: send_screen_instructions.clone(),
+                                    send_app_instructions: send_app_instructions.clone(),
                                     wasi_env,
                                 };
 
@@ -602,6 +645,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         send_screen_instructions.update(err_ctx);
         send_pty_instructions.update(err_ctx);
         match app_instruction {
+            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
+            AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);

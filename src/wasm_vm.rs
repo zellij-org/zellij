@@ -1,8 +1,14 @@
-use std::{path::PathBuf, sync::mpsc::Sender};
+use std::{
+    path::PathBuf,
+    sync::mpsc::{channel, Sender},
+};
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
-use crate::{panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction, SenderWithContext};
+use crate::{
+    input::get_help, panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction,
+    AppInstruction, SenderWithContext,
+};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -18,6 +24,7 @@ pub enum PluginInstruction {
 pub struct PluginEnv {
     pub plugin_id: u32,
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
 }
@@ -29,6 +36,7 @@ pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
         "mosaic" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
+            "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
         }
     }
 }
@@ -52,6 +60,21 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
             selectable,
         ))
         .unwrap()
+}
+
+fn host_get_help(plugin_env: &PluginEnv) {
+    let (state_tx, state_rx) = channel();
+    // FIXME: If I changed the application so that threads were sent the termination
+    // signal and joined one at a time, there would be an order to shutdown, so I
+    // could get rid of this .is_ok() check and the .try_send()
+    if plugin_env
+        .send_app_instructions
+        .try_send(AppInstruction::GetState(state_tx))
+        .is_ok()
+    {
+        let help = get_help(&state_rx.recv().unwrap().input_mode);
+        wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
+    }
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
