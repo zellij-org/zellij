@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 colored = "2"
-mosaic-tile = { path = "/home/spinning/tll/Documents/Coding/Languages/Rust/mosaic-tile"}
+mosaic-tile = "0.4"
 
 [profile.release]
 lto = true
