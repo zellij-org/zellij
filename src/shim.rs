@@ -34,7 +34,13 @@ pub fn open_file(path: &Path) {
     unsafe { host_open_file() };
 }
 
+pub fn set_selectable(selectable: bool) {
+    let selectable = if selectable { 1 } else { 0 };
+    unsafe { host_set_selectable(selectable) };
+}
+
 #[link(wasm_import_module = "mosaic")]
 extern "C" {
     fn host_open_file();
+    fn host_set_selectable(selectable: i32);
 }
