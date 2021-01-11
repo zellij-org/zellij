@@ -331,7 +331,7 @@ pub fn get_help(mode: &InputMode) -> Vec<String> {
         ]
         .concat(),
         InputMode::CommandPersistent => {
-            [vec!["<Ctrl-g/ESC> Normal Mode".into()], command_help].concat()
+            [vec!["<ESC/Ctrl-g> Normal Mode".into()], command_help].concat()
         }
         InputMode::Exiting => vec!["Bye from Mosaic!".into()],
     }
