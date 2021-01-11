@@ -166,6 +166,7 @@ pub enum ScreenContext {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
+    SetSelectable,
     ClosePane,
     ApplyLayout,
     NewTab,
@@ -200,6 +201,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
+            ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
@@ -244,6 +246,7 @@ pub enum PluginContext {
     Load,
     Draw,
     Input,
+    GlobalInput,
     Unload,
     Quit,
 }
@@ -254,6 +257,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Draw(..) => PluginContext::Draw,
             PluginInstruction::Input(..) => PluginContext::Input,
+            PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
         }

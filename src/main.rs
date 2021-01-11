@@ -355,6 +355,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 screen.get_active_tab_mut().unwrap().close_focused_pane();
                                 screen.render();
                             }
+                            ScreenInstruction::SetSelectable(id, selectable) => {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .set_pane_selectable(id, selectable);
+                                // FIXME: Is this needed?
+                                screen.render();
+                            }
                             ScreenInstruction::ClosePane(id) => {
                                 screen.get_active_tab_mut().unwrap().close_pane(id);
                                 screen.render();
@@ -430,7 +438,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 let wasi = wasi_env.import_object(&module).unwrap();
 
                                 let plugin_env = PluginEnv {
+                                    plugin_id,
                                     send_pty_instructions: send_pty_instructions.clone(),
+                                    send_screen_instructions: send_screen_instructions.clone(),
                                     wasi_env,
                                 };
 
@@ -457,15 +467,29 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                                 buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                             }
+                            // FIXME: Deduplicate this with the callback below!
                             PluginInstruction::Input(pid, input_bytes) => {
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                                let handle_key =
+                                    instance.exports.get_function("handle_key").unwrap();
+                                for key in input_bytes.keys() {
+                                    if let Ok(key) = key {
+                                        wasi_write_string(
+                                            &plugin_env.wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
+                                        handle_key.call(&[]).unwrap();
+                                    }
+                                }
+
+                                drop(send_screen_instructions.send(ScreenInstruction::Render));
+                            }
+                            PluginInstruction::GlobalInput(input_bytes) => {
                                 // FIXME: Set up an event subscription system, and timed callbacks
-                                for (&id, (instance, plugin_env)) in &plugin_map {
-                                    let handler = if PaneId::Plugin(id) == pid {
-                                        "handle_key"
-                                    } else {
-                                        "handle_global_key"
-                                    };
-                                    let handler = instance.exports.get_function(handler).unwrap();
+                                for (instance, plugin_env) in plugin_map.values() {
+                                    let handler =
+                                        instance.exports.get_function("handle_global_key").unwrap();
                                     for key in input_bytes.keys() {
                                         if let Ok(key) = key {
                                             wasi_write_string(
@@ -477,9 +501,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                     }
                                 }
 
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
+                                drop(send_screen_instructions.send(ScreenInstruction::Render));
                             }
                             PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                             PluginInstruction::Quit => break,
@@ -556,6 +578,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 input_loop(
@@ -563,6 +586,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,
+                    send_plugin_instructions,
                     send_app_instructions,
                 )
             }
@@ -581,14 +605,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
@@ -608,6 +630,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     for thread_handler in active_threads {
         thread_handler.join().unwrap();
     }
+
     // cleanup();
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";

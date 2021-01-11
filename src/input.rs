@@ -1,9 +1,9 @@
 /// Module for handling input
-use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
+use crate::{errors::ContextType, wasm_vm::PluginInstruction};
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
 struct InputHandler {
@@ -12,6 +12,7 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
@@ -21,6 +22,7 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
@@ -29,6 +31,7 @@ impl InputHandler {
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
+            send_plugin_instructions,
             send_app_instructions,
         }
     }
@@ -38,6 +41,7 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         self.send_pty_instructions.update(err_ctx);
+        self.send_plugin_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         loop {
@@ -59,6 +63,11 @@ impl InputHandler {
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
+            #[cfg(not(test))] // Absolutely zero clue why this breaks *all* of the tests
+            drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+            );
             match stdin_buffer.as_slice() {
                 [7] => {
                     // ctrl-g
@@ -88,6 +97,11 @@ impl InputHandler {
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
+            #[cfg(not(test))] // Absolutely zero clue why this breaks *all* of the tests
+            drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+            );
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
             // debug_log_to_file(format!("buffer {:?}", stdin_buffer));
 
@@ -267,6 +281,9 @@ impl InputHandler {
         self.send_pty_instructions
             .send(PtyInstruction::Quit)
             .unwrap();
+        self.send_plugin_instructions
+            .send(PluginInstruction::Quit)
+            .unwrap();
         self.send_app_instructions
             .send(AppInstruction::Exit)
             .unwrap();
@@ -297,6 +314,7 @@ pub fn input_loop(
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
@@ -304,6 +322,7 @@ pub fn input_loop(
         command_is_executing,
         send_screen_instructions,
         send_pty_instructions,
+        send_plugin_instructions,
         send_app_instructions,
     )
     .get_input();

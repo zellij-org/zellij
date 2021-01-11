@@ -38,6 +38,7 @@ pub struct TerminalPane {
     pub pid: RawFd,
     pub scroll: Scroll,
     pub should_render: bool,
+    pub selectable: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -165,6 +166,12 @@ impl Pane for TerminalPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.should_render = should_render;
     }
+    fn selectable(&self) -> bool {
+        self.selectable
+    }
+    fn set_selectable(&mut self, selectable: bool) {
+        self.selectable = selectable;
+    }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
         if true {
@@ -274,6 +281,7 @@ impl TerminalPane {
             pid,
             scroll,
             should_render: true,
+            selectable: true,
             pending_styles,
             position_and_size,
             position_and_size_override: None,
