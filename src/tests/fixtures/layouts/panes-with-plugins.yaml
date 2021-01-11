@@ -1,0 +1,17 @@
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+    parts:
+      - direction: Horizontal
+        split_size:
+          Percent: 20
+        plugin: strider.wasm
+      - direction: Horizontal
+        split_size:
+          Percent: 80
+    split_size:
+      Percent: 80
+  - direction: Vertical
+    split_size:
+      Percent: 20

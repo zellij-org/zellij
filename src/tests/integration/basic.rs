@@ -1,4 +1,4 @@
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
@@ -7,7 +7,7 @@ use crate::tests::utils::commands::{
     SPAWN_TERMINAL, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 use crate::tests::utils::get_output_frame_snapshots;
-use crate::{start, Opt};
+use crate::{start, CliArgs};
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -23,7 +23,7 @@ pub fn starts_with_one_terminal() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -50,7 +50,7 @@ pub fn split_terminals_vertically() {
         &SPLIT_VERTICALLY,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -77,7 +77,7 @@ pub fn split_terminals_horizontally() {
         &SPLIT_HORIZONTALLY,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -107,7 +107,7 @@ pub fn split_largest_terminal() {
         &SPAWN_TERMINAL,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -158,7 +158,7 @@ pub fn resize_right_and_up_on_the_same_axis() {
         &RESIZE_UP,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -190,7 +190,7 @@ pub fn scrolling_inside_a_pane() {
         &SCROLL_DOWN,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), Opt::default());
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -222,7 +222,7 @@ pub fn max_panes() {
         &SPAWN_TERMINAL,
         &QUIT,
     ]);
-    let mut opts = Opt::default();
+    let mut opts = CliArgs::default();
     opts.max_panes = Some(4);
     start(Box::new(fake_input_output.clone()), opts);
     let output_frames = fake_input_output
@@ -264,7 +264,7 @@ pub fn toggle_focused_pane_fullscreen() {
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         &QUIT,
     ]);
-    let mut opts = Opt::default();
+    let mut opts = CliArgs::default();
     opts.max_panes = Some(4);
     start(Box::new(fake_input_output.clone()), opts);
     let output_frames = fake_input_output

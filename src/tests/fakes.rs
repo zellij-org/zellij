@@ -1,4 +1,4 @@
-use crate::terminal_pane::PositionAndSize;
+use crate::panes::PositionAndSize;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
@@ -130,7 +130,7 @@ impl OsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn into_raw_mode(&mut self, pid: RawFd) {
+    fn set_raw_mode(&mut self, pid: RawFd) {
         self.io_events
             .lock()
             .unwrap()
