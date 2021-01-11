@@ -1,6 +1,3 @@
-#![allow(clippy::clippy::if_same_then_else)]
-
-use ::std::os::unix::io::RawFd;
 use std::fmt::{self, Debug, Formatter};
 
 use crate::panes::terminal_character::{
@@ -136,11 +133,10 @@ pub struct Grid {
     lines_above: Vec<Row>,
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
-    pub cursor: Cursor, // TODO: depubify these
-    pub scroll_region: Option<(usize, usize)>,
+    cursor: Cursor,
+    scroll_region: Option<(usize, usize)>,
     width: usize,
     height: usize,
-    pid: RawFd, // TODO: REMOVEME
 }
 
 impl Debug for Grid {
@@ -157,7 +153,7 @@ impl Debug for Grid {
 }
 
 impl Grid {
-    pub fn new(rows: usize, columns: usize, pid: RawFd) -> Self {
+    pub fn new(rows: usize, columns: usize) -> Self {
         Grid {
             lines_above: vec![],
             viewport: vec![],
@@ -166,7 +162,6 @@ impl Grid {
             scroll_region: None,
             width: columns,
             height: rows,
-            pid,
         }
     }
     fn cursor_canonical_line_index(&self) -> usize {

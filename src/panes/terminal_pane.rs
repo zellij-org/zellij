@@ -270,7 +270,7 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.columns, pid);
+        let grid = Grid::new(position_and_size.rows, position_and_size.columns);
         let pending_styles = CharacterStyles::new();
 
         TerminalPane {
@@ -582,7 +582,7 @@ impl vte::Perform for TerminalPane {
                     Some(&1049) => {
                         let columns = self.position_and_size_override.map(|x| x.columns).unwrap_or(self.position_and_size.columns);
                         let rows = self.position_and_size_override.map(|x| x.rows).unwrap_or(self.position_and_size.rows);
-                        let current_grid = std::mem::replace(&mut self.grid, Grid::new(rows, columns, self.pid));
+                        let current_grid = std::mem::replace(&mut self.grid, Grid::new(rows, columns));
                         self.alternative_grid = Some(current_grid);
                     }
                     Some(&1) => {
