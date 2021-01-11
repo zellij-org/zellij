@@ -1,0 +1,8 @@
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+  - direction: Vertical
+    split_size:
+      Fixed: 1
+    plugin: status-bar.wasm
