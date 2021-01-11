@@ -9,7 +9,7 @@ license = "MIT"
 
 [dependencies]
 colored = "2"
-mosaic-tile = "0.2"
+mosaic-tile = "0.4"
 pretty-bytes = "0.2"
 
 [profile.release]

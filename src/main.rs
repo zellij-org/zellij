@@ -1,7 +1,7 @@
 mod state;
 
 use colored::*;
-use mosaic_tile::register_tile;
+use mosaic_tile::*;
 use state::{FsEntry, State};
 use std::{cmp::min, fs::read_dir};
 
