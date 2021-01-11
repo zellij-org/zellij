@@ -1,17 +1,12 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
-use ::vte::Perform;
 use std::fmt::{self, Debug, Formatter};
 
-use crate::boundaries::Rect;
 use crate::terminal_pane::terminal_character::{
-    AnsiCode, CharacterStyles, NamedColor, TerminalCharacter,
+    CharacterStyles, TerminalCharacter,
     EMPTY_TERMINAL_CHARACTER
 };
-use crate::utils::logging::debug_log_to_file;
-use crate::VteEvent;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -369,10 +364,10 @@ impl Grid {
             self.scroll_down_one_line();
         }
     }
-    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+    pub fn rotate_scroll_region_up(&mut self, _count: usize) {
         // TBD
     }
-    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+    pub fn rotate_scroll_region_down(&mut self, _count: usize) {
         // TBD
     }
     pub fn add_canonical_line(&mut self) {
@@ -400,7 +395,6 @@ impl Grid {
         } else {
             self.cursor.y += 1;
         }
-        // self.cursor.x = 0;
     }
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;

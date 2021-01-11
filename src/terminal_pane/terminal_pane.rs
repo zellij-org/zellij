@@ -35,10 +35,8 @@ impl PositionAndSize {
 
 #[derive(Debug)]
 pub struct TerminalPane {
-
     pub grid: Grid,
     pub alternative_grid: Option<Grid>, // for 1049h/l instructions which tell us to switch between these two
-
     pub pid: RawFd,
     pub should_render: bool,
     pub position_and_size: PositionAndSize,
@@ -437,7 +435,6 @@ impl vte::Perform for TerminalPane {
             } else if params[0] == 2 {
                 self.grid.clear_cursor_line();
             }
-        // TODO: implement 2
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             if params[0] == 0 {
@@ -570,7 +567,6 @@ impl vte::Perform for TerminalPane {
             let column = if params[0] == 0 {
                 0
             } else {
-                // params[0] as usize
                 params[0] as usize - 1
             };
             self.grid.move_cursor_to_column(column);
