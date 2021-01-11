@@ -1,0 +1,13 @@
+[package]
+name = "status-bar"
+version = "0.1.0"
+authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+mosaic-tile = { path = "/home/spinning/tll/Documents/Coding/Languages/Rust/mosaic-tile"}
+
+[profile.release]
+lto = true
