@@ -12,11 +12,8 @@ pub trait MosaicTile {
 #[macro_export]
 macro_rules! register_tile {
     ($t:ty) => {
-        use mosaic_tile::*;
-
-        use std::cell::RefCell;
         thread_local! {
-            static STATE: RefCell<$t> = RefCell::new(Default::default());
+            static STATE: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
         }
 
         fn main() {
@@ -35,14 +32,14 @@ macro_rules! register_tile {
         #[no_mangle]
         pub fn handle_key() {
             STATE.with(|state| {
-                state.borrow_mut().handle_key(get_key());
+                state.borrow_mut().handle_key($crate::get_key());
             });
         }
 
         #[no_mangle]
         pub fn handle_global_key() {
             STATE.with(|state| {
-                state.borrow_mut().handle_global_key(get_key());
+                state.borrow_mut().handle_global_key($crate::get_key());
             });
         }
     };
