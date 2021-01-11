@@ -316,7 +316,7 @@ pub const COL_60: [&str; 20] = [
     "line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
-    "prompt $ "
+    "prompt $ ",
 ];
 
 pub const COL_70: [&str; 20] = [
