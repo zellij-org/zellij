@@ -15,13 +15,12 @@ impl MosaicTile for State {
     }
 
     fn draw(&mut self, _rows: usize, cols: usize) {
-        let mut width = 0;
         let more_msg = ", <?> More";
         self.lines = vec![String::new()];
         for item in get_help() {
+            let width = self.lines.last().unwrap().len();
             if width + item.len() > cols - more_msg.len() {
                 self.lines.last_mut().unwrap().push_str(more_msg);
-                width = item.len();
                 self.lines.push(item);
             } else {
                 let line = self.lines.last_mut().unwrap();
@@ -29,9 +28,9 @@ impl MosaicTile for State {
                     line.push_str(", ");
                 }
                 line.push_str(&item);
-                width += item.len() + 2;
             }
         }
+        self.page %= self.lines.len();
         let line = format!(
             "{}{}",
             self.lines[self.page],
@@ -45,11 +44,8 @@ impl MosaicTile for State {
     }
 
     fn handle_global_key(&mut self, key: Key) {
-        if self.lines.len() > 1 {
-            if let Key::Char('?') = key {
-                self.page += 1;
-                self.page %= self.lines.len();
-            }
+        if let Key::Char('?') = key {
+            self.page += 1;
         }
     }
 }
