@@ -317,8 +317,8 @@ pub fn get_help(mode: &InputMode) -> Vec<String> {
         "<q> Quit".into(),
         "<PgUp/PgDown> Scroll".into(),
         "<1> New Tab".into(),
-        "<2> Next Tab".into(),
-        "<3> Last Tab".into(),
+        "<2/3> Move Tab".into(),
+        "<4> Close Tab".into(),
     ];
     match mode {
         InputMode::Normal => vec!["<Ctrl-g> Command Mode".into()],

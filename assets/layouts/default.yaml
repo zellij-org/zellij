@@ -5,4 +5,4 @@ parts:
   - direction: Vertical
     split_size:
       Fixed: 1
-    plugin: status-bar.wasm
+    plugin: status-bar
