@@ -4,10 +4,9 @@ use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use ::vte::Perform;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::Debug;
 
-use crate::boundaries::Rect;
-use crate::panes::grid::{Grid, Row};
+use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
@@ -338,14 +337,6 @@ impl TerminalPane {
         // (x, y)
         self.grid.cursor_coordinates()
     }
-    pub fn scroll_up(&mut self, count: usize) {
-        self.grid.move_viewport_up(count);
-        self.mark_for_rerender();
-    }
-    pub fn scroll_down(&mut self, count: usize) {
-        self.grid.move_viewport_down(count);
-        self.mark_for_rerender();
-    }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         self.grid.rotate_scroll_region_up(count);
         self.mark_for_rerender();
@@ -353,68 +344,6 @@ impl TerminalPane {
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         self.grid.rotate_scroll_region_down(count);
         self.mark_for_rerender();
-    }
-    pub fn clear_scroll(&mut self) {
-        self.grid.reset_viewport();
-        self.mark_for_rerender();
-    }
-    pub fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
-        let position_and_size_override = PositionAndSize {
-            x,
-            y,
-            rows: size.rows,
-            columns: size.columns,
-        };
-        self.position_and_size_override = Some(position_and_size_override);
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn reset_size_and_position_override(&mut self) {
-        self.position_and_size_override = None;
-        self.reflow_lines();
-        self.mark_for_rerender();
-    }
-    pub fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
-        // there are some cases in which the terminal state means that input sent to it
-        // needs to be adjusted.
-        // here we match against those cases - if need be, we adjust the input and if not
-        // we send back the original input
-        match input_bytes.as_slice() {
-            [27, 91, 68] => {
-                // left arrow
-                if self.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OD".as_bytes().to_vec();
-                }
-            }
-            [27, 91, 67] => {
-                // right arrow
-                if self.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OC".as_bytes().to_vec();
-                }
-            }
-            [27, 91, 65] => {
-                // up arrow
-                if self.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OA".as_bytes().to_vec();
-                }
-            }
-            [27, 91, 66] => {
-                // down arrow
-                if self.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OB".as_bytes().to_vec();
-                }
-            }
-            _ => {}
-        };
-        input_bytes
     }
     fn add_newline(&mut self) {
         self.grid.add_canonical_line();
@@ -706,11 +635,8 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        match (byte, intermediates.get(0)) {
-            (b'M', None) => {
-                self.grid.move_cursor_up_with_scrolling(1);
-            }
-            _ => {}
+        if let (b'M', None) = (byte, intermediates.get(0)) {
+            self.grid.move_cursor_up_with_scrolling(1);
         }
     }
 }
