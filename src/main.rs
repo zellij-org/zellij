@@ -19,7 +19,7 @@ impl MosaicTile for State {
         self.lines = vec![String::new()];
         for item in get_help() {
             let width = self.lines.last().unwrap().len();
-            if width + item.len() > cols - more_msg.len() {
+            if width + item.len() + 2 > cols - more_msg.len() {
                 self.lines.last_mut().unwrap().push_str(more_msg);
                 self.lines.push(item);
             } else {
