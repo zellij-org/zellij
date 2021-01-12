@@ -2,6 +2,7 @@
 use crate::errors::ContextType;
 use crate::input::actions::Action;
 use crate::input::keybinds::get_default_keybinds;
+use crate::utils::logging::debug_log_to_file;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
@@ -49,15 +50,21 @@ impl InputHandler {
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
             loop {
+                let entry_mode = self.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
                 for key_result in stdin_buffer.events_and_raw() {
+                    debug_log_to_file(format!("{:?}, {:?}", self.mode, key_result)).unwrap();
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
                                 let should_break = self.dispatch_action(key_to_action(
                                     &key, raw_bytes, &self.mode, &keybinds,
                                 ));
+                                //@@@ This is a hack until we dispatch more than one action per key stroke
+                                if entry_mode == InputMode::Command && self.mode == InputMode::Command {
+                                    self.mode = InputMode::Normal;
+                                }
                                 if should_break {
                                     break;
                                 }

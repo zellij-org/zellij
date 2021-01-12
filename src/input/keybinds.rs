@@ -29,7 +29,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
     match *mode {
         InputMode::Normal => {
             // Ctrl+G -> Command Mode
-            defaults.insert(Key::Char('g'), Action::SwitchToMode(InputMode::Command));
+            defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Command));
         }
         command_mode @ InputMode::Command | command_mode @ InputMode::CommandPersistent => {
             match command_mode {
@@ -73,7 +73,8 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Char('z'), Action::NewPane(Direction::Down));
             defaults.insert(Key::Char('b'), Action::NewPane(Direction::Down));
             defaults.insert(Key::Char('n'), Action::NewPane(Direction::Right));
-
+            // Toggle focus fullscreen
+            defaults.insert(Key::Char('e'), Action::ToggleFocusFullscreen);
             // Close pane
             defaults.insert(Key::Char('x'), Action::CloseFocus);
             // Close Mosaic
@@ -86,7 +87,10 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
 pub fn key_to_action(key: &Key, input: Vec<u8>, mode: &InputMode, keybinds: &Keybinds) -> Action {
     if let Some(mode_keybinds) = keybinds.get(mode) {
-        mode_keybinds.get(key).cloned().unwrap_or(Action::Write(input))
+        mode_keybinds
+            .get(key)
+            .cloned()
+            .unwrap_or(Action::Write(input))
     } else {
         // Unrecognized mode - panic?
         panic!("Unrecognized mode: {:?}", mode);
