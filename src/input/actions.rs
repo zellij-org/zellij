@@ -31,7 +31,8 @@ pub enum Action {
     /// Toggle focus pane between fullscreen and normal layout
     ToggleFocusFullscreen,
     /// Open a new pane in specified direction (relative to focus)
-    NewPane(Direction),
+    /// If no direction is specified, will try to use the biggest available space
+    NewPane(Option<Direction>),
     /// Close focus pane
     CloseFocus,
     // Create a new tab

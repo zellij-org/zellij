@@ -70,9 +70,9 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Char('3'), Action::GoToPreviousTab);
             defaults.insert(Key::Char('4'), Action::CloseTab);
             // New pane
-            defaults.insert(Key::Char('z'), Action::NewPane(Direction::Down));
-            defaults.insert(Key::Char('b'), Action::NewPane(Direction::Down));
-            defaults.insert(Key::Char('n'), Action::NewPane(Direction::Right));
+            defaults.insert(Key::Char('z'), Action::NewPane(None));
+            defaults.insert(Key::Char('b'), Action::NewPane(Some(Direction::Down)));
+            defaults.insert(Key::Char('n'), Action::NewPane(Some(Direction::Right)));
             // Toggle focus fullscreen
             defaults.insert(Key::Char('e'), Action::ToggleFocusFullscreen);
             // Close pane

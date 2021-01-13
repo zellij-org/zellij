@@ -54,7 +54,7 @@ impl InputHandler {
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
                 for key_result in stdin_buffer.events_and_raw() {
-                    debug_log_to_file(format!("{:?}, {:?}", self.mode, key_result)).unwrap();
+                    //debug_log_to_file(format!("{:?}, {:?}", self.mode, key_result)).unwrap();
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
@@ -143,17 +143,21 @@ impl InputHandler {
             }
             Action::NewPane(direction) => {
                 let pty_instr = match direction {
-                    super::actions::Direction::Left => {
+                    Some(super::actions::Direction::Left) => {
                         PtyInstruction::SpawnTerminalVertically(None)
                     }
-                    super::actions::Direction::Right => {
+                    Some(super::actions::Direction::Right) => {
                         PtyInstruction::SpawnTerminalVertically(None)
                     }
-                    super::actions::Direction::Up => {
+                    Some(super::actions::Direction::Up) => {
                         PtyInstruction::SpawnTerminalHorizontally(None)
                     }
-                    super::actions::Direction::Down => {
+                    Some(super::actions::Direction::Down) => {
                         PtyInstruction::SpawnTerminalHorizontally(None)
+                    }
+                    // No direction specified - try to put it in the biggest available spot
+                    None => {
+                        PtyInstruction::SpawnTerminal(None)
                     }
                 };
                 self.command_is_executing.opening_new_pane();
