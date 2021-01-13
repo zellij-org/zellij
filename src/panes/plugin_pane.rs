@@ -9,6 +9,7 @@ use crate::panes::{PaneId, PositionAndSize};
 pub struct PluginPane {
     pub pid: u32,
     pub should_render: bool,
+    pub selectable: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -23,6 +24,7 @@ impl PluginPane {
         Self {
             pid,
             should_render: true,
+            selectable: true,
             position_and_size,
             position_and_size_override: None,
             send_plugin_instructions,
@@ -91,6 +93,12 @@ impl Pane for PluginPane {
     }
     fn set_should_render(&mut self, should_render: bool) {
         self.should_render = should_render;
+    }
+    fn selectable(&self) -> bool {
+        self.selectable
+    }
+    fn set_selectable(&mut self, selectable: bool) {
+        self.selectable = selectable;
     }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {

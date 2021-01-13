@@ -1,9 +1,8 @@
-/// Module for handling input
-use crate::errors::ContextType;
-use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
+use crate::{errors::ContextType, wasm_vm::PluginInstruction};
+use crate::{os_input_output::OsApi, update_state, AppState};
 use crate::{AppInstruction, SenderWithContext, OPENCALLS};
 
 struct InputHandler {
@@ -12,6 +11,7 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
@@ -21,6 +21,7 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
@@ -29,6 +30,7 @@ impl InputHandler {
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
+            send_plugin_instructions,
             send_app_instructions,
         }
     }
@@ -38,9 +40,13 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         self.send_pty_instructions.update(err_ctx);
+        self.send_plugin_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         loop {
+            update_state(&self.send_app_instructions, |_| AppState {
+                input_mode: self.mode,
+            });
             match self.mode {
                 InputMode::Normal => self.read_normal_mode(),
                 InputMode::Command => self.read_command_mode(false),
@@ -59,6 +65,11 @@ impl InputHandler {
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
+            #[cfg(not(test))] // Absolutely zero clue why this breaks *all* of the tests
+            drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+            );
             match stdin_buffer.as_slice() {
                 [7] => {
                     // ctrl-g
@@ -88,6 +99,11 @@ impl InputHandler {
 
         loop {
             let stdin_buffer = self.os_input.read_from_stdin();
+            #[cfg(not(test))] // Absolutely zero clue why this breaks *all* of the tests
+            drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+            );
             // uncomment this to print the entered character to a log file (/tmp/mosaic/mosaic-log.txt) for debugging
             // debug_log_to_file(format!("buffer {:?}", stdin_buffer));
 
@@ -98,12 +114,10 @@ impl InputHandler {
                     // multiple commands. If we're already in persistent mode, it'll return us to normal mode.
                     match self.mode {
                         InputMode::Command => self.mode = InputMode::CommandPersistent,
-                        InputMode::CommandPersistent => {
-                            self.mode = InputMode::Normal;
-                            return;
-                        }
+                        InputMode::CommandPersistent => self.mode = InputMode::Normal,
                         _ => panic!(),
                     }
+                    return;
                 }
                 [27] => {
                     // Esc
@@ -248,7 +262,7 @@ impl InputHandler {
                     self.command_is_executing.wait_until_pane_is_closed();
                 }
                 //@@@khs26 Write this to the powerbar?
-                _ => {}
+                _ => continue,
             }
 
             if self.mode == InputMode::Command {
@@ -267,6 +281,9 @@ impl InputHandler {
         self.send_pty_instructions
             .send(PtyInstruction::Quit)
             .unwrap();
+        self.send_plugin_instructions
+            .send(PluginInstruction::Quit)
+            .unwrap();
         self.send_app_instructions
             .send(AppInstruction::Exit)
             .unwrap();
@@ -282,12 +299,42 @@ impl InputHandler {
 ///   normal mode
 /// - Exiting means that we should start the shutdown process for mosaic or the given
 ///   input handler
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum InputMode {
     Normal,
     Command,
     CommandPersistent,
     Exiting,
+}
+
+// FIXME: This should be auto-generated from the soon-to-be-added `get_default_keybinds`
+pub fn get_help(mode: &InputMode) -> Vec<String> {
+    let command_help = vec![
+        "<n/b/z> Split".into(),
+        "<j/k/h/l> Resize".into(),
+        "<p> Focus Next".into(),
+        "<x> Close Pane".into(),
+        "<q> Quit".into(),
+        "<PgUp/PgDown> Scroll".into(),
+        "<1> New Tab".into(),
+        "<2/3> Move Tab".into(),
+        "<4> Close Tab".into(),
+    ];
+    match mode {
+        InputMode::Normal => vec!["<Ctrl-g> Command Mode".into()],
+        InputMode::Command => [
+            vec![
+                "<Ctrl-g> Persistent Mode".into(),
+                "<ESC> Normal Mode".into(),
+            ],
+            command_help,
+        ]
+        .concat(),
+        InputMode::CommandPersistent => {
+            [vec!["<ESC/Ctrl-g> Normal Mode".into()], command_help].concat()
+        }
+        InputMode::Exiting => vec!["Bye from Mosaic!".into()],
+    }
 }
 
 /// Entry point to the module that instantiates a new InputHandler and calls its
@@ -297,6 +344,7 @@ pub fn input_loop(
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
@@ -304,6 +352,7 @@ pub fn input_loop(
         command_is_executing,
         send_screen_instructions,
         send_pty_instructions,
+        send_plugin_instructions,
         send_app_instructions,
     )
     .get_input();
