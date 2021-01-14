@@ -16,14 +16,16 @@ mod utils;
 
 mod wasm_vm;
 
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
+use std::{cell::RefCell, sync::mpsc::TrySendError};
+use std::{collections::HashMap, fs};
 
+use directories_next::ProjectDirs;
+use input::InputMode;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
@@ -85,6 +87,14 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
+    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
+        if let SenderType::SyncSender(ref s) = self.sender {
+            s.try_send((event, self.err_ctx))
+        } else {
+            panic!("try_send can only be called on SyncSenders!")
+        }
+    }
+
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
@@ -125,13 +135,44 @@ pub fn main() {
     }
 }
 
+// FIXME: It would be good to add some more things to this over time
+#[derive(Debug, Clone)]
+pub struct AppState {
+    pub input_mode: InputMode,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            input_mode: InputMode::Normal,
+        }
+    }
+}
+
+// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
+// from self instead of being explicitly passed here
+pub fn update_state(
+    app_tx: &SenderWithContext<AppInstruction>,
+    update_fn: impl FnOnce(AppState) -> AppState,
+) {
+    let (state_tx, state_rx) = channel();
+
+    drop(app_tx.send(AppInstruction::GetState(state_tx)));
+    let state = state_rx.recv().unwrap();
+
+    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
+}
+
 #[derive(Clone)]
 pub enum AppInstruction {
+    GetState(Sender<AppState>),
+    SetState(AppState),
     Exit,
     Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
+    let mut app_state = AppState::default();
     let mut active_threads = vec![];
 
     let command_is_executing = CommandIsExecuting::new();
@@ -168,7 +209,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout.map(Layout::new);
+    // Don't use default layouts in tests, but do everywhere else
+    #[cfg(not(test))]
+    let default_layout = Some(PathBuf::from("default"));
+    #[cfg(test)]
+    let default_layout = None;
+    let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -184,64 +230,57 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .name("pty".to_string())
             .spawn({
                 let mut command_is_executing = command_is_executing.clone();
-                move || {
-                    if let Some(layout) = maybe_layout {
-                        pty_bus.spawn_terminals_for_layout(layout);
-                    } else {
-                        let pid = pty_bus.spawn_terminal(None);
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::NewTab(pid))
-                            .unwrap();
-                    }
-
-                    loop {
-                        let (event, mut err_ctx) = pty_bus
-                            .receive_pty_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                        pty_bus.send_screen_instructions.update(err_ctx);
-                        match event {
-                            PtyInstruction::SpawnTerminal(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::NewTab => {
+                send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+                move || loop {
+                    let (event, mut err_ctx) = pty_bus
+                        .receive_pty_instructions
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+                    pty_bus.send_screen_instructions.update(err_ctx);
+                    match event {
+                        PtyInstruction::SpawnTerminal(file_to_open) => {
+                            let pid = pty_bus.spawn_terminal(file_to_open);
+                            pty_bus
+                                .send_screen_instructions
+                                .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
+                                .unwrap();
+                        }
+                        PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                            let pid = pty_bus.spawn_terminal(file_to_open);
+                            pty_bus
+                                .send_screen_instructions
+                                .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                                .unwrap();
+                        }
+                        PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                            let pid = pty_bus.spawn_terminal(file_to_open);
+                            pty_bus
+                                .send_screen_instructions
+                                .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                                .unwrap();
+                        }
+                        PtyInstruction::NewTab => {
+                            if let Some(layout) = maybe_layout.clone() {
+                                pty_bus.spawn_terminals_for_layout(layout);
+                            } else {
                                 let pid = pty_bus.spawn_terminal(None);
                                 pty_bus
                                     .send_screen_instructions
                                     .send(ScreenInstruction::NewTab(pid))
                                     .unwrap();
                             }
-                            PtyInstruction::ClosePane(id) => {
-                                pty_bus.close_pane(id);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::CloseTab(ids) => {
-                                pty_bus.close_tab(ids);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::Quit => {
-                                break;
-                            }
+                        }
+                        PtyInstruction::ClosePane(id) => {
+                            pty_bus.close_pane(id);
+                            command_is_executing.done_closing_pane();
+                        }
+                        PtyInstruction::CloseTab(ids) => {
+                            pty_bus.close_tab(ids);
+                            command_is_executing.done_closing_pane();
+                        }
+                        PtyInstruction::Quit => {
+                            break;
                         }
                     }
                 }
@@ -355,6 +394,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 screen.get_active_tab_mut().unwrap().close_focused_pane();
                                 screen.render();
                             }
+                            ScreenInstruction::SetSelectable(id, selectable) => {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .set_pane_selectable(id, selectable);
+                                // FIXME: Is this needed?
+                                screen.render();
+                            }
                             ScreenInstruction::ClosePane(id) => {
                                 screen.get_active_tab_mut().unwrap().close_pane(id);
                                 screen.render();
@@ -373,7 +420,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
                             ScreenInstruction::CloseTab => screen.close_tab(),
                             ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
-                                screen.apply_layout(layout, new_pane_pids)
+                                screen.apply_layout(layout, new_pane_pids);
+                                command_is_executing.done_opening_new_pane();
                             }
                             ScreenInstruction::Quit => {
                                 break;
@@ -391,94 +439,124 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .spawn({
                 let mut send_pty_instructions = send_pty_instructions.clone();
                 let mut send_screen_instructions = send_screen_instructions.clone();
+                let mut send_app_instructions = send_app_instructions.clone();
 
-                move || {
-                    let store = Store::default();
+                let store = Store::default();
+                let mut plugin_id = 0;
+                let mut plugin_map = HashMap::new();
 
-                    let mut plugin_id = 0;
-                    let mut plugin_map = HashMap::new();
+                move || loop {
+                    let (event, mut err_ctx) = receive_plugin_instructions
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                    send_screen_instructions.update(err_ctx);
+                    send_pty_instructions.update(err_ctx);
+                    send_app_instructions.update(err_ctx);
+                    match event {
+                        PluginInstruction::Load(pid_tx, path) => {
+                            let project_dirs =
+                                ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+                            let plugin_dir = project_dirs.data_dir().join("plugins/");
+                            let wasm_bytes = fs::read(&path)
+                                .or_else(|_| fs::read(&path.with_extension("wasm")))
+                                .or_else(|_| {
+                                    fs::read(&plugin_dir.join(&path).with_extension("wasm"))
+                                })
+                                .unwrap_or_else(|_| {
+                                    panic!("cannot find plugin {}", &path.display())
+                                });
 
-                    loop {
-                        let (event, mut err_ctx) = receive_plugin_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                        send_screen_instructions.update(err_ctx);
-                        send_pty_instructions.update(err_ctx);
-                        match event {
-                            PluginInstruction::Load(pid_tx, path) => {
-                                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                                let module = Module::from_file(&store, &path).unwrap();
+                            // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                            let module = Module::new(&store, &wasm_bytes).unwrap();
 
-                                let output = Pipe::new();
-                                let input = Pipe::new();
-                                let mut wasi_env = WasiState::new("mosaic")
-                                    .env("CLICOLOR_FORCE", "1")
-                                    .preopen(|p| {
-                                        p.directory(".") // FIXME: Change this to a more meaningful dir
-                                            .alias(".")
-                                            .read(true)
-                                            .write(true)
-                                            .create(true)
-                                    })
-                                    .unwrap()
-                                    .stdin(Box::new(input))
-                                    .stdout(Box::new(output))
-                                    .finalize()
-                                    .unwrap();
+                            let output = Pipe::new();
+                            let input = Pipe::new();
+                            let mut wasi_env = WasiState::new("mosaic")
+                                .env("CLICOLOR_FORCE", "1")
+                                .preopen(|p| {
+                                    p.directory(".") // FIXME: Change this to a more meaningful dir
+                                        .alias(".")
+                                        .read(true)
+                                        .write(true)
+                                        .create(true)
+                                })
+                                .unwrap()
+                                .stdin(Box::new(input))
+                                .stdout(Box::new(output))
+                                .finalize()
+                                .unwrap();
 
-                                let wasi = wasi_env.import_object(&module).unwrap();
+                            let wasi = wasi_env.import_object(&module).unwrap();
 
-                                let plugin_env = PluginEnv {
-                                    send_pty_instructions: send_pty_instructions.clone(),
-                                    wasi_env,
-                                };
+                            let plugin_env = PluginEnv {
+                                plugin_id,
+                                send_pty_instructions: send_pty_instructions.clone(),
+                                send_screen_instructions: send_screen_instructions.clone(),
+                                send_app_instructions: send_app_instructions.clone(),
+                                wasi_env,
+                            };
 
-                                let mosaic = mosaic_imports(&store, &plugin_env);
-                                let instance =
-                                    Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+                            let mosaic = mosaic_imports(&store, &plugin_env);
+                            let instance =
+                                Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
 
-                                let start = instance.exports.get_function("_start").unwrap();
+                            let start = instance.exports.get_function("_start").unwrap();
 
-                                // This eventually calls the `.init()` method
-                                start.call(&[]).unwrap();
+                            // This eventually calls the `.init()` method
+                            start.call(&[]).unwrap();
 
-                                plugin_map.insert(plugin_id, (instance, plugin_env));
-                                pid_tx.send(plugin_id).unwrap();
-                                plugin_id += 1;
+                            plugin_map.insert(plugin_id, (instance, plugin_env));
+                            pid_tx.send(plugin_id).unwrap();
+                            plugin_id += 1;
+                        }
+                        PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                            let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                            let draw = instance.exports.get_function("draw").unwrap();
+
+                            draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                                .unwrap();
+
+                            buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                        }
+                        // FIXME: Deduplicate this with the callback below!
+                        PluginInstruction::Input(pid, input_bytes) => {
+                            let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                            let handle_key = instance.exports.get_function("handle_key").unwrap();
+                            for key in input_bytes.keys() {
+                                if let Ok(key) = key {
+                                    wasi_write_string(
+                                        &plugin_env.wasi_env,
+                                        &serde_json::to_string(&key).unwrap(),
+                                    );
+                                    handle_key.call(&[]).unwrap();
+                                }
                             }
-                            PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
-                                let draw = instance.exports.get_function("draw").unwrap();
-
-                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                                    .unwrap();
-
-                                buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
-                            }
-                            PluginInstruction::Input(pid, input_bytes) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                                let handle_key =
-                                    instance.exports.get_function("handle_key").unwrap();
+                            drop(send_screen_instructions.send(ScreenInstruction::Render));
+                        }
+                        PluginInstruction::GlobalInput(input_bytes) => {
+                            // FIXME: Set up an event subscription system, and timed callbacks
+                            for (instance, plugin_env) in plugin_map.values() {
+                                let handler =
+                                    instance.exports.get_function("handle_global_key").unwrap();
                                 for key in input_bytes.keys() {
                                     if let Ok(key) = key {
                                         wasi_write_string(
                                             &plugin_env.wasi_env,
                                             &serde_json::to_string(&key).unwrap(),
                                         );
-                                        handle_key.call(&[]).unwrap();
+                                        handler.call(&[]).unwrap();
                                     }
                                 }
-
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
                             }
-                            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
-                            PluginInstruction::Quit => break,
+
+                            drop(send_screen_instructions.send(ScreenInstruction::Render));
                         }
+                        PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+                        PluginInstruction::Quit => break,
                     }
                 }
             })
@@ -551,6 +629,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 input_loop(
@@ -558,6 +637,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,
+                    send_plugin_instructions,
                     send_app_instructions,
                 )
             }
@@ -573,17 +653,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         send_screen_instructions.update(err_ctx);
         send_pty_instructions.update(err_ctx);
         match app_instruction {
+            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
+            AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
@@ -603,6 +683,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     for thread_handler in active_threads {
         thread_handler.join().unwrap();
     }
+
     // cleanup();
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";

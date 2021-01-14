@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Formatter};
+use std::{
+    cmp::Ordering,
+    fmt::{self, Debug, Formatter},
+};
 
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
@@ -97,7 +100,7 @@ fn transfer_rows_up(
     let mut next_lines: Vec<Row> = vec![];
     for _ in 0..count {
         if next_lines.is_empty() {
-            if source.len() > 0 {
+            if !source.is_empty() {
                 let next_line = source.remove(0);
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
@@ -214,7 +217,7 @@ impl Grid {
         y_coordinates
     }
     pub fn scroll_up_one_line(&mut self) {
-        if self.lines_above.len() > 0 && self.viewport.len() == self.height {
+        if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
             let line_to_insert_at_viewport_top = self.lines_above.pop().unwrap();
@@ -222,7 +225,7 @@ impl Grid {
         }
     }
     pub fn scroll_down_one_line(&mut self) {
-        if self.lines_below.len() > 0 && self.viewport.len() == self.height {
+        if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
             if line_to_push_up.is_canonical {
                 self.lines_above.push(line_to_push_up);
@@ -243,7 +246,7 @@ impl Grid {
             for mut row in self.viewport.drain(..) {
                 if !row.is_canonical
                     && viewport_canonical_lines.is_empty()
-                    && self.lines_above.len() > 0
+                    && !self.lines_above.is_empty()
                 {
                     let mut first_line_above = self.lines_above.pop().unwrap();
                     first_line_above.append(&mut row.columns);
@@ -269,7 +272,7 @@ impl Grid {
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
-                while canonical_line.columns.len() > 0 {
+                while !canonical_line.columns.is_empty() {
                     let next_wrap = if canonical_line.len() > new_columns {
                         canonical_line.columns.drain(..new_columns)
                     } else {
@@ -279,7 +282,7 @@ impl Grid {
                     // if there are no more parts, this row is canonical as long as it originall
                     // was canonical (it might not have been for example if it's the first row in
                     // the viewport, and the actual canonical row is above it in the scrollback)
-                    let row = if canonical_line_parts.len() == 0 && canonical_line.is_canonical {
+                    let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical {
                         row.canonical()
                     } else {
                         row
@@ -294,62 +297,70 @@ impl Grid {
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
             let current_viewport_row_count = self.viewport.len();
-            if current_viewport_row_count < self.height {
-                let row_count_to_transfer = self.height - current_viewport_row_count;
-                transfer_rows_down(
-                    &mut self.lines_above,
-                    &mut self.viewport,
-                    row_count_to_transfer,
-                    None,
-                    Some(new_columns),
-                );
-                let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                new_cursor_y += rows_pulled;
-            } else if current_viewport_row_count > self.height {
-                let row_count_to_transfer = current_viewport_row_count - self.height;
-                if row_count_to_transfer > new_cursor_y {
-                    new_cursor_y = 0;
-                } else {
-                    new_cursor_y -= row_count_to_transfer;
+            match current_viewport_row_count.cmp(&self.height) {
+                Ordering::Less => {
+                    let row_count_to_transfer = self.height - current_viewport_row_count;
+                    transfer_rows_down(
+                        &mut self.lines_above,
+                        &mut self.viewport,
+                        row_count_to_transfer,
+                        None,
+                        Some(new_columns),
+                    );
+                    let rows_pulled = self.viewport.len() - current_viewport_row_count;
+                    new_cursor_y += rows_pulled;
                 }
-                transfer_rows_up(
-                    &mut self.viewport,
-                    &mut self.lines_above,
-                    row_count_to_transfer,
-                    Some(new_columns),
-                    None,
-                );
+                Ordering::Greater => {
+                    let row_count_to_transfer = current_viewport_row_count - self.height;
+                    if row_count_to_transfer > new_cursor_y {
+                        new_cursor_y = 0;
+                    } else {
+                        new_cursor_y -= row_count_to_transfer;
+                    }
+                    transfer_rows_up(
+                        &mut self.viewport,
+                        &mut self.lines_above,
+                        row_count_to_transfer,
+                        Some(new_columns),
+                        None,
+                    );
+                }
+                Ordering::Equal => {}
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
         }
         if new_rows != self.height {
             let current_viewport_row_count = self.viewport.len();
-            if current_viewport_row_count < new_rows {
-                let row_count_to_transfer = new_rows - current_viewport_row_count;
-                transfer_rows_down(
-                    &mut self.lines_above,
-                    &mut self.viewport,
-                    row_count_to_transfer,
-                    None,
-                    Some(new_columns),
-                );
-                let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                self.cursor.y += rows_pulled;
-            } else if current_viewport_row_count > new_rows {
-                let row_count_to_transfer = current_viewport_row_count - new_rows;
-                if row_count_to_transfer > self.cursor.y {
-                    self.cursor.y = 0;
-                } else {
-                    self.cursor.y -= row_count_to_transfer;
+            match current_viewport_row_count.cmp(&new_rows) {
+                Ordering::Less => {
+                    let row_count_to_transfer = new_rows - current_viewport_row_count;
+                    transfer_rows_down(
+                        &mut self.lines_above,
+                        &mut self.viewport,
+                        row_count_to_transfer,
+                        None,
+                        Some(new_columns),
+                    );
+                    let rows_pulled = self.viewport.len() - current_viewport_row_count;
+                    self.cursor.y += rows_pulled;
                 }
-                transfer_rows_up(
-                    &mut self.viewport,
-                    &mut self.lines_above,
-                    row_count_to_transfer,
-                    Some(new_columns),
-                    None,
-                );
+                Ordering::Greater => {
+                    let row_count_to_transfer = current_viewport_row_count - new_rows;
+                    if row_count_to_transfer > self.cursor.y {
+                        self.cursor.y = 0;
+                    } else {
+                        self.cursor.y -= row_count_to_transfer;
+                    }
+                    transfer_rows_up(
+                        &mut self.viewport,
+                        &mut self.lines_above,
+                        row_count_to_transfer,
+                        Some(new_columns),
+                        None,
+                    );
+                }
+                Ordering::Equal => {}
             }
         }
         self.height = new_rows;
@@ -364,10 +375,8 @@ impl Grid {
             .iter()
             .map(|r| {
                 let mut line: Vec<TerminalCharacter> = r.columns.iter().copied().collect();
-                for _ in line.len()..self.width {
-                    // pad line
-                    line.push(EMPTY_TERMINAL_CHARACTER);
-                }
+                // pad line
+                line.resize(self.width, EMPTY_TERMINAL_CHARACTER);
                 line
             })
             .collect();
@@ -512,19 +521,27 @@ impl Grid {
         let row = self.viewport.get_mut(self.cursor.y).unwrap();
         row.replace_beginning_with(line_part);
     }
-    pub fn clear_all_after_cursor(&mut self) {
-        self.viewport
-            .get_mut(self.cursor.y)
-            .unwrap()
-            .truncate(self.cursor.x);
-        self.viewport.truncate(self.cursor.y + 1);
+    pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
+        let cursor_row = self.viewport.get_mut(self.cursor.y).unwrap();
+        cursor_row.truncate(self.cursor.x);
+        let mut replace_with_columns_in_cursor_row = vec![replace_with; self.width - self.cursor.x];
+        cursor_row.append(&mut replace_with_columns_in_cursor_row);
+
+        let replace_with_columns = vec![replace_with; self.width];
+        self.replace_characters_in_line_after_cursor(replace_with);
+        for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
+            row.replace_columns(replace_with_columns.clone());
+        }
     }
     pub fn clear_cursor_line(&mut self) {
         self.viewport.get_mut(self.cursor.y).unwrap().truncate(0);
     }
-    pub fn clear_all(&mut self) {
-        self.viewport.clear();
-        self.viewport.push(Row::new().canonical());
+    pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
+        let replace_with_columns = vec![replace_with; self.width];
+        self.replace_characters_in_line_after_cursor(replace_with);
+        for row in self.viewport.iter_mut() {
+            row.replace_columns(replace_with_columns.clone());
+        }
     }
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
@@ -719,23 +736,26 @@ impl Row {
         self
     }
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
-        if x == self.columns.len() {
-            self.columns.push(terminal_character);
-        } else if x > self.columns.len() {
-            for _ in self.columns.len()..x {
-                self.columns.push(EMPTY_TERMINAL_CHARACTER);
+        match self.columns.len().cmp(&x) {
+            Ordering::Equal => self.columns.push(terminal_character),
+            Ordering::Less => {
+                self.columns.resize(x, EMPTY_TERMINAL_CHARACTER);
+                self.columns.push(terminal_character);
             }
-            self.columns.push(terminal_character);
-        } else {
-            // this is much more performant than remove/insert
-            self.columns.push(terminal_character);
-            self.columns.swap_remove(x);
+            Ordering::Greater => {
+                // this is much more performant than remove/insert
+                self.columns.push(terminal_character);
+                self.columns.swap_remove(x);
+            }
         }
     }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         // this is much more performant than remove/insert
         self.columns.push(terminal_character);
         self.columns.swap_remove(x);
+    }
+    pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
+        self.columns = columns;
     }
     pub fn push(&mut self, terminal_character: TerminalCharacter) {
         self.columns.push(terminal_character);
@@ -767,10 +787,10 @@ impl Row {
             }
             current_part.push(character);
         }
-        if current_part.len() > 0 {
+        if !current_part.is_empty() {
             parts.push(Row::from_columns(current_part))
         };
-        if parts.len() > 0 && self.is_canonical {
+        if !parts.is_empty() && self.is_canonical {
             parts.get_mut(0).unwrap().is_canonical = true;
         }
         parts

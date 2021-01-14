@@ -299,13 +299,15 @@ impl PtyBus {
                 let child_pid = self.id_to_child_pid.get(&id).unwrap();
                 self.os_input.kill(*child_pid).unwrap();
             }
-            PaneId::Plugin(pid) => self
-                .send_plugin_instructions
-                .send(PluginInstruction::Unload(pid))
-                .unwrap(),
+            PaneId::Plugin(pid) => drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Unload(pid)),
+            ),
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) {
-        ids.iter().for_each(|&id| self.close_pane(id));
+        ids.iter().for_each(|&id| {
+            self.close_pane(id);
+        });
     }
 }
