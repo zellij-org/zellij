@@ -479,6 +479,9 @@ impl vte::Perform for TerminalPane {
     }
 
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
+        if c != 'm' {
+            let _ = debug_log_to_file(format!("{} {:?} {:?}", c, params, _intermediates));
+        }
         if c == 'm' {
             self.pending_styles.add_style_from_ansi_params(params);
         } else if c == 'C' {
@@ -545,12 +548,7 @@ impl vte::Perform for TerminalPane {
             };
             self.grid.move_cursor_back(move_back_count);
         } else if c == 'l' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false,
-            };
-            if first_intermediate_is_questionmark {
+            if _intermediates.get(0) == Some(&b'?') {
                 match params.get(0) {
                     Some(&1049) => {
                         if let Some(alternative_grid) = self.alternative_grid.as_mut() {
@@ -570,12 +568,7 @@ impl vte::Perform for TerminalPane {
                 };
             }
         } else if c == 'h' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false,
-            };
-            if first_intermediate_is_questionmark {
+            if _intermediates.get(0) == Some(&b'?') {
                 match params.get(0) {
                     Some(&25) => {
                         self.grid.show_cursor();
