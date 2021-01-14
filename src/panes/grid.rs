@@ -521,19 +521,32 @@ impl Grid {
         let row = self.viewport.get_mut(self.cursor.y).unwrap();
         row.replace_beginning_with(line_part);
     }
-    pub fn clear_all_after_cursor(&mut self) {
-        self.viewport
+    pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
+        let cursor_row = self.viewport
             .get_mut(self.cursor.y)
-            .unwrap()
-            .truncate(self.cursor.x);
-        self.viewport.truncate(self.cursor.y + 1);
+            .unwrap();
+        cursor_row.truncate(self.cursor.x);
+        let mut replace_with_columns_in_cursor_row = vec![
+            replace_with;
+            self.width - self.cursor.x
+        ];
+        cursor_row.append(&mut replace_with_columns_in_cursor_row);
+
+        let replace_with_columns = vec![replace_with; self.width];
+        self.replace_characters_in_line_after_cursor(replace_with);
+        for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
+            row.replace_columns(replace_with_columns.clone());
+        }
     }
     pub fn clear_cursor_line(&mut self) {
         self.viewport.get_mut(self.cursor.y).unwrap().truncate(0);
     }
-    pub fn clear_all(&mut self) {
-        self.viewport.clear();
-        self.viewport.push(Row::new().canonical());
+    pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
+        let replace_with_columns = vec![replace_with; self.width];
+        self.replace_characters_in_line_after_cursor(replace_with);
+        for row in self.viewport.iter_mut() {
+            row.replace_columns(replace_with_columns.clone());
+        }
     }
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
@@ -745,6 +758,9 @@ impl Row {
         // this is much more performant than remove/insert
         self.columns.push(terminal_character);
         self.columns.swap_remove(x);
+    }
+    pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
+        self.columns = columns;
     }
     pub fn push(&mut self, terminal_character: TerminalCharacter) {
         self.columns.push(terminal_character);
