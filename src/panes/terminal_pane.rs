@@ -443,10 +443,12 @@ impl vte::Perform for TerminalPane {
             }
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+            char_to_replace.styles = self.pending_styles;
             if params[0] == 0 {
-                self.grid.clear_all_after_cursor();
+                self.grid.clear_all_after_cursor(char_to_replace);
             } else if params[0] == 2 {
-                self.grid.clear_all();
+                self.grid.clear_all(char_to_replace);
             }
         // TODO: implement 1
         } else if c == 'H' {
@@ -492,7 +494,6 @@ impl vte::Perform for TerminalPane {
                     Some(&1049) => {
                         if let Some(alternative_grid) = self.alternative_grid.as_mut() {
                             std::mem::swap(&mut self.grid, alternative_grid);
-                            // self.grid = alternative_grid;
                         }
                         self.alternative_grid = None;
                     }
