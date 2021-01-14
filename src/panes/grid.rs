@@ -522,14 +522,9 @@ impl Grid {
         row.replace_beginning_with(line_part);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        let cursor_row = self.viewport
-            .get_mut(self.cursor.y)
-            .unwrap();
+        let cursor_row = self.viewport.get_mut(self.cursor.y).unwrap();
         cursor_row.truncate(self.cursor.x);
-        let mut replace_with_columns_in_cursor_row = vec![
-            replace_with;
-            self.width - self.cursor.x
-        ];
+        let mut replace_with_columns_in_cursor_row = vec![replace_with; self.width - self.cursor.x];
         cursor_row.append(&mut replace_with_columns_in_cursor_row);
 
         let replace_with_columns = vec![replace_with; self.width];
