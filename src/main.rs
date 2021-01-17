@@ -6,6 +6,7 @@ mod cli;
 mod command_is_executing;
 mod errors;
 mod input;
+mod ipc;
 mod layout;
 mod os_input_output;
 mod panes;
