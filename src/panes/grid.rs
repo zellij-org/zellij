@@ -272,6 +272,9 @@ impl Grid {
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
+                if canonical_line.columns.is_empty() {
+                    canonical_line_parts.push(Row::new().canonical());
+                }
                 while !canonical_line.columns.is_empty() {
                     let next_wrap = if canonical_line.len() > new_columns {
                         canonical_line.columns.drain(..new_columns)
@@ -279,7 +282,7 @@ impl Grid {
                         canonical_line.columns.drain(..)
                     };
                     let row = Row::from_columns(next_wrap.collect());
-                    // if there are no more parts, this row is canonical as long as it originall
+                    // if there are no more parts, this row is canonical as long as it originally
                     // was canonical (it might not have been for example if it's the first row in
                     // the viewport, and the actual canonical row is above it in the scrollback)
                     let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical {

@@ -496,6 +496,7 @@ impl vte::Perform for TerminalPane {
                             std::mem::swap(&mut self.grid, alternative_grid);
                         }
                         self.alternative_grid = None;
+                        self.mark_for_rerender();
                     }
                     Some(&25) => {
                         self.grid.hide_cursor();
