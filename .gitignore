@@ -1,2 +1,6 @@
 /target
 *.new
+
+# Vim temp files
+*.swp
+*.swo
