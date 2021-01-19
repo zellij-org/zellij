@@ -18,7 +18,7 @@ mod wasm_vm;
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
@@ -44,6 +44,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
@@ -452,9 +453,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         let project_dirs =
                             ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        let root_plugin_dir = Path::new(MOSAIC_ROOT_PLUGIN_DIR);
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
+                            .or_else(|_| {
+                                fs::read(&root_plugin_dir.join(&path).with_extension("wasm"))
+                            })
                             .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
 
                         // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
