@@ -636,7 +636,7 @@ impl Grid {
                 // region
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
-                    self.viewport.insert(scroll_region_bottom, Row::new());
+                    self.viewport.insert(scroll_region_bottom, Row::new().canonical());
                 }
             }
         }
@@ -652,7 +652,7 @@ impl Grid {
                 // of the scroll region
                 for _ in 0..count {
                     self.viewport.remove(scroll_region_bottom);
-                    self.viewport.insert(current_line_index, Row::new());
+                    self.viewport.insert(current_line_index, Row::new().canonical());
                 }
             }
         }
