@@ -146,7 +146,9 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.render();
+            self.send_app_instructions
+                .send(AppInstruction::Exit)
+                .unwrap();
         }
     }
     pub fn render(&mut self) {
@@ -156,10 +158,6 @@ impl Screen {
             } else {
                 self.close_tab();
             }
-        } else {
-            self.send_app_instructions
-                .send(AppInstruction::Exit)
-                .unwrap();
         };
     }
 
