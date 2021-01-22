@@ -66,6 +66,7 @@ pub struct Tab {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
+// FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
 pub trait Pane {
     fn x(&self) -> usize;
     fn y(&self) -> usize;
@@ -81,6 +82,8 @@ pub trait Pane {
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
+    fn selectable(&self) -> bool;
+    fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: usize);
@@ -618,9 +621,23 @@ impl Tab {
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }
+    // FIXME: This is some shameful duplication...
+    fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.panes.iter().filter(|(_, p)| p.selectable())
+    }
     fn has_panes(&self) -> bool {
         let mut all_terminals = self.get_panes();
         all_terminals.next().is_some()
+    }
+    fn has_selectable_panes(&self) -> bool {
+        let mut all_terminals = self.get_selectable_panes();
+        all_terminals.next().is_some()
+    }
+    fn next_active_pane(&self, panes: Vec<PaneId>) -> Option<PaneId> {
+        panes
+            .into_iter()
+            .rev()
+            .find(|pid| self.panes.get(pid).unwrap().selectable())
     }
     fn pane_ids_directly_left_of(&self, id: &PaneId) -> Option<Vec<PaneId>> {
         let mut ids = vec![];
@@ -1421,14 +1438,14 @@ impl Tab {
         }
     }
     pub fn move_focus(&mut self) {
-        if !self.has_panes() {
+        if !self.has_selectable_panes() {
             return;
         }
         if self.fullscreen_is_active {
             return;
         }
         let active_terminal_id = self.get_active_pane_id().unwrap();
-        let terminal_ids: Vec<PaneId> = self.get_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
+        let terminal_ids: Vec<PaneId> = self.get_selectable_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
         let first_terminal = terminal_ids.get(0).unwrap();
         let active_terminal_id_position = terminal_ids
             .iter()
@@ -1442,7 +1459,7 @@ impl Tab {
         self.render();
     }
     pub fn move_focus_left(&mut self) {
-        if !self.has_panes() {
+        if !self.has_selectable_panes() {
             return;
         }
         if self.fullscreen_is_active {
@@ -1450,7 +1467,7 @@ impl Tab {
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
-            let terminals = self.get_panes();
+            let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
@@ -1472,7 +1489,7 @@ impl Tab {
         self.render();
     }
     pub fn move_focus_down(&mut self) {
-        if !self.has_panes() {
+        if !self.has_selectable_panes() {
             return;
         }
         if self.fullscreen_is_active {
@@ -1480,7 +1497,7 @@ impl Tab {
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
-            let terminals = self.get_panes();
+            let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
@@ -1502,7 +1519,7 @@ impl Tab {
         self.render();
     }
     pub fn move_focus_up(&mut self) {
-        if !self.has_panes() {
+        if !self.has_selectable_panes() {
             return;
         }
         if self.fullscreen_is_active {
@@ -1510,7 +1527,7 @@ impl Tab {
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
-            let terminals = self.get_panes();
+            let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
@@ -1532,7 +1549,7 @@ impl Tab {
         self.render();
     }
     pub fn move_focus_right(&mut self) {
-        if !self.has_panes() {
+        if !self.has_selectable_panes() {
             return;
         }
         if self.fullscreen_is_active {
@@ -1540,7 +1557,7 @@ impl Tab {
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
-            let terminals = self.get_panes();
+            let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
@@ -1578,7 +1595,7 @@ impl Tab {
         })
     }
     fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = &self.panes.get(&id) {
+        if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
             let lower_close_border = terminal.y() + terminal.rows() + 1;
 
@@ -1601,7 +1618,7 @@ impl Tab {
         None
     }
     fn panes_to_the_right_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = &self.panes.get(&id) {
+        if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
             let lower_close_border = terminal.y() + terminal.rows() + 1;
 
@@ -1625,7 +1642,7 @@ impl Tab {
         None
     }
     fn panes_above_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = &self.panes.get(&id) {
+        if let Some(terminal) = self.panes.get(&id) {
             let left_close_border = terminal.x();
             let right_close_border = terminal.x() + terminal.columns() + 1;
 
@@ -1647,8 +1664,8 @@ impl Tab {
         }
         None
     }
-    fn terminals_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = &self.panes.get(&id) {
+    fn panes_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+        if let Some(terminal) = self.panes.get(&id) {
             let left_close_border = terminal.x();
             let right_close_border = terminal.x() + terminal.columns() + 1;
 
@@ -1681,8 +1698,16 @@ impl Tab {
             }
         }
     }
-    pub fn get_pane_ids(&mut self) -> Vec<PaneId> {
+    pub fn get_pane_ids(&self) -> Vec<PaneId> {
         self.get_panes().map(|(&pid, _)| pid).collect()
+    }
+    pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
+        if let Some(pane) = self.panes.get_mut(&id) {
+            pane.set_selectable(selectable);
+            if self.get_active_pane_id() == Some(id) && !selectable {
+                self.active_terminal = self.next_active_pane(self.get_pane_ids())
+            }
+        }
     }
     pub fn close_pane(&mut self, id: PaneId) {
         if self.panes.get(&id).is_some() {
@@ -1699,7 +1724,7 @@ impl Tab {
                     // 1 for the border
                 }
                 if self.active_terminal == Some(id) {
-                    self.active_terminal = Some(*terminals.last().unwrap());
+                    self.active_terminal = self.next_active_pane(terminals);
                 }
             } else if let Some(terminals) = self.panes_to_the_right_between_aligning_borders(id) {
                 for terminal_id in terminals.iter() {
@@ -1707,7 +1732,7 @@ impl Tab {
                     // 1 for the border
                 }
                 if self.active_terminal == Some(id) {
-                    self.active_terminal = Some(*terminals.last().unwrap());
+                    self.active_terminal = self.next_active_pane(terminals);
                 }
             } else if let Some(terminals) = self.panes_above_between_aligning_borders(id) {
                 for terminal_id in terminals.iter() {
@@ -1715,21 +1740,21 @@ impl Tab {
                     // 1 for the border
                 }
                 if self.active_terminal == Some(id) {
-                    self.active_terminal = Some(*terminals.last().unwrap());
+                    self.active_terminal = self.next_active_pane(terminals);
                 }
-            } else if let Some(terminals) = self.terminals_below_between_aligning_borders(id) {
+            } else if let Some(terminals) = self.panes_below_between_aligning_borders(id) {
                 for terminal_id in terminals.iter() {
                     self.increase_pane_height_up(&terminal_id, terminal_to_close_height + 1);
                     // 1 for the border
                 }
                 if self.active_terminal == Some(id) {
-                    self.active_terminal = Some(*terminals.last().unwrap());
+                    self.active_terminal = self.next_active_pane(terminals);
                 }
             } else {
             }
             self.panes.remove(&id);
-            if !self.has_panes() {
-                self.active_terminal = None;
+            if self.active_terminal.is_none() {
+                self.active_terminal = self.next_active_pane(self.get_pane_ids());
             }
         }
     }

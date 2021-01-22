@@ -6,12 +6,9 @@ parts:
       - direction: Horizontal
         split_size:
           Percent: 20
-        plugin: strider.wasm
+        plugin: strider
       - direction: Horizontal
-        split_size:
-          Percent: 80
-    split_size:
-      Percent: 80
   - direction: Vertical
     split_size:
-      Percent: 20
+      Fixed: 1
+    plugin: status-bar

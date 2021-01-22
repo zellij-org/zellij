@@ -17,14 +17,16 @@ mod utils;
 
 mod wasm_vm;
 
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
+use std::{cell::RefCell, sync::mpsc::TrySendError};
+use std::{collections::HashMap, fs};
 
+use directories_next::ProjectDirs;
+use input::InputMode;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
@@ -43,6 +45,7 @@ use crate::layout::Layout;
 use crate::os_input_output::{get_os_input, OsApi};
 use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use crate::screen::{Screen, ScreenInstruction};
+use crate::utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
@@ -86,6 +89,14 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
+    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
+        if let SenderType::SyncSender(ref s) = self.sender {
+            s.try_send((event, self.err_ctx))
+        } else {
+            panic!("try_send can only be called on SyncSenders!")
+        }
+    }
+
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
@@ -126,14 +137,44 @@ pub fn main() {
     }
 }
 
+// FIXME: It would be good to add some more things to this over time
+#[derive(Debug, Clone)]
+pub struct AppState {
+    pub input_mode: InputMode,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            input_mode: InputMode::Normal,
+        }
+    }
+}
+
+// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
+// from self instead of being explicitly passed here
+pub fn update_state(
+    app_tx: &SenderWithContext<AppInstruction>,
+    update_fn: impl FnOnce(AppState) -> AppState,
+) {
+    let (state_tx, state_rx) = channel();
+
+    drop(app_tx.send(AppInstruction::GetState(state_tx)));
+    let state = state_rx.recv().unwrap();
+
+    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
+}
+
 #[derive(Clone)]
 pub enum AppInstruction {
+    GetState(Sender<AppState>),
+    SetState(AppState),
     Exit,
     Error(String),
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
-    let mut active_threads = vec![];
+    let mut app_state = AppState::default();
 
     let command_is_executing = CommandIsExecuting::new();
 
@@ -169,7 +210,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         os_input.clone(),
         opts.debug,
     );
-    let maybe_layout = opts.layout.map(Layout::new);
+    // Don't use default layouts in tests, but do everywhere else
+    #[cfg(not(test))]
+    let default_layout = Some(PathBuf::from("default"));
+    #[cfg(test)]
+    let default_layout = None;
+    let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -180,313 +226,338 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
     });
 
-    active_threads.push(
-        thread::Builder::new()
-            .name("pty".to_string())
-            .spawn({
-                let mut command_is_executing = command_is_executing.clone();
-                move || {
-                    if let Some(layout) = maybe_layout {
-                        pty_bus.spawn_terminals_for_layout(layout);
-                    } else {
-                        let pid = pty_bus.spawn_terminal(None);
+    let pty_thread = thread::Builder::new()
+        .name("pty".to_string())
+        .spawn({
+            let mut command_is_executing = command_is_executing.clone();
+            send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+            move || loop {
+                let (event, mut err_ctx) = pty_bus
+                    .receive_pty_instructions
+                    .recv()
+                    .expect("failed to receive event on channel");
+                err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+                pty_bus.send_screen_instructions.update(err_ctx);
+                match event {
+                    PtyInstruction::SpawnTerminal(file_to_open) => {
+                        let pid = pty_bus.spawn_terminal(file_to_open);
                         pty_bus
                             .send_screen_instructions
-                            .send(ScreenInstruction::NewTab(pid))
+                            .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                             .unwrap();
                     }
+                    PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                        let pid = pty_bus.spawn_terminal(file_to_open);
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                            .unwrap();
+                    }
+                    PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                        let pid = pty_bus.spawn_terminal(file_to_open);
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                            .unwrap();
+                    }
+                    PtyInstruction::NewTab => {
+                        if let Some(layout) = maybe_layout.clone() {
+                            pty_bus.spawn_terminals_for_layout(layout);
+                        } else {
+                            let pid = pty_bus.spawn_terminal(None);
+                            pty_bus
+                                .send_screen_instructions
+                                .send(ScreenInstruction::NewTab(pid))
+                                .unwrap();
+                        }
+                    }
+                    PtyInstruction::ClosePane(id) => {
+                        pty_bus.close_pane(id);
+                        command_is_executing.done_closing_pane();
+                    }
+                    PtyInstruction::CloseTab(ids) => {
+                        pty_bus.close_tab(ids);
+                        command_is_executing.done_closing_pane();
+                    }
+                    PtyInstruction::Quit => {
+                        break;
+                    }
+                }
+            }
+        })
+        .unwrap();
 
-                    loop {
-                        let (event, mut err_ctx) = pty_bus
-                            .receive_pty_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                        pty_bus.send_screen_instructions.update(err_ctx);
-                        match event {
-                            PtyInstruction::SpawnTerminal(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                                let pid = pty_bus.spawn_terminal(file_to_open);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
-                                    .unwrap();
-                            }
-                            PtyInstruction::NewTab => {
-                                let pid = pty_bus.spawn_terminal(None);
-                                pty_bus
-                                    .send_screen_instructions
-                                    .send(ScreenInstruction::NewTab(pid))
-                                    .unwrap();
-                            }
-                            PtyInstruction::ClosePane(id) => {
-                                pty_bus.close_pane(id);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::CloseTab(ids) => {
-                                pty_bus.close_tab(ids);
-                                command_is_executing.done_closing_pane();
-                            }
-                            PtyInstruction::Quit => {
-                                break;
-                            }
+    let screen_thread = thread::Builder::new()
+        .name("screen".to_string())
+        .spawn({
+            let mut command_is_executing = command_is_executing.clone();
+            let os_input = os_input.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
+            let send_app_instructions = send_app_instructions.clone();
+            let max_panes = opts.max_panes;
+
+            move || {
+                let mut screen = Screen::new(
+                    receive_screen_instructions,
+                    send_pty_instructions,
+                    send_plugin_instructions,
+                    send_app_instructions,
+                    &full_screen_ws,
+                    os_input,
+                    max_panes,
+                );
+                loop {
+                    let (event, mut err_ctx) = screen
+                        .receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
+                    screen.send_app_instructions.update(err_ctx);
+                    screen.send_pty_instructions.update(err_ctx);
+                    match event {
+                        ScreenInstruction::Pty(pid, vte_event) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .handle_pty_event(pid, vte_event);
+                        }
+                        ScreenInstruction::Render => {
+                            screen.render();
+                        }
+                        ScreenInstruction::NewPane(pid) => {
+                            screen.get_active_tab_mut().unwrap().new_pane(pid);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::HorizontalSplit(pid) => {
+                            screen.get_active_tab_mut().unwrap().horizontal_split(pid);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::VerticalSplit(pid) => {
+                            screen.get_active_tab_mut().unwrap().vertical_split(pid);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::WriteCharacter(bytes) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .write_to_active_terminal(bytes);
+                        }
+                        ScreenInstruction::ResizeLeft => {
+                            screen.get_active_tab_mut().unwrap().resize_left();
+                        }
+                        ScreenInstruction::ResizeRight => {
+                            screen.get_active_tab_mut().unwrap().resize_right();
+                        }
+                        ScreenInstruction::ResizeDown => {
+                            screen.get_active_tab_mut().unwrap().resize_down();
+                        }
+                        ScreenInstruction::ResizeUp => {
+                            screen.get_active_tab_mut().unwrap().resize_up();
+                        }
+                        ScreenInstruction::MoveFocus => {
+                            screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::MoveFocusLeft => {
+                            screen.get_active_tab_mut().unwrap().move_focus_left();
+                        }
+                        ScreenInstruction::MoveFocusDown => {
+                            screen.get_active_tab_mut().unwrap().move_focus_down();
+                        }
+                        ScreenInstruction::MoveFocusRight => {
+                            screen.get_active_tab_mut().unwrap().move_focus_right();
+                        }
+                        ScreenInstruction::MoveFocusUp => {
+                            screen.get_active_tab_mut().unwrap().move_focus_up();
+                        }
+                        ScreenInstruction::ScrollUp => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_up();
+                        }
+                        ScreenInstruction::ScrollDown => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_down();
+                        }
+                        ScreenInstruction::ClearScroll => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .clear_active_terminal_scroll();
+                        }
+                        ScreenInstruction::CloseFocusedPane => {
+                            screen.get_active_tab_mut().unwrap().close_focused_pane();
+                            screen.render();
+                        }
+                        ScreenInstruction::SetSelectable(id, selectable) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .set_pane_selectable(id, selectable);
+                            // FIXME: Is this needed?
+                            screen.render();
+                        }
+                        ScreenInstruction::ClosePane(id) => {
+                            screen.get_active_tab_mut().unwrap().close_pane(id);
+                            screen.render();
+                        }
+                        ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .toggle_active_pane_fullscreen();
+                        }
+                        ScreenInstruction::NewTab(pane_id) => {
+                            screen.new_tab(pane_id);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
+                        ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
+                        ScreenInstruction::CloseTab => screen.close_tab(),
+                        ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                            screen.apply_layout(layout, new_pane_pids);
+                            command_is_executing.done_opening_new_pane();
+                        }
+                        ScreenInstruction::Quit => {
+                            break;
                         }
                     }
                 }
-            })
-            .unwrap(),
-    );
+            }
+        })
+        .unwrap();
 
-    active_threads.push(
-        thread::Builder::new()
-            .name("screen".to_string())
-            .spawn({
-                let mut command_is_executing = command_is_executing.clone();
-                let os_input = os_input.clone();
-                let send_pty_instructions = send_pty_instructions.clone();
-                let send_plugin_instructions = send_plugin_instructions.clone();
-                let send_app_instructions = send_app_instructions.clone();
-                let max_panes = opts.max_panes;
+    let wasm_thread = thread::Builder::new()
+        .name("wasm".to_string())
+        .spawn({
+            let mut send_pty_instructions = send_pty_instructions.clone();
+            let mut send_screen_instructions = send_screen_instructions.clone();
+            let mut send_app_instructions = send_app_instructions.clone();
 
-                move || {
-                    let mut screen = Screen::new(
-                        receive_screen_instructions,
-                        send_pty_instructions,
-                        send_plugin_instructions,
-                        send_app_instructions,
-                        &full_screen_ws,
-                        os_input,
-                        max_panes,
-                    );
-                    loop {
-                        let (event, mut err_ctx) = screen
-                            .receiver
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
-                        screen.send_app_instructions.update(err_ctx);
-                        screen.send_pty_instructions.update(err_ctx);
-                        match event {
-                            ScreenInstruction::Pty(pid, vte_event) => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .handle_pty_event(pid, vte_event);
-                            }
-                            ScreenInstruction::Render => {
-                                screen.render();
-                            }
-                            ScreenInstruction::NewPane(pid) => {
-                                screen.get_active_tab_mut().unwrap().new_pane(pid);
-                                command_is_executing.done_opening_new_pane();
-                            }
-                            ScreenInstruction::HorizontalSplit(pid) => {
-                                screen.get_active_tab_mut().unwrap().horizontal_split(pid);
-                                command_is_executing.done_opening_new_pane();
-                            }
-                            ScreenInstruction::VerticalSplit(pid) => {
-                                screen.get_active_tab_mut().unwrap().vertical_split(pid);
-                                command_is_executing.done_opening_new_pane();
-                            }
-                            ScreenInstruction::WriteCharacter(bytes) => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .write_to_active_terminal(bytes);
-                            }
-                            ScreenInstruction::ResizeLeft => {
-                                screen.get_active_tab_mut().unwrap().resize_left();
-                            }
-                            ScreenInstruction::ResizeRight => {
-                                screen.get_active_tab_mut().unwrap().resize_right();
-                            }
-                            ScreenInstruction::ResizeDown => {
-                                screen.get_active_tab_mut().unwrap().resize_down();
-                            }
-                            ScreenInstruction::ResizeUp => {
-                                screen.get_active_tab_mut().unwrap().resize_up();
-                            }
-                            ScreenInstruction::MoveFocus => {
-                                screen.get_active_tab_mut().unwrap().move_focus();
-                            }
-                            ScreenInstruction::MoveFocusLeft => {
-                                screen.get_active_tab_mut().unwrap().move_focus_left();
-                            }
-                            ScreenInstruction::MoveFocusDown => {
-                                screen.get_active_tab_mut().unwrap().move_focus_down();
-                            }
-                            ScreenInstruction::MoveFocusRight => {
-                                screen.get_active_tab_mut().unwrap().move_focus_right();
-                            }
-                            ScreenInstruction::MoveFocusUp => {
-                                screen.get_active_tab_mut().unwrap().move_focus_up();
-                            }
-                            ScreenInstruction::ScrollUp => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .scroll_active_terminal_up();
-                            }
-                            ScreenInstruction::ScrollDown => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .scroll_active_terminal_down();
-                            }
-                            ScreenInstruction::ClearScroll => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .clear_active_terminal_scroll();
-                            }
-                            ScreenInstruction::CloseFocusedPane => {
-                                screen.get_active_tab_mut().unwrap().close_focused_pane();
-                                screen.render();
-                            }
-                            ScreenInstruction::ClosePane(id) => {
-                                screen.get_active_tab_mut().unwrap().close_pane(id);
-                                screen.render();
-                            }
-                            ScreenInstruction::ToggleActiveTerminalFullscreen => {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .toggle_active_pane_fullscreen();
-                            }
-                            ScreenInstruction::NewTab(pane_id) => {
-                                screen.new_tab(pane_id);
-                                command_is_executing.done_opening_new_pane();
-                            }
-                            ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
-                            ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
-                            ScreenInstruction::CloseTab => screen.close_tab(),
-                            ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
-                                screen.apply_layout(layout, new_pane_pids)
-                            }
-                            ScreenInstruction::Quit => {
-                                break;
+            let store = Store::default();
+            let mut plugin_id = 0;
+            let mut plugin_map = HashMap::new();
+
+            move || loop {
+                let (event, mut err_ctx) = receive_plugin_instructions
+                    .recv()
+                    .expect("failed to receive event on channel");
+                err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                send_screen_instructions.update(err_ctx);
+                send_pty_instructions.update(err_ctx);
+                send_app_instructions.update(err_ctx);
+                match event {
+                    PluginInstruction::Load(pid_tx, path) => {
+                        let project_dirs =
+                            ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+                        let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        let root_plugin_dir = Path::new(MOSAIC_ROOT_PLUGIN_DIR);
+                        let wasm_bytes = fs::read(&path)
+                            .or_else(|_| fs::read(&path.with_extension("wasm")))
+                            .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
+                            .or_else(|_| {
+                                fs::read(&root_plugin_dir.join(&path).with_extension("wasm"))
+                            })
+                            .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
+
+                        // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                        let module = Module::new(&store, &wasm_bytes).unwrap();
+
+                        let output = Pipe::new();
+                        let input = Pipe::new();
+                        let mut wasi_env = WasiState::new("mosaic")
+                            .env("CLICOLOR_FORCE", "1")
+                            .preopen(|p| {
+                                p.directory(".") // FIXME: Change this to a more meaningful dir
+                                    .alias(".")
+                                    .read(true)
+                                    .write(true)
+                                    .create(true)
+                            })
+                            .unwrap()
+                            .stdin(Box::new(input))
+                            .stdout(Box::new(output))
+                            .finalize()
+                            .unwrap();
+
+                        let wasi = wasi_env.import_object(&module).unwrap();
+
+                        let plugin_env = PluginEnv {
+                            plugin_id,
+                            send_pty_instructions: send_pty_instructions.clone(),
+                            send_screen_instructions: send_screen_instructions.clone(),
+                            send_app_instructions: send_app_instructions.clone(),
+                            wasi_env,
+                        };
+
+                        let mosaic = mosaic_imports(&store, &plugin_env);
+                        let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+
+                        let start = instance.exports.get_function("_start").unwrap();
+
+                        // This eventually calls the `.init()` method
+                        start.call(&[]).unwrap();
+
+                        plugin_map.insert(plugin_id, (instance, plugin_env));
+                        pid_tx.send(plugin_id).unwrap();
+                        plugin_id += 1;
+                    }
+                    PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                        let draw = instance.exports.get_function("draw").unwrap();
+
+                        draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                            .unwrap();
+
+                        buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                    }
+                    // FIXME: Deduplicate this with the callback below!
+                    PluginInstruction::Input(pid, input_bytes) => {
+                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                        let handle_key = instance.exports.get_function("handle_key").unwrap();
+                        for key in input_bytes.keys() {
+                            if let Ok(key) = key {
+                                wasi_write_string(
+                                    &plugin_env.wasi_env,
+                                    &serde_json::to_string(&key).unwrap(),
+                                );
+                                handle_key.call(&[]).unwrap();
                             }
                         }
+
+                        drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
-                }
-            })
-            .unwrap(),
-    );
-
-    active_threads.push(
-        thread::Builder::new()
-            .name("wasm".to_string())
-            .spawn({
-                let mut send_pty_instructions = send_pty_instructions.clone();
-                let mut send_screen_instructions = send_screen_instructions.clone();
-
-                move || {
-                    let store = Store::default();
-
-                    let mut plugin_id = 0;
-                    let mut plugin_map = HashMap::new();
-
-                    loop {
-                        let (event, mut err_ctx) = receive_plugin_instructions
-                            .recv()
-                            .expect("failed to receive event on channel");
-                        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                        send_screen_instructions.update(err_ctx);
-                        send_pty_instructions.update(err_ctx);
-                        match event {
-                            PluginInstruction::Load(pid_tx, path) => {
-                                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                                let module = Module::from_file(&store, &path).unwrap();
-
-                                let output = Pipe::new();
-                                let input = Pipe::new();
-                                let mut wasi_env = WasiState::new("mosaic")
-                                    .env("CLICOLOR_FORCE", "1")
-                                    .preopen(|p| {
-                                        p.directory(".") // FIXME: Change this to a more meaningful dir
-                                            .alias(".")
-                                            .read(true)
-                                            .write(true)
-                                            .create(true)
-                                    })
-                                    .unwrap()
-                                    .stdin(Box::new(input))
-                                    .stdout(Box::new(output))
-                                    .finalize()
-                                    .unwrap();
-
-                                let wasi = wasi_env.import_object(&module).unwrap();
-
-                                let plugin_env = PluginEnv {
-                                    send_pty_instructions: send_pty_instructions.clone(),
-                                    wasi_env,
-                                };
-
-                                let mosaic = mosaic_imports(&store, &plugin_env);
-                                let instance =
-                                    Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
-
-                                let start = instance.exports.get_function("_start").unwrap();
-
-                                // This eventually calls the `.init()` method
-                                start.call(&[]).unwrap();
-
-                                plugin_map.insert(plugin_id, (instance, plugin_env));
-                                pid_tx.send(plugin_id).unwrap();
-                                plugin_id += 1;
-                            }
-                            PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                                let draw = instance.exports.get_function("draw").unwrap();
-
-                                draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                                    .unwrap();
-
-                                buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
-                            }
-                            PluginInstruction::Input(pid, input_bytes) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                                let handle_key =
-                                    instance.exports.get_function("handle_key").unwrap();
-                                for key in input_bytes.keys() {
-                                    if let Ok(key) = key {
-                                        wasi_write_string(
-                                            &plugin_env.wasi_env,
-                                            &serde_json::to_string(&key).unwrap(),
-                                        );
-                                        handle_key.call(&[]).unwrap();
-                                    }
+                    PluginInstruction::GlobalInput(input_bytes) => {
+                        // FIXME: Set up an event subscription system, and timed callbacks
+                        for (instance, plugin_env) in plugin_map.values() {
+                            let handler =
+                                instance.exports.get_function("handle_global_key").unwrap();
+                            for key in input_bytes.keys() {
+                                if let Ok(key) = key {
+                                    wasi_write_string(
+                                        &plugin_env.wasi_env,
+                                        &serde_json::to_string(&key).unwrap(),
+                                    );
+                                    handler.call(&[]).unwrap();
                                 }
-
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
                             }
-                            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
-                            PluginInstruction::Quit => break,
                         }
-                    }
-                }
-            })
-            .unwrap(),
-    );
 
-    // TODO: currently we don't push this into active_threads
+                        drop(send_screen_instructions.send(ScreenInstruction::Render));
+                    }
+                    PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+                    PluginInstruction::Quit => break,
+                }
+            }
+        })
+        .unwrap();
+
+    // TODO: currently we don't wait for this to quit
     // because otherwise the app will hang. Need to fix this so it both
     // listens to the ipc-bus and is able to quit cleanly
     #[cfg(not(test))]
@@ -552,6 +623,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 input_loop(
@@ -559,6 +631,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,
+                    send_plugin_instructions,
                     send_app_instructions,
                 )
             }
@@ -574,18 +647,21 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         send_screen_instructions.update(err_ctx);
         send_pty_instructions.update(err_ctx);
         match app_instruction {
+            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
+            AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = screen_thread.join();
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
-
+                let _ = pty_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                let _ = wasm_thread.join();
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
@@ -593,17 +669,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     .get_stdout_writer()
                     .write(error.as_bytes())
                     .unwrap();
-                for thread_handler in active_threads {
-                    let _ = thread_handler.join();
-                }
                 std::process::exit(1);
             }
         }
     }
 
-    for thread_handler in active_threads {
-        thread_handler.join().unwrap();
-    }
+    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+    screen_thread.join().unwrap();
+    let _ = send_pty_instructions.send(PtyInstruction::Quit);
+    pty_thread.join().unwrap();
+    let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+    wasm_thread.join().unwrap();
+
     // cleanup();
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";
