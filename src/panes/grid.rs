@@ -143,8 +143,8 @@ pub struct Grid {
     lines_below: Vec<Row>,
     cursor: Cursor,
     scroll_region: Option<(usize, usize)>,
-    width: usize,
-    height: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 impl Debug for Grid {

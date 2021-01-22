@@ -47,6 +47,7 @@ pub struct TerminalPane {
     pub position_and_size_override: Option<PositionAndSize>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pending_styles: CharacterStyles,
+    clear_viewport_before_rendering: bool,
 }
 
 impl Pane for TerminalPane {
@@ -187,6 +188,22 @@ impl Pane for TerminalPane {
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
             let mut character_styles = CharacterStyles::new();
+            if self.clear_viewport_before_rendering {
+                for line_index in 0..self.grid.height {
+                    let x = self.get_x();
+                    let y = self.get_y();
+                    vte_output = format!(
+                        "{}\u{1b}[{};{}H\u{1b}[m",
+                        vte_output,
+                        y + line_index + 1,
+                        x + 1
+                    ); // goto row/col and reset styles
+                    for _col_index in 0..self.grid.width {
+                        vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
+                    }
+                }
+                self.clear_viewport_before_rendering = false;
+            }
             for (row, line) in buffer_lines.iter().enumerate() {
                 let x = self.get_x();
                 let y = self.get_y();
@@ -291,6 +308,7 @@ impl TerminalPane {
             position_and_size,
             position_and_size_override: None,
             cursor_key_mode: false,
+            clear_viewport_before_rendering: false,
         }
     }
     pub fn mark_for_rerender(&mut self) {
@@ -496,6 +514,7 @@ impl vte::Perform for TerminalPane {
                             std::mem::swap(&mut self.grid, alternative_grid);
                         }
                         self.alternative_grid = None;
+                        self.clear_viewport_before_rendering = true;
                         self.mark_for_rerender();
                     }
                     Some(&25) => {
@@ -532,6 +551,7 @@ impl vte::Perform for TerminalPane {
                         let current_grid =
                             std::mem::replace(&mut self.grid, Grid::new(rows, columns));
                         self.alternative_grid = Some(current_grid);
+                        self.clear_viewport_before_rendering = true;
                     }
                     Some(&1) => {
                         self.cursor_key_mode = true;
