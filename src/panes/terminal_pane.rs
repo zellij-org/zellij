@@ -192,7 +192,12 @@ impl Pane for TerminalPane {
                 for line_index in 0..self.grid.height {
                     let x = self.get_x();
                     let y = self.get_y();
-                    vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, y + line_index + 1, x + 1); // goto row/col and reset styles
+                    vte_output = format!(
+                        "{}\u{1b}[{};{}H\u{1b}[m",
+                        vte_output,
+                        y + line_index + 1,
+                        x + 1
+                    ); // goto row/col and reset styles
                     for _col_index in 0..self.grid.width {
                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
                     }
