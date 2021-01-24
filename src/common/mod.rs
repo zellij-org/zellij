@@ -6,3 +6,4 @@ pub mod ipc;
 pub mod wasm_vm;
 pub mod command_is_executing;
 pub mod errors;
+pub mod utils;

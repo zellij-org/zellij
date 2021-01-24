@@ -2,12 +2,11 @@
 mod tests;
 
 mod cli;
-mod utils;
 mod common;
 // TODO mod server;
 mod client;
 
-use common::{input, pty_bus, os_input_output, screen, ipc, wasm_vm, command_is_executing, errors};
+use common::{input, pty_bus, os_input_output, screen, ipc, wasm_vm, command_is_executing, errors, utils};
 use client::{tab, layout, boundaries, panes};
 
 
