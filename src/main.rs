@@ -1,21 +1,15 @@
 #[cfg(test)]
 mod tests;
 
-mod boundaries;
 mod cli;
-mod command_is_executing;
-mod errors;
-mod input;
-mod ipc;
-mod layout;
-mod os_input_output;
-mod panes;
-mod pty_bus;
-mod screen;
-mod tab;
 mod utils;
+mod common;
+// TODO mod server;
+mod client;
 
-mod wasm_vm;
+use common::{input, pty_bus, os_input_output, screen, ipc, wasm_vm, command_is_executing, errors};
+use client::{tab, layout, boundaries, panes};
+
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
