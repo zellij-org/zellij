@@ -20,7 +20,6 @@ use std::{io::Write, sync::mpsc::channel};
  *
  */
 
-
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
 const MIN_TERMINAL_WIDTH: usize = 4;
@@ -290,17 +289,16 @@ impl Tab {
 
             let (_largest_terminal_size, terminal_id_to_split) = self.get_panes().fold(
                 (0, None),
-                |(current_largest_terminal_size, current_terminal_id_to_split), id_and_terminal_to_check| {
+                |(current_largest_terminal_size, current_terminal_id_to_split),
+                 id_and_terminal_to_check| {
                     let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
                     let terminal_size = (terminal_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO)
                         * terminal_to_check.columns();
-                    let terminal_can_be_split = 
-                        terminal_to_check.columns() >= MIN_TERMINAL_WIDTH &&
-                        terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT &&
-                        (
-                            (terminal_to_check.columns() >= terminal_to_check.min_width() * 2 + 1) ||
-                            (terminal_to_check.rows() >= terminal_to_check.min_height() * 2 + 1)
-                        );
+                    let terminal_can_be_split = terminal_to_check.columns() >= MIN_TERMINAL_WIDTH
+                        && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
+                        && ((terminal_to_check.columns() >= terminal_to_check.min_width() * 2 + 1)
+                            || (terminal_to_check.rows()
+                                >= terminal_to_check.min_height() * 2 + 1));
                     if terminal_can_be_split && terminal_size > current_largest_terminal_size {
                         (terminal_size, Some(*id_of_terminal_to_check))
                     } else {
@@ -322,7 +320,9 @@ impl Tab {
                 x: terminal_to_split.x(),
                 y: terminal_to_split.y(),
             };
-            if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns() && terminal_to_split.rows() >= terminal_to_split.min_height() * 2 + 1 {
+            if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns()
+                && terminal_to_split.rows() >= terminal_to_split.min_height() * 2 + 1
+            {
                 // FIXME: This could use a second look
                 if let PaneId::Terminal(term_pid) = pid {
                     let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
@@ -1414,168 +1414,164 @@ impl Tab {
             self.increase_pane_width_left(&terminal_id, count);
         }
     }
-    fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: usize) -> bool {
+    fn can_increase_pane_and_surroundings_right(
+        &self,
+        pane_id: &PaneId,
+        increase_by: usize,
+    ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let can_increase_pane_size = pane
             .max_width()
-            .map(|max_width| {
-                pane.columns() + increase_by <= max_width
-            })
+            .map(|max_width| pane.columns() + increase_by <= max_width)
             .unwrap_or(true); // no max width, increase to your heart's content
         if !can_increase_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
-            })
+            });
         } else {
-            return false
+            return false;
         }
     }
-    fn can_increase_pane_and_surroundings_left(&self, pane_id: &PaneId, increase_by: usize) -> bool {
+    fn can_increase_pane_and_surroundings_left(
+        &self,
+        pane_id: &PaneId,
+        increase_by: usize,
+    ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let can_increase_pane_size = pane
             .max_width()
-            .map(|max_width| {
-                pane.columns() + increase_by <= max_width
-            })
+            .map(|max_width| pane.columns() + increase_by <= max_width)
             .unwrap_or(true); // no max width, increase to your heart's content
         if !can_increase_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
-            })
+            });
         } else {
-            return false
+            return false;
         }
     }
-    fn can_increase_pane_and_surroundings_down(&self, pane_id: &PaneId, increase_by: usize) -> bool {
+    fn can_increase_pane_and_surroundings_down(
+        &self,
+        pane_id: &PaneId,
+        increase_by: usize,
+    ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let can_increase_pane_size = pane
             .max_height()
-            .map(|max_height| {
-                pane.rows() + increase_by <= max_height
-            })
+            .map(|max_height| pane.rows() + increase_by <= max_height)
             .unwrap_or(true); // no max width, increase to your heart's content
         if !can_increase_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
-            })
+            });
         } else {
-            return false
+            return false;
         }
     }
     fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let can_increase_pane_size = pane
             .max_height()
-            .map(|max_height| {
-                pane.rows() + increase_by <= max_height
-            })
+            .map(|max_height| pane.rows() + increase_by <= max_height)
             .unwrap_or(true); // no max width, increase to your heart's content
         if !can_increase_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
-            })
+            });
         } else {
-            return false
+            return false;
         }
     }
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let pane_columns = pane.columns();
-        let can_reduce_pane_size = pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
+        let can_reduce_pane_size =
+            pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
         if !can_reduce_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p
-                .max_width()
-                .map(|max_width| {
-                    p.columns() + reduce_by <= max_width
-                })
-                .unwrap_or(true) // no max width, increase to your heart's content
-            })
+                p.max_width()
+                    .map(|max_width| p.columns() + reduce_by <= max_width)
+                    .unwrap_or(true) // no max width, increase to your heart's content
+            });
         } else {
-            return false
+            return false;
         }
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let pane_columns = pane.columns();
-        let can_reduce_pane_size = pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
+        let can_reduce_pane_size =
+            pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
         if !can_reduce_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p
-                .max_width()
-                .map(|max_width| {
-                    p.columns() + reduce_by <= max_width
-                })
-                .unwrap_or(true) // no max width, increase to your heart's content
-            })
+                p.max_width()
+                    .map(|max_width| p.columns() + reduce_by <= max_width)
+                    .unwrap_or(true) // no max width, increase to your heart's content
+            });
         } else {
-            return false
+            return false;
         }
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let pane_rows = pane.rows();
-        let can_reduce_pane_size = pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
+        let can_reduce_pane_size =
+            pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
         if !can_reduce_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p
-                .max_height()
-                .map(|max_height| {
-                    p.rows() + reduce_by <= max_height
-                })
-                .unwrap_or(true) // no max height, increase to your heart's content
-            })
+                p.max_height()
+                    .map(|max_height| p.rows() + reduce_by <= max_height)
+                    .unwrap_or(true) // no max height, increase to your heart's content
+            });
         } else {
-            return false
+            return false;
         }
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let pane_rows = pane.rows();
-        let can_reduce_pane_size = pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
+        let can_reduce_pane_size =
+            pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
         if !can_reduce_pane_size {
-            return false
+            return false;
         }
         if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p
-                .max_height()
-                .map(|max_height| {
-                    p.rows() + reduce_by <= max_height
-                })
-                .unwrap_or(true) // no max height, increase to your heart's content
-            })
+                p.max_height()
+                    .map(|max_height| p.rows() + reduce_by <= max_height)
+                    .unwrap_or(true) // no max height, increase to your heart's content
+            });
         } else {
-            return false
+            return false;
         }
     }
     pub fn resize_right(&mut self) {

@@ -204,8 +204,7 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                let _ = send_screen_instructions
-                                    .send(ScreenInstruction::Render);
+                                let _ = send_screen_instructions.send(ScreenInstruction::Render);
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -219,16 +218,14 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        let _ = send_screen_instructions
-                            .send(ScreenInstruction::Render);
+                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
             if pending_render {
-                let _ = send_screen_instructions
-                    .send(ScreenInstruction::Render);
+                let _ = send_screen_instructions.send(ScreenInstruction::Render);
             }
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as

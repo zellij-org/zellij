@@ -1,6 +1,6 @@
 use crate::tests::tty_inputs::{
-    COL_4, COL_9, COL_8, COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39,
-    COL_40, COL_50, COL_60, COL_70, COL_90, COL_96,
+    COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39, COL_4,
+    COL_40, COL_50, COL_60, COL_70, COL_8, COL_9, COL_90, COL_96,
 };
 use std::collections::HashMap;
 use std::fs;
