@@ -306,6 +306,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     os_input,
                     max_panes,
                 );
+
                 loop {
                     let (event, mut err_ctx) = screen
                         .receiver
@@ -353,6 +354,39 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         }
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
+                        }
+                        ScreenInstruction::ResizeScreen(new_width, new_height) => {
+                            let position_and_size =
+                                screen.get_active_tab_mut().unwrap().get_tab_size();
+
+                            let _ = debug_log_to_file(format!(
+                                "prev: {:?} => new: :h {}, w: {}",
+                                position_and_size, new_height, new_width
+                            ));
+
+                            if position_and_size.columns > new_width {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_left_by(position_and_size.columns - new_width - 1);
+                            } else if position_and_size.columns < new_width {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_right_by(new_width - position_and_size.columns - 1);
+                            }
+
+                            if position_and_size.rows > new_height {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_down_by(position_and_size.rows - new_height - 1);
+                            } else if position_and_size.rows < new_height {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_up_by(new_height - position_and_size.rows - 1);
+                            }
                         }
                         ScreenInstruction::MoveFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
@@ -639,27 +673,29 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let terminal_resize_thread = thread::Builder::new()
         .name("resize_listener".to_string())
         .spawn({
-            use signal_hook::consts::signal::*;
-            use signal_hook::iterator::Signals;
+            use signal_hook::{consts::signal::*, iterator::Signals};
 
+            let send_screen_instructions = send_screen_instructions.clone();
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
 
-            move || 'outer: loop {
+            move || 'sig_loop: loop {
                 for sig in signals.pending() {
                     match sig as libc::c_int {
                         SIGWINCH => {
                             if let Some((width, height)) = term_size::dimensions() {
-                                debug_log_to_file(format!(
-                                    "term size => width: {} -- height: {}",
-                                    width, height
-                                ))
-                                .unwrap();
+                                send_screen_instructions
+                                    .send(ScreenInstruction::ResizeScreen(width, height))
+                                    .unwrap();
+                            } else {
+                                let _ = debug_log_to_file(
+                                    "There was an error in reading the screen size".to_string(),
+                                );
                             }
                         }
                         SIGTERM | SIGINT | SIGQUIT => {
-                            break 'outer;
+                            break 'sig_loop;
                         }
-                        _ => unreachable!(),
+                        _ => {}
                     }
                 }
             }

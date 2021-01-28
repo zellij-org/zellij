@@ -182,6 +182,9 @@ impl Tab {
         }
     }
 
+    pub fn get_tab_size(&self) -> PositionAndSize {
+        self.full_screen_ws
+    }
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PositionAndSize {
@@ -1389,9 +1392,7 @@ impl Tab {
         let pane = self.panes.get(pane_id).expect("pane does not exist");
         pane.x() > 0
     }
-    pub fn resize_right(&mut self) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 10;
+    pub fn resize_right_by(&mut self, count: usize) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self.panes_exist_to_the_right(&active_pane_id) {
                 self.increase_pane_and_surroundings_right(&active_pane_id, count);
@@ -1401,9 +1402,12 @@ impl Tab {
             self.render();
         }
     }
-    pub fn resize_left(&mut self) {
+    pub fn resize_right(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
         let count = 10;
+        self.resize_right_by(count);
+    }
+    pub fn resize_left_by(&mut self, count: usize) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self.panes_exist_to_the_right(&active_pane_id) {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, count);
@@ -1413,9 +1417,12 @@ impl Tab {
             self.render();
         }
     }
-    pub fn resize_down(&mut self) {
+    pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 2;
+        let count = 10;
+        self.resize_left_by(count);
+    }
+    pub fn resize_down_by(&mut self, count: usize) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self.panes_exist_above(&active_pane_id) {
                 self.reduce_pane_and_surroundings_down(&active_pane_id, count);
@@ -1425,9 +1432,12 @@ impl Tab {
             self.render();
         }
     }
-    pub fn resize_up(&mut self) {
+    pub fn resize_down(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
         let count = 2;
+        self.resize_down_by(count);
+    }
+    pub fn resize_up_by(&mut self, count: usize) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self.panes_exist_above(&active_pane_id) {
                 self.increase_pane_and_surroundings_up(&active_pane_id, count);
@@ -1437,13 +1447,16 @@ impl Tab {
             self.render();
         }
     }
+    pub fn resize_up(&mut self) {
+        // TODO: find out by how much we actually reduced and only reduce by that much
+        let count = 2;
+        self.resize_up_by(count);
+    }
     pub fn move_focus(&mut self) {
-        if !self.has_selectable_panes() {
+        if !self.has_selectable_panes() || self.fullscreen_is_active {
             return;
         }
-        if self.fullscreen_is_active {
-            return;
-        }
+
         let active_terminal_id = self.get_active_pane_id().unwrap();
         let terminal_ids: Vec<PaneId> = self.get_selectable_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
         let first_terminal = terminal_ids.get(0).unwrap();

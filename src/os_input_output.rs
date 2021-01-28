@@ -61,9 +61,10 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 }
 
 fn handle_command_exit(mut child: Child) {
-    use signal_hook::consts::signal::SIGINT;
+    use std::{thread::sleep, time::Duration};
+    use signal_hook::{consts::signal::SIGINT, iterator::Signals};
 
-    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
+    let mut signals = Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
         match child.try_wait() {
             Ok(Some(_status)) => {
@@ -71,7 +72,7 @@ fn handle_command_exit(mut child: Child) {
                 break;
             }
             Ok(None) => {
-                ::std::thread::sleep(::std::time::Duration::from_millis(100));
+                sleep(Duration::from_millis(100));
             }
             Err(e) => panic!("error attempting to wait: {}", e),
         }

@@ -18,7 +18,6 @@ use crate::{AppInstruction, SenderWithContext};
  * is performed in Tab
  *
  */
-
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     Pty(RawFd, VteEvent),
@@ -27,6 +26,7 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId),
     VerticalSplit(PaneId),
     WriteCharacter(Vec<u8>),
+    ResizeScreen(usize, usize),
     ResizeLeft,
     ResizeRight,
     ResizeDown,
@@ -171,11 +171,10 @@ impl Screen {
         &mut self.tabs
     }
     pub fn get_active_tab_mut(&mut self) -> Option<&mut Tab> {
-        let tab = match self.active_tab_index {
-            Some(tab) => self.get_tabs_mut().get_mut(&tab),
+        match self.active_tab_index {
+            Some(tab_index) => self.get_tabs_mut().get_mut(&tab_index),
             None => None,
-        };
-        tab
+        }
     }
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         let tab_index = self.get_next_tab_index();
