@@ -167,6 +167,7 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     SetSelectable,
+    SetMaxHeight,
     ClosePane,
     ApplyLayout,
     NewTab,
@@ -202,6 +203,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
+            ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,

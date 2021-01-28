@@ -86,6 +86,7 @@ pub trait Pane {
     fn set_should_render(&mut self, should_render: bool);
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
+    fn set_max_height(&mut self, max_height: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: usize);
@@ -1892,6 +1893,11 @@ impl Tab {
             if self.get_active_pane_id() == Some(id) && !selectable {
                 self.active_terminal = self.next_active_pane(self.get_pane_ids())
             }
+        }
+    }
+    pub fn set_pane_max_height(&mut self, id: PaneId, max_height: usize) {
+        if let Some(pane) = self.panes.get_mut(&id) {
+            pane.set_max_height(max_height);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
