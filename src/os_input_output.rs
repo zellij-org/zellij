@@ -61,7 +61,9 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 }
 
 fn handle_command_exit(mut child: Child) {
-    let signals = ::signal_hook::iterator::Signals::new(&[::signal_hook::SIGINT]).unwrap();
+    use signal_hook::consts::signal::SIGINT;
+
+    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
         match child.try_wait() {
             Ok(Some(_status)) => {
@@ -77,7 +79,7 @@ fn handle_command_exit(mut child: Child) {
         for signal in signals.pending() {
             // FIXME: We need to handle more signals here!
             match signal {
-                signal_hook::SIGINT => {
+                SIGINT => {
                     child.kill().unwrap();
                     child.wait().unwrap();
                     break 'handle_exit;

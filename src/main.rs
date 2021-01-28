@@ -636,6 +636,36 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             }
         });
 
+    let terminal_resize_thread = thread::Builder::new()
+        .name("resize_listener".to_string())
+        .spawn({
+            use signal_hook::consts::signal::*;
+            use signal_hook::iterator::Signals;
+
+            let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+
+            move || 'outer: loop {
+                for sig in signals.pending() {
+                    match sig as libc::c_int {
+                        SIGWINCH => {
+                            if let Some((width, height)) = term_size::dimensions() {
+                                debug_log_to_file(format!(
+                                    "term size => width: {} -- height: {}",
+                                    width, height
+                                ))
+                                .unwrap();
+                            }
+                        }
+                        SIGTERM | SIGINT | SIGQUIT => {
+                            break 'outer;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        })
+        .unwrap();
+
     #[warn(clippy::never_loop)]
     loop {
         let (app_instruction, mut err_ctx) = receive_app_instructions
@@ -679,6 +709,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     pty_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
+    terminal_resize_thread.join().unwrap();
 
     // cleanup();
     let reset_style = "\u{1b}[m";
