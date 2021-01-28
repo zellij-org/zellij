@@ -1414,22 +1414,6 @@ impl Tab {
             self.increase_pane_width_left(&terminal_id, count);
         }
     }
-    fn panes_exist_above(&self, pane_id: &PaneId) -> bool {
-        let pane = self.panes.get(pane_id).expect("pane does not exist");
-        pane.y() > 0
-    }
-    fn panes_exist_below(&self, pane_id: &PaneId) -> bool {
-        let pane = self.panes.get(pane_id).expect("pane does not exist");
-        pane.y() + pane.rows() < self.full_screen_ws.rows
-    }
-    fn panes_exist_to_the_right(&self, pane_id: &PaneId) -> bool {
-        let pane = self.panes.get(pane_id).expect("pane does not exist");
-        pane.x() + pane.columns() < self.full_screen_ws.columns
-    }
-    fn panes_exist_to_the_left(&self, pane_id: &PaneId) -> bool {
-        let pane = self.panes.get(pane_id).expect("pane does not exist");
-        pane.x() > 0
-    }
     fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         let can_increase_pane_size = pane

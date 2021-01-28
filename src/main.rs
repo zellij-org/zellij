@@ -173,6 +173,12 @@ pub enum AppInstruction {
 }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
+    let take_snapshot = "\u{1b}[?1049h";
+    os_input.unset_raw_mode(0);
+    let _ = os_input
+        .get_stdout_writer()
+        .write(take_snapshot.as_bytes())
+        .unwrap();
     let mut app_state = AppState::default();
 
     let command_is_executing = CommandIsExecuting::new();
@@ -209,6 +215,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         os_input.clone(),
         opts.debug,
     );
+
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
@@ -683,10 +690,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     // cleanup();
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";
+    let restore_snapshot = "\u{1b}[?1049l";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
-        "{}\n{}{}Bye from Mosaic!",
-        goto_start_of_last_line, reset_style, show_cursor
+        "{}\n{}{}{}Bye from Mosaic!",
+        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor
     );
 
     os_input.unset_raw_mode(0);
