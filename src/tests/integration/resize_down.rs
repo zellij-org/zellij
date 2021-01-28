@@ -487,9 +487,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         &MOVE_FOCUS,
         &MOVE_FOCUS,
         &MOVE_FOCUS,
-        &RESIZE_LEFT,
-        &RESIZE_LEFT,
         &MOVE_FOCUS,
+        &RESIZE_LEFT,
+        &RESIZE_LEFT,
         &RESIZE_DOWN,
         &QUIT,
     ]);
@@ -548,17 +548,52 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         &SPLIT_VERTICALLY,
         &MOVE_FOCUS,
         &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
+        &MOVE_FOCUS,
         &RESIZE_LEFT,
         &RESIZE_LEFT,
-        &MOVE_FOCUS,
-        &MOVE_FOCUS,
-        &MOVE_FOCUS,
-        &MOVE_FOCUS,
-        &MOVE_FOCUS,
         &RESIZE_DOWN,
         &QUIT,
     ]);
 
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
+
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
+    // ┌───────────┐                  ┌───────────┐
+    // │███████████│                  │███████████│
+    // ├───────────┤ ==resize=down==> ├───────────┤
+    // │           │                  │           │
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 5,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_HORIZONTALLY,
+        &RESIZE_DOWN,
+        &QUIT,
+    ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
 
     let output_frames = fake_input_output
