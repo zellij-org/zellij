@@ -12,6 +12,7 @@ register_tile!(State);
 impl MosaicTile for State {
     fn init(&mut self) {
         set_selectable(false);
+        set_max_height(1);
     }
 
     fn draw(&mut self, _rows: usize, cols: usize) {
