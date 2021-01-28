@@ -406,6 +406,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             // FIXME: Is this needed?
                             screen.render();
                         }
+                        ScreenInstruction::SetMaxHeight(id, max_height) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .set_pane_max_height(id, max_height);
+                        }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);
                             screen.render();

@@ -43,6 +43,7 @@ pub enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     SetSelectable(PaneId, bool),
+    SetMaxHeight(PaneId, usize),
     ClosePane(PaneId),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab(RawFd),
