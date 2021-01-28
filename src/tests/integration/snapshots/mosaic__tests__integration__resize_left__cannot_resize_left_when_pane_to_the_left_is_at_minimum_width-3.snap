@@ -1,0 +1,24 @@
+---
+source: src/tests/integration/resize_left.rs
+expression: snapshot
+---
+14-b│█   
+b   │    
+line│    
+15-b│    
+b   │    
+line│    
+16-b│    
+b   │    
+line│    
+17-b│    
+b   │    
+line│    
+18-b│    
+b   │    
+line│    
+19-b│    
+b   │    
+prom│    
+pt $│    
+    │    

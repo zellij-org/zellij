@@ -1,5 +1,5 @@
 use crate::tests::tty_inputs::{
-    COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39,
+    COL_4, COL_9, COL_8, COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39,
     COL_40, COL_50, COL_60, COL_70, COL_90, COL_96,
 };
 use std::collections::HashMap;
@@ -50,6 +50,9 @@ impl Bytes {
 pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     // the key is the column count for this terminal input
     let mut possible_inputs = HashMap::new();
+    let col_4_bytes = Bytes::new().content_from_str(&COL_4);
+    let col_8_bytes = Bytes::new().content_from_str(&COL_8);
+    let col_9_bytes = Bytes::new().content_from_str(&COL_9);
     let col_10_bytes = Bytes::new().content_from_str(&COL_10);
     let col_14_bytes = Bytes::new().content_from_str(&COL_14);
     let col_15_bytes = Bytes::new().content_from_str(&COL_15);
@@ -67,6 +70,9 @@ pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     let col_90_bytes = Bytes::new().content_from_str(&COL_90);
     let col_96_bytes = Bytes::new().content_from_str(&COL_96);
     let col_121_bytes = Bytes::new().content_from_str(&COL_121);
+    possible_inputs.insert(4, col_4_bytes);
+    possible_inputs.insert(8, col_8_bytes);
+    possible_inputs.insert(9, col_9_bytes);
     possible_inputs.insert(10, col_10_bytes);
     possible_inputs.insert(14, col_14_bytes);
     possible_inputs.insert(15, col_15_bytes);

@@ -1,0 +1,9 @@
+---
+source: src/tests/integration/resize_up.rs
+expression: snapshot
+---
+prompt $                                                                                                                 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+prompt $                                                                                                                 
+Bye from Mosaic!█                                                                                                        

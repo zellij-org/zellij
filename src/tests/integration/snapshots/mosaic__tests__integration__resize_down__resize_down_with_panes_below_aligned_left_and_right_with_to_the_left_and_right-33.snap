@@ -2,27 +2,27 @@
 source: src/tests/integration/resize_down.rs
 expression: snapshot
 ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb     │line1-bbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbb│line2-bbbbbbbbbbbbbbbbbbbbbbb     │line2-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb     │line3-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
-a                             │bbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb     │line4-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
-line17-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb     │line5-bbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb     │line6-bbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb     │line7-bbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbb│line8-bbbbbbbbbbbbbbbbbbbbbbb     │line8-bbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbb
-a                             │bbbbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb     │line9-bbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb
-line18-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb     │line10-bbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb     │line11-bbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb     │line12-bbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb     │line13-bbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
-a                             │line19-bbb│line14-bbbbbbbbbbbbbbbbbbbbbb     │line14-bbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
-line19-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb     │line15-bbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb     │line16-bbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb     │line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb     │line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
-a                             │bbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb     │line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $                      │prompt $  │prompt $                          │prompt $      │prompt $                     
-──────────────────────────────┼──────────┴──────────────────────────────────┴──────────────┼─────────────────────────────
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │line1-bbbbbbbb│line1-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbb│line2-bbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line3-bbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
+a                             │line12-bbbbbbbbbbbbbbbbbbbbbbb│b             │line4-bbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
+line17-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbb│line5-bbbbbbbb│line5-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line13-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line6-bbbbbbbb│line6-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │line7-bbbbbbbb│line7-bbbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line14-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbb│line8-bbbbbbbb│line8-bbbbbbbbbbbbbbbbbbbbbbb
+a                             │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line9-bbbbbbbb│line9-bbbbbbbbbbbbbbbbbbbbbbb
+line18-aaaaaaaaaaaaaaaaaaaaaaa│line15-bbbbbbbbbbbbbbbbbbbbbbb│b             │line10-bbbbbbb│line10-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbb│line11-bbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line16-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line12-bbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │line13-bbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+a                             │line17-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbb│line14-bbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+line19-aaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line15-bbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbb│b             │line16-bbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbb│line17-bbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line19-bbbbbbbbbbbbbbbbbbbbbbb│bbbbbbbbbbbbbb│line18-bbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+a                             │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│b             │line19-bbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                      │prompt $                      │prompt $      │prompt $      │prompt $                     
+──────────────────────────────┼──────────────────────────────┴──────────────┴──────────────┼─────────────────────────────
 line2-bbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line2-bbbbbbbbbbbbbbbbbbbbbbb
 line3-bbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line3-bbbbbbbbbbbbbbbbbbbbbbb
 line4-bbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line4-bbbbbbbbbbbbbbbbbbbbbbb
@@ -41,4 +41,4 @@ line16-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 line17-bbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
 line18-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
 line19-bbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
-prompt $ █                    │prompt $                                                    │prompt $                     
+prompt $                      │prompt $ █                                                  │prompt $                     
