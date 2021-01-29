@@ -1,6 +1,6 @@
 // IPC stuff for starting to split things into a client and server model
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use serde::{Serialize, Deserialize};
 
 type SessionID = u64;
 
@@ -30,7 +30,7 @@ pub enum ClientToServerMsg {
     CreateSession,
     // Attach to a running session
     AttachToSession(SessionID, ClientType),
-    // Force detach 
+    // Force detach
     DetachSession(SessionID),
     // Disconnect from the session we're connected to
     DisconnectFromSession,

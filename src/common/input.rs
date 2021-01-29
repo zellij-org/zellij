@@ -1,9 +1,9 @@
+use super::{os_input_output::OsApi, update_state, AppState};
+use super::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
 use crate::{errors::ContextType, wasm_vm::PluginInstruction};
-use super::{os_input_output::OsApi, update_state, AppState};
-use super::{AppInstruction, SenderWithContext, OPENCALLS};
 
 struct InputHandler {
     mode: InputMode,

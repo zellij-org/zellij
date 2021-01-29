@@ -1,9 +1,6 @@
 pub mod boundaries;
 pub mod layout;
-pub mod tab;
 pub mod panes;
+pub mod tab;
 
-
-pub fn start_client() {
-
-}
+pub fn start_client() {}

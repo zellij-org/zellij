@@ -1,6 +1,6 @@
+use super::{AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use super::{AppInstruction, OPENCALLS};
 
 use std::fmt::{Display, Error, Formatter};
 

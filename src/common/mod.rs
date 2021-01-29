@@ -1,12 +1,12 @@
+pub mod command_is_executing;
+pub mod errors;
 pub mod input;
+pub mod ipc;
 pub mod os_input_output;
 pub mod pty_bus;
 pub mod screen;
-pub mod ipc;
-pub mod wasm_vm;
-pub mod command_is_executing;
-pub mod errors;
 pub mod utils;
+pub mod wasm_vm;
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -16,23 +16,21 @@ use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
 
+use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::InputMode;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use crate::panes::PaneId;
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
-use command_is_executing::CommandIsExecuting;
-use errors::{
-    AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext,
-};
-use input::input_loop;
 use crate::layout::Layout;
+use command_is_executing::CommandIsExecuting;
+use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
+use input::input_loop;
 use os_input_output::{get_os_input, OsApi};
 use pty_bus::{PtyBus, PtyInstruction, VteEvent};
 use screen::{Screen, ScreenInstruction};
@@ -43,6 +41,14 @@ use utils::{
 };
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ApiCommand {
+    OpenFile(PathBuf),
+    SplitHorizontally,
+    SplitVertically,
+    MoveFocus,
+}
+// FIXME: It would be good to add some more things to this over time
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub input_mode: InputMode,
@@ -55,7 +61,19 @@ impl Default for AppState {
         }
     }
 }
+// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
+// from self instead of being explicitly passed here
+pub fn update_state(
+    app_tx: &SenderWithContext<AppInstruction>,
+    update_fn: impl FnOnce(AppState) -> AppState,
+) {
+    let (state_tx, state_rx) = channel();
 
+    drop(app_tx.send(AppInstruction::GetState(state_tx)));
+    let state = state_rx.recv().unwrap();
+
+    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
+}
 
 pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
 pub type SyncChannelWithContext<T> = (SyncSender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
@@ -97,30 +115,10 @@ impl<T: Clone> SenderWithContext<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ApiCommand {
-    OpenFile(PathBuf),
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
-}
-
 unsafe impl<T: Clone> Send for SenderWithContext<T> {}
 unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
-
-pub fn update_state(
-    app_tx: &SenderWithContext<AppInstruction>,
-    update_fn: impl FnOnce(AppState) -> AppState,
-) {
-    let (state_tx, state_rx) = channel();
-
-    drop(app_tx.send(AppInstruction::GetState(state_tx)));
-    let state = state_rx.recv().unwrap();
-
-    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
-}
 
 #[derive(Clone)]
 pub enum AppInstruction {
@@ -129,7 +127,6 @@ pub enum AppInstruction {
     Exit,
     Error(String),
 }
-
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";

@@ -6,9 +6,11 @@ mod common;
 // TODO mod server;
 mod client;
 
-use common::{pty_bus, os_input_output, screen, ipc, wasm_vm, command_is_executing, errors, utils, start, ApiCommand};
-use client::{tab, layout, boundaries, panes};
-
+use client::{boundaries, layout, panes, tab};
+use common::{
+    command_is_executing, errors, ipc, os_input_output, pty_bus, screen, start, utils, wasm_vm,
+    ApiCommand,
+};
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -17,8 +19,8 @@ use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::os_input_output::{get_os_input};
-use crate::pty_bus::{VteEvent};
+use crate::os_input_output::get_os_input;
+use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
