@@ -9,7 +9,6 @@ pub mod utils;
 pub mod wasm_vm;
 
 use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
 use std::thread;
@@ -20,7 +19,6 @@ use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::InputMode;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
@@ -31,14 +29,10 @@ use crate::layout::Layout;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
 use input::input_loop;
-use os_input_output::{get_os_input, OsApi};
-use pty_bus::{PtyBus, PtyInstruction, VteEvent};
+use os_input_output::OsApi;
+use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
-use utils::{
-    consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
-    logging::*,
-};
+use utils::consts::{MOSAIC_ROOT_PLUGIN_DIR, MOSAIC_IPC_PIPE};
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
