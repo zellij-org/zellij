@@ -46,6 +46,7 @@ pub struct TerminalPane {
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
+    pub max_height: Option<usize>,
     pending_styles: CharacterStyles,
     clear_viewport_before_rendering: bool,
 }
@@ -176,6 +177,12 @@ impl Pane for TerminalPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
+    }
+    fn set_max_height(&mut self, max_height: usize) {
+        self.max_height = Some(max_height);
+    }
+    fn max_height(&self) -> Option<usize> {
+        self.max_height
     }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
@@ -309,6 +316,7 @@ impl TerminalPane {
             position_and_size_override: None,
             cursor_key_mode: false,
             clear_viewport_before_rendering: false,
+            max_height: None,
         }
     }
     pub fn mark_for_rerender(&mut self) {
