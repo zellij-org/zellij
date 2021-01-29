@@ -8,7 +8,7 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
-use crate::{AppInstruction, SenderWithContext};
+use super::{AppInstruction, SenderWithContext};
 
 /*
  * Screen

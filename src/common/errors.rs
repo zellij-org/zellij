@@ -1,13 +1,13 @@
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, OPENCALLS};
+use super::{AppInstruction, OPENCALLS};
 
 use std::fmt::{Display, Error, Formatter};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 #[cfg(not(test))]
-use crate::SenderWithContext;
+use super::SenderWithContext;
 #[cfg(not(test))]
 use std::panic::PanicInfo;
 #[cfg(not(test))]

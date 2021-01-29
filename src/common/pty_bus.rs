@@ -16,7 +16,7 @@ use crate::{
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
-use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
+use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,
