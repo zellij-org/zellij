@@ -1,0 +1,8 @@
+---
+source: src/tests/integration/basic.rs
+expression: snapshot
+---
+line18-b
+line19-b
+prompt $
+ █      

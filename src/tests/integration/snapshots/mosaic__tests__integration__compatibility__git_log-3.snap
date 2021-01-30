@@ -2,31 +2,31 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
-    * wip: doesn't render when new tab is created?                                                                                                   
-                                                                                                                                                     
-    * wip: doesnt re-render when a new tab is spawned for now                                                                                        
-                                                                                                                                                     
-    * wip: tabs now are a BTreeMap and we can switch between them in both directions                                                                 
-                                                                                                                                                     
-    * wip: I think that should also be here                                                                                                          
-                                                                                                                                                     
-    * wip: cleanup                                                                                                                                   
-                                                                                                                                                     
-    * Spawn a new terminal simultaneously with a new tab                                                                                             
-                                                                                                                                                     
-    * Ensure proper Opening and Closing of tabs                                                                                                      
-                                                                                                                                                     
-    * cleanup                                                                                                                                        
-                                                                                                                                                     
-    * more cleanup                                                                                                                                   
-                                                                                                                                                     
-    * tests(snapshots): add 'loading' snapshot to each scenario                                                                                      
-                                                                                                                                                     
-    * fix(tests): update snapshots                                                                                                                   
-                                                                                                                                                     
-    * Add tests for tabs implementation                                                                                                              
-                                                                                                                                                     
-    * wip: added tests, moved tab related stuff to a separate file                                                                                   
-                                                                                                                                                     
-:                                                                                                                                                    
 Bye from Mosaic!█                                                                                                                                    
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     
+                                                                                                                                                     

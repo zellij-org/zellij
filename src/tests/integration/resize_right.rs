@@ -550,3 +550,38 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         assert_snapshot!(snapshot);
     }
 }
+
+#[test]
+pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
+    // ┌─┬─┐                   ┌─┬─┐
+    // │ │█│                   │ │█│
+    // │ │█│ ==resize=right==> │ │█│
+    // │ │█│                   │ │█│
+    // └─┴─┘                   └─┴─┘
+    // █ == focused pane
+    let fake_win_size = PositionAndSize {
+        columns: 9,
+        rows: 20,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SPLIT_VERTICALLY,
+        &RESIZE_RIGHT,
+        &QUIT,
+    ]);
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
+
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    for snapshot in snapshots {
+        assert_snapshot!(snapshot);
+    }
+}

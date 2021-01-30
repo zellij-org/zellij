@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 backtrace = "0.3.55"
 bincode = "1.3.1"
+directories-next = "2.0"
 futures = "0.3.5"
 libc = "0.2"
 nix = "0.17.0"
@@ -38,7 +39,24 @@ features = ["unstable"]
 insta = "0.16.1"
 
 [build-dependencies]
+directories-next = "2.0"
 structopt = "0.3"
 
 [profile.release]
 lto = true
+
+[package.metadata.deb]
+depends = "$auto"
+license-file = ["LICENSE.md", "4"]
+assets = [
+  # TODO?
+  # ["assets/man/mosaic.1", "usr/share/man/man1/mosaic.1", "644"],
+  ["target/release/mosaic", "usr/bin/mosaic", "755"],
+  ["GOVERNANCE.md", "usr/share/doc/mosaic/GOVERNANCE.md", "644"],
+  ["README.md", "usr/share/doc/mosaic/README.md", "644"],
+  ["assets/layouts/*", "usr/share/mosaic/layouts/", "644"],
+  ["assets/plugins/*", "usr/share/mosaic/plugins/", "644"],
+  ["assets/completions/mosaic.bash", "usr/share/bash-completion/completions/mosaic.bash", "644"],
+  ["assets/completions/mosaic.fish", "usr/share/fish/vendor_completions.d/mosaic.fish", "644"],
+  ["assets/completions/_mosaic", "usr/share/zsh/vendor-completions/_mosaic", "644"],
+]

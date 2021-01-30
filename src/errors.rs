@@ -166,6 +166,8 @@ pub enum ScreenContext {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
+    SetSelectable,
+    SetMaxHeight,
     ClosePane,
     ApplyLayout,
     NewTab,
@@ -200,6 +202,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
+            ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
+            ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
@@ -244,6 +248,7 @@ pub enum PluginContext {
     Load,
     Draw,
     Input,
+    GlobalInput,
     Unload,
     Quit,
 }
@@ -254,6 +259,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Draw(..) => PluginContext::Draw,
             PluginInstruction::Input(..) => PluginContext::Input,
+            PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
         }
@@ -262,6 +268,8 @@ impl From<&PluginInstruction> for PluginContext {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
+    GetState,
+    SetState,
     Exit,
     Error,
 }
@@ -269,6 +277,8 @@ pub enum AppContext {
 impl From<&AppInstruction> for AppContext {
     fn from(app_instruction: &AppInstruction) -> Self {
         match *app_instruction {
+            AppInstruction::GetState(_) => AppContext::GetState,
+            AppInstruction::SetState(_) => AppContext::SetState,
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
         }

@@ -42,6 +42,8 @@ pub enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
+    SetSelectable(PaneId, bool),
+    SetMaxHeight(PaneId, usize),
     ClosePane(PaneId),
     ApplyLayout((Layout, Vec<RawFd>)),
     NewTab(RawFd),
@@ -138,14 +140,16 @@ impl Screen {
         if self.tabs.len() > 1 {
             self.switch_tab_prev();
         }
-        let mut active_tab = self.tabs.remove(&active_tab_index).unwrap();
+        let active_tab = self.tabs.remove(&active_tab_index).unwrap();
         let pane_ids = active_tab.get_pane_ids();
         self.send_pty_instructions
             .send(PtyInstruction::CloseTab(pane_ids))
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.render();
+            self.send_app_instructions
+                .send(AppInstruction::Exit)
+                .unwrap();
         }
     }
     pub fn render(&mut self) {
@@ -155,10 +159,6 @@ impl Screen {
             } else {
                 self.close_tab();
             }
-        } else {
-            self.send_app_instructions
-                .send(AppInstruction::Exit)
-                .unwrap();
         };
     }
 
