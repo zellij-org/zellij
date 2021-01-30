@@ -6,7 +6,7 @@ use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
 use crate::{
-    input::get_help, panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction,
+    input::handler::get_help, panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction,
     AppInstruction, SenderWithContext,
 };
 

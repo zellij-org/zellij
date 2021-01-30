@@ -2,17 +2,19 @@
 use crate::errors::ContextType;
 use crate::input::actions::Action;
 use crate::input::keybinds::get_default_keybinds;
-use crate::utils::logging::debug_log_to_file;
 use crate::os_input_output::OsApi;
+use crate::wasm_vm::PluginInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
-use crate::{AppInstruction, SenderWithContext, OPENCALLS};
+use crate::{AppInstruction, SenderWithContext, OPENCALLS, update_state, AppState};
 
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
 
 use super::keybinds::key_to_action;
+
+use crate::utils::logging::debug_log_to_file;
 
 struct InputHandler {
     mode: InputMode,
@@ -20,6 +22,7 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 }
 
@@ -29,6 +32,7 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
@@ -37,6 +41,7 @@ impl InputHandler {
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
+            send_plugin_instructions,
             send_app_instructions,
         }
     }
@@ -53,6 +58,17 @@ impl InputHandler {
                 let entry_mode = self.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
+                // Absolutely zero clue why this breaks *all* of the tests
+                //
+                // @@@imsnif: some more info - this causes an additional render for each
+                // keystroke... for some reason :) that's why the tests are failing, likely also
+                // hurts performance
+                //
+                #[cfg(not(test))]
+                drop(
+                    self.send_plugin_instructions
+                        .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+                );
                 for key_result in stdin_buffer.events_and_raw() {
                     //debug_log_to_file(format!("{:?}, {:?}", self.mode, key_result)).unwrap();
                     match key_result {
@@ -64,6 +80,9 @@ impl InputHandler {
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
                                 if entry_mode == InputMode::Command && self.mode == InputMode::Command {
                                     self.mode = InputMode::Normal;
+                                    update_state(&self.send_app_instructions, |_| AppState {
+                                        input_mode: self.mode,
+                                    });
                                 }
                                 if should_break {
                                     break;
@@ -102,6 +121,10 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
+                update_state(&self.send_app_instructions, |_| AppState {
+                    input_mode: self.mode,
+                });
+                self.send_screen_instructions.send(ScreenInstruction::Render).unwrap();
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -227,6 +250,37 @@ pub enum InputMode {
     Normal,
     Command,
     CommandPersistent,
+    Exiting,
+}
+
+// FIXME: This should be auto-generated from the soon-to-be-added `get_default_keybinds`
+pub fn get_help(mode: &InputMode) -> Vec<String> {
+    let command_help = vec![
+        "<n/b/z> Split".into(),
+        "<j/k/h/l> Resize".into(),
+        "<p> Focus Next".into(),
+        "<x> Close Pane".into(),
+        "<q> Quit".into(),
+        "<PgUp/PgDown> Scroll".into(),
+        "<1> New Tab".into(),
+        "<2/3> Move Tab".into(),
+        "<4> Close Tab".into(),
+    ];
+    match mode {
+        InputMode::Normal => vec!["<Ctrl-g> Command Mode".into()],
+        InputMode::Command => [
+            vec![
+                "<Ctrl-g> Persistent Mode".into(),
+                "<ESC> Normal Mode".into(),
+            ],
+            command_help,
+        ]
+        .concat(),
+        InputMode::CommandPersistent => {
+            [vec!["<ESC/Ctrl-g> Normal Mode".into()], command_help].concat()
+        }
+        InputMode::Exiting => vec!["Bye from Mosaic!".into()],
+    }
 }
 
 /// Entry point to the module that instantiates a new InputHandler and calls its
@@ -236,6 +290,7 @@ pub fn input_loop(
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 ) {
     let _handler = InputHandler::new(
@@ -243,6 +298,7 @@ pub fn input_loop(
         command_is_executing,
         send_screen_instructions,
         send_pty_instructions,
+        send_plugin_instructions,
         send_app_instructions,
     )
     .get_input();

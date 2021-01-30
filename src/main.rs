@@ -25,7 +25,7 @@ use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
 
 use directories_next::ProjectDirs;
-use input::InputMode;
+use input::handler::InputMode;
 use panes::PaneId;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
