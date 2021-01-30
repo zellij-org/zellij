@@ -5,9 +5,9 @@ use std::{
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
-use crate::{
-    input::get_help, panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction,
-    AppInstruction, SenderWithContext,
+use super::{
+    input::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId,
+    SenderWithContext,
 };
 
 #[derive(Clone, Debug)]
