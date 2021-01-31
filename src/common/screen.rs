@@ -193,4 +193,13 @@ impl Screen {
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
     }
+
+    pub fn _get_terminal_size(&self, fd: Option<RawFd>) -> PositionAndSize {
+        let fd: RawFd = fd.unwrap_or_default();
+        self.os_api.get_terminal_size_using_fd(fd)
+    }
+    pub fn set_terminal_size(&mut self, fd: Option<RawFd>, cols: u16, rows: u16) {
+        let fd: RawFd = fd.unwrap_or_default();
+        self.os_api.set_terminal_size_using_fd(fd, cols, rows);
+    }
 }

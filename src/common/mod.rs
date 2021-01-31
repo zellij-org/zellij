@@ -301,33 +301,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .unwrap()
                                 .write_to_active_terminal(bytes);
                         }
-                        ScreenInstruction::ResizeScreen(new_width, new_height) => {
-                            let position_and_size =
-                                screen.get_active_tab_mut().unwrap().get_tab_size();
+                        ScreenInstruction::ResizeScreen(columns, rows) => {
+                            let columns = columns as u16;
+                            let rows = rows as u16;
 
-                            if position_and_size.columns > new_width {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_left_by(position_and_size.columns - new_width - 1);
-                            } else if position_and_size.columns < new_width {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_right_by(new_width - position_and_size.columns - 1);
-                            }
-
-                            if position_and_size.rows > new_height {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_down_by(position_and_size.rows - new_height - 1);
-                            } else if position_and_size.rows < new_height {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_up_by(new_height - position_and_size.rows - 1);
-                            }
+                            debug_log_to_file(format!("cols: {}, rows: {}", columns, rows)).unwrap();
+                            screen.set_terminal_size(None, columns, rows);
                         }
                         ScreenInstruction::ResizeLeft => {
                             screen.get_active_tab_mut().unwrap().resize_left();
@@ -422,13 +401,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
-    let screen_resize_thread = thread::Builder::new()
-        .name("resize_listerner".to_string())
+    let signal_listener_thread = thread::Builder::new()
+        .name("signal_listerner".to_string())
         .spawn({
             use signal_hook::{consts::signal::*, iterator::Signals};
 
-            let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
             let send_screen_instructions = send_screen_instructions.clone();
+            let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
 
             move || 'signal_listener: loop {
                 for signal in signals.pending() {
@@ -683,6 +662,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
+                let _ = signal_listener_thread.join();
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 let _ = pty_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
@@ -701,11 +681,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
+    signal_listener_thread.join().unwrap();
     let _ = send_pty_instructions.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
-    screen_resize_thread.join().unwrap();
 
     // cleanup();
     let reset_style = "\u{1b}[m";
