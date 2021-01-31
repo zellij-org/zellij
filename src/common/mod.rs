@@ -16,6 +16,7 @@ use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
 
 use crate::panes::PaneId;
+use crate::utils::consts::MOSAIC_IPC_PIPE;
 use directories_next::ProjectDirs;
 use input::InputMode;
 use serde::{Deserialize, Serialize};
@@ -425,10 +426,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("resize_listerner".to_string())
         .spawn({
             use signal_hook::{consts::signal::*, iterator::Signals};
-            
+
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
             let send_screen_instructions = send_screen_instructions.clone();
-            
+
             move || 'signal_listener: loop {
                 for signal in signals.pending() {
                     match signal as libc::c_int {
@@ -438,7 +439,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                     .send(ScreenInstruction::ResizeScreen(width, height))
                                     .unwrap();
                             } else {
-                                debug_log_to_file("There was an error in getting the terminal's size".to_string())
+                                debug_log_to_file(
+                                    "There was an error in getting the terminal's size".to_string(),
+                                )
                                     .unwrap();
                             }
                         }
