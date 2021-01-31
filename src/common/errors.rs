@@ -186,7 +186,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HorizontalSplit(_) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(_) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(_) => ScreenContext::WriteCharacter,
-            ScreenInstruction::TerminalResize(_, _) => ScreenContext::TermianlResize,
+            ScreenInstruction::TerminalResize => ScreenContext::TermianlResize,
             ScreenInstruction::ResizeLeft => ScreenContext::ResizeLeft,
             ScreenInstruction::ResizeRight => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown => ScreenContext::ResizeDown,

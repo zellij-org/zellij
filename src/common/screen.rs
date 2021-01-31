@@ -26,7 +26,7 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId),
     VerticalSplit(PaneId),
     WriteCharacter(Vec<u8>),
-    TerminalResize(usize, usize),
+    TerminalResize,
     ResizeLeft,
     ResizeRight,
     ResizeDown,
@@ -194,7 +194,7 @@ impl Screen {
         self.tabs.insert(tab_index, tab);
     }
 
-    pub fn _get_terminal_size(&self, fd: Option<RawFd>) -> PositionAndSize {
+    pub fn get_terminal_size(&self, fd: Option<RawFd>) -> PositionAndSize {
         let fd: RawFd = fd.unwrap_or_default();
         self.os_api.get_terminal_size_using_fd(fd)
     }

@@ -988,7 +988,6 @@ dependencies = [
  "signal-hook",
  "strip-ansi-escapes",
  "structopt",
- "term_size",
  "termion",
  "termios",
  "unicode-truncate",
@@ -1569,16 +1568,6 @@ dependencies = [
  "rand",
  "redox_syscall 0.1.57",
  "remove_dir_all",
- "winapi",
-]
-
-[[package]]
-name = "term_size"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e4129646ca0ed8f45d09b929036bafad5377103edd06e50bf574b353d2b08d9"
-dependencies = [
- "libc",
  "winapi",
 ]
 

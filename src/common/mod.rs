@@ -33,7 +33,7 @@ use input::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::{consts::MOSAIC_ROOT_PLUGIN_DIR, logging::debug_log_to_file};
+use utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -301,12 +301,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .unwrap()
                                 .write_to_active_terminal(bytes);
                         }
-                        ScreenInstruction::TerminalResize(columns, rows) => {
-                            let columns = columns as u16;
-                            let rows = rows as u16;
-
-                            debug_log_to_file(format!("cols: {}, rows: {}", columns, rows)).unwrap();
-                            screen.set_terminal_size(None, columns, rows);
+                        ScreenInstruction::TerminalResize => {
+                            let screen_size = screen.get_terminal_size(None);
+                            screen.set_terminal_size(None, screen_size.columns as u16, screen_size.rows as u16);
                         }
                         ScreenInstruction::ResizeLeft => {
                             screen.get_active_tab_mut().unwrap().resize_left();
@@ -413,16 +410,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 for signal in signals.pending() {
                     match signal as libc::c_int {
                         SIGWINCH => {
-                            if let Some((width, height)) = term_size::dimensions() {
-                                send_screen_instructions
-                                    .send(ScreenInstruction::TerminalResize(width, height))
-                                    .unwrap();
-                            } else {
-                                debug_log_to_file(
-                                    "There was an error in getting the terminal's size".to_string(),
-                                )
-                                    .unwrap();
-                            }
+                            send_screen_instructions
+                                .send(ScreenInstruction::TerminalResize)
+                                .unwrap();
                         }
                         SIGTERM | SIGINT | SIGQUIT => {
                             break 'signal_listener;
