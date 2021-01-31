@@ -301,7 +301,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .unwrap()
                                 .write_to_active_terminal(bytes);
                         }
-                        ScreenInstruction::ResizeScreen(columns, rows) => {
+                        ScreenInstruction::TerminalResize(columns, rows) => {
                             let columns = columns as u16;
                             let rows = rows as u16;
 
@@ -415,7 +415,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         SIGWINCH => {
                             if let Some((width, height)) = term_size::dimensions() {
                                 send_screen_instructions
-                                    .send(ScreenInstruction::ResizeScreen(width, height))
+                                    .send(ScreenInstruction::TerminalResize(width, height))
                                     .unwrap();
                             } else {
                                 debug_log_to_file(

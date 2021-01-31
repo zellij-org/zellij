@@ -26,7 +26,7 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId),
     VerticalSplit(PaneId),
     WriteCharacter(Vec<u8>),
-    ResizeScreen(usize, usize),
+    TerminalResize(usize, usize),
     ResizeLeft,
     ResizeRight,
     ResizeDown,
