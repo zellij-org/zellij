@@ -1,6 +1,6 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::{pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction, SenderWithContext};
+use crate::{common::SenderWithContext, pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction};
 
 use std::{sync::mpsc::channel, unimplemented};
 
@@ -13,6 +13,7 @@ pub struct PluginPane {
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
+    pub max_height: Option<usize>,
 }
 
 impl PluginPane {
@@ -28,6 +29,7 @@ impl PluginPane {
             position_and_size,
             position_and_size_override: None,
             send_plugin_instructions,
+            max_height: None,
         }
     }
 }
@@ -100,6 +102,9 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn set_max_height(&mut self, max_height: usize) {
+        self.max_height = Some(max_height);
+    }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
         if true {
@@ -171,5 +176,8 @@ impl Pane for PluginPane {
     }
     fn clear_scroll(&mut self) {
         unimplemented!()
+    }
+    fn max_height(&self) -> Option<usize> {
+        self.max_height
     }
 }

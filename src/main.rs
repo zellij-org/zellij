@@ -1,108 +1,30 @@
 #[cfg(test)]
 mod tests;
 
-mod boundaries;
 mod cli;
-mod command_is_executing;
-mod errors;
-mod input;
-mod layout;
-mod os_input_output;
-mod panes;
-mod pty_bus;
-mod screen;
-mod tab;
-mod utils;
+mod common;
+// TODO mod server;
+mod client;
 
-mod wasm_vm;
+use client::{boundaries, layout, panes, tab};
+use common::{
+    command_is_executing, errors, ipc, os_input_output, pty_bus, screen, start, utils, wasm_vm,
+    ApiCommand,
+};
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
-use std::thread;
-use std::{cell::RefCell, sync::mpsc::TrySendError};
-use std::{collections::HashMap, fs};
 
-use directories_next::ProjectDirs;
-use input::InputMode;
-use panes::PaneId;
-use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use termion::input::TermRead;
-use wasm_vm::PluginEnv;
-use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::errors::{
-    AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext,
-};
-use crate::input::input_loop;
-use crate::layout::Layout;
-use crate::os_input_output::{get_os_input, OsApi};
-use crate::pty_bus::{PtyBus, PtyInstruction, VteEvent};
-use crate::screen::{Screen, ScreenInstruction};
-use crate::utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
+use crate::os_input_output::get_os_input;
+use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{MOSAIC_IPC_PIPE, MOSAIC_TMP_DIR, MOSAIC_TMP_LOG_DIR},
     logging::*,
 };
-use crate::wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
-
-thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
-
-#[derive(Serialize, Deserialize, Debug)]
-enum ApiCommand {
-    OpenFile(PathBuf),
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
-}
-
-pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
-pub type SyncChannelWithContext<T> = (SyncSender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
-
-#[derive(Clone)]
-enum SenderType<T: Clone> {
-    Sender(Sender<(T, ErrorContext)>),
-    SyncSender(SyncSender<(T, ErrorContext)>),
-}
-
-#[derive(Clone)]
-pub struct SenderWithContext<T: Clone> {
-    err_ctx: ErrorContext,
-    sender: SenderType<T>,
-}
-
-impl<T: Clone> SenderWithContext<T> {
-    fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
-        Self { err_ctx, sender }
-    }
-
-    pub fn send(&self, event: T) -> Result<(), SendError<(T, ErrorContext)>> {
-        match self.sender {
-            SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
-            SenderType::SyncSender(ref s) => s.send((event, self.err_ctx)),
-        }
-    }
-
-    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
-        if let SenderType::SyncSender(ref s) = self.sender {
-            s.try_send((event, self.err_ctx))
-        } else {
-            panic!("try_send can only be called on SyncSenders!")
-        }
-    }
-
-    pub fn update(&mut self, new_ctx: ErrorContext) {
-        self.err_ctx = new_ctx;
-    }
-}
-
-unsafe impl<T: Clone> Send for SenderWithContext<T> {}
-unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 pub fn main() {
     let opts = CliArgs::from_args();
@@ -135,6 +57,7 @@ pub fn main() {
         start(Box::new(os_input), opts);
     }
 }
+<<<<<<< HEAD
 
 // FIXME: It would be good to add some more things to this over time
 #[derive(Debug, Clone)]
@@ -763,3 +686,5 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .unwrap();
     os_input.get_stdout_writer().flush().unwrap();
 }
+=======
+>>>>>>> 63a2dc33995fad81c7eec02b23e38afdc3f426e8

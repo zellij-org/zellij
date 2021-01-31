@@ -5,9 +5,9 @@ use std::{
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
-use crate::{
-    input::get_help, panes::PaneId, pty_bus::PtyInstruction, screen::ScreenInstruction,
-    AppInstruction, SenderWithContext,
+use super::{
+    input::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId,
+    SenderWithContext,
 };
 
 #[derive(Clone, Debug)]
@@ -35,6 +35,7 @@ pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "mosaic" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
+            "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
             "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
         }
@@ -58,6 +59,17 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         .send(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
+        ))
+        .unwrap()
+}
+
+fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
+    let max_height = max_height as usize;
+    plugin_env
+        .send_screen_instructions
+        .send(ScreenInstruction::SetMaxHeight(
+            PaneId::Plugin(plugin_env.plugin_id),
+            max_height,
         ))
         .unwrap()
 }

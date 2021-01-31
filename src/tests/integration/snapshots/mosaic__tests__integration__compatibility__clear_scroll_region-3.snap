@@ -2,31 +2,31 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
-⋊> ~/c/mosaic on main ⨯ vim some-file                                                                       15:07:22
-⋊> ~/c/mosaic on main ⨯                                                                                     15:07:29
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
 Bye from Mosaic!█                                                                                                   
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    

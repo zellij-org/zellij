@@ -150,7 +150,7 @@ impl OsApi for FakeInputOutput {
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut attempts_left = 3;
         loop {
-            if attempts_left < 3 {
+            if attempts_left < 3 && attempts_left > 0 {
                 // this sometimes happens because in the context of the tests,
                 // the read_buffers are set in set_terminal_size_using_fd
                 // which sometimes happens after the first read and then the tests get messed up
@@ -158,7 +158,7 @@ impl OsApi for FakeInputOutput {
                 // in the tests are asserted against exact copies, and so a slight variation makes
                 // them fail
                 ::std::thread::sleep(::std::time::Duration::from_millis(25));
-            } else if attempts_left == 0 {
+            } else if attempts_left <= 0 {
                 self.started_reading_from_pty.store(true, Ordering::Release);
                 return Ok(0);
             }

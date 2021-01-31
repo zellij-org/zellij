@@ -9,6 +9,7 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
+use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
@@ -16,7 +17,6 @@ use crate::{
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
-use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -163,6 +163,7 @@ pub struct PtyBus {
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
+    task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
 fn stream_terminal_bytes(
@@ -170,7 +171,7 @@ fn stream_terminal_bytes(
     mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
     os_input: Box<dyn OsApi>,
     debug: bool,
-) {
+) -> JoinHandle<()> {
     let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     task::spawn({
         async move {
@@ -203,9 +204,7 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
+                                let _ = send_screen_instructions.send(ScreenInstruction::Render);
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -219,17 +218,15 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        send_screen_instructions
-                            .send(ScreenInstruction::Render)
-                            .unwrap();
+                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            send_screen_instructions
-                .send(ScreenInstruction::Render)
-                .unwrap();
+            if pending_render {
+                let _ = send_screen_instructions.send(ScreenInstruction::Render);
+            }
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
@@ -238,7 +235,7 @@ fn stream_terminal_bytes(
                 .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
         }
-    });
+    })
 }
 
 impl PtyBus {
@@ -256,17 +253,19 @@ impl PtyBus {
             os_input,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
+            task_handles: HashMap::new(),
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, RawFd) =
             self.os_input.spawn_terminal(file_to_open);
-        stream_terminal_bytes(
+        let task_handle = stream_terminal_bytes(
             pid_primary,
             self.send_screen_instructions.clone(),
             self.os_input.clone(),
             self.debug_to_file,
         );
+        self.task_handles.insert(pid_primary, task_handle);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
@@ -285,19 +284,24 @@ impl PtyBus {
             )))
             .unwrap();
         for id in new_pane_pids {
-            stream_terminal_bytes(
+            let task_handle = stream_terminal_bytes(
                 id,
                 self.send_screen_instructions.clone(),
                 self.os_input.clone(),
                 self.debug_to_file,
             );
+            self.task_handles.insert(id, task_handle);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
-                let child_pid = self.id_to_child_pid.get(&id).unwrap();
-                self.os_input.kill(*child_pid).unwrap();
+                let child_pid = self.id_to_child_pid.remove(&id).unwrap();
+                let handle = self.task_handles.remove(&id).unwrap();
+                self.os_input.kill(child_pid).unwrap();
+                task::block_on(async {
+                    handle.cancel().await;
+                });
             }
             PaneId::Plugin(pid) => drop(
                 self.send_plugin_instructions

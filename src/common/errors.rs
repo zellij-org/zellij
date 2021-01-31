@@ -1,13 +1,13 @@
+use super::{AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::{AppInstruction, OPENCALLS};
 
 use std::fmt::{Display, Error, Formatter};
 
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 #[cfg(not(test))]
-use crate::SenderWithContext;
+use super::SenderWithContext;
 #[cfg(not(test))]
 use std::panic::PanicInfo;
 #[cfg(not(test))]
@@ -168,6 +168,7 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     SetSelectable,
+    SetMaxHeight,
     ClosePane,
     ApplyLayout,
     NewTab,
@@ -204,6 +205,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
+            ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
