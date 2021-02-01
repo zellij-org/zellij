@@ -122,6 +122,11 @@ pub enum AppInstruction {
     Exit,
     Error(String),
 }
+// #[derive(Clone)]
+// pub enum SigInstruction {
+    // Exit,
+    // Error(String),
+// }
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";
@@ -142,6 +147,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
+
+    // let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> =
+        // channel();
+    // let mut send_sig_instructions =
+        // SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
@@ -195,6 +205,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
                 pty_bus.send_screen_instructions.update(err_ctx);
+
                 match event {
                     PtyInstruction::SpawnTerminal(file_to_open) => {
                         let pid = pty_bus.spawn_terminal(file_to_open);
@@ -215,6 +226,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         pty_bus
                             .send_screen_instructions
                             .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                            .unwrap();
+                    }
+                    PtyInstruction::ResizeTerminal => {
+                        pty_bus
+                            .send_screen_instructions
+                            .send(ScreenInstruction::TerminalResize)
                             .unwrap();
                     }
                     PtyInstruction::NewTab => {
@@ -306,15 +323,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let current_term_size = screen.get_active_tab().unwrap().get_tab_size();
 
                             if new_term_size.columns < current_term_size.columns {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_left_by(current_term_size.columns - new_term_size.columns);
+                                screen.get_active_tab_mut().unwrap().resize_left_by(
+                                    current_term_size.columns - new_term_size.columns,
+                                );
                             } else if new_term_size.columns > current_term_size.columns {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_right_by(new_term_size.columns - current_term_size.columns);
+                                screen.get_active_tab_mut().unwrap().resize_right_by(
+                                    new_term_size.columns - current_term_size.columns,
+                                );
                             }
 
                             if new_term_size.rows < current_term_size.rows {
@@ -427,21 +442,27 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             use signal_hook::{consts::signal::*, iterator::Signals};
 
-            let send_screen_instructions = send_screen_instructions.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
 
-            move || 'signal_listener: loop {
-                for signal in signals.pending() {
-                    match signal as libc::c_int {
-                        SIGWINCH => {
-                            send_screen_instructions
-                                .send(ScreenInstruction::TerminalResize)
-                                .unwrap();
+            move ||  {
+                'signal_listener: loop {
+                    // let (event, mut err_ctx) = receive_sig_instructions
+                        // .recv()
+                        // .expect("Failed to recieve signal instruction.");
+
+                    for signal in signals.pending() {
+                        match signal as libc::c_int {
+                            SIGWINCH => {
+                                send_pty_instructions
+                                    .send(PtyInstruction::ResizeTerminal)
+                                    .unwrap();
+                            }
+                            SIGTERM | SIGINT | SIGQUIT => {
+                                break 'signal_listener;
+                            }
+                            _ => {}
                         }
-                        SIGTERM | SIGINT | SIGQUIT => {
-                            break 'signal_listener;
-                        }
-                        _ => {}
                     }
                 }
             }
