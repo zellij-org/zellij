@@ -122,11 +122,11 @@ pub enum AppInstruction {
     Exit,
     Error(String),
 }
-// #[derive(Clone)]
-// pub enum SigInstruction {
-    // Exit,
-    // Error(String),
-// }
+#[derive(Clone)]
+pub enum SigInstruction {
+    Quit,
+    Error(String),
+}
 
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";
@@ -148,10 +148,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
 
-    // let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> =
-        // channel();
-    // let mut send_sig_instructions =
-        // SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
+    let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> = channel();
+    let mut send_sig_instructions = SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
@@ -437,7 +435,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
-    let signal_listener_thread = thread::Builder::new()
+    let signal_thread = thread::Builder::new()
         .name("signal_listerner".to_string())
         .spawn({
             use signal_hook::{consts::signal::*, iterator::Signals};
@@ -445,11 +443,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
 
-            move ||  {
+            move || {
                 'signal_listener: loop {
-                    // let (event, mut err_ctx) = receive_sig_instructions
-                        // .recv()
-                        // .expect("Failed to recieve signal instruction.");
+                    match receive_sig_instructions.try_recv() {
+                        Ok((event, _)) => {
+                            match event {
+                                SigInstruction::Quit => {
+                                    break 'signal_listener;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(_) => {}
+                    }
 
                     for signal in signals.pending() {
                         match signal as libc::c_int {
@@ -690,6 +696,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = send_sig_instructions.send(SigInstruction::Quit);
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
@@ -697,7 +704,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::Error(backtrace) => {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
-                let _ = signal_listener_thread.join();
+                let _ = send_sig_instructions.send(SigInstruction::Quit);
+                let _ = signal_thread.join();
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 let _ = pty_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
@@ -716,7 +724,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
-    signal_listener_thread.join().unwrap();
+    let _ = send_sig_instructions.send(SigInstruction::Quit);
+    signal_thread.join().unwrap();
     let _ = send_pty_instructions.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
