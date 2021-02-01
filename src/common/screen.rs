@@ -198,8 +198,8 @@ impl Screen {
         let fd: RawFd = fd.unwrap_or_default();
         self.os_api.get_terminal_size_using_fd(fd)
     }
-    pub fn set_terminal_size(&mut self, fd: Option<RawFd>, cols: u16, rows: u16) {
+    pub fn set_terminal_size(&mut self, fd: Option<RawFd>, cols: usize, rows: usize) {
         let fd: RawFd = fd.unwrap_or_default();
-        self.os_api.set_terminal_size_using_fd(fd, cols, rows);
+        self.os_api.set_terminal_size_using_fd(fd, cols as u16, rows as u16);
     }
 }
