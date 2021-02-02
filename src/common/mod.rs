@@ -445,19 +445,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
             move || {
                 'signal_listener: loop {
-                    match receive_sig_instructions.try_recv() {
-                        Ok((event, _)) => {
-                            match event {
-                                SigInstruction::Quit => {
-                                    break 'signal_listener;
-                                }
-                                _ => {}
-                            }
-                        }
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => break 'signal_listener
-                    }
-
                     for signal in signals.pending() {
                         match signal as libc::c_int {
                             SIGWINCH => {
@@ -470,6 +457,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             }
                             _ => {}
                         }
+                    }
+
+                    match receive_sig_instructions.try_recv() {
+                        Ok((event, _)) => {
+                            match event {
+                                SigInstruction::Quit => {
+                                    break 'signal_listener;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => break 'signal_listener
                     }
                 }
             }
