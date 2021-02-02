@@ -10,7 +10,7 @@ pub mod wasm_vm;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender, TryRecvError};
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
@@ -149,7 +149,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
 
     let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> = channel();
-    let mut send_sig_instructions = SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
+    let send_sig_instructions = SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
@@ -454,7 +454,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 _ => {}
                             }
                         }
-                        Err(_) => {}
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => break 'signal_listener
                     }
 
                     for signal in signals.pending() {
