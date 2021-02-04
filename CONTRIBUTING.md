@@ -27,14 +27,14 @@ finding something interesting to work on and guide through.
 
 Bugs and enhancement suggestions are tracked as GitHub issues.
 
-#### Lacking API for plugin in mosaic?
+### Lacking API for plugin in mosaic?
 
 If you have a plugin idea, but mosaic still doesn't have API required to make
 the plugin consider opening [an issue][plugin-issue] and describing your requirements.
 
 [plugin-issue]: https://github.com/mosaic-org/mosaic/issues/new?assignees=&labels=plugin%20system
 
-#### How Do I Submit A (Good) Bug Report?
+### How Do I Submit A (Good) Bug Report?
 
 After you've determined which repository your bug is related to and that the
 issue is still present in the latest version of the master branch, create an
@@ -45,7 +45,7 @@ issue on that repository and provide the following information:
 - Describe the exact **steps to reproduce the problem** in as many details as necessary.
 - When providing code samples, please use [code blocks][code-blocks].
 
-#### How Do I Submit A (Good) Enhancement Suggestion?
+### How Do I Submit A (Good) Enhancement Suggestion?
 
 Instructions are similar to those for bug reports. Please provide the following
 information:
