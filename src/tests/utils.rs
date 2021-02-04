@@ -36,6 +36,14 @@ pub fn get_output_frame_snapshots(
     snapshots
 }
 
+pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String>{
+    if snapshots.len() < 2 {
+        None
+    } else {
+        Some(snapshots.remove(snapshots.len() - 2))
+    }
+}
+
 pub mod commands {
     /// ctrl-g
     pub const COMMAND_TOGGLE: [u8; 1] = [7];

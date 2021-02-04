@@ -2,31 +2,31 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
-█                                                                                                                                                    
                                                                                                                                                      
+src/terminal_pane/scroll.rs                                                                                                                          
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────                                  
                                                                                                                                                      
+────────────────────────────────────────────────┐                                                                                                    
+use crate::terminal_pane::terminal_character::{ │                                                                                                    
+────────────────────────────────────────────────┘                                                                                                    
+5                                                                                                                                                    
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,                                                                                    
+};                                                                                                                                                   
                                                                                                                                                      
+use crate::utils::logging::debug_log_to_file;                                                                                                        
                                                                                                                                                      
+/*                                                                                                                                                   
+ * Scroll                                                                                                                                            
+ *                                                                                                                                                   
                                                                                                                                                      
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
-                                                                                                                                                     
+──────────────┐                                                                                                                                      
+impl Scroll { │                                                                                                                                      
+──────────────┘                                                                                                                                      
+663                                                                                                                                                  
+    pub fn move_current_buffer_to_alternative_buffer(&mut self) {                                                                                    
+        self.alternative_buffer = Some(self.canonical_lines.drain(..).collect());                                                                    
+        self.alternative_cursor_position = Some(self.cursor_position);                                                                               
+        self.cursor_position.reset();                                                                                                                
+        self.clear_all();                                                                                                                            
+    }                                                                                                                                                
+:█                                                                                                                                                   

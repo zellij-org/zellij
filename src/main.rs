@@ -662,9 +662,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
             AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
@@ -686,10 +683,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         }
     }
 
-    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-    screen_thread.join().unwrap();
     let _ = send_pty_instructions.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
+    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+    screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
 

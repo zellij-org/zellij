@@ -1,24 +1,24 @@
 ---
 source: src/tests/integration/resize_left.rs
-expression: snapshot
+expression: snapshot_before_quit
 ---
-█                                                                                                                        
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
-                                                                                                                         
+aaaaaaaaaaaaaaaaaaaaa                             │line1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line15-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line7-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line16-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line8-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line9-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line10-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+aaaaaaaaaaaaaaaaaaaaa                             │line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb          
+prompt $                                          │prompt $ █                                                            

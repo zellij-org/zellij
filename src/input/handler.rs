@@ -14,7 +14,6 @@ use termion::input::TermReadEventsAndRaw;
 
 use super::keybinds::key_to_action;
 
-use crate::utils::logging::debug_log_to_file;
 
 struct InputHandler {
     mode: InputMode,
@@ -54,23 +53,15 @@ impl InputHandler {
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
-            loop {
+            'input_loop: loop {
                 let entry_mode = self.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
-                // Absolutely zero clue why this breaks *all* of the tests
-                //
-                // @@@imsnif: some more info - this causes an additional render for each
-                // keystroke... for some reason :) that's why the tests are failing, likely also
-                // hurts performance
-                //
-                #[cfg(not(test))]
                 drop(
                     self.send_plugin_instructions
                         .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
                 );
                 for key_result in stdin_buffer.events_and_raw() {
-                    //debug_log_to_file(format!("{:?}, {:?}", self.mode, key_result)).unwrap();
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
@@ -85,7 +76,7 @@ impl InputHandler {
                                     });
                                 }
                                 if should_break {
-                                    break;
+                                    break 'input_loop;
                                 }
                             }
                             termion::event::Event::Mouse(_)
@@ -226,12 +217,6 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting mosaic)
     fn exit(&mut self) {
-        self.send_screen_instructions
-            .send(ScreenInstruction::Quit)
-            .unwrap();
-        self.send_pty_instructions
-            .send(PtyInstruction::Quit)
-            .unwrap();
         self.send_app_instructions
             .send(AppInstruction::Exit)
             .unwrap();

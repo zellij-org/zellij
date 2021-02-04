@@ -2,7 +2,7 @@ use insta::assert_snapshot;
 
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
-use crate::tests::utils::get_output_frame_snapshots;
+use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
@@ -29,7 +29,6 @@ pub fn adding_new_terminal_in_fullscreen() {
         &SPLIT_VERTICALLY,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         &SPLIT_HORIZONTALLY,
-        &CLOSE_FOCUSED_PANE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -40,9 +39,9 @@ pub fn adding_new_terminal_in_fullscreen() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -60,7 +59,6 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         &SPLIT_VERTICALLY,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         &MOVE_FOCUS,
-        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -71,7 +69,7 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }

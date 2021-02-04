@@ -4,7 +4,7 @@ use ::std::collections::HashMap;
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::possible_tty_inputs::Bytes;
-use crate::tests::utils::get_output_frame_snapshots;
+use crate::tests::utils::{get_output_frame_snapshots, get_next_to_last_snapshot};
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
@@ -47,9 +47,9 @@ pub fn run_bandwhich_from_fish_shell() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -70,9 +70,9 @@ pub fn fish_tab_completion_options() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -98,9 +98,9 @@ pub fn fish_select_tab_completion_options() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -130,9 +130,9 @@ pub fn vim_scroll_region_down() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -159,9 +159,9 @@ pub fn vim_ctrl_d() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -187,9 +187,9 @@ pub fn vim_ctrl_u() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -210,9 +210,9 @@ pub fn htop() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -233,9 +233,9 @@ pub fn htop_scrolling() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -256,9 +256,9 @@ pub fn htop_right_scrolling() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -287,9 +287,9 @@ pub fn vim_overwrite() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -313,9 +313,9 @@ pub fn clear_scroll_region() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -336,9 +336,9 @@ pub fn display_tab_characters_properly() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -359,9 +359,9 @@ pub fn neovim_insert_mode() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -384,9 +384,9 @@ pub fn bash_cursor_linewrap() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -409,9 +409,9 @@ pub fn fish_paste_multiline() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -432,9 +432,9 @@ pub fn git_log() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -457,9 +457,9 @@ pub fn git_diff_scrollup() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -480,7 +480,7 @@ pub fn emacs_longbuf() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
+        .expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }

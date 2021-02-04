@@ -224,9 +224,7 @@ fn stream_terminal_bytes(
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            if pending_render {
-                let _ = send_screen_instructions.send(ScreenInstruction::Render);
-            }
+            send_screen_instructions.send(ScreenInstruction::Render).unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
@@ -313,5 +311,14 @@ impl PtyBus {
         ids.iter().for_each(|&id| {
             self.close_pane(id);
         });
+    }
+}
+
+impl Drop for PtyBus {
+    fn drop(&mut self) {
+        let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
+        for id in child_ids {
+            self.close_pane(PaneId::Terminal(id));
+        }
     }
 }
