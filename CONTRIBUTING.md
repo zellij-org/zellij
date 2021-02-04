@@ -3,7 +3,7 @@
 Thanks for considering to contribute to mosaic!
 
 **First**: if you're unsure or afraid of anything, just ask on our
-[Discord server](discord-invite-link) or submit the issue or pull request anyway.
+[Discord server][discord-invite-link] or submit the issue or pull request anyway.
 You won't be yelled at for giving it your best effort. The worst that can happen
 is that you'll be politely asked to change something. We appreciate any sort
 of contributions, and don't want a wall of rules to get in the way of that.
@@ -15,9 +15,9 @@ all contributors are expected to adhere to.
 
 ## Looking for something to work on?
 
-If you are new contributor to `Mosaic` going through [beginners](good-first-issue)
+If you are new contributor to `Mosaic` going through [beginners][good-first-issue]
 should be a good start or you can join our public
-[Discord server](discord-invite-link), we would be happy to help
+[Discord server][discord-invite-link], we would be happy to help
 finding something interesting to work on and guide through.
 
 [discord-invite-link]: https://discord.gg/feHDHahHCz
@@ -43,7 +43,7 @@ issue on that repository and provide the following information:
 - Use a **clear and descriptive title** for the issue to identify the problem.
 - Explain which **behavior you expected** to see instead and why.
 - Describe the exact **steps to reproduce the problem** in as many details as necessary.
-- When providing code samples, please use [code blocks](code-blocks).
+- When providing code samples, please use [code blocks][code-blocks].
 
 #### How Do I Submit A (Good) Enhancement Suggestion?
 
@@ -52,7 +52,7 @@ information:
 
 - Use a **clear and descriptive title** for the issue to identify the suggestion.
 - Provide a **description of the suggested enhancement** in as many details as necessary.
-- When providing code samples, please use [code blocks](code-blocks).
+- When providing code samples, please use [code blocks][code-blocks].
 
 [code-blocks]: https://help.github.com/articles/creating-and-highlighting-code-blocks/
 
