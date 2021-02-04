@@ -10,7 +10,9 @@ pub mod wasm_vm;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender, TryRecvError};
+use std::sync::mpsc::{
+    channel, sync_channel, Receiver, SendError, Sender, SyncSender, TryRecvError,
+};
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
@@ -148,8 +150,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
 
-    let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> = channel();
-    let send_sig_instructions = SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
+    let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> =
+        channel();
+    let send_sig_instructions =
+        SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
@@ -443,34 +447,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
 
-            move || {
-                'signal_listener: loop {
-                    for signal in signals.pending() {
-                        match signal as libc::c_int {
-                            SIGWINCH => {
-                                send_pty_instructions
-                                    .send(PtyInstruction::ResizeTerminal)
-                                    .unwrap();
-                            }
-                            SIGTERM | SIGINT | SIGQUIT => {
-                                break 'signal_listener;
-                            }
-                            _ => {}
+            move || 'signal_listener: loop {
+                for signal in signals.pending() {
+                    match signal as libc::c_int {
+                        SIGWINCH => {
+                            send_pty_instructions
+                                .send(PtyInstruction::ResizeTerminal)
+                                .unwrap();
                         }
+                        SIGTERM | SIGINT | SIGQUIT => {
+                            break 'signal_listener;
+                        }
+                        _ => {}
                     }
+                }
 
-                    match receive_sig_instructions.try_recv() {
-                        Ok((event, _)) => {
-                            match event {
-                                SigInstruction::Quit => {
-                                    break 'signal_listener;
-                                }
-                                _ => {}
-                            }
+                match receive_sig_instructions.try_recv() {
+                    Ok((event, _)) => match event {
+                        SigInstruction::Quit => {
+                            break 'signal_listener;
                         }
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => break 'signal_listener
-                    }
+                        _ => {}
+                    },
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => break 'signal_listener,
                 }
             }
         })

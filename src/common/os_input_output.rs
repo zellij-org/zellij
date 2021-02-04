@@ -61,8 +61,8 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 }
 
 fn handle_command_exit(mut child: Child) {
-    use std::{thread::sleep, time::Duration};
     use signal_hook::{consts::signal::SIGINT, iterator::Signals};
+    use std::{thread::sleep, time::Duration};
 
     let mut signals = Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
