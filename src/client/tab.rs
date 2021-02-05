@@ -1,9 +1,9 @@
+use crate::common::{AppInstruction, SenderWithContext};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use crate::{AppInstruction, SenderWithContext};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,

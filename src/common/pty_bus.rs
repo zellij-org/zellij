@@ -9,6 +9,7 @@ use ::std::time::{Duration, Instant};
 use ::vte;
 use std::path::PathBuf;
 
+use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
@@ -16,7 +17,6 @@ use crate::{
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
-use crate::{ScreenInstruction, SenderWithContext, OPENCALLS};
 
 pub struct ReadFromPid {
     pid: RawFd,

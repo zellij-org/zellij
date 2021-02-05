@@ -1,6 +1,6 @@
 #![allow(clippy::clippy::if_same_then_else)]
 
-use crate::{pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction, SenderWithContext};
+use crate::{common::SenderWithContext, pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction};
 
 use std::{sync::mpsc::channel, unimplemented};
 

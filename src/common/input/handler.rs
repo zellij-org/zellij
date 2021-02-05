@@ -1,13 +1,13 @@
 /// Module for handling input
 use crate::errors::ContextType;
-use crate::input::actions::Action;
-use crate::input::keybinds::get_default_keybinds;
+use super::actions::Action;
+use super::keybinds::get_default_keybinds;
 use crate::os_input_output::OsApi;
 use crate::wasm_vm::PluginInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::CommandIsExecuting;
-use crate::{AppInstruction, SenderWithContext, OPENCALLS, update_state, AppState};
+use crate::common::{AppInstruction, SenderWithContext, OPENCALLS, update_state, AppState};
 
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
