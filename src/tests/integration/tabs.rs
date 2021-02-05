@@ -7,7 +7,7 @@ use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
     CLOSE_TAB, COMMAND_TOGGLE, NEW_TAB, QUIT, SPLIT_HORIZONTALLY, SWITCH_NEXT_TAB, SWITCH_PREV_TAB,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -38,8 +38,8 @@ pub fn open_new_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -68,8 +68,8 @@ pub fn switch_to_prev_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -98,8 +98,8 @@ pub fn switch_to_next_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -128,8 +128,8 @@ pub fn close_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -159,8 +159,8 @@ pub fn close_last_pane_in_a_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -192,8 +192,8 @@ pub fn close_the_middle_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -226,8 +226,8 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -256,7 +256,7 @@ pub fn closing_last_tab_exits_the_app() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }

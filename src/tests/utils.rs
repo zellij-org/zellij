@@ -36,7 +36,7 @@ pub fn get_output_frame_snapshots(
     snapshots
 }
 
-pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String>{
+pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String> {
     if snapshots.len() < 2 {
         None
     } else {

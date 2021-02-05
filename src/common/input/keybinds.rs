@@ -80,7 +80,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             // Close Mosaic
             defaults.insert(Key::Char('q'), Action::Quit);
         }
-        InputMode::Exiting => {} 
+        InputMode::Exiting => {}
     }
 
     Ok(defaults)

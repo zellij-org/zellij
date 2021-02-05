@@ -160,9 +160,7 @@ impl OsApi for FakeInputOutput {
                 self.started_reading_from_pty.store(true, Ordering::Release);
                 return Ok(bytes_read);
             }
-            None => {
-                Err(nix::Error::Sys(nix::errno::Errno::EAGAIN))
-            }
+            None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
     }
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -191,7 +189,11 @@ impl OsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
-        self.stdin_commands.lock().unwrap().pop_front().unwrap_or(vec![])
+        self.stdin_commands
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(vec![])
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())

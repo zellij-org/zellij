@@ -45,8 +45,8 @@ pub fn resize_up_with_pane_above() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -83,8 +83,8 @@ pub fn resize_up_with_pane_below() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -126,8 +126,8 @@ pub fn resize_up_with_panes_above_and_below() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -168,8 +168,8 @@ pub fn resize_up_with_multiple_panes_above() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -211,8 +211,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -255,8 +255,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -297,8 +297,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -340,8 +340,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -386,8 +386,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -434,8 +434,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -497,8 +497,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -562,8 +562,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -597,7 +597,7 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }

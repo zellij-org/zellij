@@ -37,8 +37,8 @@ pub fn move_focus_left() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -70,7 +70,7 @@ pub fn move_focus_left_to_the_largest_overlap() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }

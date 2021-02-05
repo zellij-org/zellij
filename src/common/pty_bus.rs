@@ -224,7 +224,9 @@ fn stream_terminal_bytes(
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+            send_screen_instructions
+                .send(ScreenInstruction::Render)
+                .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data

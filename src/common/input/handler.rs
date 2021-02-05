@@ -1,19 +1,18 @@
-/// Module for handling input
-use crate::errors::ContextType;
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
+use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
+/// Module for handling input
+use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
-use crate::wasm_vm::PluginInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
+use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
-use crate::common::{AppInstruction, SenderWithContext, OPENCALLS, update_state, AppState};
 
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
 
 use super::keybinds::key_to_action;
-
 
 struct InputHandler {
     mode: InputMode,
@@ -69,7 +68,9 @@ impl InputHandler {
                                     &key, raw_bytes, &self.mode, &keybinds,
                                 ));
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-                                if entry_mode == InputMode::Command && self.mode == InputMode::Command {
+                                if entry_mode == InputMode::Command
+                                    && self.mode == InputMode::Command
+                                {
                                     self.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
                                         input_mode: self.mode,
@@ -115,7 +116,9 @@ impl InputHandler {
                 update_state(&self.send_app_instructions, |_| AppState {
                     input_mode: self.mode,
                 });
-                self.send_screen_instructions.send(ScreenInstruction::Render).unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::Render)
+                    .unwrap();
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -170,9 +173,7 @@ impl InputHandler {
                         PtyInstruction::SpawnTerminalHorizontally(None)
                     }
                     // No direction specified - try to put it in the biggest available spot
-                    None => {
-                        PtyInstruction::SpawnTerminal(None)
-                    }
+                    None => PtyInstruction::SpawnTerminal(None),
                 };
                 self.command_is_executing.opening_new_pane();
                 self.send_pty_instructions.send(pty_instr).unwrap();

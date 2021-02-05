@@ -3,10 +3,10 @@ use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    COMMAND_TOGGLE, QUIT, SCROLL_DOWN, SCROLL_UP,
-    SPAWN_TERMINAL, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    COMMAND_TOGGLE, QUIT, SCROLL_DOWN, SCROLL_UP, SPAWN_TERMINAL, SPLIT_HORIZONTALLY,
+    SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
 };
-use crate::tests::utils::{get_output_frame_snapshots, get_next_to_last_snapshot};
+use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -30,8 +30,8 @@ pub fn starts_with_one_terminal() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -57,8 +57,8 @@ pub fn split_terminals_vertically() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -84,8 +84,8 @@ pub fn split_terminals_horizontally() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -114,8 +114,8 @@ pub fn split_largest_terminal() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -141,8 +141,8 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -168,8 +168,8 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -195,8 +195,8 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -225,8 +225,8 @@ pub fn scrolling_up_inside_a_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -257,8 +257,8 @@ pub fn scrolling_down_inside_a_pane() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -291,8 +291,8 @@ pub fn max_panes() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
 
@@ -323,7 +323,7 @@ pub fn toggle_focused_pane_fullscreen() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    let snapshot_before_quit = get_next_to_last_snapshot(snapshots)
-        .expect("could not find snapshot");
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
