@@ -2,7 +2,7 @@ use crate::panes::PositionAndSize;
 use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
-use crate::tests::utils::get_output_frame_snapshots;
+use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
@@ -46,9 +46,9 @@ pub fn close_pane_with_another_pane_above_it() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -84,9 +84,9 @@ pub fn close_pane_with_another_pane_below_it() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -119,9 +119,9 @@ pub fn close_pane_with_another_pane_to_the_left() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -155,9 +155,9 @@ pub fn close_pane_with_another_pane_to_the_right() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -196,9 +196,9 @@ pub fn close_pane_with_multiple_panes_above_it() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -235,9 +235,9 @@ pub fn close_pane_with_multiple_panes_below_it() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -276,9 +276,9 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -315,9 +315,9 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -368,9 +368,9 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -421,9 +421,9 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -476,9 +476,9 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -531,9 +531,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -563,7 +563,7 @@ pub fn closing_last_pane_exits_app() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
