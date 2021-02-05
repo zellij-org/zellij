@@ -62,6 +62,8 @@ Instructions are similar to those for bug reports. Please provide the following 
 
 - If this is not a trivial fix, consider **creating an issue to discuss first** and **later link to it from the PR**.
 - Use a **clear and descriptive title** for the pull request.
+    - Follow [Conventional Commit specification](https://www.conventionalcommits.org/en/v1.0.0/)
+where sufficiently large or impactful change is made.
 - Provide a **description of the changes** in as many details as necessary.
 
 Before submitting your pull request, also make sure that the following conditions are met:
