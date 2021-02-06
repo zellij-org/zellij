@@ -9,10 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
-use crate::tests::utils::commands::QUIT;
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(100);
-const WAIT_TIME_BEFORE_QUITTING: Duration = Duration::from_millis(50);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -148,38 +146,21 @@ impl OsApi for FakeInputOutput {
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        let mut attempts_left = 3;
-        loop {
-            if attempts_left < 3 && attempts_left > 0 {
-                // this sometimes happens because in the context of the tests,
-                // the read_buffers are set in set_terminal_size_using_fd
-                // which sometimes happens after the first read and then the tests get messed up
-                // in a real world application this doesn't matter, but here the snapshots taken
-                // in the tests are asserted against exact copies, and so a slight variation makes
-                // them fail
-                ::std::thread::sleep(::std::time::Duration::from_millis(25));
-            } else if attempts_left <= 0 {
+        let mut read_buffers = self.read_buffers.lock().unwrap();
+        let mut bytes_read = 0;
+        match read_buffers.get_mut(&pid) {
+            Some(bytes) => {
+                for i in bytes.read_position..bytes.content.len() {
+                    bytes_read += 1;
+                    buf[i] = bytes.content[i];
+                }
+                if bytes_read > bytes.read_position {
+                    bytes.set_read_position(bytes_read);
+                }
                 self.started_reading_from_pty.store(true, Ordering::Release);
-                return Ok(0);
+                return Ok(bytes_read);
             }
-            let mut read_buffers = self.read_buffers.lock().unwrap();
-            let mut bytes_read = 0;
-            match read_buffers.get_mut(&pid) {
-                Some(bytes) => {
-                    for i in bytes.read_position..bytes.content.len() {
-                        bytes_read += 1;
-                        buf[i] = bytes.content[i];
-                    }
-                    if bytes_read > bytes.read_position {
-                        bytes.set_read_position(bytes_read);
-                    }
-                    self.started_reading_from_pty.store(true, Ordering::Release);
-                    return Ok(bytes_read);
-                }
-                None => {
-                    attempts_left -= 1;
-                }
-            }
+            None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
     }
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -208,27 +189,11 @@ impl OsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
-        match self.stdin_commands.lock().unwrap().pop_front() {
-            Some(command) => {
-                if command == QUIT {
-                    std::thread::sleep(WAIT_TIME_BEFORE_QUITTING);
-                }
-                command
-            }
-            None => {
-                // what is happening here?
-                //
-                // Here the stdin loop is requesting more input than we have provided it with in
-                // the fake input chars.
-                // Normally this should not happen, because each test quits in the end.
-                // There is one case (at the time of this writing) in which it does happen, and
-                // that's when we quit by closing the last pane. In this case the stdin loop might
-                // get a chance to request more input before the app quits and drops it. In that
-                // case, we just give it no input and let it keep doing its thing until it dies
-                // very shortly after.
-                vec![]
-            }
-        }
+        self.stdin_commands
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(vec![])
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())

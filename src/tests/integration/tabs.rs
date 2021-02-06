@@ -1,7 +1,7 @@
 use insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
-use crate::tests::utils::get_output_frame_snapshots;
+use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
 use crate::{start, CliArgs};
 
@@ -38,9 +38,9 @@ pub fn open_new_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -68,9 +68,9 @@ pub fn switch_to_prev_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
 
 #[test]
@@ -98,10 +98,11 @@ pub fn switch_to_next_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
+
 #[test]
 pub fn close_tab() {
     let fake_win_size = PositionAndSize {
@@ -127,10 +128,11 @@ pub fn close_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
+
 #[test]
 pub fn close_last_pane_in_a_tab() {
     let fake_win_size = PositionAndSize {
@@ -143,12 +145,10 @@ pub fn close_last_pane_in_a_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
         &NEW_TAB,
         &SPLIT_HORIZONTALLY,
         &CLOSE_FOCUSED_PANE,
         &CLOSE_FOCUSED_PANE,
-        &CLOSE_TAB,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -159,10 +159,11 @@ pub fn close_last_pane_in_a_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
+
 #[test]
 pub fn close_the_middle_tab() {
     let fake_win_size = PositionAndSize {
@@ -181,8 +182,6 @@ pub fn close_the_middle_tab() {
         &NEW_TAB,
         &SWITCH_PREV_TAB,
         &CLOSE_TAB,
-        &SWITCH_NEXT_TAB,
-        &SWITCH_NEXT_TAB,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -193,10 +192,11 @@ pub fn close_the_middle_tab() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
+
 #[test]
 pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
     let fake_win_size = PositionAndSize {
@@ -216,8 +216,6 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         &SWITCH_PREV_TAB,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
         &CLOSE_TAB,
-        &SWITCH_NEXT_TAB,
-        &SWITCH_NEXT_TAB,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -228,10 +226,11 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }
+
 #[test]
 pub fn closing_last_tab_exits_the_app() {
     let fake_win_size = PositionAndSize {
@@ -257,7 +256,7 @@ pub fn closing_last_tab_exits_the_app() {
         .lock()
         .unwrap();
     let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
-    for snapshot in snapshots {
-        assert_snapshot!(snapshot);
-    }
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
 }

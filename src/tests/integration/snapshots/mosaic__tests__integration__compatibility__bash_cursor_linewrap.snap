@@ -2,10 +2,10 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
+Welcome to fish, the friendly interactive shell                                                                     
+⋊> ~/c/mosaic on main ⨯ bash                                                                                16:00:06
+[aram@green mosaic]$ 12345678912345678912345678912345678912345678912345678912345678912345678912345678912345678912345
 █                                                                                                                   
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
                                                                                                                     
                                                                                                                     
                                                                                                                     

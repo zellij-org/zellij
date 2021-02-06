@@ -20,7 +20,7 @@ use std::{collections::HashMap, fs};
 use crate::panes::PaneId;
 use crate::utils::consts::MOSAIC_IPC_PIPE;
 use directories_next::ProjectDirs;
-use input::InputMode;
+use input::handler::InputMode;
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -31,7 +31,7 @@ use crate::cli::CliArgs;
 use crate::layout::Layout;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
-use input::input_loop;
+use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
@@ -188,7 +188,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     #[cfg(not(test))]
     std::panic::set_hook({
-        use errors::handle_panic;
+        use crate::errors::handle_panic;
         let send_app_instructions = send_app_instructions.clone();
         Box::new(move |info| {
             handle_panic(info, &send_app_instructions);
@@ -696,10 +696,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
             AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_sig_instructions.send(SigInstruction::Quit);
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 break;
             }
             AppInstruction::Error(backtrace) => {
@@ -723,12 +719,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         }
     }
 
-    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-    screen_thread.join().unwrap();
     let _ = send_sig_instructions.send(SigInstruction::Quit);
     signal_thread.join().unwrap();
     let _ = send_pty_instructions.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
+    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+    screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
 

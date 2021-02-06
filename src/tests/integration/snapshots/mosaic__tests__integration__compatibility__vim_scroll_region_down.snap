@@ -2,31 +2,31 @@
 source: src/tests/integration/compatibility.rs
 expression: snapshot
 ---
-█                                                                                                                   
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
-                                                                                                                    
+ 22 line2                                                                                                           
+ 21 line3                                                                                                           
+ 20 line4                                                                                                           
+ 19 line5                                                                                                           
+ 18 line6                                                                                                           
+ 17 line7                                                                                                           
+ 16 line8                                                                                                           
+ 15 line9                                                                                                           
+ 14 line10                                                                                                          
+ 13 line11                                                                                                          
+ 12 line12                                                                                                          
+ 11 line13                                                                                                          
+ 10 line14                                                                                                          
+  9 line15                                                                                                          
+  8 line16                                                                                                          
+  7 line17                                                                                                          
+  6 line18                                                                                                          
+  5 line19                                                                                                          
+  4 line20                                                                                                          
+  3 line21                                                                                                          
+  2 line22                                                                                                          
+  1 line23                                                                                                          
+24  █ine24                                                                                                          
+  1 line25                                                                                                          
+  2 line26                                                                                                          
+  3 line27                                                                                                          
+ NORMAL  testfile.rs                                                              unix | utf-8 | rust   57%   24:1  
                                                                                                                     
