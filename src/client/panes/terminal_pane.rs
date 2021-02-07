@@ -181,6 +181,9 @@ impl Pane for TerminalPane {
     fn set_max_height(&mut self, max_height: usize) {
         self.max_height = Some(max_height);
     }
+    fn set_invisible_borders(&mut self, _invisible_borders: bool) {
+        unimplemented!();
+    }
     fn max_height(&self) -> Option<usize> {
         self.max_height
     }

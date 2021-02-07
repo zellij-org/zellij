@@ -1,6 +1,8 @@
 use crate::tab::Pane;
 use std::collections::HashMap;
 
+use std::fmt::{Display, Error, Formatter};
+
 pub mod boundary_type {
     pub const TOP_RIGHT: &str = "┐";
     pub const VERTICAL: &str = "│";
@@ -17,277 +19,706 @@ pub mod boundary_type {
 
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
-fn combine_symbols(current_symbol: &str, next_symbol: &str) -> Option<&'static str> {
+#[derive(Clone, Copy, Debug)]
+pub struct BoundarySymbol {
+    boundary_type: BoundaryType,
+    invisible: bool,
+}
+
+impl BoundarySymbol {
+    pub fn new(boundary_type: BoundaryType) -> Self {
+        BoundarySymbol {
+            boundary_type,
+            invisible: false,
+        }
+    }
+    pub fn invisible(mut self) -> Self {
+        self.invisible = true;
+        self
+    }
+}
+
+impl Display for BoundarySymbol {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        if self.invisible {
+            write!(f, " ")
+        } else {
+            write!(f, "{}", self.boundary_type)
+        }
+    }
+}
+
+
+fn combine_symbols(current_symbol: BoundarySymbol, next_symbol: BoundarySymbol) -> Option<BoundarySymbol> {
+    let invisible = current_symbol.invisible || next_symbol.invisible;
+    let current_symbol = current_symbol.boundary_type;
+    let next_symbol = next_symbol.boundary_type;
     match (current_symbol, next_symbol) {
         (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => {
             // (┐, ┐) => Some(┐)
-            Some(boundary_type::TOP_RIGHT)
+            let boundary_type = boundary_type::TOP_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL) => {
             // (┐, │) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL) => {
             // (┐, ─) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::TOP_LEFT) => {
             // (┐, ┌) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_RIGHT) => {
             // (┐, ┘) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_LEFT) => {
             // (┐, └) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_LEFT) => {
             // (┐, ┤) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_RIGHT) => {
             // (┐, ├) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
             // (┐, ┬) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_UP) => {
             // (┐, ┴) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_RIGHT, boundary_type::CROSS) => {
             // (┐, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL) => {
             // (─, ─) => Some(─)
-            Some(boundary_type::HORIZONTAL)
+            let boundary_type = boundary_type::HORIZONTAL;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL) => {
             // (─, │) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::TOP_LEFT) => {
             // (─, ┌) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_RIGHT) => {
             // (─, ┘) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_LEFT) => {
             // (─, └) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL_LEFT) => {
             // (─, ┤) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL_RIGHT) => {
             // (─, ├) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_DOWN) => {
             // (─, ┬) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_UP) => {
             // (─, ┴) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL, boundary_type::CROSS) => {
             // (─, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL) => {
             // (│, │) => Some(│)
-            Some(boundary_type::VERTICAL)
+            let boundary_type = boundary_type::VERTICAL;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::TOP_LEFT) => {
             // (│, ┌) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_RIGHT) => {
             // (│, ┘) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_LEFT) => {
             // (│, └) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_LEFT) => {
             // (│, ┤) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_RIGHT) => {
             // (│, ├) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::HORIZONTAL_DOWN) => {
             // (│, ┬) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::HORIZONTAL_UP) => {
             // (│, ┴) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL, boundary_type::CROSS) => {
             // (│, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::TOP_LEFT) => {
             // (┌, ┌) => Some(┌)
-            Some(boundary_type::TOP_LEFT)
+            let boundary_type = boundary_type::TOP_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::BOTTOM_RIGHT) => {
             // (┌, ┘) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::BOTTOM_LEFT) => {
             // (┌, └) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::VERTICAL_LEFT) => {
             // (┌, ┤) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::VERTICAL_RIGHT) => {
             // (┌, ├) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_DOWN) => {
             // (┌, ┬) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_UP) => {
             // (┌, ┴) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::TOP_LEFT, boundary_type::CROSS) => {
             // (┌, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_RIGHT) => {
             // (┘, ┘) => Some(┘)
-            Some(boundary_type::BOTTOM_RIGHT)
+            let boundary_type = boundary_type::BOTTOM_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_LEFT) => {
             // (┘, └) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_LEFT) => {
             // (┘, ┤) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_RIGHT) => {
             // (┘, ├) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
             // (┘, ┬) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_UP) => {
             // (┘, ┴) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::CROSS) => {
             // (┘, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::BOTTOM_LEFT) => {
             // (└, └) => Some(└)
-            Some(boundary_type::BOTTOM_LEFT)
+            let boundary_type = boundary_type::BOTTOM_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_LEFT) => {
             // (└, ┤) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_RIGHT) => {
             // (└, ├) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_DOWN) => {
             // (└, ┬) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_UP) => {
             // (└, ┴) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::CROSS) => {
             // (└, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_LEFT) => {
             // (┤, ┤) => Some(┤)
-            Some(boundary_type::VERTICAL_LEFT)
+            let boundary_type = boundary_type::VERTICAL_LEFT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_RIGHT) => {
             // (┤, ├) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_DOWN) => {
             // (┤, ┬) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_UP) => {
             // (┤, ┴) => Some(┼)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::CROSS) => {
             // (┤, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::VERTICAL_RIGHT) => {
             // (├, ├) => Some(├)
-            Some(boundary_type::VERTICAL_RIGHT)
+            let boundary_type = boundary_type::VERTICAL_RIGHT;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
             // (├, ┬) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_UP) => {
             // (├, ┴) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::CROSS) => {
             // (├, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_DOWN) => {
             // (┬, ┬) => Some(┬)
-            Some(boundary_type::HORIZONTAL_DOWN)
+            let boundary_type = boundary_type::HORIZONTAL_DOWN;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_UP) => {
             // (┬, ┴) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::CROSS) => {
             // (┬, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL_UP, boundary_type::HORIZONTAL_UP) => {
             // (┴, ┴) => Some(┴)
-            Some(boundary_type::HORIZONTAL_UP)
+            let boundary_type = boundary_type::HORIZONTAL_UP;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::HORIZONTAL_UP, boundary_type::CROSS) => {
             // (┴, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (boundary_type::CROSS, boundary_type::CROSS) => {
             // (┼, ┼) => Some(┼)
-            Some(boundary_type::CROSS)
+            let boundary_type = boundary_type::CROSS;
+            Some(
+                BoundarySymbol {
+                    boundary_type,
+                    invisible,
+                }
+            )
         }
         (_, _) => None,
     }
 }
 
-fn find_next_symbol(first_symbol: &str, second_symbol: &str) -> Option<&'static str> {
+fn find_next_symbol(first_symbol: BoundarySymbol, second_symbol: BoundarySymbol) -> Option<BoundarySymbol> {
     if let Some(symbol) = combine_symbols(first_symbol, second_symbol) {
         Some(symbol)
     } else {
@@ -359,7 +790,8 @@ pub trait Rect {
 pub struct Boundaries {
     columns: usize,
     rows: usize,
-    boundary_characters: HashMap<Coordinates, BoundaryType>,
+    // boundary_characters: HashMap<Coordinates, BoundaryType>,
+    boundary_characters: HashMap<Coordinates, BoundarySymbol>,
 }
 
 impl Boundaries {
@@ -373,6 +805,54 @@ impl Boundaries {
         }
     }
     pub fn add_rect(&mut self, rect: &dyn Pane) {
+        if rect.x() > 0 {
+            let boundary_x_coords = rect.x() - 1;
+            let first_row_coordinates = self.rect_right_boundary_row_start(rect);
+            let last_row_coordinates = self.rect_right_boundary_row_end(rect);
+            for row in first_row_coordinates..last_row_coordinates {
+                let coordinates = Coordinates::new(boundary_x_coords, row);
+                let mut symbol_to_add = if row == first_row_coordinates && row != 0 {
+                    BoundarySymbol::new(boundary_type::TOP_LEFT)
+                } else if row == last_row_coordinates - 1 && row != self.rows - 1 {
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT)
+                } else {
+                    BoundarySymbol::new(boundary_type::VERTICAL)
+                };
+                if rect.invisible_borders() {
+                    symbol_to_add = symbol_to_add.invisible();
+                }
+                let next_symbol = self
+                    .boundary_characters
+                    .remove(&coordinates)
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .unwrap_or(symbol_to_add);
+                self.boundary_characters.insert(coordinates, next_symbol);
+            }
+        }
+        if rect.y() > 0 {
+            let boundary_y_coords = rect.y() - 1;
+            let first_col_coordinates = self.rect_bottom_boundary_col_start(rect);
+            let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
+            for col in first_col_coordinates..last_col_coordinates {
+                let coordinates = Coordinates::new(col, boundary_y_coords);
+                let mut symbol_to_add = if col == first_col_coordinates && col != 0 {
+                    BoundarySymbol::new(boundary_type::TOP_LEFT)
+                } else if col == last_col_coordinates - 1 && col != self.columns - 1 {
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT)
+                } else {
+                    BoundarySymbol::new(boundary_type::HORIZONTAL)
+                };
+                if rect.invisible_borders() {
+                    symbol_to_add = symbol_to_add.invisible();
+                }
+                let next_symbol = self
+                    .boundary_characters
+                    .remove(&coordinates)
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .unwrap_or(symbol_to_add);
+                self.boundary_characters.insert(coordinates, next_symbol);
+            }
+        }
         if self.rect_right_boundary_is_before_screen_edge(rect) {
             // let boundary_x_coords = self.rect_right_boundary_x_coords(rect);
             let boundary_x_coords = rect.right_boundary_x_coords();
@@ -380,16 +860,19 @@ impl Boundaries {
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
-                let symbol_to_add = if row == first_row_coordinates && row != 0 {
-                    boundary_type::TOP_RIGHT
+                let mut symbol_to_add = if row == first_row_coordinates && row != 0 {
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT)
                 } else if row == last_row_coordinates - 1 && row != self.rows - 1 {
-                    boundary_type::BOTTOM_RIGHT
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT)
                 } else {
-                    boundary_type::VERTICAL
+                    BoundarySymbol::new(boundary_type::VERTICAL)
                 };
+                if rect.invisible_borders() {
+                    symbol_to_add = symbol_to_add.invisible();
+                }
                 let next_symbol = self
                     .boundary_characters
-                    .get(&coordinates)
+                    .remove(&coordinates)
                     .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
@@ -401,16 +884,19 @@ impl Boundaries {
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
-                let symbol_to_add = if col == first_col_coordinates && col != 0 {
-                    boundary_type::BOTTOM_LEFT
+                let mut symbol_to_add = if col == first_col_coordinates && col != 0 {
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT)
                 } else if col == last_col_coordinates - 1 && col != self.columns - 1 {
-                    boundary_type::BOTTOM_RIGHT
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT)
                 } else {
-                    boundary_type::HORIZONTAL
+                    BoundarySymbol::new(boundary_type::HORIZONTAL)
                 };
+                if rect.invisible_borders() {
+                    symbol_to_add = symbol_to_add.invisible();
+                }
                 let next_symbol = self
                     .boundary_characters
-                    .get(&coordinates)
+                    .remove(&coordinates)
                     .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);

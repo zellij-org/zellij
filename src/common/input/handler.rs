@@ -16,6 +16,7 @@ use super::keybinds::key_to_action;
 
 struct InputHandler {
     mode: InputMode,
+    mode_is_persistent: bool,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
@@ -35,6 +36,7 @@ impl InputHandler {
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
+            mode_is_persistent: false,
             os_input,
             command_is_executing,
             send_screen_instructions,
@@ -68,9 +70,9 @@ impl InputHandler {
                                     &key, raw_bytes, &self.mode, &keybinds,
                                 ));
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-                                if entry_mode == InputMode::Command
-                                    && self.mode == InputMode::Command
-                                {
+//                                if entry_mode == InputMode::Command
+//                                    && self.mode == InputMode::Command
+                                if entry_mode == self.mode && !self.mode_is_persistent {
                                     self.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
                                         input_mode: self.mode,
@@ -113,12 +115,18 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
+                if mode == InputMode::Normal {
+                    self.mode_is_persistent = false;
+                }
                 update_state(&self.send_app_instructions, |_| AppState {
                     input_mode: self.mode,
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
+            }
+            Action::TogglePersistentMode => {
+                self.mode_is_persistent = !self.mode_is_persistent;
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -236,21 +244,27 @@ pub enum InputMode {
     Normal,
     Command,
     CommandPersistent,
+    Resize,
+    Pane,
+    Tab,
+    Scroll,
     Exiting,
 }
 
 // FIXME: This should be auto-generated from the soon-to-be-added `get_default_keybinds`
 pub fn get_help(mode: &InputMode) -> Vec<String> {
     let command_help = vec![
-        "<n/b/z> Split".into(),
-        "<j/k/h/l> Resize".into(),
-        "<p> Focus Next".into(),
-        "<x> Close Pane".into(),
+        "<r> Resize mode".into(),
+        "<p> Pane mode".into(),
+        "<t> Tab mode".into(),
+        // "<n/b/z> Split".into(),
+        // "<p> Focus Next".into(),
+        // "<x> Close Pane".into(),
         "<q> Quit".into(),
-        "<PgUp/PgDown> Scroll".into(),
-        "<1> New Tab".into(),
-        "<2/3> Move Tab".into(),
-        "<4> Close Tab".into(),
+        // "<PgUp/PgDown> Scroll".into(),
+        // "<1> New Tab".into(),
+        // "<2/3> Move Tab".into(),
+        // "<4> Close Tab".into(),
     ];
     match mode {
         InputMode::Normal => vec!["<Ctrl-g> Command Mode".into()],
@@ -266,6 +280,34 @@ pub fn get_help(mode: &InputMode) -> Vec<String> {
             [vec!["<ESC/Ctrl-g> Normal Mode".into()], command_help].concat()
         }
         InputMode::Exiting => vec!["Bye from Mosaic!".into()],
+        InputMode::Resize => vec![
+            "<arrows/hjkl/ctrl+bnpf> resize current pane".into(),
+            "<ESC> Normal Mode".into(),
+            "<q> Quit".into(),
+        ],
+        InputMode::Pane => vec![
+            "<arrows/hjkl/ctrl+bnpf> move focus".into(),
+            "<p> next pane".into(),
+            "<n> new pane".into(),
+            "<d> down split".into(),
+            "<r> right split".into(),
+            "<x> exit pane".into(),
+            "<f> fullscreen pane".into(),
+            "<ESC> Normal Mode".into(),
+            "<q> Quit".into(),
+        ],
+        InputMode::Tab => vec![
+            "<arrows/hjkl/ctrl+bnpf> next/prev tab".into(),
+            "<n> new tab".into(),
+            "<x> exit tab".into(),
+            "<ESC> Normal Mode".into(),
+            "<q> Quit".into(),
+        ],
+        InputMode::Scroll => vec![
+            "<arrows/jk/ctrl+np> scroll up/down".into(),
+            "<ESC> Normal Mode".into(),
+            "<q> Quit".into(),
+        ],
     }
 }
 

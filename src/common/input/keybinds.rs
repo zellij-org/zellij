@@ -32,53 +32,139 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Command));
         }
         command_mode @ InputMode::Command | command_mode @ InputMode::CommandPersistent => {
-            match command_mode {
-                InputMode::Command => {
-                    // Ctrl+G -> Command Mode (Persistent)
-                    defaults.insert(
-                        Key::Ctrl('g'),
-                        Action::SwitchToMode(InputMode::CommandPersistent),
-                    );
-                }
-                InputMode::CommandPersistent => {
-                    // Ctrl+G -> Command Mode (Persistent)
-                    defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Normal));
-                }
-                _ => unreachable!(),
-            }
-            // Esc -> Normal Mode
+//            match command_mode {
+//                InputMode::Command => {
+//                    // Ctrl+G -> Command Mode (Persistent)
+//                    defaults.insert(
+//                        Key::Ctrl('g'),
+//                        Action::SwitchToMode(InputMode::CommandPersistent),
+//                    );
+//                }
+//                InputMode::CommandPersistent => {
+//                    // Ctrl+G -> Command Mode (Persistent)
+//                    defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Normal));
+//                }
+//                _ => unreachable!(),
+//            }
+            defaults.insert(
+                Key::Char('r'),
+                Action::SwitchToMode(InputMode::Resize),
+            );
+            defaults.insert(
+                Key::Char('p'),
+                Action::SwitchToMode(InputMode::Pane),
+            );
+            defaults.insert(
+                Key::Char('t'),
+                Action::SwitchToMode(InputMode::Tab),
+            );
+            defaults.insert(
+                Key::Char('s'),
+                Action::SwitchToMode(InputMode::Scroll),
+            );
+            defaults.insert(
+                Key::Ctrl('g'),
+                Action::TogglePersistentMode,
+            );
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
-            // Resize commands
+            defaults.insert(Key::Char('q'), Action::Quit);
+        }
+        InputMode::Resize => {
+            defaults.insert(Key::Char('h'), Action::Resize(Direction::Left));
             defaults.insert(Key::Char('j'), Action::Resize(Direction::Down));
             defaults.insert(Key::Char('k'), Action::Resize(Direction::Up));
-            defaults.insert(Key::Char('h'), Action::Resize(Direction::Left));
             defaults.insert(Key::Char('l'), Action::Resize(Direction::Right));
-            // Move pane commands
-            defaults.insert(Key::Char('u'), Action::MoveFocus(Direction::Down));
-            defaults.insert(Key::Char('i'), Action::MoveFocus(Direction::Up));
-            defaults.insert(Key::Char('y'), Action::MoveFocus(Direction::Left));
-            defaults.insert(Key::Char('o'), Action::MoveFocus(Direction::Right));
-            // Switch focus
-            // @@@ Currently just tab through panes - use right for this
-            defaults.insert(Key::Char('p'), Action::SwitchFocus(Direction::Right));
-            // Scroll
-            defaults.insert(Key::PageUp, Action::ScrollUp);
-            defaults.insert(Key::PageDown, Action::ScrollDown);
-            // Tab controls
-            defaults.insert(Key::Char('1'), Action::NewTab);
-            defaults.insert(Key::Char('2'), Action::GoToNextTab);
-            defaults.insert(Key::Char('3'), Action::GoToPreviousTab);
-            defaults.insert(Key::Char('4'), Action::CloseTab);
-            // New pane
-            defaults.insert(Key::Char('z'), Action::NewPane(None));
-            defaults.insert(Key::Char('b'), Action::NewPane(Some(Direction::Down)));
-            defaults.insert(Key::Char('n'), Action::NewPane(Some(Direction::Right)));
-            // Toggle focus fullscreen
-            defaults.insert(Key::Char('e'), Action::ToggleFocusFullscreen);
-            // Close pane
-            defaults.insert(Key::Char('x'), Action::CloseFocus);
-            // Close Mosaic
+
+            defaults.insert(Key::Left, Action::Resize(Direction::Left));
+            defaults.insert(Key::Down, Action::Resize(Direction::Down));
+            defaults.insert(Key::Up, Action::Resize(Direction::Up));
+            defaults.insert(Key::Right, Action::Resize(Direction::Right));
+
+            defaults.insert(Key::Ctrl('b'), Action::Resize(Direction::Left));
+            defaults.insert(Key::Ctrl('n'), Action::Resize(Direction::Down));
+            defaults.insert(Key::Ctrl('p'), Action::Resize(Direction::Up));
+            defaults.insert(Key::Ctrl('f'), Action::Resize(Direction::Right));
+
             defaults.insert(Key::Char('q'), Action::Quit);
+            defaults.insert(
+                Key::Ctrl('g'),
+                Action::TogglePersistentMode,
+            );
+            defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
+        }
+        InputMode::Pane => {
+            defaults.insert(Key::Char('h'), Action::MoveFocus(Direction::Left));
+            defaults.insert(Key::Char('j'), Action::MoveFocus(Direction::Down));
+            defaults.insert(Key::Char('k'), Action::MoveFocus(Direction::Up));
+            defaults.insert(Key::Char('l'), Action::MoveFocus(Direction::Right));
+
+            defaults.insert(Key::Left, Action::MoveFocus(Direction::Left));
+            defaults.insert(Key::Down, Action::MoveFocus(Direction::Down));
+            defaults.insert(Key::Up, Action::MoveFocus(Direction::Up));
+            defaults.insert(Key::Right, Action::MoveFocus(Direction::Right));
+
+            defaults.insert(Key::Ctrl('b'), Action::MoveFocus(Direction::Left));
+            defaults.insert(Key::Ctrl('n'), Action::MoveFocus(Direction::Down));
+            defaults.insert(Key::Ctrl('p'), Action::MoveFocus(Direction::Up));
+            defaults.insert(Key::Ctrl('f'), Action::MoveFocus(Direction::Right));
+
+            defaults.insert(Key::Char('p'), Action::SwitchFocus(Direction::Right));
+            defaults.insert(Key::Char('n'), Action::NewPane(None));
+            defaults.insert(Key::Char('d'), Action::NewPane(Some(Direction::Down)));
+            defaults.insert(Key::Char('r'), Action::NewPane(Some(Direction::Right)));
+            defaults.insert(Key::Char('x'), Action::CloseFocus);
+
+            defaults.insert(Key::Char('f'), Action::ToggleFocusFullscreen);
+
+            defaults.insert(Key::Char('q'), Action::Quit);
+            defaults.insert(
+                Key::Ctrl('g'),
+                Action::TogglePersistentMode,
+            );
+            defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
+        }
+        InputMode::Tab => {
+            defaults.insert(Key::Char('h'), Action::GoToPreviousTab);
+            defaults.insert(Key::Char('j'), Action::GoToNextTab);
+            defaults.insert(Key::Char('k'), Action::GoToPreviousTab);
+            defaults.insert(Key::Char('l'), Action::GoToNextTab);
+
+            defaults.insert(Key::Left, Action::GoToPreviousTab);
+            defaults.insert(Key::Down, Action::GoToNextTab);
+            defaults.insert(Key::Up, Action::GoToPreviousTab);
+            defaults.insert(Key::Right, Action::GoToNextTab);
+
+            defaults.insert(Key::Ctrl('b'), Action::GoToPreviousTab);
+            defaults.insert(Key::Ctrl('n'), Action::GoToNextTab);
+            defaults.insert(Key::Ctrl('p'), Action::GoToPreviousTab);
+            defaults.insert(Key::Ctrl('f'), Action::GoToNextTab);
+
+            defaults.insert(Key::Char('n'), Action::NewTab);
+            defaults.insert(Key::Char('x'), Action::CloseTab);
+
+            defaults.insert(Key::Char('q'), Action::Quit);
+            defaults.insert(
+                Key::Ctrl('g'),
+                Action::TogglePersistentMode,
+            );
+            defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
+        }
+        InputMode::Scroll => {
+            defaults.insert(Key::Char('j'), Action::ScrollDown);
+            defaults.insert(Key::Char('k'), Action::ScrollUp);
+
+            defaults.insert(Key::Down, Action::ScrollDown);
+            defaults.insert(Key::Up, Action::ScrollUp);
+
+            defaults.insert(Key::Ctrl('n'), Action::ScrollDown);
+            defaults.insert(Key::Ctrl('p'), Action::ScrollUp);
+
+            defaults.insert(Key::Char('q'), Action::Quit);
+            defaults.insert(
+                Key::Ctrl('g'),
+                Action::TogglePersistentMode,
+            );
+            defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
         }
         InputMode::Exiting => {}
     }

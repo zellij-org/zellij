@@ -5,6 +5,8 @@ use std::{
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
+use crate::utils::logging::debug_log_to_file;
+
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
     PaneId, SenderWithContext,
@@ -35,6 +37,7 @@ pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "mosaic" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
+            "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
             "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
@@ -70,6 +73,18 @@ fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
         .send(ScreenInstruction::SetMaxHeight(
             PaneId::Plugin(plugin_env.plugin_id),
             max_height,
+        ))
+        .unwrap()
+}
+
+fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
+    let invisible_borders = invisible_borders != 0;
+    debug_log_to_file(format!("setting invisible_borders: {:?}", invisible_borders));
+    plugin_env
+        .send_screen_instructions
+        .send(ScreenInstruction::SetInvisibleBorders(
+            PaneId::Plugin(plugin_env.plugin_id),
+            invisible_borders,
         ))
         .unwrap()
 }
