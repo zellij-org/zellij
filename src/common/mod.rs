@@ -325,13 +325,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let current_term_size = screen.get_active_tab().unwrap().get_tab_size();
 
                             if new_term_size.columns < current_term_size.columns {
-                                screen.get_active_tab_mut().unwrap().resize_left_by(
-                                    current_term_size.columns - new_term_size.columns,
-                                );
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_left_by(current_term_size.columns - new_term_size.columns);
                             } else if new_term_size.columns > current_term_size.columns {
-                                screen.get_active_tab_mut().unwrap().resize_right_by(
-                                    new_term_size.columns - current_term_size.columns,
-                                );
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .resize_right_by(new_term_size.columns - current_term_size.columns);
                             }
 
                             if new_term_size.rows < current_term_size.rows {
