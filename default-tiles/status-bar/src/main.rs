@@ -1,6 +1,6 @@
 use colored::*;
+use std::fmt::{Display, Error, Formatter};
 use zellij_tile::*;
-use std::fmt::{Display, Formatter, Error};
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = " ";
@@ -21,7 +21,6 @@ impl Display for LinePart {
         write!(f, "{}", self.part)
     }
 }
-
 
 fn prefix(help: &Help) -> LinePart {
     let prefix_text = " Mosaic ";
@@ -48,10 +47,7 @@ fn prefix(help: &Help) -> LinePart {
         }
     };
     let len = prefix_text.chars().count() + ARROW_SEPARATOR.chars().count();
-    LinePart {
-        part,
-        len
-    }
+    LinePart { part, len }
 }
 
 fn key_path(help: &Help) -> LinePart {
@@ -61,7 +57,9 @@ fn key_path(help: &Help) -> LinePart {
         (InputMode::Command, false) => {
             let key_path = superkey_text.bold().on_magenta();
             let first_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() + ARROW_SEPARATOR.chars().count() + ARROW_SEPARATOR.chars().count();
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count();
             (format!("{}{}", key_path, first_separator), len)
         }
         (InputMode::Command, true) => {
@@ -69,8 +67,16 @@ fn key_path(help: &Help) -> LinePart {
             let locked_separator = ARROW_SEPARATOR.yellow().on_magenta();
             let key_path = superkey_text.bold().on_magenta();
             let superkey_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() + ARROW_SEPARATOR.chars().count() + locked_text.chars().count();
-            (format!("{}{}{}{}", locked, locked_separator, key_path, superkey_separator), len)
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + locked_text.chars().count();
+            (
+                format!(
+                    "{}{}{}{}",
+                    locked, locked_separator, key_path, superkey_separator
+                ),
+                len,
+            )
         }
         (InputMode::Resize, false) => {
             let mode_shortcut_text = "r ";
@@ -79,12 +85,22 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}", superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}",
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Resize, true) => {
             let mode_shortcut_text = "r ";
@@ -95,14 +111,26 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = locked_text.chars().count() + 
-                ARROW_SEPARATOR.chars().count() +
-                superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}{}{}", locked, locked_separator, superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = locked_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}{}{}",
+                    locked,
+                    locked_separator,
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Pane, false) => {
             let mode_shortcut_text = "p ";
@@ -111,12 +139,22 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}", superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}",
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Pane, true) => {
             let mode_shortcut_text = "p ";
@@ -127,14 +165,26 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = locked_text.chars().count() + 
-                ARROW_SEPARATOR.chars().count() +
-                superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}{}{}", locked, locked_separator, superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = locked_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}{}{}",
+                    locked,
+                    locked_separator,
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Tab, false) => {
             let mode_shortcut_text = "t ";
@@ -143,12 +193,22 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}", superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}",
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Tab, true) => {
             let mode_shortcut_text = "t ";
@@ -159,14 +219,26 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = locked_text.chars().count() + 
-                ARROW_SEPARATOR.chars().count() +
-                superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}{}{}", locked, locked_separator, superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = locked_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}{}{}",
+                    locked,
+                    locked_separator,
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Scroll, false) => {
             let mode_shortcut_text = "s ";
@@ -175,12 +247,22 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}", superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}",
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Scroll, true) => {
             let mode_shortcut_text = "s ";
@@ -191,36 +273,52 @@ fn key_path(help: &Help) -> LinePart {
             let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
             let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
             let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = locked_text.chars().count() + 
-                ARROW_SEPARATOR.chars().count() +
-                superkey_text.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                ARROW_SEPARATOR.chars().count() +
-                mode_shortcut_text.chars().count() +
-                ARROW_SEPARATOR.chars().count();
-            (format!("{}{}{}{}{}{}{}", locked, locked_separator, superkey, first_superkey_separator, second_superkey_separator, mode_shortcut, mode_shortcut_separator), len)
+            let len = locked_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + superkey_text.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + ARROW_SEPARATOR.chars().count()
+                + mode_shortcut_text.chars().count()
+                + ARROW_SEPARATOR.chars().count();
+            (
+                format!(
+                    "{}{}{}{}{}{}{}",
+                    locked,
+                    locked_separator,
+                    superkey,
+                    first_superkey_separator,
+                    second_superkey_separator,
+                    mode_shortcut,
+                    mode_shortcut_separator
+                ),
+                len,
+            )
         }
         (InputMode::Normal, _) | _ => {
             let key_path = superkey_text.on_green();
             let separator = ARROW_SEPARATOR.green().on_black();
-            (format!("{}{}", key_path, separator), superkey_text.chars().count() + ARROW_SEPARATOR.chars().count())
+            (
+                format!("{}{}", key_path, separator),
+                superkey_text.chars().count() + ARROW_SEPARATOR.chars().count(),
+            )
         }
     };
-    LinePart {
-        part,
-        len
-    }
+    LinePart { part, len }
 }
 
 fn keybinds(help: &Help, max_width: usize) -> LinePart {
     let mut keybinds = String::new();
     let mut len = 0;
-    let full_keybinds_len = help.keybinds.iter().enumerate().fold(0, |acc, (i, (shortcut, description))| {
-        let shortcut_length = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-        let description_length = description.chars().count() + 2;
-        let (_separator, separator_len) = if i > 0 { (" / ", 3) } else { ("", 0) };
-        acc + shortcut_length + description_length + separator_len
-    });
+    let full_keybinds_len =
+        help.keybinds
+            .iter()
+            .enumerate()
+            .fold(0, |acc, (i, (shortcut, description))| {
+                let shortcut_length = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
+                let description_length = description.chars().count() + 2;
+                let (_separator, separator_len) = if i > 0 { (" / ", 3) } else { ("", 0) };
+                acc + shortcut_length + description_length + separator_len
+            });
     if full_keybinds_len < max_width {
         for (i, (shortcut, description)) in help.keybinds.iter().enumerate() {
             let separator = if i > 0 { " / " } else { "" };
@@ -243,10 +341,21 @@ fn keybinds(help: &Help, max_width: usize) -> LinePart {
                 InputMode::Normal => shortcut.cyan(),
                 _ => shortcut.white().bold(),
             };
-            if current_length + shortcut_length + description_first_word_length + separator_len + MORE_MSG.chars().count() < max_width {
-                keybinds = format!("{}{}<{}> {}", keybinds, separator, shortcut, description_first_word);
+            if current_length
+                + shortcut_length
+                + description_first_word_length
+                + separator_len
+                + MORE_MSG.chars().count()
+                < max_width
+            {
+                keybinds = format!(
+                    "{}{}<{}> {}",
+                    keybinds, separator, shortcut, description_first_word
+                );
                 len += shortcut_length + description_first_word_length + separator_len;
-            } else if current_length + shortcut_length + separator_len + MORE_MSG.chars().count() < max_width {
+            } else if current_length + shortcut_length + separator_len + MORE_MSG.chars().count()
+                < max_width
+            {
                 keybinds = format!("{}{}<{}>", keybinds, separator, shortcut);
                 len += shortcut_length + separator_len;
             } else {
