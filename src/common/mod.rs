@@ -17,7 +17,7 @@ use std::{collections::HashMap, fs};
 
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
-use input::handler::InputMode;
+use input::handler::InputState;
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -32,7 +32,7 @@ use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::{MOSAIC_IPC_PIPE, MOSAIC_ROOT_PLUGIN_DIR};
+use utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -43,18 +43,11 @@ pub enum ApiCommand {
     MoveFocus,
 }
 // FIXME: It would be good to add some more things to this over time
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AppState {
-    pub input_mode: InputMode,
+    pub input_state: InputState,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            input_mode: InputMode::Normal,
-        }
-    }
-}
 // FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
 // from self instead of being explicitly passed here
 pub fn update_state(

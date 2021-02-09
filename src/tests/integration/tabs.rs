@@ -2,12 +2,12 @@ use insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_FOCUSED_PANE};
+use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_PANE_IN_PANE_MODE};
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
-    CLOSE_TAB, COMMAND_TOGGLE, NEW_TAB, QUIT, SPLIT_HORIZONTALLY, SWITCH_NEXT_TAB, SWITCH_PREV_TAB,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    CLOSE_TAB_IN_TAB_MODE, COMMAND_TOGGLE, NEW_TAB_IN_TAB_MODE, QUIT, SPLIT_DOWN_IN_PANE_MODE, SWITCH_NEXT_TAB_IN_TAB_MODE, SWITCH_PREV_TAB_IN_TAB_MODE,
+    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE, PANE_MODE, ESC, TAB_MODE
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -26,8 +26,13 @@ pub fn open_new_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -55,9 +60,14 @@ pub fn switch_to_prev_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SWITCH_PREV_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &SWITCH_PREV_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -85,9 +95,14 @@ pub fn switch_to_next_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SWITCH_NEXT_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &SWITCH_NEXT_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -115,9 +130,14 @@ pub fn close_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &CLOSE_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -145,10 +165,15 @@ pub fn close_last_pane_in_a_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &NEW_TAB,
-        &SPLIT_HORIZONTALLY,
-        &CLOSE_FOCUSED_PANE,
-        &CLOSE_FOCUSED_PANE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &CLOSE_PANE_IN_PANE_MODE,
+        &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -176,12 +201,20 @@ pub fn close_the_middle_tab() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SWITCH_PREV_TAB,
-        &CLOSE_TAB,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &SWITCH_PREV_TAB_IN_TAB_MODE,
+        &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -209,13 +242,34 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &SWITCH_PREV_TAB,
-        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
-        &CLOSE_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &SWITCH_PREV_TAB_IN_TAB_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &PANE_MODE,
+        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -243,10 +297,15 @@ pub fn closing_last_tab_exits_the_app() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &NEW_TAB,
-        &CLOSE_TAB,
-        &CLOSE_TAB,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &TAB_MODE,
+        &NEW_TAB_IN_TAB_MODE,
+        &CLOSE_TAB_IN_TAB_MODE,
+        &CLOSE_TAB_IN_TAB_MODE,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
 

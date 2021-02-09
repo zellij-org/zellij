@@ -28,24 +28,9 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
     match *mode {
         InputMode::Normal => {
-            // Ctrl+G -> Command Mode
             defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Command));
         }
-        command_mode @ InputMode::Command | command_mode @ InputMode::CommandPersistent => {
-//            match command_mode {
-//                InputMode::Command => {
-//                    // Ctrl+G -> Command Mode (Persistent)
-//                    defaults.insert(
-//                        Key::Ctrl('g'),
-//                        Action::SwitchToMode(InputMode::CommandPersistent),
-//                    );
-//                }
-//                InputMode::CommandPersistent => {
-//                    // Ctrl+G -> Command Mode (Persistent)
-//                    defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Normal));
-//                }
-//                _ => unreachable!(),
-//            }
+        InputMode::Command => {
             defaults.insert(
                 Key::Char('r'),
                 Action::SwitchToMode(InputMode::Resize),

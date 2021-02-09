@@ -79,7 +79,6 @@ fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
 
 fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
     let invisible_borders = invisible_borders != 0;
-    debug_log_to_file(format!("setting invisible_borders: {:?}", invisible_borders));
     plugin_env
         .send_screen_instructions
         .send(ScreenInstruction::SetInvisibleBorders(
@@ -99,7 +98,7 @@ fn host_get_help(plugin_env: &PluginEnv) {
         .try_send(AppInstruction::GetState(state_tx))
         .is_ok()
     {
-        let help = get_help(&state_rx.recv().unwrap().input_mode);
+        let help = get_help(&state_rx.recv().unwrap().input_state);
         wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
     }
 }

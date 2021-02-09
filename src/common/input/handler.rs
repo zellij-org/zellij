@@ -11,6 +11,7 @@ use crate::CommandIsExecuting;
 
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
+use serde::{Deserialize, Serialize};
 
 use super::keybinds::key_to_action;
 
@@ -75,7 +76,7 @@ impl InputHandler {
                                 if entry_mode == self.mode && !self.mode_is_persistent {
                                     self.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
-                                        input_mode: self.mode,
+                                        input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
                                     });
                                 }
                                 if should_break {
@@ -119,7 +120,7 @@ impl InputHandler {
                     self.mode_is_persistent = false;
                 }
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_mode: self.mode,
+                    input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -127,6 +128,9 @@ impl InputHandler {
             }
             Action::TogglePersistentMode => {
                 self.mode_is_persistent = !self.mode_is_persistent;
+                update_state(&self.send_app_instructions, |_| AppState {
+                    input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
+                });
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -232,6 +236,21 @@ impl InputHandler {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
+pub struct InputState {
+    mode: InputMode,
+    persistent: bool,
+}
+
+impl Default for InputState {
+    fn default() -> InputState {
+        InputState {
+            mode: InputMode::Normal,
+            persistent: false
+        }
+    }
+}
+
 /// Dictates whether we're in command mode, persistent command mode, normal mode or exiting:
 /// - Normal mode either writes characters to the terminal, or switches to command mode
 ///   using a particular key control
@@ -239,11 +258,10 @@ impl InputHandler {
 ///   back to normal mode
 /// - Persistent command mode is the same as command mode, but doesn't return automatically to
 ///   normal mode
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
     Normal,
     Command,
-    CommandPersistent,
     Resize,
     Pane,
     Tab,
@@ -251,63 +269,54 @@ pub enum InputMode {
     Exiting,
 }
 
-// FIXME: This should be auto-generated from the soon-to-be-added `get_default_keybinds`
-pub fn get_help(mode: &InputMode) -> Vec<String> {
-    let command_help = vec![
-        "<r> Resize mode".into(),
-        "<p> Pane mode".into(),
-        "<t> Tab mode".into(),
-        // "<n/b/z> Split".into(),
-        // "<p> Focus Next".into(),
-        // "<x> Close Pane".into(),
-        "<q> Quit".into(),
-        // "<PgUp/PgDown> Scroll".into(),
-        // "<1> New Tab".into(),
-        // "<2/3> Move Tab".into(),
-        // "<4> Close Tab".into(),
-    ];
-    match mode {
-        InputMode::Normal => vec!["<Ctrl-g> Command Mode".into()],
-        InputMode::Command => [
-            vec![
-                "<Ctrl-g> Persistent Mode".into(),
-                "<ESC> Normal Mode".into(),
-            ],
-            command_help,
-        ]
-        .concat(),
-        InputMode::CommandPersistent => {
-            [vec!["<ESC/Ctrl-g> Normal Mode".into()], command_help].concat()
-        }
-        InputMode::Exiting => vec!["Bye from Mosaic!".into()],
-        InputMode::Resize => vec![
-            "<arrows/hjkl/ctrl+bnpf> resize current pane".into(),
-            "<ESC> Normal Mode".into(),
-            "<q> Quit".into(),
-        ],
-        InputMode::Pane => vec![
-            "<arrows/hjkl/ctrl+bnpf> move focus".into(),
-            "<p> next pane".into(),
-            "<n> new pane".into(),
-            "<d> down split".into(),
-            "<r> right split".into(),
-            "<x> exit pane".into(),
-            "<f> fullscreen pane".into(),
-            "<ESC> Normal Mode".into(),
-            "<q> Quit".into(),
-        ],
-        InputMode::Tab => vec![
-            "<arrows/hjkl/ctrl+bnpf> next/prev tab".into(),
-            "<n> new tab".into(),
-            "<x> exit tab".into(),
-            "<ESC> Normal Mode".into(),
-            "<q> Quit".into(),
-        ],
-        InputMode::Scroll => vec![
-            "<arrows/jk/ctrl+np> scroll up/down".into(),
-            "<ESC> Normal Mode".into(),
-            "<q> Quit".into(),
-        ],
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Help {
+    pub mode: InputMode,
+    pub mode_is_persistent: bool,
+    pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
+}
+
+impl Default for InputMode {
+    fn default() -> InputMode {
+        InputMode::Normal
+    }
+}
+
+pub fn get_help(input_state: &InputState) -> Help {
+    let mut keybinds: Vec<(String, String)> = vec![];
+    match input_state.mode {
+        InputMode::Normal | InputMode::Command | InputMode::Exiting => {
+            keybinds.push((format!("p"), format!("Pane mode")));
+            keybinds.push((format!("t"), format!("Tab mode")));
+            keybinds.push((format!("r"), format!("Resize mode")));
+        },
+        InputMode::Resize =>  {
+            keybinds.push((format!("←↓↑→"), format!("resize pane")));
+        },
+        InputMode::Pane => {
+            keybinds.push((format!("←↓↑→"), format!("move focus")));
+            keybinds.push((format!("p"), format!("next pane")));
+            keybinds.push((format!("n"), format!("new pane")));
+            keybinds.push((format!("d"), format!("down split")));
+            keybinds.push((format!("r"), format!("right split")));
+            keybinds.push((format!("x"), format!("exit pane")));
+            keybinds.push((format!("f"), format!("fullscreen pane")));
+        },
+        InputMode::Tab => {
+            keybinds.push((format!("←↓↑→"), format!("move tab focus")));
+            keybinds.push((format!("n"), format!("new tab")));
+            keybinds.push((format!("x"), format!("exit tab")));
+        },
+        InputMode::Scroll => {
+            keybinds.push((format!("↓↑"), format!("scroll up/down")));
+        },
+    }
+    keybinds.push((format!("ESC"), format!("Back")));
+    keybinds.push((format!("q"), format!("Quit")));
+    Help {
+        mode: input_state.mode,
+        mode_is_persistent: input_state.persistent,
+        keybinds,
     }
 }
 

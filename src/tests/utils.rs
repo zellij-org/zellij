@@ -45,48 +45,35 @@ pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String> {
 }
 
 pub mod commands {
-    /// ctrl-g
-    pub const COMMAND_TOGGLE: [u8; 1] = [7];
-    /// b
-    pub const SPLIT_HORIZONTALLY: [u8; 1] = [98];
-    /// n
-    pub const SPLIT_VERTICALLY: [u8; 1] = [110];
-    /// j
-    pub const RESIZE_DOWN: [u8; 1] = [106];
-    /// k
-    pub const RESIZE_UP: [u8; 1] = [107];
-    /// p
-    pub const MOVE_FOCUS: [u8; 1] = [112];
-    /// h
-    pub const RESIZE_LEFT: [u8; 1] = [104];
-    /// l
-    pub const RESIZE_RIGHT: [u8; 1] = [108];
-    /// z
-    pub const SPAWN_TERMINAL: [u8; 1] = [122];
-    /// q
-    pub const QUIT: [u8; 1] = [113];
-    /// PgUp
-    pub const SCROLL_UP: [u8; 4] = [27, 91, 53, 126];
-    /// PgDn
-    pub const SCROLL_DOWN: [u8; 4] = [27, 91, 54, 126];
-    /// x
-    pub const CLOSE_FOCUSED_PANE: [u8; 1] = [120];
-    /// e
-    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN: [u8; 1] = [101];
-    /// y
-    pub const MOVE_FOCUS_LEFT: [u8; 1] = [121];
-    /// u
-    pub const MOVE_FOCUS_DOWN: [u8; 1] = [117];
-    /// i
-    pub const MOVE_FOCUS_UP: [u8; 1] = [105];
-    /// o
-    pub const MOVE_FOCUS_RIGHT: [u8; 1] = [111];
-    /// 1
-    pub const NEW_TAB: [u8; 1] = [49];
-    /// 2
-    pub const SWITCH_PREV_TAB: [u8; 1] = [50];
-    /// 3
-    pub const SWITCH_NEXT_TAB: [u8; 1] = [51];
-    /// 4
-    pub const CLOSE_TAB: [u8; 1] = [52];
+    pub const COMMAND_TOGGLE: [u8; 1] = [7]; // ctrl-g
+    pub const QUIT: [u8; 1] = [113]; // q
+    pub const ESC: [u8; 1] = [27];
+
+    pub const PANE_MODE: [u8; 1] = [112]; // p
+    pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
+    pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
+    pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
+    pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
+    pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
+    pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
+    pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
+    pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
+    pub const MOVE_FOCUS_LEFT_IN_PANE_MODE: [u8; 1] = [104]; // h
+    pub const MOVE_FOCUS_RIGHT_IN_PANE_MODE: [u8; 1] = [108]; // l
+
+    pub const SCROLL_MODE: [u8; 1] = [115]; // s
+    pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
+    pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
+
+    pub const RESIZE_MODE: [u8; 1] = [114]; // r
+    pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
+    pub const RESIZE_UP_IN_RESIZE_MODE: [u8; 1] = [107]; // k
+    pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
+    pub const RESIZE_RIGHT_IN_RESIZE_MODE: [u8; 1] = [108]; // l
+
+    pub const TAB_MODE: [u8;1] = [116]; // t
+    pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
+    pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
+    pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
+    pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
 }
