@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Add WASM target
+      run: rustup target add wasm32-wasi
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -46,6 +48,8 @@ jobs:
         with:
           toolchain: stable
           components: clippy
+      - name: Add WASM target
+        run: rustup target add wasm32-wasi
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
