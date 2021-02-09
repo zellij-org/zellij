@@ -23,6 +23,33 @@ pub enum Key {
     Esc,
 }
 
+// TODO: use same struct from main crate?
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Help {
+    pub mode: InputMode,
+    pub mode_is_persistent: bool,
+    pub keybinds: Vec<(String, String)>,
+}
+
+// TODO: use same struct from main crate?
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum InputMode {
+    Normal,
+    Command,
+    CommandPersistent,
+    Resize,
+    Pane,
+    Tab,
+    Scroll,
+    Exiting,
+}
+
+impl Default for InputMode {
+    fn default() -> InputMode {
+        InputMode::Normal
+    }
+}
+
 pub fn get_key() -> Key {
     deserialize_from_stdin().unwrap()
 }
@@ -36,12 +63,17 @@ pub fn set_max_height(max_height: i32) {
     unsafe { host_set_max_height(max_height) };
 }
 
+pub fn set_invisible_borders(invisible_borders: bool) {
+    let invisible_borders = if invisible_borders { 1 } else { 0 };
+    unsafe { host_set_invisible_borders(invisible_borders) };
+}
+
 pub fn set_selectable(selectable: bool) {
     let selectable = if selectable { 1 } else { 0 };
     unsafe { host_set_selectable(selectable) };
 }
 
-pub fn get_help() -> Vec<String> {
+pub fn get_help() -> Help {
     unsafe { host_get_help() };
     deserialize_from_stdin().unwrap_or_default()
 }
@@ -57,5 +89,6 @@ extern "C" {
     fn host_open_file();
     fn host_set_max_height(max_height: i32);
     fn host_set_selectable(selectable: i32);
+    fn host_set_invisible_borders(invisible_borders: i32);
     fn host_get_help();
 }
