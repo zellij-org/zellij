@@ -35,20 +35,49 @@ fn main() {
         ""
     };
     let starting_dir = current_dir().unwrap();
+    let alt_target = manifest_dir.join("target/tiles");
     for project in members {
         let path = manifest_dir.join(project.as_str().unwrap());
         set_current_dir(&path);
 
+        // FIXME: This is soul-crushingly terrible, but I can't keep the values alive long enough
         if var("PROFILE").unwrap() == "release" {
-            panic!("no");
-            Command::new("cargo").arg("build").arg("--release").status();
+            Command::new("cargo".to_string())
+                .arg("build")
+                .arg("--target-dir")
+                .arg(&alt_target.as_os_str())
+                .arg("--release")
+                .status()
+                .unwrap();
         } else {
-            Command::new("cargo").arg("build").status();
+            Command::new("cargo")
+                .arg("build")
+                .arg("--target-dir")
+                .arg(&alt_target.as_os_str())
+                .status()
+                .unwrap();
         }
-
-        eprintln!("{:?}", &path);
     }
     set_current_dir(&starting_dir);
+
+    // FIXME: Deduplicate this with the initial walk all .rs pattern
+    for entry in fs::read_dir(alt_target.join("wasm32-wasi/release/")).unwrap() {
+        let entry = entry.unwrap().path();
+        let ext = entry.extension();
+        if ext.is_some() && ext.unwrap() == "wasm" {
+            dbg!(&entry);
+            Command::new("wasm-opt")
+                .arg("-O")
+                .arg(entry.as_os_str())
+                .arg("-o")
+                .arg(format!(
+                    "assets/plugins/{}",
+                    entry.file_name().unwrap().to_string_lossy()
+                ))
+                .status()
+                .unwrap();
+        }
+    }
 
     // Generate Shell Completions
     let mut clap_app = CliArgs::clap();
@@ -77,7 +106,6 @@ fn main() {
     fs::create_dir_all(data_dir.join("plugins")).unwrap();
     fs::create_dir_all(data_dir.join("layouts")).unwrap();
     for asset in assets {
-        println!("cargo:rerun-if-changed=assets/{}", asset);
         fs::copy(Path::new("assets/").join(asset), data_dir.join(asset))
             .expect("Failed to copy asset files");
     }
