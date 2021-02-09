@@ -60,22 +60,33 @@ fn main() {
     }
     set_current_dir(&starting_dir);
 
-    // FIXME: Deduplicate this with the initial walk all .rs pattern
-    for entry in fs::read_dir(alt_target.join("wasm32-wasi/release/")).unwrap() {
-        let entry = entry.unwrap().path();
-        let ext = entry.extension();
-        if ext.is_some() && ext.unwrap() == "wasm" {
-            dbg!(&entry);
-            Command::new("wasm-opt")
-                .arg("-O")
-                .arg(entry.as_os_str())
-                .arg("-o")
-                .arg(format!(
-                    "assets/plugins/{}",
-                    entry.file_name().unwrap().to_string_lossy()
-                ))
-                .status()
-                .unwrap();
+    if var("PROFILE").unwrap() == "release" {
+        // FIXME: Deduplicate this with the initial walk all .rs pattern
+        for entry in fs::read_dir(alt_target.join("wasm32-wasi/release/")).unwrap() {
+            let entry = entry.unwrap().path();
+            let ext = entry.extension();
+            if ext.is_some() && ext.unwrap() == "wasm" {
+                dbg!(&entry);
+                Command::new("wasm-opt")
+                    .arg("-O")
+                    .arg(entry.as_os_str())
+                    .arg("-o")
+                    .arg(format!(
+                        "assets/plugins/{}",
+                        entry.file_name().unwrap().to_string_lossy()
+                    ))
+                    .status()
+                    .unwrap_or_else(|_| {
+                        Command::new("cp")
+                            .arg(entry.as_os_str())
+                            .arg(format!(
+                                "assets/plugins/{}",
+                                entry.file_name().unwrap().to_string_lossy()
+                            ))
+                            .status()
+                            .unwrap()
+                    });
+            }
         }
     }
 
