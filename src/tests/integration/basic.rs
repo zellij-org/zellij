@@ -3,8 +3,9 @@ use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    COMMAND_TOGGLE, QUIT, SCROLL_DOWN, SCROLL_UP, SPAWN_TERMINAL, SPLIT_HORIZONTALLY,
-    SPLIT_VERTICALLY, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    COMMAND_TOGGLE, ESC, PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE, SCROLL_MODE,
+    SCROLL_UP_IN_SCROLL_MODE, SPAWN_TERMINAL_IN_PANE_MODE, SPLIT_DOWN_IN_PANE_MODE,
+    SPLIT_RIGHT_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
@@ -47,7 +48,8 @@ pub fn split_terminals_vertically() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_VERTICALLY,
+        &PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -74,7 +76,8 @@ pub fn split_terminals_horizontally() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -102,9 +105,10 @@ pub fn split_largest_terminal() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
+        &PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -131,7 +135,8 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_VERTICALLY,
+        &PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -158,7 +163,8 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -185,7 +191,8 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPAWN_TERMINAL,
+        &PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -212,10 +219,15 @@ pub fn scrolling_up_inside_a_pane() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &SPLIT_VERTICALLY,
-        &SCROLL_UP,
-        &SCROLL_UP,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SCROLL_MODE,
+        &SCROLL_UP_IN_SCROLL_MODE,
+        &SCROLL_UP_IN_SCROLL_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -242,12 +254,17 @@ pub fn scrolling_down_inside_a_pane() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_HORIZONTALLY,
-        &SPLIT_VERTICALLY,
-        &SCROLL_UP,
-        &SCROLL_UP,
-        &SCROLL_DOWN,
-        &SCROLL_DOWN,
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
+        &SCROLL_MODE,
+        &SCROLL_UP_IN_SCROLL_MODE,
+        &SCROLL_UP_IN_SCROLL_MODE,
+        &SCROLL_DOWN_IN_SCROLL_MODE,
+        &SCROLL_DOWN_IN_SCROLL_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -276,10 +293,11 @@ pub fn max_panes() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
+        &PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
         &QUIT,
     ]);
     let mut opts = CliArgs::default();
@@ -308,10 +326,11 @@ pub fn toggle_focused_pane_fullscreen() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
-        &SPAWN_TERMINAL,
-        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+        &PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
         &QUIT,
     ]);
     let mut opts = CliArgs::default();

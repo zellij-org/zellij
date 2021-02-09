@@ -20,7 +20,7 @@ use std::{collections::HashMap, fs};
 use crate::panes::PaneId;
 use crate::utils::consts::MOSAIC_IPC_PIPE;
 use directories_next::ProjectDirs;
-use input::handler::InputMode;
+use input::handler::InputState;
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -46,18 +46,11 @@ pub enum ApiCommand {
     MoveFocus,
 }
 // FIXME: It would be good to add some more things to this over time
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AppState {
-    pub input_mode: InputMode,
+    pub input_state: InputState,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            input_mode: InputMode::Normal,
-        }
-    }
-}
 // FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
 // from self instead of being explicitly passed here
 pub fn update_state(
@@ -410,6 +403,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .get_active_tab_mut()
                                 .unwrap()
                                 .set_pane_max_height(id, max_height);
+                        }
+                        ScreenInstruction::SetInvisibleBorders(id, invisible_borders) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .set_pane_invisible_borders(id, invisible_borders);
+                            screen.render();
                         }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);

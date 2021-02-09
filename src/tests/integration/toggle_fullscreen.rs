@@ -6,8 +6,8 @@ use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots}
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
-    CLOSE_FOCUSED_PANE, COMMAND_TOGGLE, MOVE_FOCUS, QUIT, SPLIT_HORIZONTALLY, SPLIT_VERTICALLY,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
+    COMMAND_TOGGLE, MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, SPLIT_DOWN_IN_PANE_MODE,
+    SPLIT_RIGHT_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -26,9 +26,10 @@ pub fn adding_new_terminal_in_fullscreen() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_VERTICALLY,
-        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
-        &SPLIT_HORIZONTALLY,
+        &PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -56,9 +57,10 @@ pub fn move_focus_is_disabled_in_fullscreen() {
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
-        &SPLIT_VERTICALLY,
-        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN,
-        &MOVE_FOCUS,
+        &PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
+        &MOVE_FOCUS_IN_PANE_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());

@@ -10,6 +10,7 @@ pub struct PluginPane {
     pub pid: u32,
     pub should_render: bool,
     pub selectable: bool,
+    pub invisible_borders: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -26,6 +27,7 @@ impl PluginPane {
             pid,
             should_render: true,
             selectable: true,
+            invisible_borders: false,
             position_and_size,
             position_and_size_override: None,
             send_plugin_instructions,
@@ -101,6 +103,9 @@ impl Pane for PluginPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
+    }
+    fn set_invisible_borders(&mut self, invisible_borders: bool) {
+        self.invisible_borders = invisible_borders;
     }
     fn set_max_height(&mut self, max_height: usize) {
         self.max_height = Some(max_height);
@@ -179,5 +184,8 @@ impl Pane for PluginPane {
     }
     fn max_height(&self) -> Option<usize> {
         self.max_height
+    }
+    fn invisible_borders(&self) -> bool {
+        self.invisible_borders
     }
 }

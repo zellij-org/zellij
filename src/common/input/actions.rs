@@ -18,6 +18,7 @@ pub enum Action {
     Write(Vec<u8>),
     /// Switch to the specified input mode
     SwitchToMode(handler::InputMode),
+    TogglePersistentMode,
     /// Resize focus pane in specified direction
     Resize(Direction),
     /// Switch focus to next pane in specified direction
