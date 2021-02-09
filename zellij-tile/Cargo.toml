@@ -1,10 +1,9 @@
 [package]
-name = "mosaic-tile"
-version = "0.4.0"
+name = "zellij-tile"
+version = "0.5.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2018"
-description = "A small client-side library for writing mosaic plugins (tiles)"
-repository = "https://github.com/mosaic-org/mosaic-tile"
+description = "A small client-side library for writing Zellij plugins (tiles)"
 license = "MIT"
 
 [dependencies]

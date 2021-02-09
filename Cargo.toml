@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "zellij",
+    "zellij-tile",
+    "default-tiles/*",
+]
+
+[profile.release]
+lto = true

@@ -1,5 +1,5 @@
 [package]
-name = "mosaic"
+name = "zellij"
 version = "0.1.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
@@ -42,9 +42,6 @@ insta = "0.16.1"
 [build-dependencies]
 directories-next = "2.0"
 structopt = "0.3"
-
-[profile.release]
-lto = true
 
 [package.metadata.deb]
 depends = "$auto"

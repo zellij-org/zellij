@@ -35,7 +35,7 @@ pub struct PluginEnv {
 
 pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
-        "mosaic" => {
+        "zellij" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
             "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),

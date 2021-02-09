@@ -1,5 +1,5 @@
 use colored::*;
-use mosaic_tile::*;
+use zellij_tile::*;
 use std::fmt::{Display, Formatter, Error};
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
@@ -262,7 +262,7 @@ fn keybinds(help: &Help, max_width: usize) -> LinePart {
     }
 }
 
-impl MosaicTile for State {
+impl ZellijTile for State {
     fn init(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);

@@ -1,13 +1,13 @@
 mod state;
 
 use colored::*;
-use mosaic_tile::*;
+use zellij_tile::*;
 use state::{FsEntry, State};
 use std::{cmp::min, fs::read_dir};
 
 register_tile!(State);
 
-impl MosaicTile for State {
+impl ZellijTile for State {
     fn init(&mut self) {
         refresh_directory(self);
     }

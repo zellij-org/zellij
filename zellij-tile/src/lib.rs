@@ -2,7 +2,7 @@ mod shim;
 
 pub use shim::*;
 #[allow(unused_variables)]
-pub trait MosaicTile {
+pub trait ZellijTile {
     fn init(&mut self) {}
     fn draw(&mut self, rows: usize, cols: usize) {}
     fn handle_key(&mut self, key: Key) {}

@@ -84,7 +84,7 @@ fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
     serde_json::from_str(&json).ok()
 }
 
-#[link(wasm_import_module = "mosaic")]
+#[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_open_file();
     fn host_set_max_height(max_height: i32);
