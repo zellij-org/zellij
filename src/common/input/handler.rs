@@ -71,8 +71,6 @@ impl InputHandler {
                                     &key, raw_bytes, &self.mode, &keybinds,
                                 ));
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-                                //                                if entry_mode == InputMode::Command
-                                //                                    && self.mode == InputMode::Command
                                 if entry_mode == self.mode && !self.mode_is_persistent {
                                     self.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
