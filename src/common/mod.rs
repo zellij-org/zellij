@@ -32,7 +32,7 @@ use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
+use utils::consts::{MOSAIC_IPC_PIPE, MOSAIC_ROOT_PLUGIN_DIR};
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
