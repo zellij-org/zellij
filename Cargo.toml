@@ -1,0 +1,16 @@
+[package]
+name = "module"
+version = "0.2.0"
+authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
+edition = "2018"
+description = "A simplified ranger clone written as a mosaic tile"
+repository = "https://github.com/mosaic-org/strider"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+mosaic-tile = "0.4"
+pretty-bytes = "0.2"
+
+[profile.release]
+lto = true
