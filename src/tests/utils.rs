@@ -71,7 +71,7 @@ pub mod commands {
     pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
     pub const RESIZE_RIGHT_IN_RESIZE_MODE: [u8; 1] = [108]; // l
 
-    pub const TAB_MODE: [u8;1] = [116]; // t
+    pub const TAB_MODE: [u8; 1] = [116]; // t
     pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
     pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
     pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h

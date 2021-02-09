@@ -9,9 +9,9 @@ use crate::screen::ScreenInstruction;
 use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
+use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
-use serde::{Deserialize, Serialize};
 
 use super::keybinds::key_to_action;
 
@@ -71,12 +71,15 @@ impl InputHandler {
                                     &key, raw_bytes, &self.mode, &keybinds,
                                 ));
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-//                                if entry_mode == InputMode::Command
-//                                    && self.mode == InputMode::Command
+                                //                                if entry_mode == InputMode::Command
+                                //                                    && self.mode == InputMode::Command
                                 if entry_mode == self.mode && !self.mode_is_persistent {
                                     self.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
-                                        input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
+                                        input_state: InputState {
+                                            mode: self.mode,
+                                            persistent: self.mode_is_persistent,
+                                        },
                                     });
                                 }
                                 if should_break {
@@ -120,7 +123,10 @@ impl InputHandler {
                     self.mode_is_persistent = false;
                 }
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
+                    input_state: InputState {
+                        mode: self.mode,
+                        persistent: self.mode_is_persistent,
+                    },
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -129,7 +135,10 @@ impl InputHandler {
             Action::TogglePersistentMode => {
                 self.mode_is_persistent = !self.mode_is_persistent;
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState { mode: self.mode, persistent: self.mode_is_persistent }
+                    input_state: InputState {
+                        mode: self.mode,
+                        persistent: self.mode_is_persistent,
+                    },
                 });
             }
             Action::Resize(direction) => {
@@ -246,7 +255,7 @@ impl Default for InputState {
     fn default() -> InputState {
         InputState {
             mode: InputMode::Normal,
-            persistent: false
+            persistent: false,
         }
     }
 }
@@ -289,10 +298,10 @@ pub fn get_help(input_state: &InputState) -> Help {
             keybinds.push((format!("p"), format!("Pane mode")));
             keybinds.push((format!("t"), format!("Tab mode")));
             keybinds.push((format!("r"), format!("Resize mode")));
-        },
-        InputMode::Resize =>  {
+        }
+        InputMode::Resize => {
             keybinds.push((format!("←↓↑→"), format!("resize pane")));
-        },
+        }
         InputMode::Pane => {
             keybinds.push((format!("←↓↑→"), format!("move focus")));
             keybinds.push((format!("p"), format!("next pane")));
@@ -301,15 +310,15 @@ pub fn get_help(input_state: &InputState) -> Help {
             keybinds.push((format!("r"), format!("right split")));
             keybinds.push((format!("x"), format!("exit pane")));
             keybinds.push((format!("f"), format!("fullscreen pane")));
-        },
+        }
         InputMode::Tab => {
             keybinds.push((format!("←↓↑→"), format!("move tab focus")));
             keybinds.push((format!("n"), format!("new tab")));
             keybinds.push((format!("x"), format!("exit tab")));
-        },
+        }
         InputMode::Scroll => {
             keybinds.push((format!("↓↑"), format!("scroll up/down")));
-        },
+        }
     }
     keybinds.push((format!("ESC"), format!("Back")));
     keybinds.push((format!("q"), format!("Quit")));

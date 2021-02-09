@@ -31,26 +31,11 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Ctrl('g'), Action::SwitchToMode(InputMode::Command));
         }
         InputMode::Command => {
-            defaults.insert(
-                Key::Char('r'),
-                Action::SwitchToMode(InputMode::Resize),
-            );
-            defaults.insert(
-                Key::Char('p'),
-                Action::SwitchToMode(InputMode::Pane),
-            );
-            defaults.insert(
-                Key::Char('t'),
-                Action::SwitchToMode(InputMode::Tab),
-            );
-            defaults.insert(
-                Key::Char('s'),
-                Action::SwitchToMode(InputMode::Scroll),
-            );
-            defaults.insert(
-                Key::Ctrl('g'),
-                Action::TogglePersistentMode,
-            );
+            defaults.insert(Key::Char('r'), Action::SwitchToMode(InputMode::Resize));
+            defaults.insert(Key::Char('p'), Action::SwitchToMode(InputMode::Pane));
+            defaults.insert(Key::Char('t'), Action::SwitchToMode(InputMode::Tab));
+            defaults.insert(Key::Char('s'), Action::SwitchToMode(InputMode::Scroll));
+            defaults.insert(Key::Ctrl('g'), Action::TogglePersistentMode);
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
             defaults.insert(Key::Char('q'), Action::Quit);
         }
@@ -71,10 +56,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Ctrl('f'), Action::Resize(Direction::Right));
 
             defaults.insert(Key::Char('q'), Action::Quit);
-            defaults.insert(
-                Key::Ctrl('g'),
-                Action::TogglePersistentMode,
-            );
+            defaults.insert(Key::Ctrl('g'), Action::TogglePersistentMode);
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
         }
         InputMode::Pane => {
@@ -102,10 +84,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Char('f'), Action::ToggleFocusFullscreen);
 
             defaults.insert(Key::Char('q'), Action::Quit);
-            defaults.insert(
-                Key::Ctrl('g'),
-                Action::TogglePersistentMode,
-            );
+            defaults.insert(Key::Ctrl('g'), Action::TogglePersistentMode);
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
         }
         InputMode::Tab => {
@@ -128,10 +107,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Char('x'), Action::CloseTab);
 
             defaults.insert(Key::Char('q'), Action::Quit);
-            defaults.insert(
-                Key::Ctrl('g'),
-                Action::TogglePersistentMode,
-            );
+            defaults.insert(Key::Ctrl('g'), Action::TogglePersistentMode);
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
         }
         InputMode::Scroll => {
@@ -145,10 +121,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Ctrl('p'), Action::ScrollUp);
 
             defaults.insert(Key::Char('q'), Action::Quit);
-            defaults.insert(
-                Key::Ctrl('g'),
-                Action::TogglePersistentMode,
-            );
+            defaults.insert(Key::Ctrl('g'), Action::TogglePersistentMode);
             defaults.insert(Key::Esc, Action::SwitchToMode(InputMode::Normal));
         }
         InputMode::Exiting => {}
