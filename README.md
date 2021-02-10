@@ -18,7 +18,7 @@
 
 # What is this?
 
-Zellij is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
+[Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
 At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
 
 For more details, read about upcoming features in our [roadmap](#roadmap).
@@ -26,65 +26,34 @@ For more details, read about upcoming features in our [roadmap](#roadmap).
 Right now Zellij is in its early development stages and is not yet ready for everyday usage.
 If you're interested, watch this space or better yet - get involved!
 
+Zellij was initially called "Mosaic".
+
 ## How to use it?
 * Clone the project
 * In the project folder, run: `cargo run`
 
-(note that right now Zellij only supports linux and maybe mac)
+(note that right now Zellij only supports linux and mac)
 
-Zellij has three modes, which are a bit like vim or tmux:
-  * Normal mode - allows you to enter text, input will be sent through to stdin on the pane you're typing in
-  * Command mode - input is interpreted as commands to control Zellij. This comes in two variants:
-    * Temporary - once a single valid command has been parsed, returns to normal mode (e.g. quickly opening a new pane and start typing)
-    * Permanent - remain in command mode until you issue the exit command mode command
-
-The keys and behavior will update when the project matures a bit, but for now:
-  * ctrl-g to cycle between modes (normal mode -> temporary command mode -> permanent command mode -> normal mode)
-  * Esc - exit command mode (any) and return to normal mode
-
-In command mode:
-  * n - split focused pane vertically
-  * b - split focused pane horizontally
-  * z - split largest terminal on screen (vertically or horizontally)
-  * j - resize focused pane down
-  * k - resize focused pane up 
-  * h - resize focused pane left
-  * l - resize focused pane right
-  * p - move focus to next pane
-  * PgUp - scroll up in focused pane
-  * PgDown - scroll down in focused pane
-  * 1 - new tab
-  * 2 - switch to next tab
-  * 3 - switch to previous tab
-  * x - close focused pane
-  * q - quit Zellij
+The status bar on the bottom should guide you through the possible keyboard shortcuts in the app.
 
 # What is the current status of the project?
 
 Zellij is in the last stages of being VT compatible. As much as modern terminals are.
-Most things should work inside a terminal pane, but some edge cases don't.
+Most things should work inside a terminal pane, but some edge cases don't. Fixing these edge cases is a priority, so please open an issue if you find a bug.
 
-Right now, Zellij:
-  * Successfully renders shells (all experiments have been done with fish-cli).
-  * Can split the terminal into multiple horizontal/vertical panes
-  * Can resize panes, as well as close them
-  * Can scroll up and down inside a pane
-  * Can render a vim pane
-  * Can render most so called "raw mode" applications that draw a textual user interface and refresh themselves.
-
-Please, don't do anything important with it. It's currently being stabilized and still panics quite a bit. :)
+Zellij is in its alpha stage right now. Please treat it accordingly.
 
 # How do I get involved?
 
-At the moment, the project is in early development and prototyping.
-A lot of the work needed to be done is product work (making decisions about what Zellij will be and do) as well as development work. So note that most tasks would probably involve a little of both.
+At the moment, the project is in early development.
+A lot of the work needed to be done is product work (making decisions about what Zellij will be and do) as well as development work. Most tasks would probably involve a little of both.
 We're a small team of enthusiasts, and we eagerly welcome people who would like to join in at this early stage.
+We welcome all contributors, regardless of experience level. We believe any person who would like to contribute can make the project better!
 
-Because of the above, it's not trivial for us to have issues tagged "Help Wanted" or "Good First Issue", as all work would likely need some prior discussion.
-That said, we would absolutely love to have these discussions and to bring more people on. Even if you are unsure of your abilities or have never contributed to open source before.
-To get started, join our chat and let us know you're interested in contributing: https://discord.gg/CrUAFH3
-
-We respectfully ask that you do your best to stand by any commitments you make.
+To get started, you can:
+1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
+2. Drop by our [chat](https://discord.gg/CrUAFH3) and ask what you can work on, or how to get started.
+3. Open an issue with your idea(s) for the project or tell us about them in our chat.
 
 And most importantly, please read our [code of conduct](CODE_OF_CONDUCT.md).
 
