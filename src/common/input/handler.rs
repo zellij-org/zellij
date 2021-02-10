@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
 
-use super::keybinds::key_to_action;
+use super::keybinds::key_to_actions;
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputState`], as well as changes to that state.
@@ -72,9 +72,15 @@ impl InputHandler {
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
-                                let should_break = self.dispatch_action(key_to_action(
-                                    &key, raw_bytes, &self.input_state.mode, &keybinds,
-                                ));
+                                let should_break = {
+                                    let mut should_break = false;
+                                    for action in key_to_actions(
+                                        &key, raw_bytes, &self.input_state.mode, &keybinds,
+                                    ) {
+                                        should_break = should_break | self.dispatch_action(action);
+                                    }
+                                    should_break
+                                };
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
                                 if entry_mode == self.input_state.mode && !self.input_state.persistent {
                                     self.input_state.mode = InputMode::Normal;
@@ -102,7 +108,7 @@ impl InputHandler {
     }
 
     fn dispatch_action(&mut self, action: Action) -> bool {
-        let mut interrupt_loop = false;
+        let mut should_break = false;
 
         match action {
             Action::Write(val) => {
@@ -115,7 +121,7 @@ impl InputHandler {
             }
             Action::Quit => {
                 self.exit();
-                interrupt_loop = true;
+                should_break = true;
             }
             Action::SwitchToMode(mode) => {
                 self.input_state = match mode {
@@ -233,7 +239,7 @@ impl InputHandler {
             }
         }
 
-        interrupt_loop
+        should_break
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
