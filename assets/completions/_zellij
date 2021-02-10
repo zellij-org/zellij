@@ -1,0 +1,45 @@
+#compdef zellij
+
+autoload -U is-at-least
+
+_zellij() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" \
+'-s+[Send "split (direction h == horizontal / v == vertical)" to active mosaic session]' \
+'--split=[Send "split (direction h == horizontal / v == vertical)" to active mosaic session]' \
+'-o+[Send "open file in new pane" to active mosaic session]' \
+'--open-file=[Send "open file in new pane" to active mosaic session]' \
+'--max-panes=[Maximum panes on screen, caution: opening more panes will close old ones]' \
+'-l+[Path to a layout yaml file]' \
+'--layout=[Path to a layout yaml file]' \
+'-m[Send "move focused pane" to active mosaic session]' \
+'--move-focus[Send "move focused pane" to active mosaic session]' \
+'-d[]' \
+'--debug[]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+&& ret=0
+    
+}
+
+(( $+functions[_zellij_commands] )) ||
+_zellij_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij commands' commands "$@"
+}
+
+_zellij "$@"

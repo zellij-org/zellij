@@ -1,0 +1,25 @@
+---
+source: src/tests/integration/resize_up.rs
+expression: snapshot_before_quit
+
+---
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line11-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line17-bbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│line18-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           │line19-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│prompt $ █                    │line18-bbbbbbbbbbbbbbbbbbbbbb
+a                                                           ├──────────────────────────────┤line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                                                    │line10-bbbbbbbbbbbbbbbbbbbbbbb│prompt $                     
+────────────────────────────────────────────────────────────┤line11-bbbbbbbbbbbbbbbbbbbbbbb├─────────────────────────────
+line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbbb│line12-bbbbbbbbbbbbbbbbbbbbbb
+line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbbb│line13-bbbbbbbbbbbbbbbbbbbbbb
+line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbbb│line14-bbbbbbbbbbbbbbbbbbbbbb
+line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbbb│line15-bbbbbbbbbbbbbbbbbbbbbb
+line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbbb│line16-bbbbbbbbbbbbbbbbbbbbbb
+line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbbb│line17-bbbbbbbbbbbbbbbbbbbbbb
+line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbbb│line18-bbbbbbbbbbbbbbbbbbbbbb
+line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbbb│line19-bbbbbbbbbbbbbbbbbbbbbb
+prompt $                                                    │prompt $                      │prompt $                     

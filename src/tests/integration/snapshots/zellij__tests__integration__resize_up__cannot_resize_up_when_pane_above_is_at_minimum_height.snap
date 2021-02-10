@@ -1,0 +1,10 @@
+---
+source: src/tests/integration/resize_up.rs
+expression: snapshot_before_quit
+
+---
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+prompt $                                                                                                                 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+prompt $ █                                                                                                               
