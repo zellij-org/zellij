@@ -18,7 +18,7 @@ use super::keybinds::key_to_actions;
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputState`], as well as changes to that state.
 struct InputHandler {
-    input_state: InputState,
+    mode: InputMode,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
@@ -37,10 +37,7 @@ impl InputHandler {
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
-            input_state: InputState {
-                mode: InputMode::Normal,
-                persistent: false,
-            },
+            mode: InputMode::Normal,
             os_input,
             command_is_executing,
             send_screen_instructions,
@@ -60,8 +57,8 @@ impl InputHandler {
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
-            'input_loop: loop {
-                let entry_mode = self.input_state.mode;
+            /*'input_loop:*/ loop {
+                //let entry_mode = self.input_state.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
                 drop(
@@ -72,25 +69,25 @@ impl InputHandler {
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
-                                let should_break = {
-                                    let mut should_break = false;
+                                //let should_break = {
+                                //    let mut should_break = false;
                                     for action in key_to_actions(
-                                        &key, raw_bytes, &self.input_state.mode, &keybinds,
+                                        &key, raw_bytes, &self.mode, &keybinds,
                                     ) {
-                                        should_break = should_break | self.dispatch_action(action);
+                                        /*should_break |= */self.dispatch_action(action);
                                     }
-                                    should_break
-                                };
+                                    //should_break
+                                //};
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-                                if entry_mode == self.input_state.mode && !self.input_state.persistent {
-                                    self.input_state.mode = InputMode::Normal;
-                                    update_state(&self.send_app_instructions, |_| AppState {
-                                        input_state: self.input_state.clone()
-                                    });
-                                }
-                                if should_break {
-                                    break 'input_loop;
-                                }
+                                //if entry_mode == self.input_state.mode && !self.input_state.persistent {
+                                //    self.input_state.mode = InputMode::Normal;
+                                //    update_state(&self.send_app_instructions, |_| AppState {
+                                //        input_state: self.input_state.clone()
+                                //    });
+                                //}
+                                //if should_break {
+                                //    break 'input_loop;
+                                //}
                             }
                             termion::event::Event::Mouse(_)
                             | termion::event::Event::Unsupported(_) => {
@@ -124,28 +121,13 @@ impl InputHandler {
                 should_break = true;
             }
             Action::SwitchToMode(mode) => {
-                self.input_state = match mode {
-                    InputMode::Normal => InputState {
-                        mode,
-                        persistent: false,
-                    },
-                    _ => InputState {
-                        mode,
-                        persistent: self.input_state.persistent,
-                    },
-                };
+                self.mode = mode;
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: self.input_state.clone(),
+                    input_mode: self.mode,
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
-            }
-            Action::TogglePersistentMode => {
-                self.input_state.persistent = !self.input_state.persistent;
-                update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: self.input_state.clone(),
-                });
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -294,7 +276,6 @@ pub enum InputMode {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
-    pub mode_is_persistent: bool,
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
 }
 
@@ -306,9 +287,9 @@ impl Default for InputMode {
 
 /// Prints the keybinds for the current [`InputMode`] in the status bar.
 // TODO this should probably be automatically generated in some way
-pub fn get_help(input_state: &InputState) -> Help {
+pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
-    match input_state.mode {
+    match mode {
         InputMode::Normal | InputMode::Command | InputMode::Exiting => {
             keybinds.push((format!("p"), format!("Pane mode")));
             keybinds.push((format!("t"), format!("Tab mode")));
@@ -338,8 +319,7 @@ pub fn get_help(input_state: &InputState) -> Help {
     keybinds.push((format!("ESC"), format!("Back")));
     keybinds.push((format!("q"), format!("Quit")));
     Help {
-        mode: input_state.mode,
-        mode_is_persistent: input_state.persistent,
+        mode,
         keybinds,
     }
 }

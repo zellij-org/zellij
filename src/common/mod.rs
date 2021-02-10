@@ -17,7 +17,7 @@ use std::{collections::HashMap, fs};
 
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
-use input::handler::InputState;
+use input::handler::InputMode;
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -45,7 +45,7 @@ pub enum ApiCommand {
 // FIXME: It would be good to add some more things to this over time
 #[derive(Debug, Clone, Default)]
 pub struct AppState {
-    pub input_state: InputState,
+    pub input_mode: InputMode,
 }
 
 // FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
