@@ -646,7 +646,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let restore_snapshot = "\u{1b}[?1049l";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
-        "{}\n{}{}{}Bye from Mosaic!",
+        "{}\n{}{}{}Bye from Zellij!",
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor
     );
 
