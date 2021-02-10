@@ -1,6 +1,6 @@
-# Contributing to Mosaic
+# Contributing to Zellij
 
-Thanks for considering to contribute to mosaic!
+Thanks for considering to contribute to Zellij!
 
 **First**: if you're unsure or afraid of anything, just ask on our
 [Discord server][discord-invite-link] or submit the issue or pull request anyway.
@@ -15,24 +15,24 @@ all contributors are expected to adhere to.
 
 ## Looking for something to work on?
 
-If you are new contributor to `Mosaic` going through [beginners][good-first-issue]
+If you are new contributor to `Zellij` going through [beginners][good-first-issue]
 should be a good start or you can join our public
 [Discord server][discord-invite-link], we would be happy to help
 finding something interesting to work on and guide through.
 
 [discord-invite-link]: https://discord.gg/feHDHahHCz
-[good-first-issue]: https://github.com/mosaic-org/mosaic/labels/good%20first%20issue
+[good-first-issue]: https://github.com/zellij-org/zellij/labels/good%20first%20issue
 
 ## Filing Issues
 
 Bugs and enhancement suggestions are tracked as GitHub issues.
 
-### Lacking API for plugin in mosaic?
+### Lacking API for plugin in Zellij?
 
-If you have a plugin idea, but mosaic still doesn't have API required to make
+If you have a plugin idea, but Zellij still doesn't have API required to make
 the plugin consider opening [an issue][plugin-issue] and describing your requirements.
 
-[plugin-issue]: https://github.com/mosaic-org/mosaic/issues/new?assignees=&labels=plugin%20system
+[plugin-issue]: https://github.com/zellij-org/zellij/issues/new?assignees=&labels=plugin%20system
 
 ### How Do I Submit A (Good) Bug Report?
 
