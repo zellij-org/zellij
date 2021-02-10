@@ -11,7 +11,7 @@ use termion::event::Key;
 type Keybinds = HashMap<InputMode, ModeKeybinds>;
 type ModeKeybinds = HashMap<Key, Action>;
 
-/// Populate the default hashmap of keybinds
+/// Populates the default hashmap of keybinds.
 /// @@@khs26 What about an input config file?
 pub fn get_default_keybinds() -> Result<Keybinds, String> {
     let mut defaults = Keybinds::new();
@@ -23,6 +23,7 @@ pub fn get_default_keybinds() -> Result<Keybinds, String> {
     Ok(defaults)
 }
 
+/// Returns the default keybinds for a givent [`InputMode`].
 fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
     let mut defaults = ModeKeybinds::new();
 
@@ -130,6 +131,8 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
     Ok(defaults)
 }
 
+/// Converts a [`Key`] terminal event to an [`Action`] according to the current
+/// [`InputMode`] and [`Keybinds`].
 pub fn key_to_action(key: &Key, input: Vec<u8>, mode: &InputMode, keybinds: &Keybinds) -> Action {
     if let Some(mode_keybinds) = keybinds.get(mode) {
         mode_keybinds

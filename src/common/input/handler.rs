@@ -15,6 +15,8 @@ use termion::input::TermReadEventsAndRaw;
 
 use super::keybinds::key_to_action;
 
+/// Handles the dispatching of [`Action`]s according to the current
+/// [`InputState`], as well as changes to that state.
 struct InputHandler {
     mode: InputMode,
     mode_is_persistent: bool,
@@ -47,7 +49,9 @@ impl InputHandler {
         }
     }
 
-    /// Main event loop
+    /// Main event loop. Interprets the terminal [`Event`](termion::event::Event)s
+    /// as [`Action`]s according to the current [`InputState`], and dispatches those
+    /// actions.
     fn get_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
@@ -243,6 +247,9 @@ impl InputHandler {
     }
 }
 
+/// An `InputState` is an [`InputMode`] along with its persistency, i.e.
+/// whether the mode should be exited after a single action or it should
+/// stay the same until it is explicitly exited.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
 pub struct InputState {
     mode: InputMode,
@@ -258,13 +265,14 @@ impl Default for InputState {
     }
 }
 
-/// Dictates whether we're in command mode, persistent command mode, normal mode or exiting:
-/// - Normal mode either writes characters to the terminal, or switches to command mode
+/// Dictates the input mode, which is the way that keystrokes will be interpreted:
+/// - Normal mode either writes characters to the terminal, or switches to Command mode
 ///   using a particular key control
-/// - Command mode intercepts characters to control zellij itself, before switching immediately
-///   back to normal mode
-/// - Persistent command mode is the same as command mode, but doesn't return automatically to
-///   normal mode
+/// - Command mode is a menu that allows choosing another mode, like Resize or Pane
+/// - Resize mode is for resizing the different panes already present
+/// - Pane mode is for creating and closing panes in different directions
+/// - Tab mode is for creating tabs and moving between then
+/// - Scroll mode is for scrolling up and down within panes
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
     Normal,
@@ -276,6 +284,9 @@ pub enum InputMode {
     Exiting,
 }
 
+/// Represents the help message that is printed in the status bar, indicating
+/// the current [`InputMode`], whether that mode is persistent, and what the
+/// keybinds for that mode are.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
@@ -289,6 +300,8 @@ impl Default for InputMode {
     }
 }
 
+/// Prints the keybinds for the current [`InputMode`] in the status bar.
+// TODO this should probably be automatically generated in some way
 pub fn get_help(input_state: &InputState) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match input_state.mode {
