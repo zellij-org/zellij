@@ -8,7 +8,7 @@ mod client;
 
 use client::{boundaries, layout, panes, tab};
 use common::{
-    command_is_executing, errors, ipc, os_input_output, pty_bus, screen, start, utils, wasm_vm,
+    command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
     ApiCommand,
 };
 

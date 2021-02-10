@@ -38,7 +38,8 @@ fn main() {
     let alt_target = manifest_dir.join("target/tiles");
     for project in members {
         let path = manifest_dir.join(project.as_str().unwrap());
-        set_current_dir(&path);
+        // Should be able to change directory to continue build process
+        set_current_dir(&path).unwrap();
 
         // FIXME: This is soul-crushingly terrible, but I can't keep the values alive long enough
         if var("PROFILE").unwrap() == "release" {
@@ -58,7 +59,8 @@ fn main() {
                 .unwrap();
         }
     }
-    set_current_dir(&starting_dir);
+    // Should be able to change directory to continue build process
+    set_current_dir(&starting_dir).unwrap();
 
     if var("PROFILE").unwrap() == "release" {
         // FIXME: Deduplicate this with the initial walk all .rs pattern

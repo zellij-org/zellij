@@ -4,8 +4,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-
-use crate::utils::logging::debug_log_to_file;
+// use crate::utils::logging::debug_log_to_file;
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
