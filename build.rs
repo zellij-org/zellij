@@ -112,7 +112,7 @@ fn main() {
         "layouts/default.yaml",
         "layouts/strider.yaml",
     ];
-    let project_dirs = ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
     fs::create_dir_all(data_dir.join("plugins")).unwrap();
     fs::create_dir_all(data_dir.join("layouts")).unwrap();

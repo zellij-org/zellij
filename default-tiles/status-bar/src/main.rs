@@ -23,7 +23,7 @@ impl Display for LinePart {
 }
 
 fn prefix(help: &Help) -> LinePart {
-    let prefix_text = " Mosaic ";
+    let prefix_text = " Zellij ";
     let part = match (&help.mode, help.mode_is_persistent) {
         (InputMode::Command, false) => {
             let prefix = prefix_text.bold().white().on_black();
