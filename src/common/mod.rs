@@ -32,8 +32,8 @@ use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::{MOSAIC_IPC_PIPE, MOSAIC_ROOT_PLUGIN_DIR};
-use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
+use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
+use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -414,9 +414,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
                         let project_dirs =
-                            ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+                            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
-                        let root_plugin_dir = Path::new(MOSAIC_ROOT_PLUGIN_DIR);
+                        let root_plugin_dir = Path::new(ZELLIJ_ROOT_PLUGIN_DIR);
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
@@ -430,7 +430,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let output = Pipe::new();
                         let input = Pipe::new();
-                        let mut wasi_env = WasiState::new("mosaic")
+                        let mut wasi_env = WasiState::new("Zellij")
                             .env("CLICOLOR_FORCE", "1")
                             .preopen(|p| {
                                 p.directory(".") // FIXME: Change this to a more meaningful dir
@@ -455,8 +455,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             wasi_env,
                         };
 
-                        let mosaic = mosaic_imports(&store, &plugin_env);
-                        let instance = Instance::new(&module, &mosaic.chain_back(wasi)).unwrap();
+                        let zellij = zellij_imports(&store, &plugin_env);
+                        let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
                         let start = instance.exports.get_function("_start").unwrap();
 
@@ -530,8 +530,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let mut send_pty_instructions = send_pty_instructions.clone();
             let mut send_screen_instructions = send_screen_instructions.clone();
             move || {
-                std::fs::remove_file(MOSAIC_IPC_PIPE).ok();
-                let listener = std::os::unix::net::UnixListener::bind(MOSAIC_IPC_PIPE)
+                std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
+                let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
                     .expect("could not listen on ipc socket");
                 let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
                 err_ctx.add_call(ContextType::IPCServer);

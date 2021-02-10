@@ -33,7 +33,7 @@ pub struct PluginEnv {
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
 
-pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
+pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "zellij" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),

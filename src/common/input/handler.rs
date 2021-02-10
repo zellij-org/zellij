@@ -235,7 +235,7 @@ impl InputHandler {
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
-    /// same as quitting mosaic)
+    /// same as quitting zellij)
     fn exit(&mut self) {
         self.send_app_instructions
             .send(AppInstruction::Exit)
@@ -261,7 +261,7 @@ impl Default for InputState {
 /// Dictates whether we're in command mode, persistent command mode, normal mode or exiting:
 /// - Normal mode either writes characters to the terminal, or switches to command mode
 ///   using a particular key control
-/// - Command mode intercepts characters to control mosaic itself, before switching immediately
+/// - Command mode intercepts characters to control zellij itself, before switching immediately
 ///   back to normal mode
 /// - Persistent command mode is the same as command mode, but doesn't return automatically to
 ///   normal mode

@@ -16,7 +16,7 @@ use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
  *
  * They work like this:
  * - receive fake TTY input containing various VTE instructions.
- * - run that output through mosaic so it interprets it and creates its state based on it
+ * - run that output through zellij so it interprets it and creates its state based on it
  * - read that state into a Human-readable snapshot and compare it to the expected snapshot for
  * this scenario.
  *

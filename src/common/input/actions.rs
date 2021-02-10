@@ -12,7 +12,7 @@ pub enum Direction {
 
 #[derive(Clone)]
 pub enum Action {
-    /// Quit mosaic
+    /// Quit Zellij
     Quit,
     /// Write to terminal
     Write(Vec<u8>),

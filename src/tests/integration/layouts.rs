@@ -45,7 +45,7 @@ pub fn accepts_basic_layout() {
     // created properly and that in the end it's populated properly with its content
     //
     // we read the next to last as well as the last, because the last includes the "Bye from
-    // Mosaic" message, and we also want to make sure things are fine before that
+    // Zellij" message, and we also want to make sure things are fine before that
     assert_snapshot!(first_snapshot);
     assert_snapshot!(next_to_last_snapshot);
     assert_snapshot!(last_snapshot);
