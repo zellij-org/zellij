@@ -18,8 +18,7 @@ use super::keybinds::key_to_action;
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputState`], as well as changes to that state.
 struct InputHandler {
-    mode: InputMode,
-    mode_is_persistent: bool,
+    input_state: InputState,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
@@ -38,8 +37,10 @@ impl InputHandler {
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
         InputHandler {
-            mode: InputMode::Normal,
-            mode_is_persistent: false,
+            input_state: InputState {
+                mode: InputMode::Normal,
+                persistent: false,
+            },
             os_input,
             command_is_executing,
             send_screen_instructions,
@@ -60,7 +61,7 @@ impl InputHandler {
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
             'input_loop: loop {
-                let entry_mode = self.mode;
+                let entry_mode = self.input_state.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
                 drop(
@@ -72,16 +73,13 @@ impl InputHandler {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
                                 let should_break = self.dispatch_action(key_to_action(
-                                    &key, raw_bytes, &self.mode, &keybinds,
+                                    &key, raw_bytes, &self.input_state.mode, &keybinds,
                                 ));
                                 //@@@ This is a hack until we dispatch more than one action per key stroke
-                                if entry_mode == self.mode && !self.mode_is_persistent {
-                                    self.mode = InputMode::Normal;
+                                if entry_mode == self.input_state.mode && !self.input_state.persistent {
+                                    self.input_state.mode = InputMode::Normal;
                                     update_state(&self.send_app_instructions, |_| AppState {
-                                        input_state: InputState {
-                                            mode: self.mode,
-                                            persistent: self.mode_is_persistent,
-                                        },
+                                        input_state: self.input_state.clone()
                                     });
                                 }
                                 if should_break {
@@ -120,27 +118,27 @@ impl InputHandler {
                 interrupt_loop = true;
             }
             Action::SwitchToMode(mode) => {
-                self.mode = mode;
-                if mode == InputMode::Normal {
-                    self.mode_is_persistent = false;
-                }
-                update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState {
-                        mode: self.mode,
-                        persistent: self.mode_is_persistent,
+                self.input_state = match mode {
+                    InputMode::Normal => InputState {
+                        mode,
+                        persistent: false,
                     },
+                    _ => InputState {
+                        mode,
+                        persistent: self.input_state.persistent,
+                    },
+                };
+                update_state(&self.send_app_instructions, |_| AppState {
+                    input_state: self.input_state.clone(),
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
             }
             Action::TogglePersistentMode => {
-                self.mode_is_persistent = !self.mode_is_persistent;
+                self.input_state.persistent = !self.input_state.persistent;
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState {
-                        mode: self.mode,
-                        persistent: self.mode_is_persistent,
-                    },
+                    input_state: self.input_state.clone(),
                 });
             }
             Action::Resize(direction) => {
