@@ -2,7 +2,7 @@ use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Default, Debug)]
+#[derive(StructOpt, Debug, Default, Clone)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
     /// Send "split (direction h == horizontal / v == vertical)" to active zellij session

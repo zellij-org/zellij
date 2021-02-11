@@ -9,8 +9,9 @@ pub mod setup;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::cell::RefCell;
-use std::path::PathBuf;
+use std::io::Write;
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::{collections::HashMap, fs};
@@ -23,19 +24,12 @@ use std::{
 };
 
 use crate::cli::CliArgs;
-use crate::common::input::config::Config;
-use crate::layout::Layout;
-use crate::panes::PaneId;
-use async_std::task_local;
+use crate::server::start_server;
 use command_is_executing::CommandIsExecuting;
-use directories_next::ProjectDirs;
-use errors::{
-    get_current_ctx, AppContext, ContextType, ErrorContext, PluginContext, PtyContext,
-    ScreenContext,
-};
+use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
 use os_input_output::OsApi;
-use pty_bus::{PtyBus, PtyInstruction};
+use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use setup::install;
@@ -45,12 +39,36 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ApiCommand {
     OpenFile(PathBuf),
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+    ToPty(PtyInstruction),
+    ToScreen(ScreenInstruction),
+    ClosePluginPane(u32),
+    Quit,
+}
+
+// FIXME: It would be good to add some more things to this over time
+#[derive(Debug, Clone, Default)]
+pub struct AppState {
+    pub input_mode: InputMode,
+}
+
+// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
+// from self instead of being explicitly passed here
+pub fn update_state(
+    app_tx: &SenderWithContext<AppInstruction>,
+    update_fn: impl FnOnce(AppState) -> AppState,
+) {
+    let (state_tx, state_rx) = mpsc::channel();
+
+    drop(app_tx.send(AppInstruction::GetState(state_tx)));
+    let state = state_rx.recv().unwrap();
+
+    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
@@ -66,7 +84,7 @@ pub type SyncChannelWithContext<T> = (
 
 /// Wrappers around the two standard [MPSC](mpsc) sender types, [`mpsc::Sender`] and [`mpsc::SyncSender`], with an additional [`ErrorContext`].
 #[derive(Clone)]
-enum SenderType<T: Clone> {
+pub enum SenderType<T: Clone> {
     /// A wrapper around an [`mpsc::Sender`], adding an [`ErrorContext`].
     Sender(mpsc::Sender<(T, ErrorContext)>),
     /// A wrapper around an [`mpsc::SyncSender`], adding an [`ErrorContext`].
@@ -81,8 +99,8 @@ pub struct SenderWithContext<T: Clone> {
 }
 
 impl<T: Clone> SenderWithContext<T> {
-    fn new(sender: SenderType<T>) -> Self {
-        Self { sender }
+    pub fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
+        Self { err_ctx, sender }
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this
@@ -116,6 +134,9 @@ task_local! {
 pub enum AppInstruction {
     Exit,
     Error(String),
+    ToPty(PtyInstruction),
+    ToScreen(ScreenInstruction),
+    ToPlugin(PluginInstruction),
 }
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
@@ -140,10 +161,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let send_screen_instructions =
         SenderWithContext::new(SenderType::Sender(send_screen_instructions));
 
-    let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
-        mpsc::channel();
-    let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
-
     let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
         PluginInstruction,
     > = mpsc::channel();
@@ -155,30 +172,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let send_app_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
-    let mut pty_bus = PtyBus::new(
-        receive_pty_instructions,
-        send_screen_instructions.clone(),
-        send_plugin_instructions.clone(),
+    let ipc_thread = start_server(
         os_input.clone(),
-        opts.debug,
+        opts.clone(),
+        command_is_executing.clone(),
+        send_app_instructions.clone(),
     );
-
-    // Determine and initialize the data directory
-    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-    let data_dir = opts
-        .data_dir
-        .unwrap_or_else(|| project_dirs.data_dir().to_path_buf());
-    install::populate_data_dir(&data_dir);
-
-    // Don't use default layouts in tests, but do everywhere else
-    #[cfg(not(test))]
-    let default_layout = Some(PathBuf::from("default"));
-    #[cfg(test)]
-    let default_layout = None;
-    let maybe_layout = opts
-        .layout
-        .map(|p| Layout::new(&p, &data_dir))
-        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -189,72 +188,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
         })
     });
 
-    let pty_thread = thread::Builder::new()
-        .name("pty".to_string())
-        .spawn({
-            let mut command_is_executing = command_is_executing.clone();
-            send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
-            move || loop {
-                let (event, mut err_ctx) = pty_bus
-                    .receive_pty_instructions
-                    .recv()
-                    .expect("failed to receive event on channel");
-                err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                match event {
-                    PtyInstruction::SpawnTerminal(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::NewTab => {
-                        if let Some(layout) = maybe_layout.clone() {
-                            pty_bus.spawn_terminals_for_layout(layout);
-                        } else {
-                            let pid = pty_bus.spawn_terminal(None);
-                            pty_bus
-                                .send_screen_instructions
-                                .send(ScreenInstruction::NewTab(pid))
-                                .unwrap();
-                        }
-                    }
-                    PtyInstruction::ClosePane(id) => {
-                        pty_bus.close_pane(id);
-                        command_is_executing.done_closing_pane();
-                    }
-                    PtyInstruction::CloseTab(ids) => {
-                        pty_bus.close_tab(ids);
-                        command_is_executing.done_closing_pane();
-                    }
-                    PtyInstruction::Quit => {
-                        break;
-                    }
-                }
-            }
-        })
-        .unwrap();
-
     let screen_thread = thread::Builder::new()
         .name("screen".to_string())
         .spawn({
             let mut command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
@@ -262,7 +200,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
-                    send_pty_instructions,
                     send_plugin_instructions,
                     send_app_instructions,
                     &full_screen_ws,
@@ -281,6 +218,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
+                    screen.send_app_instructions.update(err_ctx);
                     match event {
                         ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                             let active_tab = screen.get_active_tab_mut().unwrap();
@@ -460,10 +398,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let wasm_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
-            let send_plugin_instructions = send_plugin_instructions.clone();
+            let mut send_screen_instructions = send_screen_instructions.clone();
+            let mut send_app_instructions = send_app_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -473,6 +409,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                send_screen_instructions.update(err_ctx);
+                send_app_instructions.update(err_ctx);
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
                         let plugin_dir = data_dir.join("plugins/");
@@ -505,7 +443,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
 
                         let plugin_env = PluginEnv {
                             plugin_id,
-                            send_pty_instructions: send_pty_instructions.clone(),
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
                             send_plugin_instructions: send_plugin_instructions.clone(),
@@ -556,83 +493,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
         })
         .unwrap();
 
-    let _signal_thread = thread::Builder::new()
-        .name("signal_listener".to_string())
-        .spawn({
-            let os_input = os_input.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
-            move || {
-                os_input.receive_sigwinch(Box::new(move || {
-                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
-                }));
-            }
-        })
-        .unwrap();
-
-    // TODO: currently we don't wait for this to quit
-    // because otherwise the app will hang. Need to fix this so it both
-    // listens to the ipc-bus and is able to quit cleanly
-    #[cfg(not(test))]
-    let _ipc_thread = thread::Builder::new()
-        .name("ipc_server".to_string())
-        .spawn({
-            use std::io::Read;
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
-            move || {
-                std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
-                let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
-                    .expect("could not listen on ipc socket");
-                let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-                err_ctx.add_call(ContextType::IpcServer);
-
-                for stream in listener.incoming() {
-                    match stream {
-                        Ok(mut stream) => {
-                            let mut buffer = [0; 65535]; // TODO: more accurate
-                            let _ = stream
-                                .read(&mut buffer)
-                                .expect("failed to parse ipc message");
-                            let decoded: ApiCommand = bincode::deserialize(&buffer)
-                                .expect("failed to deserialize ipc message");
-                            match &decoded {
-                                ApiCommand::OpenFile(file_name) => {
-                                    let path = PathBuf::from(file_name);
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminal(Some(path)))
-                                        .unwrap();
-                                }
-                                ApiCommand::SplitHorizontally => {
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                                        .unwrap();
-                                }
-                                ApiCommand::SplitVertically => {
-                                    send_pty_instructions
-                                        .send(PtyInstruction::SpawnTerminalVertically(None))
-                                        .unwrap();
-                                }
-                                ApiCommand::MoveFocus => {
-                                    send_screen_instructions
-                                        .send(ScreenInstruction::FocusNextPane)
-                                        .unwrap();
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            panic!("err {:?}", err);
-                        }
-                    }
-                }
-            }
-        })
-        .unwrap();
-
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
             let config = config;
@@ -642,12 +506,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     config,
                     command_is_executing,
                     send_screen_instructions,
-                    send_pty_instructions,
                     send_plugin_instructions,
                     send_app_instructions,
                 )
             }
         });
+
+    let mut server_stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
 
     #[warn(clippy::never_loop)]
     loop {
@@ -656,15 +521,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             .expect("failed to receive app instruction on channel");
 
         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
+        send_screen_instructions.update(err_ctx);
         match app_instruction {
             AppInstruction::Exit => {
                 break;
             }
             AppInstruction::Error(backtrace) => {
+                let api_command = bincode::serialize(&(err_ctx, ApiCommand::Quit)).unwrap();
+                server_stream.write_all(&api_command).unwrap();
+                let _ = ipc_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
-                let _ = pty_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
                 let _ = wasm_thread.join();
                 os_input.unset_raw_mode(0);
@@ -680,11 +547,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     .unwrap();
                 std::process::exit(1);
             }
+            AppInstruction::ToScreen(instruction) => {
+                send_screen_instructions.send(instruction).unwrap();
+            }
+            AppInstruction::ToPlugin(instruction) => {
+                send_plugin_instructions.send(instruction).unwrap();
+            }
+            AppInstruction::ToPty(instruction) => {
+                let api_command =
+                    bincode::serialize(&(err_ctx, ApiCommand::ToPty(instruction))).unwrap();
+                server_stream.write_all(&api_command).unwrap();
+            }
         }
     }
 
-    let _ = send_pty_instructions.send(PtyInstruction::Quit);
-    pty_thread.join().unwrap();
+    let api_command = bincode::serialize(&(err_ctx, ApiCommand::Quit)).unwrap();
+    server_stream.write_all(&api_command).unwrap();
+    let _ = ipc_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);

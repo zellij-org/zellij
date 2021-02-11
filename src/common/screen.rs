@@ -1,5 +1,6 @@
 //! Things related to [`Screen`]s.
 
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
@@ -16,7 +17,7 @@ use crate::{layout::Layout, panes::PaneId};
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
@@ -68,8 +69,6 @@ pub struct Screen {
     max_panes: Option<usize>,
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
-    /// A [`PtyInstruction`] and [`ErrorContext`] sender.
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     /// A [`PluginInstruction`] and [`ErrorContext`] sender.
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     /// An [`AppInstruction`] and [`ErrorContext`] sender.
@@ -91,7 +90,6 @@ impl Screen {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
@@ -104,7 +102,6 @@ impl Screen {
         Screen {
             receiver: receive_screen_instructions,
             max_panes,
-            send_pty_instructions,
             send_plugin_instructions,
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
@@ -128,7 +125,6 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
-            self.send_pty_instructions.clone(),
             self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,
@@ -215,8 +211,8 @@ impl Screen {
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
         let _ = self
-            .send_pty_instructions
-            .send(PtyInstruction::CloseTab(pane_ids));
+            .send_app_instructions
+            .send(AppInstruction::ToPty(PtyInstruction::CloseTab(pane_ids)));
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.send_app_instructions
@@ -285,7 +281,6 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
-            self.send_pty_instructions.clone(),
             self.send_plugin_instructions.clone(),
             self.send_app_instructions.clone(),
             self.max_panes,

@@ -23,7 +23,6 @@ struct InputHandler {
     config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_pty_instructions: SenderWithContext<PtyInstruction>,
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
     should_exit: bool,
@@ -36,7 +35,6 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         config: Config,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
     ) -> Self {
@@ -46,7 +44,6 @@ impl InputHandler {
             config,
             command_is_executing,
             send_screen_instructions,
-            send_pty_instructions,
             send_plugin_instructions,
             send_app_instructions,
             should_exit: false,
@@ -58,25 +55,34 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        let alt_left_bracket = vec![27, 91];
-        loop {
-            if self.should_exit {
-                break;
-            }
-            let stdin_buffer = self.os_input.read_from_stdin();
-            for key_result in stdin_buffer.events_and_raw() {
-                match key_result {
-                    Ok((event, raw_bytes)) => match event {
-                        termion::event::Event::Key(key) => {
-                            let key = cast_termion_key(key);
-                            self.handle_key(&key, raw_bytes);
-                        }
-                        termion::event::Event::Unsupported(unsupported_key) => {
-                            // we have to do this because of a bug in termion
-                            // this should be a key event and not an unsupported event
-                            if unsupported_key == alt_left_bracket {
-                                let key = Key::Alt('[');
-                                self.handle_key(&key, raw_bytes);
+        self.send_app_instructions.update(err_ctx);
+        self.send_screen_instructions.update(err_ctx);
+        if let Ok(keybinds) = get_default_keybinds() {
+            'input_loop: loop {
+                //@@@ I think this should actually just iterate over stdin directly
+                let stdin_buffer = self.os_input.read_from_stdin();
+                for key_result in stdin_buffer.events_and_raw() {
+                    match key_result {
+                        Ok((event, raw_bytes)) => match event {
+                            termion::event::Event::Key(key) => {
+                                let key = cast_termion_key(key);
+                                // FIXME this explicit break is needed because the current test
+                                // framework relies on it to not create dead threads that loop
+                                // and eat up CPUs. Do not remove until the test framework has
+                                // been revised. Sorry about this (@categorille)
+                                let mut should_break = false;
+                                for action in key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                                {
+                                    should_break |= self.dispatch_action(action);
+                                }
+                                if should_break {
+                                    break 'input_loop;
+                                }
+                            }
+                            termion::event::Event::Mouse(_)
+                            | termion::event::Event::Unsupported(_) => {
+                                // Mouse and unsupported events aren't implemented yet,
+                                // use a NoOp untill then.
                             }
                         }
                         termion::event::Event::Mouse(_) => {
@@ -220,7 +226,9 @@ impl InputHandler {
                     None => PtyInstruction::SpawnTerminal(None),
                 };
                 self.command_is_executing.opening_new_pane();
-                self.send_pty_instructions.send(pty_instr).unwrap();
+                self.send_app_instructions
+                    .send(AppInstruction::ToPty(pty_instr))
+                    .unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
             Action::CloseFocus => {
@@ -232,8 +240,8 @@ impl InputHandler {
             }
             Action::NewTab => {
                 self.command_is_executing.opening_new_pane();
-                self.send_pty_instructions
-                    .send(PtyInstruction::NewTab)
+                self.send_app_instructions
+                    .send(AppInstruction::ToPty(PtyInstruction::NewTab))
                     .unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
@@ -332,7 +340,6 @@ pub fn input_loop(
     config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_pty_instructions: SenderWithContext<PtyInstruction>,
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
 ) {
@@ -341,7 +348,6 @@ pub fn input_loop(
         command_is_executing,
         config,
         send_screen_instructions,
-        send_pty_instructions,
         send_plugin_instructions,
         send_app_instructions,
     )
