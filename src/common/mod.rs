@@ -122,6 +122,37 @@ thread_local!(
     /// stack in the form of an [`ErrorContext`].
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
+pub struct IpcSenderWithContext {
+    err_ctx: ErrorContext,
+    sender: UnixStream,
+}
+
+impl IpcSenderWithContext {
+    pub fn new() -> Self {
+        Self {
+            err_ctx: ErrorContext::new(),
+            sender: UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap(),
+        }
+    }
+
+    pub fn update(&mut self, ctx: ErrorContext) {
+        self.err_ctx = ctx;
+    }
+
+    pub fn send(&mut self, msg: ApiCommand) -> std::io::Result<()> {
+        let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
+        self.sender.write_all(&command)
+    }
+}
+
+impl std::clone::Clone for IpcSenderWithContext {
+    fn clone(&self) -> Self {
+        Self {
+            err_ctx: self.err_ctx,
+            sender: UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap(),
+        }
+    }
+}
 
 task_local! {
     /// A key to some task local storage that holds a representation of the task's call
@@ -512,7 +543,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             }
         });
 
-    let mut server_stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
+    let mut send_server_instructions = IpcSenderWithContext::new();
 
     #[warn(clippy::never_loop)]
     loop {
@@ -522,13 +553,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
 
         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
         send_screen_instructions.update(err_ctx);
+        send_server_instructions.update(err_ctx);
         match app_instruction {
             AppInstruction::Exit => {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                let api_command = bincode::serialize(&(err_ctx, ApiCommand::Quit)).unwrap();
-                server_stream.write_all(&api_command).unwrap();
+                let _ = send_server_instructions.send(ApiCommand::Quit);
                 let _ = ipc_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
@@ -554,15 +585,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                 send_plugin_instructions.send(instruction).unwrap();
             }
             AppInstruction::ToPty(instruction) => {
-                let api_command =
-                    bincode::serialize(&(err_ctx, ApiCommand::ToPty(instruction))).unwrap();
-                server_stream.write_all(&api_command).unwrap();
+                let _ = send_server_instructions.send(ApiCommand::ToPty(instruction));
             }
         }
     }
 
-    let api_command = bincode::serialize(&(err_ctx, ApiCommand::Quit)).unwrap();
-    server_stream.write_all(&api_command).unwrap();
+    let _ = send_server_instructions.send(ApiCommand::Quit);
     let _ = ipc_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
