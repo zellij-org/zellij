@@ -24,8 +24,7 @@ pub enum PluginInstruction {
 pub struct PluginEnv {
     pub plugin_id: u32,
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
+    pub send_app_instructions: SenderWithContext<AppInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
 }
@@ -60,8 +59,10 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 fn host_open_file(plugin_env: &PluginEnv) {
     let path = PathBuf::from(wasi_stdout(&plugin_env.wasi_env).lines().next().unwrap());
     plugin_env
-        .send_pty_instructions
-        .send(PtyInstruction::SpawnTerminal(Some(path)))
+        .send_app_instructions
+        .send(AppInstruction::ToPty(PtyInstruction::SpawnTerminal(Some(
+            path,
+        ))))
         .unwrap();
 }
 

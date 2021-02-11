@@ -1,5 +1,198 @@
-use super::super::common::{screen};
+use crate::cli::CliArgs;
+use crate::command_is_executing::CommandIsExecuting;
+use crate::common::{
+	ApiCommand, AppInstruction, ChannelWithContext, SenderType, SenderWithContext,
+};
+use crate::errors::{ContextType, ErrorContext, PtyContext};
+use crate::layout::Layout;
+use crate::os_input_output::OsApi;
+use crate::panes::PaneId;
+use crate::pty_bus::{PtyBus, PtyInstruction};
+use crate::screen::ScreenInstruction;
+use crate::utils::consts::ZELLIJ_IPC_PIPE;
+use crate::wasm_vm::PluginInstruction;
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use std::thread;
 
-pub fn start_server() {
-  // TODO
+pub fn start_server(
+	os_input: Box<dyn OsApi>,
+	opts: CliArgs,
+	command_is_executing: CommandIsExecuting,
+	mut send_app_instructions: SenderWithContext<AppInstruction>,
+) -> thread::JoinHandle<()> {
+	let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
+		channel();
+	let mut send_pty_instructions = SenderWithContext::new(
+		ErrorContext::new(),
+		SenderType::Sender(send_pty_instructions),
+	);
+
+	std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
+	let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
+		.expect("could not listen on ipc socket");
+
+	// Don't use default layouts in tests, but do everywhere else
+	#[cfg(not(test))]
+	let default_layout = Some(PathBuf::from("default"));
+	#[cfg(test)]
+	let default_layout = None;
+	let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
+
+	let server_stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
+	let mut pty_bus = PtyBus::new(
+		receive_pty_instructions,
+		os_input.clone(),
+		server_stream,
+		opts.debug,
+	);
+
+	let pty_thread = thread::Builder::new()
+		.name("pty".to_string())
+		.spawn({
+			let mut command_is_executing = command_is_executing.clone();
+			send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+			move || loop {
+				let (event, mut err_ctx) = pty_bus
+					.receive_pty_instructions
+					.recv()
+					.expect("failed to receive event on channel");
+				err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+				match event {
+					PtyInstruction::SpawnTerminal(file_to_open) => {
+						let pid = pty_bus.spawn_terminal(file_to_open);
+						let api_command = bincode::serialize(&(
+							err_ctx,
+							ApiCommand::ToScreen(ScreenInstruction::NewPane(PaneId::Terminal(pid))),
+						))
+						.unwrap();
+						pty_bus.server_stream.write_all(&api_command).unwrap();
+					}
+					PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+						let pid = pty_bus.spawn_terminal(file_to_open);
+						let api_command = bincode::serialize(&(
+							err_ctx,
+							ApiCommand::ToScreen(ScreenInstruction::VerticalSplit(
+								PaneId::Terminal(pid),
+							)),
+						))
+						.unwrap();
+						pty_bus.server_stream.write_all(&api_command).unwrap();
+					}
+					PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+						let pid = pty_bus.spawn_terminal(file_to_open);
+						let api_command = bincode::serialize(&(
+							err_ctx,
+							ApiCommand::ToScreen(ScreenInstruction::HorizontalSplit(
+								PaneId::Terminal(pid),
+							)),
+						))
+						.unwrap();
+						pty_bus.server_stream.write_all(&api_command).unwrap();
+					}
+					PtyInstruction::NewTab => {
+						if let Some(layout) = maybe_layout.clone() {
+							pty_bus.spawn_terminals_for_layout(layout, err_ctx);
+						} else {
+							let pid = pty_bus.spawn_terminal(None);
+							let api_command = bincode::serialize(&(
+								err_ctx,
+								ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)),
+							))
+							.unwrap();
+							pty_bus.server_stream.write_all(&api_command).unwrap();
+						}
+					}
+					PtyInstruction::ClosePane(id) => {
+						pty_bus.close_pane(id, err_ctx);
+						command_is_executing.done_closing_pane();
+					}
+					PtyInstruction::CloseTab(ids) => {
+						pty_bus.close_tab(ids, err_ctx);
+						command_is_executing.done_closing_pane();
+					}
+					PtyInstruction::Quit => {
+						break;
+					}
+				}
+			}
+		})
+		.unwrap();
+
+	thread::Builder::new()
+		.name("ipc_server".to_string())
+		.spawn({
+			move || {
+				for stream in listener.incoming() {
+					match stream {
+						Ok(mut stream) => {
+							let mut buffer = [0; 65535]; // TODO: more accurate
+							let bytes = stream
+								.read(&mut buffer)
+								.expect("failed to parse ipc message");
+							println!("{}\n\n", bytes);
+							let (mut err_ctx, decoded): (ErrorContext, ApiCommand) =
+								bincode::deserialize(&buffer[0..bytes])
+									.expect("failed to deserialize ipc message");
+							err_ctx.add_call(ContextType::IPCServer);
+							send_pty_instructions.update(err_ctx);
+							send_app_instructions.update(err_ctx);
+
+							match decoded {
+								ApiCommand::OpenFile(file_name) => {
+									let path = PathBuf::from(file_name);
+									send_pty_instructions
+										.send(PtyInstruction::SpawnTerminal(Some(path)))
+										.unwrap();
+								}
+								ApiCommand::SplitHorizontally => {
+									send_pty_instructions
+										.send(PtyInstruction::SpawnTerminalHorizontally(None))
+										.unwrap();
+								}
+								ApiCommand::SplitVertically => {
+									send_pty_instructions
+										.send(PtyInstruction::SpawnTerminalVertically(None))
+										.unwrap();
+								}
+								ApiCommand::MoveFocus => {
+									send_app_instructions
+										.send(AppInstruction::ToScreen(
+											ScreenInstruction::MoveFocus,
+										))
+										.unwrap();
+								}
+								ApiCommand::ToPty(instruction) => {
+									send_pty_instructions.send(instruction).unwrap();
+								}
+								ApiCommand::ToScreen(instruction) => {
+									send_app_instructions
+										.send(AppInstruction::ToScreen(instruction))
+										.unwrap();
+								}
+								ApiCommand::ClosePluginPane(pid) => {
+									send_app_instructions
+										.send(AppInstruction::ToPlugin(PluginInstruction::Unload(
+											pid,
+										)))
+										.unwrap();
+								}
+								ApiCommand::Quit => {
+									send_pty_instructions.send(PtyInstruction::Quit).unwrap();
+									break;
+								}
+							}
+						}
+						Err(err) => {
+							panic!("err {:?}", err);
+						}
+					}
+				}
+
+				let _ = pty_thread.join();
+			}
+		})
+		.unwrap()
 }

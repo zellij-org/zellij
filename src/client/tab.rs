@@ -65,7 +65,6 @@ pub struct Tab {
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
     os_api: Box<dyn OsApi>,
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
@@ -212,7 +211,6 @@ impl Tab {
         name: String,
         full_screen_ws: &PositionAndSize,
         mut os_api: Box<dyn OsApi>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
@@ -244,7 +242,6 @@ impl Tab {
             fullscreen_is_active: false,
             os_api,
             send_app_instructions,
-            send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
             should_clear_display_before_rendering: false,
@@ -326,8 +323,10 @@ impl Tab {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
-            self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
+            self.send_app_instructions
+                .send(AppInstruction::ToPty(PtyInstruction::ClosePane(
+                    PaneId::Terminal(*unused_pid),
+                )))
                 .unwrap();
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
@@ -373,8 +372,8 @@ impl Tab {
                 },
             );
             if terminal_id_to_split.is_none() {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                self.send_app_instructions
+                    .send(AppInstruction::ToPty(PtyInstruction::ClosePane(pid))) // we can't open this pane, close the pty
                     .unwrap();
                 return; // likely no terminal large enough to split
             }
@@ -448,23 +447,25 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
-        } else if let PaneId::Terminal(term_pid) = pid {
-            // TODO: check minimum size of active terminal
-            let active_pane_id = &self.get_active_pane_id().unwrap();
-            let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-            if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
-                return;
-            }
-            let terminal_ws = PositionAndSize {
-                x: active_pane.x(),
-                y: active_pane.y(),
-                rows: active_pane.rows(),
-                columns: active_pane.columns(),
-            };
-            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+        } else {
+            // FIXME: This could use a second look
+            if let PaneId::Terminal(term_pid) = pid {
+                // TODO: check minimum size of active terminal
+                let active_pane_id = &self.get_active_pane_id().unwrap();
+                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
+                if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
+                    self.send_app_instructions
+                        .send(AppInstruction::ToPty(PtyInstruction::ClosePane(pid))) // we can't open this pane, close the pty
+                        .unwrap();
+                    return;
+                }
+                let terminal_ws = PositionAndSize {
+                    x: active_pane.x(),
+                    y: active_pane.y(),
+                    rows: active_pane.rows(),
+                    columns: active_pane.columns(),
+                };
+                let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
 
             active_pane.change_pos_and_size(&top_winsize);
 
@@ -504,25 +505,25 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
-        } else if let PaneId::Terminal(term_pid) = pid {
-            // TODO: check minimum size of active terminal
-            let active_pane_id = &self.get_active_pane_id().unwrap();
-            let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-            if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
-                return;
-            }
-            let terminal_ws = PositionAndSize {
-                x: active_pane.x(),
-                y: active_pane.y(),
-                rows: active_pane.rows(),
-                columns: active_pane.columns(),
-            };
-            let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
-
-            active_pane.change_pos_and_size(&left_winsize);
+        } else {
+            // FIXME: This could use a second look
+            if let PaneId::Terminal(term_pid) = pid {
+                // TODO: check minimum size of active terminal
+                let active_pane_id = &self.get_active_pane_id().unwrap();
+                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
+                if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
+                    self.send_app_instructions
+                        .send(AppInstruction::ToPty(PtyInstruction::ClosePane(pid))) // we can't open this pane, close the pty
+                        .unwrap();
+                    return;
+                }
+                let terminal_ws = PositionAndSize {
+                    x: active_pane.x(),
+                    y: active_pane.y(),
+                    rows: active_pane.rows(),
+                    columns: active_pane.columns(),
+                };
+                let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
 
             let new_terminal = TerminalPane::new(term_pid, right_winsize);
             self.os_api.set_terminal_size_using_fd(
@@ -2097,8 +2098,8 @@ impl Tab {
         if let Some(max_panes) = self.max_panes {
             let terminals = self.get_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid))
+                self.send_app_instructions
+                    .send(AppInstruction::ToPty(PtyInstruction::ClosePane(pid)))
                     .unwrap();
                 self.close_pane_without_rerender(pid);
             }
@@ -2209,8 +2210,10 @@ impl Tab {
     pub fn close_focused_pane(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             self.close_pane(active_pane_id);
-            self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(active_pane_id))
+            self.send_app_instructions
+                .send(AppInstruction::ToPty(PtyInstruction::ClosePane(
+                    active_pane_id,
+                )))
                 .unwrap();
         }
     }

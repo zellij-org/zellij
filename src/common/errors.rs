@@ -4,6 +4,7 @@
 use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
+use serde::{Deserialize, Serialize};
 
 use std::fmt::{Display, Error, Formatter};
 
@@ -79,7 +80,7 @@ pub fn get_current_ctx() -> ErrorContext {
 }
 
 /// A representation of the call stack.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
@@ -131,7 +132,7 @@ impl Display for ErrorContext {
 /// Complex variants store a variant of a related enum, whose variants can be built from
 /// the corresponding Zellij MSPC instruction enum variants ([`ScreenInstruction`],
 /// [`PtyInstruction`], [`AppInstruction`], etc).
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContextType {
     /// A screen-related call.
     Screen(ScreenContext),
@@ -141,7 +142,7 @@ pub enum ContextType {
     Plugin(PluginContext),
     /// An app-related call.
     App(AppContext),
-    IpcServer,
+    IPCServer, // Fix: Create a separate ServerContext when sessions are introduced
     StdinHandler,
     AsyncTask,
     /// An empty, placeholder call. This should be thought of as representing no call at all.
@@ -174,7 +175,7 @@ impl Display for ContextType {
 
 // FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyBytes,
     Render,
@@ -261,7 +262,7 @@ impl From<&ScreenInstruction> for ScreenContext {
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
     SpawnTerminal,
     SpawnTerminalVertically,
@@ -291,7 +292,7 @@ impl From<&PtyInstruction> for PtyContext {
 use crate::wasm_vm::PluginInstruction;
 
 /// Stack call representations corresponding to the different types of [`PluginInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PluginContext {
     Load,
     Update,
@@ -313,10 +314,13 @@ impl From<&PluginInstruction> for PluginContext {
 }
 
 /// Stack call representations corresponding to the different types of [`AppInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum AppContext {
     Exit,
     Error,
+    ToPty,
+    ToPlugin,
+    ToScreen,
 }
 
 impl From<&AppInstruction> for AppContext {
@@ -324,6 +328,9 @@ impl From<&AppInstruction> for AppContext {
         match *app_instruction {
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
+            AppInstruction::ToPty(_) => AppContext::ToPty,
+            AppInstruction::ToPlugin(_) => AppContext::ToPlugin,
+            AppInstruction::ToScreen(_) => AppContext::ToScreen,
         }
     }
 }
