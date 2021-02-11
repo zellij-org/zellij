@@ -41,20 +41,22 @@ impl ZellijTile for State {
 
     fn handle_key(&mut self, key: Key) {
         match key {
-            Key::Up => {
+            Key::Up | Key::Char('k') => {
                 *self.selected_mut() = self.selected().saturating_sub(1);
             }
-            Key::Down => {
+            Key::Down | Key::Char('j') => {
                 let next = self.selected().saturating_add(1);
                 *self.selected_mut() = min(self.files.len() - 1, next);
             }
-            Key::Right | Key::Char('\n') => match self.files[self.selected()].clone() {
-                FsEntry::Dir(p, _) => {
-                    self.path = p;
-                    refresh_directory(self);
+            Key::Right | Key::Char('\n') | Key::Char('l') => {
+                match self.files[self.selected()].clone() {
+                    FsEntry::Dir(p, _) => {
+                        self.path = p;
+                        refresh_directory(self);
+                    }
+                    FsEntry::File(p, _) => open_file(&p),
                 }
-                FsEntry::File(p, _) => open_file(&p),
-            },
+            }
             Key::Left => {
                 self.path.pop();
                 refresh_directory(self);
