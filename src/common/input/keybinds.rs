@@ -1,4 +1,4 @@
-// This module is for mapping particular input keys to their corresponding actions.
+//! Mapping of inputs to sequences of actions
 
 use super::actions::{Action, Direction};
 use super::handler::InputMode;
@@ -58,7 +58,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
             defaults.insert(Key::Ctrl('g'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Pane => {
             defaults.insert(Key::Char('h'), vec![Action::MoveFocus(Direction::Left)]);
@@ -86,7 +86,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
             defaults.insert(Key::Ctrl('g'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Tab => {
             defaults.insert(Key::Char('h'), vec![Action::GoToPreviousTab]);
@@ -109,7 +109,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
             defaults.insert(Key::Ctrl('g'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Scroll => {
             defaults.insert(Key::Char('j'), vec![Action::ScrollDown]);
@@ -123,7 +123,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
 
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
             defaults.insert(Key::Ctrl('g'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Exiting => {}
     }
@@ -139,10 +139,10 @@ pub fn key_to_actions(key: &Key, input: Vec<u8>, mode: &InputMode, keybinds: &Ke
             .get(key)
             .cloned()
             // FIXME in command mode, unbound keystrokes should probably do nothing instead of
-            // writing to the terminal (@categorille)
+            // writing to the terminal. Will be easier to implement after a big refactor of the
+            // input system (@categorille)
             .unwrap_or(vec![Action::Write(input)])
     } else {
-        // Unrecognized mode - panic?
-        panic!("Unrecognized mode: {:?}", mode);
+        unreachable!("Unrecognized mode: {:?}", mode);
     }
 }
