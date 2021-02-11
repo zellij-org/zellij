@@ -129,12 +129,11 @@ pub fn start_server(
 					match stream {
 						Ok(mut stream) => {
 							let mut buffer = [0; 65535]; // TODO: more accurate
-							let bytes = stream
+							let _ = stream
 								.read(&mut buffer)
 								.expect("failed to parse ipc message");
-							println!("{}\n\n", bytes);
 							let (mut err_ctx, decoded): (ErrorContext, ApiCommand) =
-								bincode::deserialize(&buffer[0..bytes])
+								bincode::deserialize(&buffer)
 									.expect("failed to deserialize ipc message");
 							err_ctx.add_call(ContextType::IPCServer);
 							send_pty_instructions.update(err_ctx);
