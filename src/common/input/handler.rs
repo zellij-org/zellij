@@ -240,8 +240,8 @@ impl Default for InputState {
 /// - Command mode is a menu that allows choosing another mode, like Resize or Pane
 /// - Resize mode is for resizing the different panes already present
 /// - Pane mode is for creating and closing panes in different directions
-/// - Tab mode is for creating tabs and moving between then
-/// - Scroll mode is for scrolling up and down within panes
+/// - Tab mode is for creating tabs and moving between them
+/// - Scroll mode is for scrolling up and down within a pane
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
     Normal,
@@ -292,7 +292,7 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push((format!("f"), format!("Fullscreen")));
         }
         InputMode::Tab => {
-            keybinds.push((format!("←→"), format!("Move focus")));
+            keybinds.push((format!("←↓↑→"), format!("Move focus")));
             keybinds.push((format!("n"), format!("New")));
             keybinds.push((format!("x"), format!("Close")));
         }
@@ -308,8 +308,8 @@ pub fn get_help(mode: InputMode) -> Help {
     }
 }
 
-/// Entry point to the module that instantiates a new InputHandler and calls its
-/// reading loop
+/// Entry point to the module. Instantiates a new InputHandler and calls its
+/// input loop.
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
