@@ -274,33 +274,34 @@ pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Command | InputMode::Exiting => {
-            keybinds.push((format!("p"), format!("Pane mode")));
-            keybinds.push((format!("t"), format!("Tab mode")));
-            keybinds.push((format!("r"), format!("Resize mode")));
+            keybinds.push((format!("p"), format!("PANE")));
+            keybinds.push((format!("t"), format!("TAB")));
+            keybinds.push((format!("r"), format!("RESIZE")));
+            keybinds.push((format!("s"), format!("SCROLL")));
         }
         InputMode::Resize => {
-            keybinds.push((format!("←↓↑→"), format!("resize pane")));
+            keybinds.push((format!("←↓↑→"), format!("Resize")));
         }
         InputMode::Pane => {
-            keybinds.push((format!("←↓↑→"), format!("move focus")));
-            keybinds.push((format!("p"), format!("next pane")));
-            keybinds.push((format!("n"), format!("new pane")));
-            keybinds.push((format!("d"), format!("down split")));
-            keybinds.push((format!("r"), format!("right split")));
-            keybinds.push((format!("x"), format!("exit pane")));
-            keybinds.push((format!("f"), format!("fullscreen pane")));
+            keybinds.push((format!("←↓↑→"), format!("Move focus")));
+            keybinds.push((format!("p"), format!("Next")));
+            keybinds.push((format!("n"), format!("New")));
+            keybinds.push((format!("d"), format!("Split down")));
+            keybinds.push((format!("r"), format!("Split right")));
+            keybinds.push((format!("x"), format!("Close")));
+            keybinds.push((format!("f"), format!("Fullscreen")));
         }
         InputMode::Tab => {
-            keybinds.push((format!("←↓↑→"), format!("move tab focus")));
-            keybinds.push((format!("n"), format!("new tab")));
-            keybinds.push((format!("x"), format!("exit tab")));
+            keybinds.push((format!("←→"), format!("Move focus")));
+            keybinds.push((format!("n"), format!("New")));
+            keybinds.push((format!("x"), format!("Close")));
         }
         InputMode::Scroll => {
-            keybinds.push((format!("↓↑"), format!("scroll up/down")));
+            keybinds.push((format!("↓↑"), format!("Scroll")));
         }
     }
-    keybinds.push((format!("ESC"), format!("Back")));
-    keybinds.push((format!("q"), format!("Quit")));
+    keybinds.push((format!("ESC"), format!("BACK")));
+    keybinds.push((format!("q"), format!("QUIT")));
     Help {
         mode,
         keybinds,
