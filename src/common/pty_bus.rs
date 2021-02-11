@@ -8,14 +8,12 @@ use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use ::vte;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
-use super::{ScreenInstruction, OPENCALLS};
+use super::{IpcSenderWithContext, ScreenInstruction, OPENCALLS};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
-use crate::utils::{consts::ZELLIJ_IPC_PIPE, logging::debug_to_file};
+use crate::utils::logging::debug_to_file;
 use crate::{
     common::ApiCommand,
     errors::{ContextType, ErrorContext},
@@ -83,94 +81,94 @@ pub enum VteEvent {
 
 struct VteEventSender {
     id: RawFd,
-    err_ctx: ErrorContext,
-    server_stream: UnixStream,
+    send_server_instructions: IpcSenderWithContext,
 }
 
 impl VteEventSender {
-    pub fn new(id: RawFd, err_ctx: ErrorContext) -> Self {
+    pub fn new(id: RawFd, send_server_instructions: IpcSenderWithContext) -> Self {
         VteEventSender {
             id,
-            err_ctx,
-            server_stream: UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap(),
+            send_server_instructions,
         }
     }
 }
 
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
-        let api_command = bincode::serialize(&(
-            self.err_ctx,
-            ApiCommand::ToScreen(ScreenInstruction::Pty(self.id, VteEvent::Print(c))),
-        ))
-        .unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::Print(c),
+            )))
+            .unwrap();
     }
     fn execute(&mut self, byte: u8) {
-        let api_command = bincode::serialize(&(
-            self.err_ctx,
-            ApiCommand::ToScreen(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte))),
-        ))
-        .unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::Execute(byte),
+            )))
+            .unwrap();
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
-        let instruction =
-            ScreenInstruction::Pty(self.id, VteEvent::Hook(params, intermediates, ignore, c));
-        let api_command =
-            bincode::serialize(&(self.err_ctx, ApiCommand::ToScreen(instruction))).unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::Hook(params, intermediates, ignore, c),
+            )))
+            .unwrap();
     }
 
     fn put(&mut self, byte: u8) {
-        let api_command = bincode::serialize(&(
-            self.err_ctx,
-            ApiCommand::ToScreen(ScreenInstruction::Pty(self.id, VteEvent::Put(byte))),
-        ))
-        .unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::Put(byte),
+            )))
+            .unwrap();
     }
 
     fn unhook(&mut self) {
-        let api_command = bincode::serialize(&(
-            self.err_ctx,
-            ApiCommand::ToScreen(ScreenInstruction::Pty(self.id, VteEvent::Unhook)),
-        ))
-        .unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::Unhook,
+            )))
+            .unwrap();
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params = params.iter().map(|p| p.to_vec()).collect();
-        let instruction =
-            ScreenInstruction::Pty(self.id, VteEvent::OscDispatch(params, bell_terminated));
-        let api_command =
-            bincode::serialize(&(self.err_ctx, ApiCommand::ToScreen(instruction))).unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::OscDispatch(params, bell_terminated),
+            )))
+            .unwrap();
     }
 
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
-        let instruction = ScreenInstruction::Pty(
-            self.id,
-            VteEvent::CsiDispatch(params, intermediates, ignore, c),
-        );
-        let api_command =
-            bincode::serialize(&(self.err_ctx, ApiCommand::ToScreen(instruction))).unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::CsiDispatch(params, intermediates, ignore, c),
+            )))
+            .unwrap();
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         let intermediates = intermediates.iter().copied().collect();
-        let instruction =
-            ScreenInstruction::Pty(self.id, VteEvent::EscDispatch(intermediates, ignore, byte));
-        let api_command =
-            bincode::serialize(&(self.err_ctx, ApiCommand::ToScreen(instruction))).unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+                self.id,
+                VteEvent::EscDispatch(intermediates, ignore, byte),
+            )))
+            .unwrap();
     }
 }
 
@@ -192,7 +190,7 @@ pub struct PtyBus {
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
-    pub server_stream: UnixStream,
+    pub send_server_instructions: IpcSenderWithContext,
 }
 
 fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> JoinHandle<()> {
@@ -200,9 +198,10 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
-            let mut server_stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
+            let mut send_server_instructions = IpcSenderWithContext::new();
+            send_server_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
-            let mut vte_event_sender = VteEventSender::new(pid, err_ctx);
+            let mut vte_event_sender = VteEventSender::new(pid, send_server_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
 
             let mut last_byte_receive_time: Option<Instant> = None;
@@ -228,12 +227,9 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                let api_command = bincode::serialize(&(
-                                    err_ctx,
-                                    ApiCommand::ToScreen(ScreenInstruction::Render),
-                                ))
-                                .unwrap();
-                                server_stream.write_all(&api_command).unwrap();
+                                send_server_instructions
+                                    .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                                    .unwrap();
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -247,31 +243,26 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
                 } else {
                     if pending_render {
                         pending_render = false;
-                        let api_command = bincode::serialize(&(
-                            err_ctx,
-                            ApiCommand::ToScreen(ScreenInstruction::Render),
-                        ))
-                        .unwrap();
-                        server_stream.write_all(&api_command).unwrap();
+                        send_server_instructions
+                            .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                            .unwrap();
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            let api_command =
-                bincode::serialize(&(err_ctx, ApiCommand::ToScreen(ScreenInstruction::Render)))
-                    .unwrap();
-            server_stream.write_all(&api_command).unwrap();
+            send_server_instructions
+                .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
-            let api_command = bincode::serialize(&(
-                err_ctx,
-                ApiCommand::ToScreen(ScreenInstruction::ClosePane(PaneId::Terminal(pid))),
-            ))
-            .unwrap();
-            server_stream.write_all(&api_command).unwrap();
+            send_server_instructions
+                .send(ApiCommand::ToScreen(ScreenInstruction::ClosePane(
+                    PaneId::Terminal(pid),
+                )))
+                .unwrap();
         }
     })
 }
@@ -280,7 +271,7 @@ impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
         os_input: Box<dyn OsApi>,
-        server_stream: UnixStream,
+        send_server_instructions: IpcSenderWithContext,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
@@ -289,7 +280,7 @@ impl PtyBus {
             id_to_child_pid: HashMap::new(),
             debug_to_file,
             task_handles: HashMap::new(),
-            server_stream,
+            send_server_instructions,
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
@@ -309,15 +300,12 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        let api_command = bincode::serialize(&(
-            err_ctx,
-            ApiCommand::ToScreen(ScreenInstruction::ApplyLayout((
+        self.send_server_instructions
+            .send(ApiCommand::ToScreen(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
-            ))),
-        ))
-        .unwrap();
-        self.server_stream.write_all(&api_command).unwrap();
+            ))))
+            .unwrap();
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(id, self.os_input.clone(), self.debug_to_file);
             self.task_handles.insert(id, task_handle);
@@ -333,11 +321,10 @@ impl PtyBus {
                     handle.cancel().await;
                 });
             }
-            PaneId::Plugin(pid) => {
-                let api_command =
-                    bincode::serialize(&(err_ctx, ApiCommand::ClosePluginPane(pid))).unwrap();
-                self.server_stream.write_all(&api_command).unwrap();
-            }
+            PaneId::Plugin(pid) => self
+                .send_server_instructions
+                .send(ApiCommand::ClosePluginPane(pid))
+                .unwrap(),
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>, err_ctx: ErrorContext) {

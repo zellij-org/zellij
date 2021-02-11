@@ -1,7 +1,8 @@
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::common::{
-	ApiCommand, AppInstruction, ChannelWithContext, SenderType, SenderWithContext,
+	ApiCommand, AppInstruction, ChannelWithContext, IpcSenderWithContext, SenderType,
+	SenderWithContext,
 };
 use crate::errors::{ContextType, ErrorContext, PtyContext};
 use crate::layout::Layout;
@@ -11,8 +12,7 @@ use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
 use crate::wasm_vm::PluginInstruction;
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -41,11 +41,12 @@ pub fn start_server(
 	let default_layout = None;
 	let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
 
-	let server_stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
+	let send_server_instructions = IpcSenderWithContext::new();
+
 	let mut pty_bus = PtyBus::new(
 		receive_pty_instructions,
 		os_input.clone(),
-		server_stream,
+		send_server_instructions,
 		opts.debug,
 	);
 
@@ -63,46 +64,40 @@ pub fn start_server(
 				match event {
 					PtyInstruction::SpawnTerminal(file_to_open) => {
 						let pid = pty_bus.spawn_terminal(file_to_open);
-						let api_command = bincode::serialize(&(
-							err_ctx,
-							ApiCommand::ToScreen(ScreenInstruction::NewPane(PaneId::Terminal(pid))),
-						))
-						.unwrap();
-						pty_bus.server_stream.write_all(&api_command).unwrap();
+						pty_bus
+							.send_server_instructions
+							.send(ApiCommand::ToScreen(ScreenInstruction::NewPane(
+								PaneId::Terminal(pid),
+							)))
+							.unwrap();
 					}
 					PtyInstruction::SpawnTerminalVertically(file_to_open) => {
 						let pid = pty_bus.spawn_terminal(file_to_open);
-						let api_command = bincode::serialize(&(
-							err_ctx,
-							ApiCommand::ToScreen(ScreenInstruction::VerticalSplit(
+						pty_bus
+							.send_server_instructions
+							.send(ApiCommand::ToScreen(ScreenInstruction::VerticalSplit(
 								PaneId::Terminal(pid),
-							)),
-						))
-						.unwrap();
-						pty_bus.server_stream.write_all(&api_command).unwrap();
+							)))
+							.unwrap();
 					}
 					PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
 						let pid = pty_bus.spawn_terminal(file_to_open);
-						let api_command = bincode::serialize(&(
-							err_ctx,
-							ApiCommand::ToScreen(ScreenInstruction::HorizontalSplit(
+						pty_bus
+							.send_server_instructions
+							.send(ApiCommand::ToScreen(ScreenInstruction::HorizontalSplit(
 								PaneId::Terminal(pid),
-							)),
-						))
-						.unwrap();
-						pty_bus.server_stream.write_all(&api_command).unwrap();
+							)))
+							.unwrap();
 					}
 					PtyInstruction::NewTab => {
 						if let Some(layout) = maybe_layout.clone() {
 							pty_bus.spawn_terminals_for_layout(layout, err_ctx);
 						} else {
 							let pid = pty_bus.spawn_terminal(None);
-							let api_command = bincode::serialize(&(
-								err_ctx,
-								ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)),
-							))
-							.unwrap();
-							pty_bus.server_stream.write_all(&api_command).unwrap();
+							pty_bus
+								.send_server_instructions
+								.send(ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)))
+								.unwrap();
 						}
 					}
 					PtyInstruction::ClosePane(id) => {
