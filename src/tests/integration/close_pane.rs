@@ -34,6 +34,7 @@ pub fn close_pane_with_another_pane_above_it() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &CLOSE_PANE_IN_PANE_MODE,
@@ -71,6 +72,7 @@ pub fn close_pane_with_another_pane_below_it() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -107,6 +109,7 @@ pub fn close_pane_with_another_pane_to_the_left() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &CLOSE_PANE_IN_PANE_MODE,
@@ -141,6 +144,7 @@ pub fn close_pane_with_another_pane_to_the_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
@@ -179,6 +183,7 @@ pub fn close_pane_with_multiple_panes_above_it() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -221,6 +226,7 @@ pub fn close_pane_with_multiple_panes_below_it() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
@@ -259,6 +265,7 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
@@ -301,6 +308,7 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -340,6 +348,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
@@ -348,15 +357,23 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -401,6 +418,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
@@ -409,15 +427,23 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_DOWN_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_DOWN_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -464,6 +490,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -472,15 +499,23 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -527,6 +562,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -535,15 +571,23 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -579,6 +623,7 @@ pub fn closing_last_pane_exits_app() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,

@@ -47,6 +47,7 @@ pub fn split_terminals_vertically() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &QUIT,
@@ -73,6 +74,7 @@ pub fn split_terminals_horizontally() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -101,6 +103,7 @@ pub fn split_largest_terminal() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
@@ -131,6 +134,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &QUIT,
@@ -157,6 +161,7 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -185,6 +190,7 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
         &QUIT,
@@ -212,10 +218,13 @@ pub fn scrolling_up_inside_a_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &SCROLL_MODE,
         &SCROLL_UP_IN_SCROLL_MODE,
         &SCROLL_UP_IN_SCROLL_MODE,
@@ -244,10 +253,13 @@ pub fn scrolling_down_inside_a_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
+        &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &SCROLL_MODE,
         &SCROLL_UP_IN_SCROLL_MODE,
         &SCROLL_UP_IN_SCROLL_MODE,
@@ -280,6 +292,7 @@ pub fn max_panes() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
+        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
@@ -311,6 +324,7 @@ pub fn toggle_focused_pane_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
+        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,

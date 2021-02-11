@@ -39,9 +39,7 @@ pub fn run_bandwhich_from_fish_shell() {
     };
     let fixture_name = "fish_and_bandwhich";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -64,9 +62,7 @@ pub fn fish_tab_completion_options() {
     };
     let fixture_name = "fish_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -94,9 +90,7 @@ pub fn fish_select_tab_completion_options() {
     };
     let fixture_name = "fish_select_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -128,9 +122,7 @@ pub fn vim_scroll_region_down() {
     };
     let fixture_name = "vim_scroll_region_down";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]); // quit (ctrl-q)
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]); // quit (ctrl-q)
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -159,9 +151,7 @@ pub fn vim_ctrl_d() {
     };
     let fixture_name = "vim_ctrl_d";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -189,9 +179,7 @@ pub fn vim_ctrl_u() {
     };
     let fixture_name = "vim_ctrl_u";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -214,9 +202,7 @@ pub fn htop() {
     };
     let fixture_name = "htop";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -239,9 +225,7 @@ pub fn htop_scrolling() {
     };
     let fixture_name = "htop_scrolling";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -264,9 +248,7 @@ pub fn htop_right_scrolling() {
     };
     let fixture_name = "htop_right_scrolling";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -297,9 +279,7 @@ pub fn vim_overwrite() {
     };
     let fixture_name = "vim_overwrite";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -325,9 +305,7 @@ pub fn clear_scroll_region() {
     };
     let fixture_name = "clear_scroll_region";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -350,9 +328,7 @@ pub fn display_tab_characters_properly() {
     };
     let fixture_name = "tab_characters";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -375,9 +351,7 @@ pub fn neovim_insert_mode() {
     };
     let fixture_name = "nvim_insert";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -402,9 +376,7 @@ pub fn bash_cursor_linewrap() {
     };
     let fixture_name = "bash_cursor_linewrap";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -429,9 +401,7 @@ pub fn fish_paste_multiline() {
     };
     let fixture_name = "fish_paste_multiline";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -454,9 +424,7 @@ pub fn git_log() {
     };
     let fixture_name = "git_log";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -481,9 +449,7 @@ pub fn git_diff_scrollup() {
     };
     let fixture_name = "git_diff_scrollup";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
@@ -506,9 +472,7 @@ pub fn emacs_longbuf() {
     };
     let fixture_name = "emacs_longbuf_tutorial";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
     let output_frames = fake_input_output
         .stdout_writer
