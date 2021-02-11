@@ -48,13 +48,15 @@ impl ZellijTile for State {
                 let next = self.selected().saturating_add(1);
                 *self.selected_mut() = min(self.files.len() - 1, next);
             }
-            Key::Right | Key::Char('\n') | Key::Char('l') => match self.files[self.selected()].clone() {
-                FsEntry::Dir(p, _) => {
-                    self.path = p;
-                    refresh_directory(self);
+            Key::Right | Key::Char('\n') | Key::Char('l') => {
+                match self.files[self.selected()].clone() {
+                    FsEntry::Dir(p, _) => {
+                        self.path = p;
+                        refresh_directory(self);
+                    }
+                    FsEntry::File(p, _) => open_file(&p),
                 }
-                FsEntry::File(p, _) => open_file(&p),
-            },
+            }
             Key::Left => {
                 self.path.pop();
                 refresh_directory(self);
