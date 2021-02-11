@@ -37,6 +37,7 @@ use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::MOSAIC_ROOT_PLUGIN_DIR;
 use wasm_vm::{mosaic_imports, wasi_stdout, wasi_write_string, PluginInstruction};
+use signal_hook::{consts::signal::*, iterator::Signals};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -221,12 +222,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         pty_bus
                             .send_screen_instructions
                             .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::ResizeTerminal => {
-                        pty_bus
-                            .send_screen_instructions
-                            .send(ScreenInstruction::TerminalResize)
                             .unwrap();
                     }
                     PtyInstruction::NewTab => {
@@ -441,41 +436,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
-    let signal_thread = thread::Builder::new()
-        .name("signal_listerner".to_string())
-        .spawn({
-            use signal_hook::{consts::signal::*, iterator::Signals};
+        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+        let signal_handler = signals.handle();
 
-            let send_pty_instructions = send_pty_instructions.clone();
-            let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+        let signal_thread = thread::Builder::new()
+            .name("signal_listener".to_string())
+            .spawn({
+                let send_screen_instructions = send_screen_instructions.clone();
 
-            move || 'signal_listener: loop {
-                for signal in signals.pending() {
-                    match signal as libc::c_int {
-                        SIGWINCH => {
-                            send_pty_instructions
-                                .send(PtyInstruction::ResizeTerminal)
-                                .unwrap();
+                move || {
+                    for signal in signals.forever() {
+                        match signal {
+                            SIGWINCH => {
+                                send_screen_instructions
+                                    .send(ScreenInstruction::TerminalResize)
+                                    .unwrap();
+                            }
+                            SIGTERM | SIGINT | SIGQUIT => {
+                                return;
+                            }
+                            _ => unreachable!(),
                         }
-                        SIGTERM | SIGINT | SIGQUIT => {
-                            break 'signal_listener;
-                        }
-                        _ => {}
                     }
                 }
-
-                match receive_sig_instructions.try_recv() {
-                    Ok((event, _)) => match event {
-                        SigInstruction::Quit => {
-                            break 'signal_listener;
-                        }
-                        _ => {}
-                    },
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => break 'signal_listener,
-                }
-            }
-        })
+            })
         .unwrap();
 
     let wasm_thread = thread::Builder::new()
@@ -685,6 +669,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             }
         });
 
+    let signal_handler_clone = signal_handler.clone();
+
     #[warn(clippy::never_loop)]
     loop {
         let (app_instruction, mut err_ctx) = receive_app_instructions
@@ -704,6 +690,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
                 let _ = send_sig_instructions.send(SigInstruction::Quit);
+                signal_handler_clone.close();
                 let _ = signal_thread.join();
                 let _ = send_pty_instructions.send(PtyInstruction::Quit);
                 let _ = pty_thread.join();
@@ -721,12 +708,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         }
     }
 
-    let _ = send_sig_instructions.send(SigInstruction::Quit);
-    signal_thread.join().unwrap();
     let _ = send_pty_instructions.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
+    let _ = send_sig_instructions.send(SigInstruction::Quit);
+    signal_handler.close();
+    signal_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
 

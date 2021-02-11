@@ -1,0 +1,33 @@
+---
+source: src/tests/integration/compatibility.rs
+expression: snapshot_before_quit
+
+---
+Welcome to fish, the friendly interactive shell                                                                     
+⋊> ~/c/mosaic on main ⨯ vim some-file                                                                       15:07:22
+⋊> ~/c/mosaic on main ⨯ █                                                                                   15:07:29
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    
+                                                                                                                    

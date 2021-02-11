@@ -1,0 +1,12 @@
+[package]
+name = "strider"
+version = "0.2.0"
+authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
+edition = "2018"
+description = "A simplified ranger clone written as a Zellij tile"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+zellij-tile = { path = "../../zellij-tile" }
+pretty-bytes = "0.2"

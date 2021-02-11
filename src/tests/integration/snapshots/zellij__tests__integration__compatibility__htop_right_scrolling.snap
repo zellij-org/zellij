@@ -1,0 +1,33 @@
+---
+source: src/tests/integration/compatibility.rs
+expression: snapshot_before_quit
+
+---
+                                                                                                                    
+  1  [||||||||||                                 16.9%]   Tasks: 110, 512 thr; 1 running                            
+  2  [||||||||||                                 17.1%]   Load average: 1.04 1.30 1.29                              
+  3  [|||||||                                    13.9%]   Uptime: 6 days, 07:01:39                                  
+  4  [|||||||||                                  14.9%]                                                             
+  Mem[|||||||||||||||||||||||||||||||||||||8.80G/15.3G]                                                             
+  Swp[|                                    2.82M/16.0G]                                                             
+                                                                                                                    
+   PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command                                                           
+    20   0  8576  4508  3356 R  1.3  0.0  0:00.11 htop                                                              
+    20   0  171M 10868  7804 S  0.0  0.1  2:08.38 /sbin/init                                                        
+    20   0  107M 29364 28092 S  0.0  0.2  0:03.42 /usr/lib/systemd/systemd-journald                                 
+    20   0 32648  9568  6616 S  0.0  0.1  0:01.87 /usr/lib/systemd/systemd-udevd                                    
+    20   0 78060   992   856 S  0.0  0.0  0:00.00 /usr/bin/lvmetad -f                                               
+    20   0  6952  4356  3492 S  0.0  0.0  0:57.67 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidf
+    20   0 14824  7552  5984 S  0.0  0.0  0:12.93 /usr/bin/connmand -n --nodnsproxy                                 
+    20   0 17696  7940  6696 S  0.0  0.0  0:01.25 /usr/lib/systemd/systemd-logind                                   
+    20   0 1635M 56148 20460 S  0.0  0.3  1:27.24 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  0:38.37 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  0:00.01 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  0:00.00 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  0:00.00 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  0:00.00 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  1:47.55 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  1:26.19 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  1:40.77 /usr/bin/dockerd -H fd://                                         
+    20   0 1635M 56148 20460 S  0.0  0.3  1:47.26 /usr/bin/dockerd -H fd://                                         
+F1Help  F2Setup F3SearchF4FilterF5Tree  F6SortByF7Nice -F8Nice +F9Kill  F10Quit                                     
