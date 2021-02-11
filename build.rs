@@ -90,6 +90,34 @@ fn main() {
                     });
             }
         }
+    } else {
+        // FIXME: Deduplicate this with the initial walk all .rs pattern
+        for entry in fs::read_dir(alt_target.join("wasm32-wasi/debug/")).unwrap() {
+            let entry = entry.unwrap().path();
+            let ext = entry.extension();
+            if ext.is_some() && ext.unwrap() == "wasm" {
+                dbg!(&entry);
+                Command::new("wasm-opt")
+                    .arg("-O")
+                    .arg(entry.as_os_str())
+                    .arg("-o")
+                    .arg(format!(
+                        "assets/plugins/{}",
+                        entry.file_name().unwrap().to_string_lossy()
+                    ))
+                    .status()
+                    .unwrap_or_else(|_| {
+                        Command::new("cp")
+                            .arg(entry.as_os_str())
+                            .arg(format!(
+                                "assets/plugins/{}",
+                                entry.file_name().unwrap().to_string_lossy()
+                            ))
+                            .status()
+                            .unwrap()
+                    });
+            }
+        }
     }
 
     // Generate Shell Completions
