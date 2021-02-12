@@ -91,7 +91,7 @@ pub fn start_server(
 					}
 					PtyInstruction::NewTab => {
 						if let Some(layout) = maybe_layout.clone() {
-							pty_bus.spawn_terminals_for_layout(layout, err_ctx);
+							pty_bus.spawn_terminals_for_layout(layout);
 						} else {
 							let pid = pty_bus.spawn_terminal(None);
 							pty_bus
@@ -101,11 +101,11 @@ pub fn start_server(
 						}
 					}
 					PtyInstruction::ClosePane(id) => {
-						pty_bus.close_pane(id, err_ctx);
+						pty_bus.close_pane(id);
 						command_is_executing.done_closing_pane();
 					}
 					PtyInstruction::CloseTab(ids) => {
-						pty_bus.close_tab(ids, err_ctx);
+						pty_bus.close_tab(ids);
 						command_is_executing.done_closing_pane();
 					}
 					PtyInstruction::Quit => {
