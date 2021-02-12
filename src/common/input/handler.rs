@@ -13,11 +13,12 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
 
-use super::keybinds::key_to_action;
+use super::keybinds::key_to_actions;
 
+/// Handles the dispatching of [`Action`]s according to the current
+/// [`InputMode`], as well as changes to that mode.
 struct InputHandler {
     mode: InputMode,
-    mode_is_persistent: bool,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
@@ -37,7 +38,6 @@ impl InputHandler {
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
-            mode_is_persistent: false,
             os_input,
             command_is_executing,
             send_screen_instructions,
@@ -47,7 +47,9 @@ impl InputHandler {
         }
     }
 
-    /// Main event loop
+    /// Main event loop. Interprets the terminal [`Event`](termion::event::Event)s
+    /// as [`Action`]s according to the current [`InputMode`], and dispatches those
+    /// actions.
     fn get_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
@@ -56,7 +58,6 @@ impl InputHandler {
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
             'input_loop: loop {
-                let entry_mode = self.mode;
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
                 drop(
@@ -67,20 +68,19 @@ impl InputHandler {
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
-                                let should_break = self.dispatch_action(key_to_action(
-                                    &key, raw_bytes, &self.mode, &keybinds,
-                                ));
-                                //@@@ This is a hack until we dispatch more than one action per key stroke
-                                if entry_mode == self.mode && !self.mode_is_persistent {
-                                    self.mode = InputMode::Normal;
-                                    update_state(&self.send_app_instructions, |_| AppState {
-                                        input_state: InputState {
-                                            mode: self.mode,
-                                            persistent: self.mode_is_persistent,
-                                        },
-                                    });
-                                }
-                                if should_break {
+                                // FIXME this explicit break is needed because the current test
+                                // framework relies on it to not create dead threads that loop
+                                // and eat up CPUs. Do not remove until the test framework has
+                                // been revised. Sorry about this (@categorille)
+                                if {
+                                    let mut should_break = false;
+                                    for action in
+                                        key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                                    {
+                                        should_break |= self.dispatch_action(action);
+                                    }
+                                    should_break
+                                } {
                                     break 'input_loop;
                                 }
                             }
@@ -100,7 +100,7 @@ impl InputHandler {
     }
 
     fn dispatch_action(&mut self, action: Action) -> bool {
-        let mut interrupt_loop = false;
+        let mut should_break = false;
 
         match action {
             Action::Write(val) => {
@@ -113,31 +113,16 @@ impl InputHandler {
             }
             Action::Quit => {
                 self.exit();
-                interrupt_loop = true;
+                should_break = true;
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                if mode == InputMode::Normal {
-                    self.mode_is_persistent = false;
-                }
                 update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState {
-                        mode: self.mode,
-                        persistent: self.mode_is_persistent,
-                    },
+                    input_mode: self.mode,
                 });
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
-            }
-            Action::TogglePersistentMode => {
-                self.mode_is_persistent = !self.mode_is_persistent;
-                update_state(&self.send_app_instructions, |_| AppState {
-                    input_state: InputState {
-                        mode: self.mode,
-                        persistent: self.mode_is_persistent,
-                    },
-                });
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
@@ -231,7 +216,7 @@ impl InputHandler {
             }
         }
 
-        interrupt_loop
+        should_break
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
@@ -243,28 +228,14 @@ impl InputHandler {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
-pub struct InputState {
-    mode: InputMode,
-    persistent: bool,
-}
-
-impl Default for InputState {
-    fn default() -> InputState {
-        InputState {
-            mode: InputMode::Normal,
-            persistent: false,
-        }
-    }
-}
-
-/// Dictates whether we're in command mode, persistent command mode, normal mode or exiting:
-/// - Normal mode either writes characters to the terminal, or switches to command mode
+/// Dictates the input mode, which is the way that keystrokes will be interpreted:
+/// - Normal mode either writes characters to the terminal, or switches to Command mode
 ///   using a particular key control
-/// - Command mode intercepts characters to control zellij itself, before switching immediately
-///   back to normal mode
-/// - Persistent command mode is the same as command mode, but doesn't return automatically to
-///   normal mode
+/// - Command mode is a menu that allows choosing another mode, like Resize or Pane
+/// - Resize mode is for resizing the different panes already present
+/// - Pane mode is for creating and closing panes in different directions
+/// - Tab mode is for creating tabs and moving between them
+/// - Scroll mode is for scrolling up and down within a pane
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
     Normal,
@@ -276,10 +247,12 @@ pub enum InputMode {
     Exiting,
 }
 
+/// Represents the help message that is printed in the status bar, indicating
+/// the current [`InputMode`], whether that mode is persistent, and what the
+/// keybinds for that mode are.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
-    pub mode_is_persistent: bool,
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
 }
 
@@ -289,46 +262,45 @@ impl Default for InputMode {
     }
 }
 
-pub fn get_help(input_state: &InputState) -> Help {
+/// Creates a [`Help`] struct holding the current [`InputMode`] and its keybinds.
+// TODO this should probably be automatically generated in some way
+pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
-    match input_state.mode {
+    match mode {
         InputMode::Normal | InputMode::Command | InputMode::Exiting => {
-            keybinds.push((format!("p"), format!("Pane mode")));
-            keybinds.push((format!("t"), format!("Tab mode")));
-            keybinds.push((format!("r"), format!("Resize mode")));
+            keybinds.push((format!("p"), format!("PANE")));
+            keybinds.push((format!("t"), format!("TAB")));
+            keybinds.push((format!("r"), format!("RESIZE")));
+            keybinds.push((format!("s"), format!("SCROLL")));
         }
         InputMode::Resize => {
-            keybinds.push((format!("←↓↑→"), format!("resize pane")));
+            keybinds.push((format!("←↓↑→"), format!("Resize")));
         }
         InputMode::Pane => {
-            keybinds.push((format!("←↓↑→"), format!("move focus")));
-            keybinds.push((format!("p"), format!("next pane")));
-            keybinds.push((format!("n"), format!("new pane")));
-            keybinds.push((format!("d"), format!("down split")));
-            keybinds.push((format!("r"), format!("right split")));
-            keybinds.push((format!("x"), format!("exit pane")));
-            keybinds.push((format!("f"), format!("fullscreen pane")));
+            keybinds.push((format!("←↓↑→"), format!("Move focus")));
+            keybinds.push((format!("p"), format!("Next")));
+            keybinds.push((format!("n"), format!("New")));
+            keybinds.push((format!("d"), format!("Split down")));
+            keybinds.push((format!("r"), format!("Split right")));
+            keybinds.push((format!("x"), format!("Close")));
+            keybinds.push((format!("f"), format!("Fullscreen")));
         }
         InputMode::Tab => {
-            keybinds.push((format!("←↓↑→"), format!("move tab focus")));
-            keybinds.push((format!("n"), format!("new tab")));
-            keybinds.push((format!("x"), format!("exit tab")));
+            keybinds.push((format!("←↓↑→"), format!("Move focus")));
+            keybinds.push((format!("n"), format!("New")));
+            keybinds.push((format!("x"), format!("Close")));
         }
         InputMode::Scroll => {
-            keybinds.push((format!("↓↑"), format!("scroll up/down")));
+            keybinds.push((format!("↓↑"), format!("Scroll")));
         }
     }
-    keybinds.push((format!("ESC"), format!("Back")));
-    keybinds.push((format!("q"), format!("Quit")));
-    Help {
-        mode: input_state.mode,
-        mode_is_persistent: input_state.persistent,
-        keybinds,
-    }
+    keybinds.push((format!("ESC"), format!("BACK")));
+    keybinds.push((format!("q"), format!("QUIT")));
+    Help { mode, keybinds }
 }
 
-/// Entry point to the module that instantiates a new InputHandler and calls its
-/// reading loop
+/// Entry point to the module. Instantiates a new InputHandler and calls its
+/// input loop.
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,

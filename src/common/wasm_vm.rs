@@ -97,7 +97,7 @@ fn host_get_help(plugin_env: &PluginEnv) {
         .try_send(AppInstruction::GetState(state_tx))
         .is_ok()
     {
-        let help = get_help(&state_rx.recv().unwrap().input_state);
+        let help = get_help(state_rx.recv().unwrap().input_mode);
         wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
     }
 }
