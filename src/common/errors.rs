@@ -64,7 +64,7 @@ pub fn handle_panic(
     };
 
     if thread == "main" {
-        println!("{}", backtrace);
+        eprintln!("{}", backtrace);
         process::exit(1);
     } else {
         send_app_instructions
