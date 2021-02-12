@@ -25,7 +25,6 @@ pub fn adding_new_terminal_in_fullscreen() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
@@ -55,7 +54,6 @@ pub fn move_focus_is_disabled_in_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
