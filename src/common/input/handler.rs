@@ -16,7 +16,7 @@ use termion::input::TermReadEventsAndRaw;
 use super::keybinds::key_to_actions;
 
 /// Handles the dispatching of [`Action`]s according to the current
-/// [`InputState`], as well as changes to that state.
+/// [`InputMode`], as well as changes to that mode.
 struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn OsApi>,
@@ -48,7 +48,7 @@ impl InputHandler {
     }
 
     /// Main event loop. Interprets the terminal [`Event`](termion::event::Event)s
-    /// as [`Action`]s according to the current [`InputState`], and dispatches those
+    /// as [`Action`]s according to the current [`InputMode`], and dispatches those
     /// actions.
     fn get_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
@@ -69,12 +69,14 @@ impl InputHandler {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
                                 // FIXME this explicit break is needed because the current test
-                                // framework relies on it to not create dead threads that loop 
+                                // framework relies on it to not create dead threads that loop
                                 // and eat up CPUs. Do not remove until the test framework has
                                 // been revised. Sorry about this (@categorille)
                                 if {
                                     let mut should_break = false;
-                                    for action in key_to_actions( &key, raw_bytes, &self.mode, &keybinds,) {
+                                    for action in
+                                        key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                                    {
                                         should_break |= self.dispatch_action(action);
                                     }
                                     should_break
@@ -226,24 +228,6 @@ impl InputHandler {
     }
 }
 
-/// An `InputState` is an [`InputMode`] along with its persistency, i.e.
-/// whether the mode should be exited after a single action or it should
-/// stay the same until it is explicitly exited.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
-pub struct InputState {
-    mode: InputMode,
-    persistent: bool,
-}
-
-impl Default for InputState {
-    fn default() -> InputState {
-        InputState {
-            mode: InputMode::Normal,
-            persistent: false,
-        }
-    }
-}
-
 /// Dictates the input mode, which is the way that keystrokes will be interpreted:
 /// - Normal mode either writes characters to the terminal, or switches to Command mode
 ///   using a particular key control
@@ -312,10 +296,7 @@ pub fn get_help(mode: InputMode) -> Help {
     }
     keybinds.push((format!("ESC"), format!("BACK")));
     keybinds.push((format!("q"), format!("QUIT")));
-    Help {
-        mode,
-        keybinds,
-    }
+    Help { mode, keybinds }
 }
 
 /// Entry point to the module. Instantiates a new InputHandler and calls its
