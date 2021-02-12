@@ -31,12 +31,9 @@ pub fn resize_left_with_pane_to_the_left() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -71,13 +68,10 @@ pub fn resize_left_with_pane_to_the_right() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -112,15 +106,12 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -156,7 +147,6 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -164,8 +154,6 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -202,7 +190,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -212,8 +199,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -250,15 +235,12 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -295,7 +277,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -304,8 +285,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -342,7 +321,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -350,8 +328,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -390,7 +366,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -401,8 +376,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -441,7 +414,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -454,8 +426,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
@@ -494,21 +464,16 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -528,8 +493,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
@@ -571,21 +534,16 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
 
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -607,8 +565,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
@@ -646,12 +602,9 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &ESC,
-        &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
         &QUIT,
