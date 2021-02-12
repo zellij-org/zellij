@@ -292,7 +292,7 @@ impl PtyBus {
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout_path: PathBuf, err_ctx: ErrorContext) {
+    pub fn spawn_terminals_for_layout(&mut self, layout_path: PathBuf) {
         let layout = Layout::new(layout_path.clone());
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
@@ -312,7 +312,7 @@ impl PtyBus {
             self.task_handles.insert(id, task_handle);
         }
     }
-    pub fn close_pane(&mut self, id: PaneId, err_ctx: ErrorContext) {
+    pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
                 let child_pid = self.id_to_child_pid.remove(&id).unwrap();
@@ -328,9 +328,9 @@ impl PtyBus {
                 .unwrap(),
         }
     }
-    pub fn close_tab(&mut self, ids: Vec<PaneId>, err_ctx: ErrorContext) {
+    pub fn close_tab(&mut self, ids: Vec<PaneId>) {
         ids.iter().for_each(|&id| {
-            self.close_pane(id, err_ctx);
+            self.close_pane(id);
         });
     }
 }
@@ -339,7 +339,7 @@ impl Drop for PtyBus {
     fn drop(&mut self) {
         let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {
-            self.close_pane(PaneId::Terminal(id), ErrorContext::new());
+            self.close_pane(PaneId::Terminal(id));
         }
     }
 }
