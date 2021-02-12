@@ -292,7 +292,8 @@ impl PtyBus {
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout: Layout, err_ctx: ErrorContext) {
+    pub fn spawn_terminals_for_layout(&mut self, layout_path: PathBuf, err_ctx: ErrorContext) {
+        let layout = Layout::new(layout_path.clone());
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
@@ -302,7 +303,7 @@ impl PtyBus {
         }
         self.send_server_instructions
             .send(ApiCommand::ToScreen(ScreenInstruction::ApplyLayout((
-                layout,
+                layout_path,
                 new_pane_pids.clone(),
             ))))
             .unwrap();
