@@ -141,11 +141,8 @@ impl IpcSenderWithContext {
     }
 
     pub fn send(&mut self, msg: ApiCommand) -> std::io::Result<()> {
-        eprintln!("Ipcsender sending {:?}", msg);
         let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
-        UnixStream::connect(MOSAIC_IPC_PIPE)
-            .unwrap()
-            .write_all(&command)
+        self.sender.write_all(&command)
     }
 }
 
@@ -573,11 +570,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
-                //let _ = os_input
-                //    .get_stdout_writer()
-                //    .write(error.as_bytes())
-                //    .unwrap();
-                eprintln!("{}", error);
+                let _ = os_input
+                    .get_stdout_writer()
+                    .write(error.as_bytes())
+                    .unwrap();
                 std::process::exit(1);
             }
             AppInstruction::ToScreen(instruction) => {
