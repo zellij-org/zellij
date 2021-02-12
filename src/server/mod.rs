@@ -90,15 +90,15 @@ pub fn start_server(
 							.unwrap();
 					}
 					PtyInstruction::NewTab => {
-						//if let Some(layout) = maybe_layout.clone() {
-						//    pty_bus.spawn_terminals_for_layout(layout, err_ctx);
-						//} else {
-						let pid = pty_bus.spawn_terminal(None);
-						pty_bus
-							.send_server_instructions
-							.send(ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)))
-							.unwrap();
-						//}
+						if let Some(layout) = maybe_layout.clone() {
+							pty_bus.spawn_terminals_for_layout(layout, err_ctx);
+						} else {
+							let pid = pty_bus.spawn_terminal(None);
+							pty_bus
+								.send_server_instructions
+								.send(ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)))
+								.unwrap();
+						}
 					}
 					PtyInstruction::ClosePane(id) => {
 						pty_bus.close_pane(id, err_ctx);
@@ -120,15 +120,14 @@ pub fn start_server(
 		.name("ipc_server".to_string())
 		.spawn({
 			move || {
-				let mut threads = vec![];
 				for stream in listener.incoming() {
 					match stream {
 						Ok(stream) => {
 							let send_app_instructions = send_app_instructions.clone();
 							let send_pty_instructions = send_pty_instructions.clone();
-							threads.push(thread::spawn(move || {
+							thread::spawn(move || {
 								handle_stream(send_pty_instructions, send_app_instructions, stream);
-							}));
+							});
 						}
 						Err(err) => {
 							panic!("err {:?}", err);
@@ -137,9 +136,6 @@ pub fn start_server(
 				}
 
 				let _ = pty_thread.join();
-				for t in threads {
-					t.join();
-				}
 			}
 		})
 		.unwrap()
@@ -150,20 +146,16 @@ fn handle_stream(
 	mut send_app_instructions: SenderWithContext<AppInstruction>,
 	mut stream: std::os::unix::net::UnixStream,
 ) {
-	//let mut buffer = [0; 65535]; // TODO: more accurate
-	let mut buffer = String::new();
+	let mut buffer = [0; 65535]; // TODO: more accurate
 	loop {
 		let bytes = stream
-			.read_to_string(&mut buffer)
+			.read(&mut buffer)
 			.expect("failed to parse ipc message");
-		//let astream = stream.try_clone().unwrap();
 		let (mut err_ctx, decoded): (ErrorContext, ApiCommand) =
-			bincode::deserialize(buffer.as_bytes()).expect("failed to deserialize ipc message");
+			bincode::deserialize(&buffer[..bytes]).expect("failed to deserialize ipc message");
 		err_ctx.add_call(ContextType::IPCServer);
 		send_pty_instructions.update(err_ctx);
 		send_app_instructions.update(err_ctx);
-
-		eprintln!("Server received {:?}", decoded);
 
 		match decoded {
 			ApiCommand::OpenFile(file_name) => {
