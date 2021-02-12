@@ -57,7 +57,7 @@ impl ZellijTile for State {
                     FsEntry::File(p, _) => open_file(&p),
                 }
             }
-            Key::Left => {
+            Key::Left | Key::Char('h') => {
                 self.path.pop();
                 refresh_directory(self);
             }
