@@ -1,4 +1,8 @@
 use crate::panes::PositionAndSize;
+
+#[cfg(target_os = "macos")]
+use darwin_libproc;
+
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -12,6 +16,9 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+
+#[cfg(target_os = "linux")]
+use std::fs;
 
 use signal_hook::{consts::signal::*, iterator::Signals};
 
@@ -191,6 +198,8 @@ pub trait OsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn OsApi>;
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    /// Returns the current working directory for a given pid
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf>;
 }
 
 impl OsApi for OsInputOutput {
@@ -259,6 +268,22 @@ impl OsApi for OsInputOutput {
                 }
                 _ => unreachable!(),
             }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
+        match darwin_libproc::pid_cwd(pid) {
+            Ok(cwd) => Some(cwd),
+            Err(_) => None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
+        match fs::read_link(format!("/proc/{}/cwd", pid)) {
+            Ok(cwd) => Some(cwd),
+            Err(_) => None,
         }
     }
 }
