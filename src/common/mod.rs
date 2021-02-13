@@ -549,7 +549,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_server_instructions.send(ApiCommand::Quit);
-                let _ = pty_thread.join();
+                //let _ = pty_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
@@ -576,7 +576,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     }
 
     let _ = send_server_instructions.send(ApiCommand::Quit);
-    let _ = pty_thread.join().unwrap();
+    //let _ = pty_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
