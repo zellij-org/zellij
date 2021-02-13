@@ -12,7 +12,8 @@ use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
 use crate::wasm_vm::PluginInstruction;
-use std::io::Read;
+use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -31,8 +32,8 @@ pub fn start_server(
 	);
 
 	std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
-	let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
-		.expect("could not listen on ipc socket");
+	let listener =
+		LocalSocketListener::bind(ZELLIJ_IPC_PIPE).expect("could not listen on ipc socket");
 
 	// Don't use default layouts in tests, but do everywhere else
 	#[cfg(not(test))]
@@ -146,18 +147,20 @@ pub fn start_server(
 					}
 				}
 
-				let _ = pty_thread.join();
+				//let _ = pty_thread.join();
 			}
 		})
-		.unwrap()
+		.unwrap();
+	pty_thread
 }
 
 fn handle_stream(
 	mut send_pty_instructions: SenderWithContext<PtyInstruction>,
 	mut send_app_instructions: SenderWithContext<AppInstruction>,
-	mut stream: std::os::unix::net::UnixStream,
+	mut stream: LocalSocketStream,
 	km: u32,
 ) {
+	//let mut reader = BufReader::new(stream);
 	let mut buffer = [0; 65535]; // TODO: more accurate
 	loop {
 		let bytes = stream
