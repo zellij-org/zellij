@@ -110,7 +110,7 @@ pub fn start_server(
 						command_is_executing.done_closing_pane();
 					}
 					PtyInstruction::Quit => {
-						//break;
+						break;
 					}
 				}
 			}
@@ -146,8 +146,6 @@ pub fn start_server(
 						}
 					}
 				}
-
-				//let _ = pty_thread.join();
 			}
 		})
 		.unwrap();
@@ -160,10 +158,10 @@ fn handle_stream(
 	mut stream: LocalSocketStream,
 	km: u32,
 ) {
-	//let mut reader = BufReader::new(stream);
+	let mut reader = BufReader::new(stream);
 	let mut buffer = [0; 65535]; // TODO: more accurate
 	loop {
-		let bytes = stream
+		let bytes = reader
 			.read(&mut buffer)
 			.expect("failed to parse ipc message");
 		let (mut err_ctx, decoded): (ErrorContext, ApiCommand) =

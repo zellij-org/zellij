@@ -209,7 +209,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let send_app_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
-    let ipc_thread = start_server(
+    let pty_thread = start_server(
         os_input.clone(),
         opts.clone(),
         command_is_executing.clone(),
@@ -566,7 +566,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_server_instructions.send(ApiCommand::Quit);
-                let _ = ipc_thread.join();
+                let _ = pty_thread.join();
                 //IpcSenderWithContext::new().send(ApiCommand::Quit);
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
@@ -595,7 +595,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     }
 
     let _ = send_server_instructions.send(ApiCommand::Quit);
-    let _ = ipc_thread.join().unwrap();
+    let _ = pty_thread.join().unwrap();
     //IpcSenderWithContext::new().send(ApiCommand::Quit);
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
