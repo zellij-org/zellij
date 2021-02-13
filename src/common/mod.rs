@@ -9,18 +9,21 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::io::Write;
-use std::os::unix::net::UnixStream;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::{collections::HashMap, fs};
-use std::{
-    collections::HashSet,
-    io::Write,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+
+use crate::panes::PaneId;
+use directories_next::ProjectDirs;
+use input::handler::InputMode;
+use interprocess::local_socket::LocalSocketStream;
+use serde::{Deserialize, Serialize};
+use termion::input::TermRead;
+use wasm_vm::PluginEnv;
+use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
 use crate::layout::Layout;
@@ -124,14 +127,14 @@ thread_local!(
 );
 pub struct IpcSenderWithContext {
     err_ctx: ErrorContext,
-    sender: UnixStream,
+    sender: BufWriter<LocalSocketStream>,
 }
 
 impl IpcSenderWithContext {
     pub fn new() -> Self {
         Self {
             err_ctx: ErrorContext::new(),
-            sender: UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap(),
+            sender: BufWriter::new(LocalSocketStream::connect(ZELLIJ_IPC_PIPE).unwrap()),
         }
     }
 
@@ -142,7 +145,9 @@ impl IpcSenderWithContext {
     pub fn send(&mut self, msg: ApiCommand) -> std::io::Result<()> {
         eprintln!("IpcSender sent {:?}", msg);
         let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
-        self.sender.write_all(&command)
+        let x = self.sender.write_all(&command);
+        self.sender.flush();
+        x
     }
 }
 
@@ -150,7 +155,7 @@ impl std::clone::Clone for IpcSenderWithContext {
     fn clone(&self) -> Self {
         Self {
             err_ctx: self.err_ctx,
-            sender: UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap(),
+            sender: BufWriter::new(LocalSocketStream::connect(ZELLIJ_IPC_PIPE).unwrap()),
         }
     }
 }
@@ -544,8 +549,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                //let _ = send_server_instructions.send(ApiCommand::Quit);
-                //let _ = ipc_thread.join();
+                let _ = send_server_instructions.send(ApiCommand::Quit);
+                let _ = ipc_thread.join();
                 //IpcSenderWithContext::new().send(ApiCommand::Quit);
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
@@ -574,7 +579,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     }
 
     let _ = send_server_instructions.send(ApiCommand::Quit);
-    //let _ = ipc_thread.join().unwrap();
+    let _ = ipc_thread.join().unwrap();
     //IpcSenderWithContext::new().send(ApiCommand::Quit);
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
