@@ -197,6 +197,7 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
     let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     task::spawn({
         async move {
+            eprintln!("New task spawned");
             err_ctx.add_call(ContextType::AsyncTask);
             let mut send_server_instructions = IpcSenderWithContext::new();
             send_server_instructions.update(err_ctx);

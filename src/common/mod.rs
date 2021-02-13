@@ -140,6 +140,7 @@ impl IpcSenderWithContext {
     }
 
     pub fn send(&mut self, msg: ApiCommand) -> std::io::Result<()> {
+        eprintln!("IpcSender sent {:?}", msg);
         let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
         self.sender.write_all(&command)
     }
@@ -204,7 +205,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         SenderWithContext::new(SenderType::Sender(send_plugin_instructions));
 
     let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
-        mpsc::sync_channel(0);
+        mpsc::sync_channel(500);
     let send_app_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
@@ -543,7 +544,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                let _ = send_server_instructions.send(ApiCommand::Quit);
+                //let _ = send_server_instructions.send(ApiCommand::Quit);
                 //let _ = ipc_thread.join();
                 //IpcSenderWithContext::new().send(ApiCommand::Quit);
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
@@ -553,10 +554,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
-                let _ = os_input
-                    .get_stdout_writer()
-                    .write(error.as_bytes())
-                    .unwrap();
+                //let _ = os_input
+                //    .get_stdout_writer()
+                //    .write(error.as_bytes())
+                //    .unwrap();
+                eprintln!("{}", error);
                 std::process::exit(1);
             }
             AppInstruction::ToScreen(instruction) => {
