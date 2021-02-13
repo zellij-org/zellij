@@ -173,8 +173,6 @@ fn handle_stream(
 		send_pty_instructions.update(err_ctx);
 		send_app_instructions.update(err_ctx);
 
-		eprintln!("Server {} Received {:?}", km, decoded);
-
 		match decoded {
 			ApiCommand::OpenFile(file_name) => {
 				let path = PathBuf::from(file_name);
