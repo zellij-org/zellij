@@ -1,7 +1,8 @@
+//! Main input logic.
+
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
 use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
-/// Module for handling input
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
@@ -16,7 +17,7 @@ use termion::input::TermReadEventsAndRaw;
 use super::keybinds::key_to_actions;
 
 /// Handles the dispatching of [`Action`]s according to the current
-/// [`InputMode`], as well as changes to that mode.
+/// [`InputMode`], and keep tracks of the current [`InputMode`].
 struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn OsApi>,
@@ -28,6 +29,7 @@ struct InputHandler {
 }
 
 impl InputHandler {
+    /// Returns a new [`InputHandler`] with the attributes specified as arguments.
     fn new(
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
@@ -47,10 +49,9 @@ impl InputHandler {
         }
     }
 
-    /// Main event loop. Interprets the terminal [`Event`](termion::event::Event)s
-    /// as [`Action`]s according to the current [`InputMode`], and dispatches those
-    /// actions.
-    fn get_input(&mut self) {
+    /// Main input event loop. Interprets the terminal [`Event`](termion::event::Event)s
+    /// as [`Action`]s according to the current [`InputMode`], and dispatches those actions.
+    fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         self.send_pty_instructions.update(err_ctx);
@@ -99,6 +100,17 @@ impl InputHandler {
         }
     }
 
+    /// Dispatches an [`Action`].
+    ///
+    /// This function's body dictates what each [`Action`] actually does when
+    /// dispatched.
+    ///
+    /// # Return value
+    /// Currently, this function returns a boolean that indicates whether
+    /// [`Self::handle_input()`] should break after this action is dispatched.
+    /// This is a temporary measure that is only necessary due to the way that the
+    /// framework works, and shouldn't be necessary anymore once the test framework
+    /// is revised. See [issue#183](https://github.com/zellij-org/zellij/issues/183).
     fn dispatch_action(&mut self, action: Action) -> bool {
         let mut should_break = false;
 
@@ -220,7 +232,7 @@ impl InputHandler {
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
-    /// same as quitting zellij)
+    /// same as quitting Zellij).
     fn exit(&mut self) {
         self.send_app_instructions
             .send(AppInstruction::Exit)
@@ -228,28 +240,29 @@ impl InputHandler {
     }
 }
 
-/// Dictates the input mode, which is the way that keystrokes will be interpreted:
-/// - Normal mode either writes characters to the terminal, or switches to Command mode
-///   using a particular key control
-/// - Command mode is a menu that allows choosing another mode, like Resize or Pane
-/// - Resize mode is for resizing the different panes already present
-/// - Pane mode is for creating and closing panes in different directions
-/// - Tab mode is for creating tabs and moving between them
-/// - Scroll mode is for scrolling up and down within a pane
+/// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
+    /// In `Normal` mode, input is always written to the terminal, except for one special input that
+    /// triggers the switch to [`InputMode::Command`] mode.
     Normal,
+    /// In `Command` mode, input is bound to actions (more precisely, sequences of actions).
+    /// `Command` mode gives access to the other modes non-`InputMode::Normal` modes.
+    /// etc.
     Command,
+    /// `Resize` mode allows resizing the different existing panes.
     Resize,
+    /// `Pane` mode allows creating and closing panes, as well as moving between them.
     Pane,
+    /// `Tab` mode allows creating and closing tabs, as well as moving between them.
     Tab,
+    /// `Scroll` mode allows scrolling up and down within a pane.
     Scroll,
-    Exiting,
 }
 
-/// Represents the help message that is printed in the status bar, indicating
-/// the current [`InputMode`], whether that mode is persistent, and what the
-/// keybinds for that mode are.
+/// Represents the contents of the help message that is printed in the status bar,
+/// which indicates the current [`InputMode`] and what the keybinds for that mode
+/// are. Related to the default `status-bar` plugin.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
@@ -262,12 +275,13 @@ impl Default for InputMode {
     }
 }
 
-/// Creates a [`Help`] struct holding the current [`InputMode`] and its keybinds.
+/// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
+/// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
 pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
-        InputMode::Normal | InputMode::Command | InputMode::Exiting => {
+        InputMode::Normal | InputMode::Command => {
             keybinds.push((format!("p"), format!("PANE")));
             keybinds.push((format!("t"), format!("TAB")));
             keybinds.push((format!("r"), format!("RESIZE")));
@@ -299,8 +313,8 @@ pub fn get_help(mode: InputMode) -> Help {
     Help { mode, keybinds }
 }
 
-/// Entry point to the module. Instantiates a new InputHandler and calls its
-/// input loop.
+/// Entry point to the module. Instantiates an [`InputHandler`] and starts
+/// its [`InputHandler::handle_input()`] loop.
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,
@@ -317,5 +331,5 @@ pub fn input_loop(
         send_plugin_instructions,
         send_app_instructions,
     )
-    .get_input();
+    .handle_input();
 }
