@@ -1,3 +1,5 @@
+//! All things related to errors and error contexts.
+
 use super::{AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
@@ -66,6 +68,7 @@ pub fn handle_panic(
     }
 }
 
+/// An [`ErrorContext`] struct contains a representation of the call stack
 #[derive(Clone, Copy)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
@@ -108,11 +111,15 @@ impl Display for ErrorContext {
     }
 }
 
+/// Different types of contexts that form an [`ErrorContext`] call stack.
+///
+/// Complex variants store a variant of a related enum, whose variants can be built from
+/// the related custom Zellij MSPC instruction enum variants ([`ScreenInstruction`],
+/// [`PtyInstruction`], [`AppInstruction`], etc.
 #[derive(Copy, Clone, PartialEq)]
 pub enum ContextType {
     Screen(ScreenContext),
     Pty(PtyContext),
-
     Plugin(PluginContext),
     App(AppContext),
     IPCServer,
@@ -121,6 +128,7 @@ pub enum ContextType {
     Empty,
 }
 
+// TODO use the `colored` crate for color formatting
 impl Display for ContextType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let purple = "\u{1b}[1;35m";
@@ -143,6 +151,7 @@ impl Display for ContextType {
     }
 }
 
+/// An element of the error context related to [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
     HandlePtyEvent,
@@ -216,6 +225,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
+/// An element of the error context related to [`PtyInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PtyContext {
     SpawnTerminal,
@@ -245,6 +255,7 @@ impl From<&PtyInstruction> for PtyContext {
 
 use crate::wasm_vm::PluginInstruction;
 
+/// An element of the error context related to [`PluginInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginContext {
     Load,
@@ -268,6 +279,7 @@ impl From<&PluginInstruction> for PluginContext {
     }
 }
 
+/// An element of the error context related to [`AppInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
     GetState,

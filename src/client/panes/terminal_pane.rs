@@ -18,6 +18,9 @@ pub enum PaneId {
     Terminal(RawFd),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
+
+/// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
+/// in character rows and columns.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {
     pub x: usize,

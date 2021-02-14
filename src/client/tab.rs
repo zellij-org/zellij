@@ -1,3 +1,5 @@
+//! `Tab`s holds multiple panes (currently terminal panes). It tracks their coordinates (x/y) and size, as well as how they should be resized
+
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -12,15 +14,6 @@ use std::{
 use std::{io::Write, sync::mpsc::channel};
 
 use crate::utils::logging::debug_log_to_file;
-
-/*
- * Tab
- *
- * this holds multiple panes (currently terminal panes) which are currently displayed
- * when this tab is active.
- * it tracks their coordinates (x/y) and size, as well as how they should be resized
- *
- */
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;

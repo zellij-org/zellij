@@ -10,7 +10,7 @@ pub mod wasm_vm;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, sync_channel, Receiver, SendError, Sender, SyncSender};
+use std::sync::mpsc;
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
@@ -54,7 +54,7 @@ pub fn update_state(
     app_tx: &SenderWithContext<AppInstruction>,
     update_fn: impl FnOnce(AppState) -> AppState,
 ) {
-    let (state_tx, state_rx) = channel();
+    let (state_tx, state_rx) = mpsc::channel();
 
     drop(app_tx.send(AppInstruction::GetState(state_tx)));
     let state = state_rx.recv().unwrap();
@@ -62,15 +62,19 @@ pub fn update_state(
     drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
-pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
-pub type SyncChannelWithContext<T> = (SyncSender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
+pub type ChannelWithContext<T> = (mpsc::Sender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
+pub type SyncChannelWithContext<T> = (mpsc::SyncSender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
 
+/// Wrappers around the two MPSC sender types, [`Sender`] and [`SyncSender`], adding an [`ErrorContext`].
 #[derive(Clone)]
 enum SenderType<T: Clone> {
-    Sender(Sender<(T, ErrorContext)>),
-    SyncSender(SyncSender<(T, ErrorContext)>),
+    /// A wrapper around a [`SyncSender`], adding an [`ErrorContext`].
+    Sender(mpsc::Sender<(T, ErrorContext)>),
+    SyncSender(mpsc::SyncSender<(T, ErrorContext)>),
 }
 
+/// Sends messages on an [MPSC](std::sync::mpsc) channel, along with an [`ErrorContext`],
+/// synchronously or asynchronously depending on the [`SenderType`].
 #[derive(Clone)]
 pub struct SenderWithContext<T: Clone> {
     err_ctx: ErrorContext,
@@ -82,13 +86,20 @@ impl<T: Clone> SenderWithContext<T> {
         Self { err_ctx, sender }
     }
 
-    pub fn send(&self, event: T) -> Result<(), SendError<(T, ErrorContext)>> {
+    /// Sends an event, along with the current [`ErrorContext`], on this
+    /// [`SenderWithContext`]'s MPSC channel.
+    pub fn send(&self, event: T) -> Result<(), mpsc::SendError<(T, ErrorContext)>> {
         match self.sender {
             SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
             SenderType::SyncSender(ref s) => s.send((event, self.err_ctx)),
         }
     }
 
+    /// Attempts to send an event on this sender's channel, terminating instead of blocking
+    /// if the event could not be sent (buffer full or connection closed).
+    ///
+    /// This can only be called on [`SyncSender`](SenderType::SyncSender)s, and will
+    /// panic if called on an asynchronous [`Sender`](SenderType::Sender).
     pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
         if let SenderType::SyncSender(ref s) = self.sender {
             s.try_send((event, self.err_ctx))
@@ -97,6 +108,7 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
+    /// Updates this [`SenderWithContext`]'s [`ErrorContext`].
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
@@ -105,11 +117,15 @@ impl<T: Clone> SenderWithContext<T> {
 unsafe impl<T: Clone> Send for SenderWithContext<T> {}
 unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
-thread_local!(static OPENCALLS: RefCell<ErrorContext> = RefCell::default());
+thread_local!(
+    /// A thread local storage (TLS) key 
+    static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
+);
 
+/// Instructions related to the entire application.
 #[derive(Clone)]
 pub enum AppInstruction {
-    GetState(Sender<AppState>),
+    GetState(mpsc::Sender<AppState>),
     SetState(AppState),
     Exit,
     Error(String),
@@ -130,24 +146,24 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     os_input.set_raw_mode(0);
     let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
         ScreenInstruction,
-    > = channel();
+    > = mpsc::channel();
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
-        channel();
+        mpsc::channel();
     let mut send_pty_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
 
     let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
         PluginInstruction,
-    > = channel();
+    > = mpsc::channel();
     let send_plugin_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
 
     let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
-        sync_channel(0);
+        mpsc::sync_channel(0);
     let send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 

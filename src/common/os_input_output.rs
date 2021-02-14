@@ -2,11 +2,12 @@ use crate::panes::PositionAndSize;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
-use nix::sys::termios::{cfmakeraw, tcdrain, tcgetattr, tcsetattr, SetArg, Termios};
+use nix::sys::termios;
 use nix::sys::wait::waitpid;
-use nix::unistd::{read, write, ForkResult, Pid};
+use nix::unistd;
+use nix::unistd::{ForkResult, Pid};
 use std::io::prelude::*;
-use std::io::{stdin, Write};
+use std::io;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -15,16 +16,16 @@ use std::sync::{Arc, Mutex};
 use std::env;
 
 fn into_raw_mode(pid: RawFd) {
-    let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
-    cfmakeraw(&mut tio);
-    match tcsetattr(pid, SetArg::TCSANOW, &tio) {
+    let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
+    termios::cfmakeraw(&mut tio);
+    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &tio) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: Termios) {
-    match tcsetattr(pid, SetArg::TCSANOW, &orig_termios) {
+fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
+    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
@@ -66,7 +67,7 @@ fn handle_command_exit(mut child: Child) {
         match child.try_wait() {
             Ok(Some(_status)) => {
                 // TODO: handle errors?
-                break;
+                break 'handle_exit;
             }
             Ok(None) => {
                 ::std::thread::sleep(::std::time::Duration::from_millis(100));
@@ -88,7 +89,7 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
-fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawFd, RawFd) {
+fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -136,7 +137,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawF
 
 #[derive(Clone)]
 pub struct OsInputOutput {
-    orig_termios: Arc<Mutex<Termios>>,
+    orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
 pub trait OsApi: Send + Sync {
@@ -150,7 +151,7 @@ pub trait OsApi: Send + Sync {
     fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     fn read_from_stdin(&self) -> Vec<u8>;
-    fn get_stdout_writer(&self) -> Box<dyn Write>;
+    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
 
@@ -173,19 +174,19 @@ impl OsApi for OsInputOutput {
         spawn_terminal(file_to_open, orig_termios.clone())
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        read(pid, buf)
+        unistd::read(pid, buf)
     }
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        write(pid, buf)
+        unistd::write(pid, buf)
     }
     fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        tcdrain(pid)
+        termios::tcdrain(pid)
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {
-        let stdin = stdin();
+        let stdin = std::io::stdin();
         let mut stdin = stdin.lock();
         let buffer = stdin.fill_buf().unwrap();
         let length = buffer.len();
@@ -193,7 +194,7 @@ impl OsApi for OsInputOutput {
         stdin.consume(length);
         read_bytes
     }
-    fn get_stdout_writer(&self) -> Box<dyn Write> {
+    fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
@@ -211,7 +212,7 @@ impl Clone for Box<dyn OsApi> {
 }
 
 pub fn get_os_input() -> OsInputOutput {
-    let current_termios = tcgetattr(0).unwrap();
+    let current_termios = termios::tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
     OsInputOutput { orig_termios }
 }
