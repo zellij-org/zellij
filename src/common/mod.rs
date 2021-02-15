@@ -63,9 +63,15 @@ pub fn update_state(
 }
 
 /// An [MPSC](mpsc) asynchronous channel with added context.
-pub type ChannelWithContext<T> = (mpsc::Sender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
+pub type ChannelWithContext<T> = (
+    mpsc::Sender<(T, ErrorContext)>,
+    mpsc::Receiver<(T, ErrorContext)>,
+);
 /// An [MPSC](mpsc) synchronous channel with added context.
-pub type SyncChannelWithContext<T> = (mpsc::SyncSender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
+pub type SyncChannelWithContext<T> = (
+    mpsc::SyncSender<(T, ErrorContext)>,
+    mpsc::Receiver<(T, ErrorContext)>,
+);
 
 /// Wrappers around the two standard [MPSC](mpsc) sender types, [`mpsc::Sender`] and [`mpsc::SyncSender`], with an additional [`ErrorContext`].
 #[derive(Clone)]

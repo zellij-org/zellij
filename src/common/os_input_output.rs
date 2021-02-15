@@ -6,8 +6,8 @@ use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd;
 use nix::unistd::{ForkResult, Pid};
-use std::io::prelude::*;
 use std::io;
+use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -175,11 +175,11 @@ pub trait OsApi: Send + Sync {
     fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error>;
-    /// Terminate the 
+    /// Terminate the
     // FIXME `RawFd` is semantically the wrong type here. It should either be a raw libc::pid_t,
     // or a nix::unistd::Pid.
     fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error>;
-    /// 
+    ///
     fn read_from_stdin(&self) -> Vec<u8>;
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
