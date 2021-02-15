@@ -82,6 +82,7 @@ pub struct PtyBus {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
+    pub active_pane: Option<PaneId>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
@@ -170,6 +171,7 @@ impl PtyBus {
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
+            active_pane: None,
             debug_to_file,
             task_handles: HashMap::new(),
         }
@@ -185,6 +187,7 @@ impl PtyBus {
         );
         self.task_handles.insert(pid_primary, task_handle);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
+        self.active_pane = Some(PaneId::Terminal(pid_primary));
         pid_primary
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
@@ -232,6 +235,9 @@ impl PtyBus {
         ids.iter().for_each(|&id| {
             self.close_pane(id);
         });
+    }
+    pub fn update_active_pane(&mut self, pane_id: PaneId) {
+        self.active_pane = Some(pane_id);
     }
 }
 
