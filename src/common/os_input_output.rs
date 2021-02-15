@@ -114,7 +114,20 @@ fn handle_command_exit(mut child: Child) {
 /// set.
 // FIXME this should probably be split into different functions, or at least have less levels
 // of indentation in some way
-fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
+fn spawn_terminal(
+    file_to_open: Option<PathBuf>,
+    orig_termios: termios::Termios,
+    working_dir: Option<PathBuf>,
+) -> (RawFd, RawFd) {
+    // Choose the working directory to use
+    let dir = match working_dir {
+        Some(dir) => dir,
+        None => match env::current_dir() {
+            Ok(env_dir) => env_dir,
+            Err(_) => PathBuf::from(env::var("HOME").unwrap()),
+        },
+    };
+
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -136,6 +149,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 
                             let child = Command::new(editor)
                                 .args(&[file_to_open])
+                                .current_dir(dir)
                                 .spawn()
                                 .expect("failed to spawn");
                             handle_command_exit(child);
@@ -143,6 +157,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
                         }
                         None => {
                             let child = Command::new(env::var("SHELL").unwrap())
+                                .current_dir(dir)
                                 .spawn()
                                 .expect("failed to spawn");
                             handle_command_exit(child);
@@ -179,7 +194,11 @@ pub trait OsApi: Send + Sync {
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
     fn unset_raw_mode(&mut self, fd: RawFd);
     /// Spawn a new terminal, with an optional file to open in a terminal program.
-    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
+    fn spawn_terminal(
+        &mut self,
+        file_to_open: Option<PathBuf>,
+        working_dir: Option<PathBuf>,
+    ) -> (RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
@@ -216,9 +235,13 @@ impl OsApi for OsInputOutput {
         let orig_termios = self.orig_termios.lock().unwrap();
         unset_raw_mode(fd, orig_termios.clone());
     }
-    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(
+        &mut self,
+        file_to_open: Option<PathBuf>,
+        working_dir: Option<PathBuf>,
+    ) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(file_to_open, orig_termios.clone())
+        spawn_terminal(file_to_open, orig_termios.clone(), working_dir)
     }
     fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)

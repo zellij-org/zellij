@@ -176,7 +176,7 @@ impl PtyBus {
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open);
+            self.os_input.spawn_terminal(file_to_open, None);
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.send_screen_instructions.clone(),
@@ -191,7 +191,8 @@ impl PtyBus {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
+            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+                self.os_input.spawn_terminal(None, None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
