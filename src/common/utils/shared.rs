@@ -1,8 +1,10 @@
+//! Some general utility functions.
+
 use std::{iter, str::from_utf8};
 
 use strip_ansi_escapes::strip;
 
-pub fn ansi_len(s: &str) -> usize {
+fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
         .unwrap()
         .chars()

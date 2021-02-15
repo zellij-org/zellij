@@ -19,6 +19,7 @@ use super::keybinds::key_to_actions;
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
 struct InputHandler {
+    /// The current input mode
     mode: InputMode,
     os_input: Box<dyn OsApi>,
     command_is_executing: CommandIsExecuting,

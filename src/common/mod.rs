@@ -62,19 +62,22 @@ pub fn update_state(
     drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
+/// An [MPSC](mpsc) asynchronous channel with added context.
 pub type ChannelWithContext<T> = (mpsc::Sender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
+/// An [MPSC](mpsc) synchronous channel with added context.
 pub type SyncChannelWithContext<T> = (mpsc::SyncSender<(T, ErrorContext)>, mpsc::Receiver<(T, ErrorContext)>);
 
-/// Wrappers around the two MPSC sender types, [`Sender`] and [`SyncSender`], adding an [`ErrorContext`].
+/// Wrappers around the two standard [MPSC](mpsc) sender types, [`mpsc::Sender`] and [`mpsc::SyncSender`], with an additional [`ErrorContext`].
 #[derive(Clone)]
 enum SenderType<T: Clone> {
-    /// A wrapper around a [`SyncSender`], adding an [`ErrorContext`].
+    /// A wrapper around an [`mpsc::Sender`], adding an [`ErrorContext`].
     Sender(mpsc::Sender<(T, ErrorContext)>),
+    /// A wrapper around an [`mpsc::SyncSender`], adding an [`ErrorContext`].
     SyncSender(mpsc::SyncSender<(T, ErrorContext)>),
 }
 
 /// Sends messages on an [MPSC](std::sync::mpsc) channel, along with an [`ErrorContext`],
-/// synchronously or asynchronously depending on the [`SenderType`].
+/// synchronously or asynchronously depending on the underlying [`SenderType`].
 #[derive(Clone)]
 pub struct SenderWithContext<T: Clone> {
     err_ctx: ErrorContext,
@@ -87,7 +90,7 @@ impl<T: Clone> SenderWithContext<T> {
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this
-    /// [`SenderWithContext`]'s MPSC channel.
+    /// [`SenderWithContext`]'s channel.
     pub fn send(&self, event: T) -> Result<(), mpsc::SendError<(T, ErrorContext)>> {
         match self.sender {
             SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
@@ -118,7 +121,8 @@ unsafe impl<T: Clone> Send for SenderWithContext<T> {}
 unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 thread_local!(
-    /// A thread local storage (TLS) key 
+    /// A key to some thread local storage (TLS) that holds a representation of the thread's call
+    /// stack.
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
 
@@ -131,6 +135,8 @@ pub enum AppInstruction {
     Error(String),
 }
 
+/// Start Zellij with the specified [`OsApi`] and command-line arguments.
+// FIXME this should definitely be modularized and split into different functions.
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);

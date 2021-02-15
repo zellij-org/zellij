@@ -1,4 +1,5 @@
-// IPC stuff for starting to split things into a client and server model
+//! IPC stuff for starting to split things into a client and server model.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 

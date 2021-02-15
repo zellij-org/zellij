@@ -61,11 +61,17 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ, &winsize) };
 }
 
+/// Handle some signals for the child process. This will loop until the child
+/// process exits.
 fn handle_command_exit(mut child: Child) {
+    // register the SIGINT signal (TODO handle more signals)
     let signals = ::signal_hook::iterator::Signals::new(&[::signal_hook::SIGINT]).unwrap();
     'handle_exit: loop {
+        // test whether the child process has exited
         match child.try_wait() {
             Ok(Some(_status)) => {
+                // if the child process has exited, break outside of the loop
+                // and exit this function
                 // TODO: handle errors?
                 break 'handle_exit;
             }
@@ -89,6 +95,14 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
+/// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
+/// `orig_termios`.
+///
+/// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
+/// will be started in the new terminal, with the given file open. If no file is given, the
+/// shell specified by environment variable `SHELL` will be started in the new terminal.
+// FIXME this should probably be split into different functions, or at least have less levels
+// of indentation in some way
 fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
@@ -140,47 +154,63 @@ pub struct OsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
+/// The `OsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij requires.
 pub trait OsApi: Send + Sync {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize;
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
-    fn set_raw_mode(&mut self, pid: RawFd);
-    fn unset_raw_mode(&mut self, pid: RawFd);
+    /// Returns the size of the terminal associated to file descriptor `fd`.
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+    /// Sets the size of the terminal associated to file descriptor `fd`.
+    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn set_raw_mode(&mut self, fd: RawFd);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn unset_raw_mode(&mut self, fd: RawFd);
+    /// Spawn a new terminal, with an optional file to open in a terminal program.
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
-    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
+    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
+    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    /// Wait until all output written to the object referred to by `fd` has been transmitted.
+    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error>;
+    /// Terminate the 
+    // FIXME `RawFd` is semantically the wrong type here. It should either be a raw libc::pid_t,
+    // or a nix::unistd::Pid.
+    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error>;
+    /// 
     fn read_from_stdin(&self) -> Vec<u8>;
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
 
 impl OsApi for OsInputOutput {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
-        get_terminal_size_using_fd(pid)
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
+        get_terminal_size_using_fd(fd)
     }
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
-        set_terminal_size_using_fd(pid, cols, rows);
+    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16) {
+        set_terminal_size_using_fd(fd, cols, rows);
     }
-    fn set_raw_mode(&mut self, pid: RawFd) {
-        into_raw_mode(pid);
+    fn set_raw_mode(&mut self, fd: RawFd) {
+        into_raw_mode(fd);
     }
-    fn unset_raw_mode(&mut self, pid: RawFd) {
+    fn unset_raw_mode(&mut self, fd: RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(pid, orig_termios.clone());
+        unset_raw_mode(fd, orig_termios.clone());
     }
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(file_to_open, orig_termios.clone())
     }
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        unistd::read(pid, buf)
+    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        unistd::read(fd, buf)
     }
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        unistd::write(pid, buf)
+    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        unistd::write(fd, buf)
     }
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        termios::tcdrain(pid)
+    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error> {
+        termios::tcdrain(fd)
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())

@@ -1,4 +1,5 @@
-//! All things related to errors and error contexts.
+//! Error context system based on a thread-local representation of the call stack, itself based on
+//! the instructions that are sent between threads.
 
 use super::{AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
@@ -6,12 +7,15 @@ use crate::screen::ScreenInstruction;
 
 use std::fmt::{Display, Error, Formatter};
 
+/// The maximum amount of calls an [`ErrorContext`] will keep track
+/// of in its stack representation. This is a per-thread maximum.
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 #[cfg(not(test))]
 use super::SenderWithContext;
 #[cfg(not(test))]
 use std::panic::PanicInfo;
+/// Custom panic handler/hook. Prints the [`ErrorContext`].
 #[cfg(not(test))]
 pub fn handle_panic(
     info: &PanicInfo<'_>,
@@ -68,19 +72,22 @@ pub fn handle_panic(
     }
 }
 
-/// An [`ErrorContext`] struct contains a representation of the call stack
+/// A representation of the call stack.
 #[derive(Clone, Copy)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
 
 impl ErrorContext {
+    /// Returns a new, blank [`ErrorContext`] containing only [`Empty`](ContextType::Empty)
+    /// calls.
     pub fn new() -> Self {
         Self {
             calls: [ContextType::Empty; MAX_THREAD_CALL_STACK],
         }
     }
 
+    /// Adds a call to this [`ErrorContext`]'s call stack representation.
     pub fn add_call(&mut self, call: ContextType) {
         for ctx in self.calls.iter_mut() {
             if *ctx == ContextType::Empty {
@@ -111,20 +118,26 @@ impl Display for ErrorContext {
     }
 }
 
-/// Different types of contexts that form an [`ErrorContext`] call stack.
+/// Different types of calls that form an [`ErrorContext`] call stack.
 ///
 /// Complex variants store a variant of a related enum, whose variants can be built from
-/// the related custom Zellij MSPC instruction enum variants ([`ScreenInstruction`],
-/// [`PtyInstruction`], [`AppInstruction`], etc.
+/// the corresponding Zellij MSPC instruction enum variants ([`ScreenInstruction`],
+/// [`PtyInstruction`], [`AppInstruction`], etc).
 #[derive(Copy, Clone, PartialEq)]
 pub enum ContextType {
+    /// A screen-related call.
     Screen(ScreenContext),
+    /// A PTY-related call.
     Pty(PtyContext),
+    /// A plugin-related call.
     Plugin(PluginContext),
+    /// An app-related call.
     App(AppContext),
     IPCServer,
     StdinHandler,
     AsyncTask,
+    /// An empty, placeholder call. This should be thought of as representing no call at all.
+    /// A call stack representation filled with these is the representation of an empty call stack.
     Empty,
 }
 
@@ -151,7 +164,7 @@ impl Display for ContextType {
     }
 }
 
-/// An element of the error context related to [`ScreenInstruction`]s.
+/// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
     HandlePtyEvent,
@@ -225,7 +238,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
-/// An element of the error context related to [`PtyInstruction`]s.
+/// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PtyContext {
     SpawnTerminal,
@@ -255,7 +268,7 @@ impl From<&PtyInstruction> for PtyContext {
 
 use crate::wasm_vm::PluginInstruction;
 
-/// An element of the error context related to [`PluginInstruction`]s.
+/// Stack call representations corresponding to the different types of [`PluginInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginContext {
     Load,
@@ -279,7 +292,7 @@ impl From<&PluginInstruction> for PluginContext {
     }
 }
 
-/// An element of the error context related to [`AppInstruction`]s.
+/// Stack call representations corresponding to the different types of [`AppInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
     GetState,
