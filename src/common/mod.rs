@@ -238,6 +238,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .unwrap();
                         }
                     }
+                    PtyInstruction::UpdateActivePane(id) => {
+                        pty_bus.update_active_pane(id);
+                    }
                     PtyInstruction::ClosePane(id) => {
                         pty_bus.close_pane(id);
                         command_is_executing.done_closing_pane();

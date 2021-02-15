@@ -72,6 +72,7 @@ pub enum PtyInstruction {
     SpawnTerminalVertically(Option<PathBuf>),
     SpawnTerminalHorizontally(Option<PathBuf>),
     NewTab,
+    UpdateActivePane(Option<PaneId>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Quit,
@@ -236,8 +237,8 @@ impl PtyBus {
             self.close_pane(id);
         });
     }
-    pub fn update_active_pane(&mut self, pane_id: PaneId) {
-        self.active_pane = Some(pane_id);
+    pub fn update_active_pane(&mut self, pane_id: Option<PaneId>) {
+        self.active_pane = pane_id;
     }
 }
 

@@ -326,6 +326,9 @@ impl Tab {
                 .unwrap();
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
@@ -424,6 +427,9 @@ impl Tab {
             self.active_terminal = Some(pid);
             self.render();
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
         self.close_down_to_max_terminals();
@@ -1743,6 +1749,9 @@ impl Tab {
         } else {
             self.active_terminal = Some(*first_terminal);
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     pub fn focus_next_pane(&mut self) {
@@ -1829,6 +1838,9 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     pub fn move_focus_down(&mut self) {
@@ -1859,6 +1871,9 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     pub fn move_focus_up(&mut self) {
@@ -1889,6 +1904,9 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     pub fn move_focus_right(&mut self) {
@@ -1919,6 +1937,9 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
+        self.send_pty_instructions
+            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         self.render();
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
@@ -2086,6 +2107,9 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         self.active_terminal = self.next_active_pane(panes);
+                        self.send_pty_instructions
+                            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+                            .unwrap();
                     }
                     return;
                 }
@@ -2102,6 +2126,9 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         self.active_terminal = self.next_active_pane(panes);
+                        self.send_pty_instructions
+                            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+                            .unwrap();
                     }
                     return;
                 }
@@ -2118,6 +2145,9 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         self.active_terminal = self.next_active_pane(panes);
+                        self.send_pty_instructions
+                            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+                            .unwrap();
                     }
                     return;
                 }
@@ -2134,10 +2164,14 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         self.active_terminal = self.next_active_pane(panes);
+                        self.send_pty_instructions
+                            .send(PtyInstruction::UpdateActivePane(self.active_terminal))
+                            .unwrap();
                     }
                     return;
                 }
             }
+
             // if we reached here, this is either the last pane or there's some sort of
             // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
             self.panes.remove(&id);
