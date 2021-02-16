@@ -1,4 +1,4 @@
-//! `Tab`s holds multiple panes (currently terminal panes). It tracks their coordinates (x/y) and size, as well as how they should be resized
+//! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size, as well as how they should be resized
 
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};

@@ -99,8 +99,14 @@ fn handle_command_exit(mut child: Child) {
 /// `orig_termios`.
 ///
 /// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
-/// will be started in the new terminal, with the given file open. If no file is given, the
-/// shell specified by environment variable `SHELL` will be started in the new terminal.
+/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
+/// file open. If no file is given, the shell specified by environment variable `SHELL` will
+/// be started in the new terminal.
+///
+/// # Panics
+///
+/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
+/// set.
 // FIXME this should probably be split into different functions, or at least have less levels
 // of indentation in some way
 fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
@@ -175,13 +181,16 @@ pub trait OsApi: Send + Sync {
     fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error>;
-    /// Terminate the
+    /// Terminate the process with process ID `pid`.
     // FIXME `RawFd` is semantically the wrong type here. It should either be a raw libc::pid_t,
-    // or a nix::unistd::Pid.
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error>;
-    ///
+    // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
+    // called `pid` and of type `pid_t`, and not `fd`)
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    /// Returns the raw contents of standard input.
     fn read_from_stdin(&self) -> Vec<u8>;
+    /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
 
@@ -228,9 +237,9 @@ impl OsApi for OsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        kill(Pid::from_raw(fd), Some(Signal::SIGINT)).unwrap();
-        waitpid(Pid::from_raw(fd), None).unwrap();
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+        kill(Pid::from_raw(pid), Some(Signal::SIGINT)).unwrap();
+        waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
 }

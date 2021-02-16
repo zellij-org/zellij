@@ -62,12 +62,12 @@ pub fn update_state(
     drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
-/// An [MPSC](mpsc) asynchronous channel with added context.
+/// An [MPSC](mpsc) asynchronous channel with added error context.
 pub type ChannelWithContext<T> = (
     mpsc::Sender<(T, ErrorContext)>,
     mpsc::Receiver<(T, ErrorContext)>,
 );
-/// An [MPSC](mpsc) synchronous channel with added context.
+/// An [MPSC](mpsc) synchronous channel with added error context.
 pub type SyncChannelWithContext<T> = (
     mpsc::SyncSender<(T, ErrorContext)>,
     mpsc::Receiver<(T, ErrorContext)>,
@@ -117,7 +117,11 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
-    /// Updates this [`SenderWithContext`]'s [`ErrorContext`].
+    /// Updates this [`SenderWithContext`]'s [`ErrorContext`]. This is the way one adds
+    /// a call to the error context.
+    ///
+    /// Updating [`ErrorContext`]s works in this way so that these contexts are only ever
+    /// allocated on the stack (which is thread-specific), and not on the heap.
     pub fn update(&mut self, new_ctx: ErrorContext) {
         self.err_ctx = new_ctx;
     }
@@ -128,7 +132,7 @@ unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
 
 thread_local!(
     /// A key to some thread local storage (TLS) that holds a representation of the thread's call
-    /// stack.
+    /// stack in the form of an [`ErrorContext`].
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
 
