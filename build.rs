@@ -134,20 +134,4 @@ fn main() {
     clap_app.gen_completions(BIN_NAME, Shell::Bash, &out_dir);
     clap_app.gen_completions(BIN_NAME, Shell::Zsh, &out_dir);
     clap_app.gen_completions(BIN_NAME, Shell::Fish, &out_dir);
-
-    // Install Default Plugins and Layouts
-    let assets = vec![
-        "plugins/status-bar.wasm",
-        "plugins/strider.wasm",
-        "layouts/default.yaml",
-        "layouts/strider.yaml",
-    ];
-    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-    let data_dir = project_dirs.data_dir();
-    fs::create_dir_all(data_dir.join("plugins")).unwrap();
-    fs::create_dir_all(data_dir.join("layouts")).unwrap();
-    for asset in assets {
-        fs::copy(Path::new("assets/").join(asset), data_dir.join(asset))
-            .expect("Failed to copy asset files");
-    }
 }

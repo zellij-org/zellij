@@ -11,8 +11,9 @@ use common::{
     command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
     ApiCommand,
 };
+use directories_next::ProjectDirs;
 
-use std::io::Write;
+use std::{fs, io::Write};
 use std::os::unix::net::UnixStream;
 
 use structopt::StructOpt;
@@ -27,6 +28,24 @@ use crate::utils::{
 };
 
 pub fn main() {
+    // First run installation of default plugins & layouts
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    let data_dir = project_dirs.data_dir();
+    let assets = asset_map!{
+        "plugins/status-bar.wasm",
+        "plugins/strider.wasm",
+        "layouts/default.yaml",
+        "layouts/strider.yaml"
+    };
+
+    for (path, bytes) in assets {
+        let path = data_dir.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        if !path.exists() {
+            fs::write(path, bytes).expect("Failed to install default assets!");
+        }
+    }
+
     let opts = CliArgs::from_args();
     if let Some(split_dir) = opts.split {
         match split_dir {
