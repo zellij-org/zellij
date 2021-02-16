@@ -13,8 +13,8 @@ use common::{
 };
 use directories_next::ProjectDirs;
 
-use std::{fs, io::Write};
 use std::os::unix::net::UnixStream;
+use std::{fs, io::Write};
 
 use structopt::StructOpt;
 
@@ -31,7 +31,7 @@ pub fn main() {
     // First run installation of default plugins & layouts
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
-    let assets = asset_map!{
+    let assets = asset_map! {
         "plugins/status-bar.wasm",
         "plugins/strider.wasm",
         "layouts/default.yaml",

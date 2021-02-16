@@ -1,8 +1,8 @@
 pub mod command_is_executing;
 pub mod errors;
 pub mod input;
-pub mod ipc;
 pub mod install;
+pub mod ipc;
 pub mod os_input_output;
 pub mod pty_bus;
 pub mod screen;
