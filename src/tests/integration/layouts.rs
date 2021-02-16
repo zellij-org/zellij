@@ -20,7 +20,7 @@ pub fn accepts_basic_layout() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &COMMAND_TOGGLE, &QUIT]);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &QUIT]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
@@ -45,7 +45,7 @@ pub fn accepts_basic_layout() {
     // created properly and that in the end it's populated properly with its content
     //
     // we read the next to last as well as the last, because the last includes the "Bye from
-    // Mosaic" message, and we also want to make sure things are fine before that
+    // Zellij" message, and we also want to make sure things are fine before that
     assert_snapshot!(first_snapshot);
     assert_snapshot!(next_to_last_snapshot);
     assert_snapshot!(last_snapshot);

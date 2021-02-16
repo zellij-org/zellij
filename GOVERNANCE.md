@@ -1,9 +1,9 @@
-# Mosaic Governance
-Mosaic is an open source project that belongs to those who contribute to it.
+# Zellij Governance
+Zellij is an open source project that belongs to those who contribute to it.
 As such, we feel it's important to codify some rules that seem obvious and straightforward now, but might not be in the future.
 
 ## Organization members
-Members of the Mosaic organization are in effect those empowered to make decisions for the project. Individual members are trusted to make decisions on their own and to bring larger and more controversial decisions to be decided by the full quorum of members in a real-time meeting or by correspondence.
+Members of the Zellij organization are in effect those empowered to make decisions for the project. Individual members are trusted to make decisions on their own and to bring larger and more controversial decisions to be decided by the full quorum of members in a real-time meeting or by correspondence.
 
 ## How decisions are made regarding the project
 When larger decisions are brought to the full quorum of members, we would like to hear all the voices and dissenting  opinions on the decision at hand. Ideally, we would then decide on a course of action by consensus. Only if one cannot be reached, will each member of the organization get a vote. The decision in the majority will be taken.

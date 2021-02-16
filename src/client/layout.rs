@@ -1,4 +1,4 @@
-use crate::utils::consts::MOSAIC_ROOT_LAYOUT_DIR;
+use crate::utils::consts::ZELLIJ_ROOT_LAYOUT_DIR;
 use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -182,9 +182,9 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(layout_path: PathBuf) -> Self {
-        let project_dirs = ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+        let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
         let layout_dir = project_dirs.data_dir().join("layouts/");
-        let root_layout_dir = Path::new(MOSAIC_ROOT_LAYOUT_DIR);
+        let root_layout_dir = Path::new(ZELLIJ_ROOT_LAYOUT_DIR);
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("yaml")))
             .or_else(|_| File::open(&layout_dir.join(&layout_path).with_extension("yaml")))

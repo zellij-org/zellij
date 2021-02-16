@@ -38,7 +38,8 @@ fn main() {
     let alt_target = manifest_dir.join("target/tiles");
     for project in members {
         let path = manifest_dir.join(project.as_str().unwrap());
-        set_current_dir(&path);
+        // Should be able to change directory to continue build process
+        set_current_dir(&path).unwrap();
 
         // FIXME: This is soul-crushingly terrible, but I can't keep the values alive long enough
         if var("PROFILE").unwrap() == "release" {
@@ -58,11 +59,40 @@ fn main() {
                 .unwrap();
         }
     }
-    set_current_dir(&starting_dir);
+    // Should be able to change directory to continue build process
+    set_current_dir(&starting_dir).unwrap();
 
     if var("PROFILE").unwrap() == "release" {
         // FIXME: Deduplicate this with the initial walk all .rs pattern
         for entry in fs::read_dir(alt_target.join("wasm32-wasi/release/")).unwrap() {
+            let entry = entry.unwrap().path();
+            let ext = entry.extension();
+            if ext.is_some() && ext.unwrap() == "wasm" {
+                dbg!(&entry);
+                Command::new("wasm-opt")
+                    .arg("-O")
+                    .arg(entry.as_os_str())
+                    .arg("-o")
+                    .arg(format!(
+                        "assets/plugins/{}",
+                        entry.file_name().unwrap().to_string_lossy()
+                    ))
+                    .status()
+                    .unwrap_or_else(|_| {
+                        Command::new("cp")
+                            .arg(entry.as_os_str())
+                            .arg(format!(
+                                "assets/plugins/{}",
+                                entry.file_name().unwrap().to_string_lossy()
+                            ))
+                            .status()
+                            .unwrap()
+                    });
+            }
+        }
+    } else {
+        // FIXME: Deduplicate this with the initial walk all .rs pattern
+        for entry in fs::read_dir(alt_target.join("wasm32-wasi/debug/")).unwrap() {
             let entry = entry.unwrap().path();
             let ext = entry.extension();
             if ext.is_some() && ext.unwrap() == "wasm" {
@@ -112,7 +142,7 @@ fn main() {
         "layouts/default.yaml",
         "layouts/strider.yaml",
     ];
-    let project_dirs = ProjectDirs::from("org", "Mosaic Contributors", "Mosaic").unwrap();
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
     fs::create_dir_all(data_dir.join("plugins")).unwrap();
     fs::create_dir_all(data_dir.join("layouts")).unwrap();

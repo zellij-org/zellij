@@ -1606,9 +1606,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "termion"
+name = "termion_temporary_zellij_fork"
 version = "1.6.0"
-source = "git+https://gitlab.com/TheLostLambda/termion.git#4757d1fbb6067383737d41e5e32854c035a281a8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65175afb01727f72d690bc8b2a2ac411c0243ec43988b7bd96d428301197bed0"
 dependencies = [
  "libc",
  "numtoa",
@@ -2238,7 +2239,7 @@ dependencies = [
  "structopt",
  "strum",
  "strum_macros",
- "termion",
+ "termion_temporary_zellij_fork",
  "termios",
  "toml",
  "unicode-truncate",

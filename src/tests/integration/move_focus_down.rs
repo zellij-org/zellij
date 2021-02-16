@@ -25,7 +25,6 @@ pub fn move_focus_down() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
         &COMMAND_TOGGLE,
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_UP_IN_PANE_MODE,
@@ -55,7 +54,6 @@ pub fn move_focus_down_to_the_largest_overlap() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,

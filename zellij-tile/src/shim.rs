@@ -27,7 +27,6 @@ pub enum Key {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
-    pub mode_is_persistent: bool,
     pub keybinds: Vec<(String, String)>,
 }
 
@@ -36,7 +35,6 @@ pub struct Help {
 pub enum InputMode {
     Normal,
     Command,
-    CommandPersistent,
     Resize,
     Pane,
     Tab,

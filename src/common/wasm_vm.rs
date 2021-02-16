@@ -4,8 +4,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-
-use crate::utils::logging::debug_log_to_file;
+// use crate::utils::logging::debug_log_to_file;
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
@@ -33,7 +32,7 @@ pub struct PluginEnv {
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
 
-pub fn mosaic_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
+pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "zellij" => {
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
@@ -98,7 +97,7 @@ fn host_get_help(plugin_env: &PluginEnv) {
         .try_send(AppInstruction::GetState(state_tx))
         .is_ok()
     {
-        let help = get_help(&state_rx.recv().unwrap().input_state);
+        let help = get_help(state_rx.recv().unwrap().input_mode);
         wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
     }
 }
