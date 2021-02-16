@@ -26,10 +26,7 @@ fn main() {
     // Clear Default Plugins and Layouts
     for entry in WalkDir::new("assets/") {
         let entry = entry.unwrap();
-        let ext = entry.path().extension();
-        if ext.is_some() && ext.unwrap() == "rs" {
-            println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
-        }
+        println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
     }
 
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
