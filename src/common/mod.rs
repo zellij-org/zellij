@@ -417,6 +417,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        // FIXME: This really shouldn't need to exist anymore, let's get rid of it!
                         let root_plugin_dir = Path::new(ZELLIJ_ROOT_PLUGIN_DIR);
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
