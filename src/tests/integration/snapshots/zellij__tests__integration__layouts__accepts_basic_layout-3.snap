@@ -3,8 +3,8 @@ source: src/tests/integration/layouts.rs
 expression: last_snapshot
 
 ---
-Bye from Zellij!█                                                                                                        
-                                                                                                                         
+Bye from Zellij!                                                                                                         
+                █                                                                                                        
                                                                                                                          
                                                                                                                          
                                                                                                                          

@@ -1,6 +1,7 @@
 pub mod command_is_executing;
 pub mod errors;
 pub mod input;
+pub mod install;
 pub mod ipc;
 pub mod os_input_output;
 pub mod pty_bus;
@@ -416,6 +417,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        // FIXME: This really shouldn't need to exist anymore, let's get rid of it!
                         let root_plugin_dir = Path::new(ZELLIJ_ROOT_PLUGIN_DIR);
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
@@ -646,7 +648,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let restore_snapshot = "\u{1b}[?1049l";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
-        "{}\n{}{}{}Bye from Zellij!",
+        "{}\n{}{}{}Bye from Zellij!\n",
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor
     );
 

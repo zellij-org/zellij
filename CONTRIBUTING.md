@@ -13,6 +13,16 @@ of contributions, and don't want a wall of rules to get in the way of that.
 Before contributing please read our [Code of Conduct](CODE_OF_CONDUCT.md) which
 all contributors are expected to adhere to.
 
+## Building
+To work around a [Cargo bug][https://github.com/rust-lang/cargo/issues/7004], you'll need to use the included `build-all.sh` script.
+
+```sh
+# An unoptimized debug build
+./build-all.sh
+# A fully optimized release build
+./build-all.sh --release
+```
+
 ## Looking for something to work on?
 
 If you are new contributor to `Zellij` going through [beginners][good-first-issue]

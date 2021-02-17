@@ -38,7 +38,7 @@ pub enum ClientToServerMsg {
 
 // Types of messages sent from the server to the client
 // @@@ Implement Serialize and Deserialize for this...
-pub enum ServerToClientMsg {
+pub enum _ServerToClientMsg {
     // Info about a particular session
     SessionInfo(Session),
     // A list of sessions
