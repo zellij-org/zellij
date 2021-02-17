@@ -164,7 +164,7 @@ impl Grid {
     pub fn new(rows: usize, columns: usize) -> Self {
         Grid {
             lines_above: vec![],
-            viewport: vec![],
+            viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             cursor: Cursor::new(0, 0),
             scroll_region: None,
@@ -553,14 +553,14 @@ impl Grid {
         }
     }
     fn pad_lines_until(&mut self, position: usize) {
-        for _ in self.viewport.len()..position {
+        for _ in self.viewport.len()..=position {
             self.viewport.push(Row::new().canonical());
         }
     }
     pub fn move_cursor_to(&mut self, x: usize, y: usize) {
-        self.cursor.x = x;
-        self.cursor.y = y;
-        self.pad_lines_until(self.cursor.y + 1);
+        self.cursor.x = std::cmp::min(self.width - 1, x);
+        self.cursor.y = std::cmp::min(self.height - 1, y);
+        self.pad_lines_until(self.cursor.y);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
@@ -664,8 +664,8 @@ impl Grid {
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_to_line(&mut self, line: usize) {
-        self.cursor.y = line;
-        self.pad_lines_until(self.cursor.y + 1);
+        self.cursor.y = std::cmp::min(self.height - 1, line);
+        self.pad_lines_until(self.cursor.y);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: CharacterStyles) {
