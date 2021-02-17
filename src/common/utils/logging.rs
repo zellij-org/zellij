@@ -1,3 +1,5 @@
+//! Zellij logging utility functions.
+
 use std::{
     fs,
     io::{self, prelude::*},

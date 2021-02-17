@@ -1,4 +1,4 @@
-//! Mapping of inputs to sequences of actions
+//! Mapping of inputs to sequences of actions.
 
 use super::actions::{Action, Direction};
 use super::handler::InputMode;
@@ -152,7 +152,6 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             );
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
-        InputMode::Exiting => {}
     }
 
     Ok(defaults)

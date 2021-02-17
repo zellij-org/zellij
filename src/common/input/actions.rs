@@ -1,8 +1,8 @@
-/// This module is for defining the set of actions that can be taken in
-/// response to a keybind and also passing actions back to the handler
-/// for dispatch.
+//! Definition of the actions that can be bound to keys.
+
 use super::handler;
 
+/// The four directions (left, right, up, down).
 #[derive(Clone)]
 pub enum Direction {
     Left,
@@ -11,6 +11,7 @@ pub enum Direction {
     Down,
 }
 
+/// Actions that can be bound to keys.
 #[derive(Clone)]
 pub enum Action {
     /// Quit Zellij.

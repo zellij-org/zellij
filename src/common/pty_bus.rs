@@ -145,6 +145,7 @@ impl vte::Perform for VteEventSender {
     }
 }
 
+/// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(Option<PathBuf>),
