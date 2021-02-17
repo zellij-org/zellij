@@ -8,6 +8,7 @@ use crate::tests::utils::commands::{
     SPLIT_RIGHT_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
+use crate::utils::logging::debug_log_to_file;
 use crate::{start, CliArgs};
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
