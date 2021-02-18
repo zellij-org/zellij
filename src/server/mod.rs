@@ -1,19 +1,16 @@
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::common::{
-	AppInstruction, ChannelWithContext, IpcSenderWithContext, SenderType, SenderWithContext,
+	ChannelWithContext, ClientInstruction, IpcSenderWithContext, SenderType, SenderWithContext,
 	ServerInstruction,
 };
 use crate::errors::{ContextType, ErrorContext, PtyContext};
-use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
-use crate::wasm_vm::PluginInstruction;
-use ipmpsc::{Receiver, SharedRingBuffer};
-use std::io::{BufReader, Read};
+use ipmpsc::{Receiver as IpcReceiver, SharedRingBuffer};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -22,7 +19,6 @@ pub fn start_server(
 	os_input: Box<dyn OsApi>,
 	opts: CliArgs,
 	command_is_executing: CommandIsExecuting,
-	mut send_app_instructions: SenderWithContext<AppInstruction>,
 ) -> thread::JoinHandle<()> {
 	let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
 		channel();
@@ -31,7 +27,6 @@ pub fn start_server(
 		SenderType::Sender(send_pty_instructions),
 	);
 
-	std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
 	let server_buffer = SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap();
 
 	// Don't use default layouts in tests, but do everywhere else
@@ -54,7 +49,6 @@ pub fn start_server(
 		.name("pty".to_string())
 		.spawn({
 			let mut command_is_executing = command_is_executing.clone();
-			send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
 			move || loop {
 				let (event, mut err_ctx) = pty_bus
 					.receive_pty_instructions
@@ -108,7 +102,7 @@ pub fn start_server(
 						pty_bus.close_tab(ids);
 						command_is_executing.done_closing_pane();
 					}
-					PtyInstruction::Quit => {
+					PtyInstruction::Exit => {
 						break;
 					}
 				}
@@ -119,15 +113,20 @@ pub fn start_server(
 	thread::Builder::new()
 		.name("ipc_server".to_string())
 		.spawn({
-			let recv_server_instructions = Receiver::new(server_buffer);
+			let recv_server_instructions = IpcReceiver::new(server_buffer);
+			// Fixme: We cannot use uninitialised sender, therefore this Vec.
+			// We make sure that the first message is `NewClient` so there are no out of bouns panics.
+			let mut send_client_instructions: Vec<IpcSenderWithContext> = Vec::with_capacity(1);
 			move || loop {
-				let (mut err_ctx, decoded): (ErrorContext, ServerInstruction) =
+				let (mut err_ctx, instruction): (ErrorContext, ServerInstruction) =
 					recv_server_instructions.recv().unwrap();
 				err_ctx.add_call(ContextType::IPCServer);
 				send_pty_instructions.update(err_ctx);
-				send_app_instructions.update(err_ctx);
+				if send_client_instructions.len() == 1 {
+					send_client_instructions[0].update(err_ctx);
+				}
 
-				match decoded {
+				match instruction {
 					ServerInstruction::OpenFile(file_name) => {
 						let path = PathBuf::from(file_name);
 						send_pty_instructions
@@ -145,26 +144,33 @@ pub fn start_server(
 							.unwrap();
 					}
 					ServerInstruction::MoveFocus => {
-						send_app_instructions
-							.send(AppInstruction::ToScreen(ScreenInstruction::MoveFocus))
+						send_client_instructions[0]
+							.send(ClientInstruction::ToScreen(ScreenInstruction::MoveFocus))
 							.unwrap();
 					}
-					ServerInstruction::ToPty(instruction) => {
-						send_pty_instructions.send(instruction).unwrap();
+					ServerInstruction::NewClient(buffer_path) => {
+						send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+						send_client_instructions.push(IpcSenderWithContext::new(
+							SharedRingBuffer::open(&buffer_path).unwrap(),
+						));
 					}
-					ServerInstruction::ToScreen(instruction) => {
-						send_app_instructions
-							.send(AppInstruction::ToScreen(instruction))
+					ServerInstruction::ToPty(instr) => {
+						send_pty_instructions.send(instr).unwrap();
+					}
+					ServerInstruction::ToScreen(instr) => {
+						send_client_instructions[0]
+							.send(ClientInstruction::ToScreen(instr))
 							.unwrap();
 					}
 					ServerInstruction::ClosePluginPane(pid) => {
-						send_app_instructions
-							.send(AppInstruction::ToPlugin(PluginInstruction::Unload(pid)))
+						send_client_instructions[0]
+							.send(ClientInstruction::ClosePluginPane(pid))
 							.unwrap();
 					}
-					ServerInstruction::Quit => {
-						let _ = send_pty_instructions.send(PtyInstruction::Quit);
+					ServerInstruction::Exit => {
+						let _ = send_pty_instructions.send(PtyInstruction::Exit);
 						let _ = pty_thread.join();
+						let _ = send_client_instructions[0].send(ClientInstruction::Exit);
 						break;
 					}
 				}

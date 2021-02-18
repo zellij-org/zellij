@@ -18,7 +18,7 @@ use std::{collections::HashMap, fs};
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::handler::InputMode;
-use ipmpsc::{Sender as IpcSender, SharedRingBuffer};
+use ipmpsc::{Receiver as IpcReceiver, Sender as IpcSender, SharedRingBuffer};
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -48,10 +48,11 @@ pub enum ServerInstruction {
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+    NewClient(String),
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
     ClosePluginPane(u32),
-    Quit,
+    Exit,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -59,6 +60,7 @@ pub enum ClientInstruction {
     ToScreen(ScreenInstruction),
     ClosePluginPane(u32),
     Error(String),
+    Exit,
 }
 
 // FIXME: It would be good to add some more things to this over time
@@ -177,6 +179,19 @@ pub enum AppInstruction {
     ToPlugin(PluginInstruction),
 }
 
+impl From<ClientInstruction> for AppInstruction {
+    fn from(item: ClientInstruction) -> Self {
+        match item {
+            ClientInstruction::ToScreen(s) => AppInstruction::ToScreen(s),
+            ClientInstruction::Error(e) => AppInstruction::Error(e),
+            ClientInstruction::ClosePluginPane(p) => {
+                AppInstruction::ToPlugin(PluginInstruction::Unload(p))
+            }
+            ClientInstruction::Exit => AppInstruction::Exit,
+        }
+    }
+}
+
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
@@ -212,15 +227,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
         mpsc::sync_channel(500);
-    let send_app_instructions =
-        SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
+    let mut send_app_instructions =
+        SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    let ipc_thread = start_server(
-        os_input.clone(),
-        opts.clone(),
-        command_is_executing.clone(),
-        send_app_instructions.clone(),
-    );
+    let ipc_thread = start_server(os_input.clone(), opts.clone(), command_is_executing.clone());
+
+    let (client_buffer_path, client_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
+    let mut send_server_instructions = IpcSenderWithContext::to_server();
+    send_server_instructions
+        .send(ServerInstruction::NewClient(client_buffer_path))
+        .unwrap();
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -392,19 +408,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
                             command_is_executing.done_opening_new_pane();
                         }
-                        ScreenInstruction::GoToTab(tab_index) => {
-                            screen.go_to_tab(tab_index as usize)
-                        }
-                        ScreenInstruction::UpdateTabName(c) => {
-                            screen.update_active_tab_name(c);
-                        }
-                        ScreenInstruction::TerminalResize => {
-                            screen.resize_to_screen();
-                        }
-                        ScreenInstruction::ChangeMode(mode_info) => {
-                            screen.change_mode(mode_info);
-                        }
-                        ScreenInstruction::Quit => {
+                        ScreenInstruction::Exit => {
                             break;
                         }
                     }
@@ -509,7 +513,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
-                    PluginInstruction::Quit => break,
+                    PluginInstruction::Exit => break,
                 }
             }
         })
@@ -520,6 +524,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
+            let send_app_instructions = send_app_instructions.clone();
             let os_input = os_input.clone();
             let config = config;
             move || {
@@ -534,7 +539,25 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             }
         });
 
-    let mut send_server_instructions = IpcSenderWithContext::to_server();
+    let router_thread = thread::Builder::new()
+        .name("router".to_string())
+        .spawn({
+            let recv_client_instructions = IpcReceiver::new(client_buffer);
+            move || loop {
+                let (err_ctx, instruction): (ErrorContext, ClientInstruction) =
+                    recv_client_instructions.recv().unwrap();
+                send_app_instructions.update(err_ctx);
+                match instruction {
+                    ClientInstruction::Exit => break,
+                    _ => {
+                        send_app_instructions
+                            .send(AppInstruction::from(instruction))
+                            .unwrap();
+                    }
+                }
+            }
+        })
+        .unwrap();
 
     #[warn(clippy::never_loop)]
     loop {
@@ -546,16 +569,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         send_screen_instructions.update(err_ctx);
         send_server_instructions.update(err_ctx);
         match app_instruction {
-            AppInstruction::Exit => {
-                break;
-            }
+            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
+            AppInstruction::SetState(state) => app_state = state,
+            AppInstruction::Exit => break,
             AppInstruction::Error(backtrace) => {
-                let _ = send_server_instructions.send(ServerInstruction::Quit);
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                let _ = send_server_instructions.send(ServerInstruction::Exit);
+                let _ = send_screen_instructions.send(ScreenInstruction::Exit);
+                let _ = send_plugin_instructions.send(PluginInstruction::Exit);
                 let _ = screen_thread.join();
                 let _ = wasm_thread.join();
                 let _ = ipc_thread.join();
+                //let _ = router_thread.join();
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
@@ -577,12 +601,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         }
     }
 
-    let _ = send_server_instructions.send(ServerInstruction::Quit);
-    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-    let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+    let _ = send_server_instructions.send(ServerInstruction::Exit);
+    let _ = send_screen_instructions.send(ScreenInstruction::Exit);
+    let _ = send_plugin_instructions.send(PluginInstruction::Exit);
     screen_thread.join().unwrap();
     wasm_thread.join().unwrap();
     ipc_thread.join().unwrap();
+    router_thread.join().unwrap();
 
     // cleanup();
     let reset_style = "\u{1b}[m";

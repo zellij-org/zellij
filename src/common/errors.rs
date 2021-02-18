@@ -194,7 +194,7 @@ pub enum ScreenContext {
     MoveFocusDown,
     MoveFocusUp,
     MoveFocusRight,
-    Quit,
+    Exit,
     ScrollUp,
     ScrollDown,
     ClearScroll,
@@ -236,7 +236,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusDown => ScreenContext::MoveFocusDown,
             ScreenInstruction::MoveFocusUp => ScreenContext::MoveFocusUp,
             ScreenInstruction::MoveFocusRight => ScreenContext::MoveFocusRight,
-            ScreenInstruction::Quit => ScreenContext::Quit,
+            ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown => ScreenContext::ScrollDown,
             ScreenInstruction::ClearScroll => ScreenContext::ClearScroll,
@@ -270,7 +270,7 @@ pub enum PtyContext {
     NewTab,
     ClosePane,
     CloseTab,
-    Quit,
+    Exit,
 }
 
 impl From<&PtyInstruction> for PtyContext {
@@ -282,7 +282,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab => PtyContext::NewTab,
-            PtyInstruction::Quit => PtyContext::Quit,
+            PtyInstruction::Exit => PtyContext::Exit,
         }
     }
 }
@@ -298,7 +298,7 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
-    Quit,
+    Exit,
 }
 
 impl From<&PluginInstruction> for PluginContext {
@@ -308,7 +308,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(_) => PluginContext::Unload,
-            PluginInstruction::Quit => PluginContext::Quit,
+            PluginInstruction::Exit => PluginContext::Exit,
         }
     }
 }
