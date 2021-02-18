@@ -181,7 +181,7 @@ pub enum PtyInstruction {
     NewTab,
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
-    Quit,
+    Exit,
 }
 
 pub struct PtyBus {
