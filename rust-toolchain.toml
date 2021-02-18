@@ -5,4 +5,4 @@
 # version: "nightly-1.0.0"
 channel = "stable"
 components = [ "rustfmt", "rust-src", "clippy", "rust-analysis"]
-targets = [ "wasm32-wasi" ]
+# targets = [ ]
