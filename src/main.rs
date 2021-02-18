@@ -9,7 +9,7 @@ mod server;
 use client::{boundaries, layout, panes, tab};
 use common::{
     command_is_executing, errors, ipc, os_input_output, pty_bus, screen, start, utils, wasm_vm,
-    ApiCommand, IpcSenderWithContext,
+    IpcSenderWithContext, ServerInstruction,
 };
 use directories_next::ProjectDirs;
 
@@ -51,13 +51,13 @@ pub fn main() {
             'h' => {
                 let mut send_server_instructions = IpcSenderWithContext::new();
                 send_server_instructions
-                    .send(ApiCommand::SplitHorizontally)
+                    .send(ServerInstruction::SplitHorizontally)
                     .unwrap();
             }
             'v' => {
                 let mut send_server_instructions = IpcSenderWithContext::new();
                 send_server_instructions
-                    .send(ApiCommand::SplitVertically)
+                    .send(ServerInstruction::SplitVertically)
                     .unwrap();
             }
             _ => {}
@@ -65,12 +65,12 @@ pub fn main() {
     } else if opts.move_focus {
         let mut send_server_instructions = IpcSenderWithContext::new();
         send_server_instructions
-            .send(ApiCommand::MoveFocus)
+            .send(ServerInstruction::MoveFocus)
             .unwrap();
     } else if let Some(file_to_open) = opts.open_file {
         let mut send_server_instructions = IpcSenderWithContext::new();
         send_server_instructions
-            .send(ApiCommand::OpenFile(file_to_open))
+            .send(ServerInstruction::OpenFile(file_to_open))
             .unwrap();
     } else {
         let os_input = get_os_input();

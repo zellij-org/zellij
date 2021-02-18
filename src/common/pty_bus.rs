@@ -15,7 +15,7 @@ use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
-    common::ApiCommand,
+    common::ServerInstruction,
     errors::{ContextType, ErrorContext},
     panes::PaneId,
 };
@@ -96,7 +96,7 @@ impl VteEventSender {
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Print(c),
             )))
@@ -104,7 +104,7 @@ impl vte::Perform for VteEventSender {
     }
     fn execute(&mut self, byte: u8) {
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Execute(byte),
             )))
@@ -115,7 +115,7 @@ impl vte::Perform for VteEventSender {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Hook(params, intermediates, ignore, c),
             )))
@@ -124,7 +124,7 @@ impl vte::Perform for VteEventSender {
 
     fn put(&mut self, byte: u8) {
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Put(byte),
             )))
@@ -133,7 +133,7 @@ impl vte::Perform for VteEventSender {
 
     fn unhook(&mut self) {
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Unhook,
             )))
@@ -143,7 +143,7 @@ impl vte::Perform for VteEventSender {
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params = params.iter().map(|p| p.to_vec()).collect();
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::OscDispatch(params, bell_terminated),
             )))
@@ -154,7 +154,7 @@ impl vte::Perform for VteEventSender {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::CsiDispatch(params, intermediates, ignore, c),
             )))
@@ -164,7 +164,7 @@ impl vte::Perform for VteEventSender {
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         let intermediates = intermediates.iter().copied().collect();
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::Pty(
+            .send(ServerInstruction::ToScreen(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::EscDispatch(intermediates, ignore, byte),
             )))
@@ -228,7 +228,7 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
                                 send_server_instructions
-                                    .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                                    .send(ServerInstruction::ToScreen(ScreenInstruction::Render))
                                     .unwrap();
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
@@ -244,7 +244,7 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
                     if pending_render {
                         pending_render = false;
                         send_server_instructions
-                            .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                            .send(ServerInstruction::ToScreen(ScreenInstruction::Render))
                             .unwrap();
                     }
                     last_byte_receive_time = None;
@@ -252,14 +252,14 @@ fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> J
                 }
             }
             send_server_instructions
-                .send(ApiCommand::ToScreen(ScreenInstruction::Render))
+                .send(ServerInstruction::ToScreen(ScreenInstruction::Render))
                 .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
             send_server_instructions
-                .send(ApiCommand::ToScreen(ScreenInstruction::ClosePane(
+                .send(ServerInstruction::ToScreen(ScreenInstruction::ClosePane(
                     PaneId::Terminal(pid),
                 )))
                 .unwrap();
@@ -302,10 +302,9 @@ impl PtyBus {
             new_pane_pids.push(pid_primary);
         }
         self.send_server_instructions
-            .send(ApiCommand::ToScreen(ScreenInstruction::ApplyLayout((
-                layout_path,
-                new_pane_pids.clone(),
-            ))))
+            .send(ServerInstruction::ToScreen(ScreenInstruction::ApplyLayout(
+                (layout_path, new_pane_pids.clone()),
+            )))
             .unwrap();
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(id, self.os_input.clone(), self.debug_to_file);
@@ -324,7 +323,7 @@ impl PtyBus {
             }
             PaneId::Plugin(pid) => self
                 .send_server_instructions
-                .send(ApiCommand::ClosePluginPane(pid))
+                .send(ServerInstruction::ClosePluginPane(pid))
                 .unwrap(),
         }
     }
