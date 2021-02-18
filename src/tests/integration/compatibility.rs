@@ -507,3 +507,32 @@ pub fn top_and_quit() {
         get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
     assert_snapshot!(snapshot_before_quit);
 }
+
+#[test]
+pub fn exa_plus_omf_theme() {
+    // this tests that we handle a tab delimited table properly
+    // without overriding the previous content
+    // this is a potential bug because the \t character is a goto
+    // if we forwarded it as is to the terminal, we would be skipping
+    // over existing on-screen content without deleting it, so we must
+    // convert it to spaces
+    let fake_win_size = PositionAndSize {
+        columns: 235,
+        rows: 56,
+        x: 0,
+        y: 0,
+    };
+    let fixture_name = "exa_plus_omf_theme";
+    let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
+    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &QUIT]);
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
+}
