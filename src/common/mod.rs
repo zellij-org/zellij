@@ -18,7 +18,7 @@ use std::{collections::HashMap, fs};
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::handler::InputMode;
-use interprocess::local_socket::LocalSocketStream;
+use ipmpsc::{Sender as IpcSender, SharedRingBuffer};
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -132,37 +132,32 @@ thread_local!(
     /// stack in the form of an [`ErrorContext`].
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
+#[derive(Clone)]
 pub struct IpcSenderWithContext {
     err_ctx: ErrorContext,
-    sender: BufWriter<LocalSocketStream>,
+    sender: IpcSender,
 }
 
 impl IpcSenderWithContext {
-    pub fn new() -> Self {
+    pub fn new(buffer: SharedRingBuffer) -> Self {
         Self {
             err_ctx: ErrorContext::new(),
-            sender: BufWriter::new(LocalSocketStream::connect(ZELLIJ_IPC_PIPE).unwrap()),
+            sender: IpcSender::new(buffer),
         }
+    }
+
+    // This is expensive. Use this only if a buffer is not available.
+    // Otherwise clone the buffer and use `new()`
+    pub fn to_server() -> Self {
+        Self::new(SharedRingBuffer::open(ZELLIJ_IPC_PIPE).unwrap())
     }
 
     pub fn update(&mut self, ctx: ErrorContext) {
         self.err_ctx = ctx;
     }
 
-    pub fn send(&mut self, msg: ServerInstruction) -> std::io::Result<()> {
-        let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
-        let x = self.sender.write_all(&command);
-        self.sender.flush();
-        x
-    }
-}
-
-impl std::clone::Clone for IpcSenderWithContext {
-    fn clone(&self) -> Self {
-        Self {
-            err_ctx: self.err_ctx,
-            sender: BufWriter::new(LocalSocketStream::connect(ZELLIJ_IPC_PIPE).unwrap()),
-        }
+    pub fn send<T: Serialize>(&mut self, msg: T) -> ipmpsc::Result<()> {
+        self.sender.send(&(self.err_ctx, msg))
     }
 }
 
@@ -215,7 +210,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let send_app_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
-    let pty_thread = start_server(
+    let ipc_thread = start_server(
         os_input.clone(),
         opts.clone(),
         command_is_executing.clone(),
@@ -555,7 +550,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             }
         });
 
-    let mut send_server_instructions = IpcSenderWithContext::new();
+    let mut send_server_instructions = IpcSenderWithContext::to_server();
 
     #[warn(clippy::never_loop)]
     loop {
@@ -572,7 +567,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_server_instructions.send(ServerInstruction::Quit);
-                //let _ = pty_thread.join();
+                //let _ = ipc_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
@@ -599,7 +594,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     }
 
     let _ = send_server_instructions.send(ServerInstruction::Quit);
-    //let _ = pty_thread.join().unwrap();
+    //let _ = ipc_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);

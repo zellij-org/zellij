@@ -12,7 +12,7 @@ use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
 use crate::wasm_vm::PluginInstruction;
-use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
+use ipmpsc::{Receiver, SharedRingBuffer};
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -32,8 +32,7 @@ pub fn start_server(
 	);
 
 	std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
-	let listener =
-		LocalSocketListener::bind(ZELLIJ_IPC_PIPE).expect("could not listen on ipc socket");
+	let server_buffer = SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap();
 
 	// Don't use default layouts in tests, but do everywhere else
 	#[cfg(not(test))]
@@ -42,7 +41,7 @@ pub fn start_server(
 	let default_layout = None;
 	let maybe_layout = opts.layout.or(default_layout);
 
-	let send_server_instructions = IpcSenderWithContext::new();
+	let send_server_instructions = IpcSenderWithContext::new(server_buffer.clone());
 
 	let mut pty_bus = PtyBus::new(
 		receive_pty_instructions,
@@ -120,98 +119,56 @@ pub fn start_server(
 	thread::Builder::new()
 		.name("ipc_server".to_string())
 		.spawn({
-			move || {
-				let mut km = 0;
-				for stream in listener.incoming() {
-					match stream {
-						Ok(stream) => {
-							let send_app_instructions = send_app_instructions.clone();
-							let send_pty_instructions = send_pty_instructions.clone();
-							let nm = format!("{}", km);
-							thread::Builder::new()
-								.name(nm)
-								.spawn(move || {
-									handle_stream(
-										send_pty_instructions,
-										send_app_instructions,
-										stream,
-										km,
-									);
-								})
-								.unwrap();
-							km += 1;
-						}
-						Err(err) => {
-							panic!("err {:?}", err);
-						}
+			let recv_server_instructions = Receiver::new(server_buffer);
+			move || loop {
+				let (mut err_ctx, decoded): (ErrorContext, ServerInstruction) =
+					recv_server_instructions.recv().unwrap();
+				err_ctx.add_call(ContextType::IPCServer);
+				send_pty_instructions.update(err_ctx);
+				send_app_instructions.update(err_ctx);
+
+				match decoded {
+					ServerInstruction::OpenFile(file_name) => {
+						let path = PathBuf::from(file_name);
+						send_pty_instructions
+							.send(PtyInstruction::SpawnTerminal(Some(path)))
+							.unwrap();
+					}
+					ServerInstruction::SplitHorizontally => {
+						send_pty_instructions
+							.send(PtyInstruction::SpawnTerminalHorizontally(None))
+							.unwrap();
+					}
+					ServerInstruction::SplitVertically => {
+						send_pty_instructions
+							.send(PtyInstruction::SpawnTerminalVertically(None))
+							.unwrap();
+					}
+					ServerInstruction::MoveFocus => {
+						send_app_instructions
+							.send(AppInstruction::ToScreen(ScreenInstruction::MoveFocus))
+							.unwrap();
+					}
+					ServerInstruction::ToPty(instruction) => {
+						send_pty_instructions.send(instruction).unwrap();
+					}
+					ServerInstruction::ToScreen(instruction) => {
+						send_app_instructions
+							.send(AppInstruction::ToScreen(instruction))
+							.unwrap();
+					}
+					ServerInstruction::ClosePluginPane(pid) => {
+						send_app_instructions
+							.send(AppInstruction::ToPlugin(PluginInstruction::Unload(pid)))
+							.unwrap();
+					}
+					ServerInstruction::Quit => {
+						let _ = send_pty_instructions.send(PtyInstruction::Quit);
+						let _ = pty_thread.join();
+						break;
 					}
 				}
 			}
 		})
-		.unwrap();
-	pty_thread
-}
-
-fn handle_stream(
-	mut send_pty_instructions: SenderWithContext<PtyInstruction>,
-	mut send_app_instructions: SenderWithContext<AppInstruction>,
-	mut stream: LocalSocketStream,
-	km: u32,
-) {
-	let mut reader = BufReader::new(stream);
-	let mut buffer = [0; 65535]; // TODO: more accurate
-	loop {
-		let bytes = reader
-			.read(&mut buffer)
-			.expect("failed to parse ipc message");
-		let (mut err_ctx, decoded): (ErrorContext, ServerInstruction) =
-			match bincode::deserialize(&buffer[..bytes]) {
-				Ok(d) => d,
-				Err(_) => break,
-			};
-		err_ctx.add_call(ContextType::IPCServer);
-		send_pty_instructions.update(err_ctx);
-		send_app_instructions.update(err_ctx);
-
-		match decoded {
-			ServerInstruction::OpenFile(file_name) => {
-				let path = PathBuf::from(file_name);
-				send_pty_instructions
-					.send(PtyInstruction::SpawnTerminal(Some(path)))
-					.unwrap();
-			}
-			ServerInstruction::SplitHorizontally => {
-				send_pty_instructions
-					.send(PtyInstruction::SpawnTerminalHorizontally(None))
-					.unwrap();
-			}
-			ServerInstruction::SplitVertically => {
-				send_pty_instructions
-					.send(PtyInstruction::SpawnTerminalVertically(None))
-					.unwrap();
-			}
-			ServerInstruction::MoveFocus => {
-				send_app_instructions
-					.send(AppInstruction::ToScreen(ScreenInstruction::MoveFocus))
-					.unwrap();
-			}
-			ServerInstruction::ToPty(instruction) => {
-				send_pty_instructions.send(instruction).unwrap();
-			}
-			ServerInstruction::ToScreen(instruction) => {
-				send_app_instructions
-					.send(AppInstruction::ToScreen(instruction))
-					.unwrap();
-			}
-			ServerInstruction::ClosePluginPane(pid) => {
-				send_app_instructions
-					.send(AppInstruction::ToPlugin(PluginInstruction::Unload(pid)))
-					.unwrap();
-			}
-			ServerInstruction::Quit => {
-				let _ = send_pty_instructions.send(PtyInstruction::Quit);
-				break;
-			}
-		}
-	}
+		.unwrap()
 }
