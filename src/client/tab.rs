@@ -606,6 +606,10 @@ impl Tab {
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );
+        let hide_cursor = "\u{1b}[?25l";
+        stdout
+            .write_all(&hide_cursor.as_bytes())
+            .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 boundaries.add_rect(terminal.as_ref());
