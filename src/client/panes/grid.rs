@@ -177,7 +177,8 @@ impl Grid {
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
         let columns_until_next_tabstop = TABSTOP_WIDTH - (self.cursor.x % TABSTOP_WIDTH);
         let columns_until_screen_end = self.width - self.cursor.x;
-        let columns_to_advance = std::cmp::min(columns_until_next_tabstop, columns_until_screen_end);
+        let columns_to_advance =
+            std::cmp::min(columns_until_next_tabstop, columns_until_screen_end);
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = styles;
         for _ in 0..columns_to_advance {
