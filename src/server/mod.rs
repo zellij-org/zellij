@@ -1,5 +1,4 @@
 use crate::cli::CliArgs;
-use crate::command_is_executing::CommandIsExecuting;
 use crate::common::{
 	ChannelWithContext, ClientInstruction, IpcSenderWithContext, SenderType, SenderWithContext,
 	ServerInstruction,
@@ -88,8 +87,20 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 							.unwrap();
 					}
 				}
-				PtyInstruction::ClosePane(id) => pty_bus.close_pane(id),
-				PtyInstruction::CloseTab(ids) => pty_bus.close_tab(ids),
+				PtyInstruction::ClosePane(id) => {
+					pty_bus.close_pane(id);
+					pty_bus
+						.send_server_instructions
+						.send(ServerInstruction::DoneClosingPane)
+						.unwrap();
+				}
+				PtyInstruction::CloseTab(ids) => {
+					pty_bus.close_tab(ids);
+					pty_bus
+						.send_server_instructions
+						.send(ServerInstruction::DoneClosingPane)
+						.unwrap();
+				}
 				PtyInstruction::Exit => {
 					break;
 				}
@@ -147,6 +158,11 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 					ServerInstruction::ToScreen(instr) => {
 						send_client_instructions[0]
 							.send(ClientInstruction::ToScreen(instr))
+							.unwrap();
+					}
+					ServerInstruction::DoneClosingPane => {
+						send_client_instructions[0]
+							.send(ClientInstruction::DoneClosingPane)
 							.unwrap();
 					}
 					ServerInstruction::ClosePluginPane(pid) => {
