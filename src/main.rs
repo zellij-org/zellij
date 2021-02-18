@@ -49,13 +49,13 @@ pub fn main() {
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
-                let mut send_server_instructions = IpcSenderWithContext::new();
+                let mut send_server_instructions = IpcSenderWithContext::to_server();
                 send_server_instructions
                     .send(ServerInstruction::SplitHorizontally)
                     .unwrap();
             }
             'v' => {
-                let mut send_server_instructions = IpcSenderWithContext::new();
+                let mut send_server_instructions = IpcSenderWithContext::to_server();
                 send_server_instructions
                     .send(ServerInstruction::SplitVertically)
                     .unwrap();
@@ -63,12 +63,12 @@ pub fn main() {
             _ => {}
         };
     } else if opts.move_focus {
-        let mut send_server_instructions = IpcSenderWithContext::new();
+        let mut send_server_instructions = IpcSenderWithContext::to_server();
         send_server_instructions
             .send(ServerInstruction::MoveFocus)
             .unwrap();
     } else if let Some(file_to_open) = opts.open_file {
-        let mut send_server_instructions = IpcSenderWithContext::new();
+        let mut send_server_instructions = IpcSenderWithContext::to_server();
         send_server_instructions
             .send(ServerInstruction::OpenFile(file_to_open))
             .unwrap();

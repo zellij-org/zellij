@@ -193,12 +193,16 @@ pub struct PtyBus {
     pub send_server_instructions: IpcSenderWithContext,
 }
 
-fn stream_terminal_bytes(pid: RawFd, os_input: Box<dyn OsApi>, debug: bool) -> JoinHandle<()> {
+fn stream_terminal_bytes(
+    pid: RawFd,
+    os_input: Box<dyn OsApi>,
+    mut send_server_instructions: IpcSenderWithContext,
+    debug: bool,
+) -> JoinHandle<()> {
     let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
-            let mut send_server_instructions = IpcSenderWithContext::new();
             send_server_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_server_instructions.clone());
@@ -286,8 +290,12 @@ impl PtyBus {
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, RawFd) =
             self.os_input.spawn_terminal(file_to_open);
-        let task_handle =
-            stream_terminal_bytes(pid_primary, self.os_input.clone(), self.debug_to_file);
+        let task_handle = stream_terminal_bytes(
+            pid_primary,
+            self.os_input.clone(),
+            self.send_server_instructions.clone(),
+            self.debug_to_file,
+        );
         self.task_handles.insert(pid_primary, task_handle);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
@@ -307,7 +315,12 @@ impl PtyBus {
             )))
             .unwrap();
         for id in new_pane_pids {
-            let task_handle = stream_terminal_bytes(id, self.os_input.clone(), self.debug_to_file);
+            let task_handle = stream_terminal_bytes(
+                id,
+                self.os_input.clone(),
+                self.send_server_instructions.clone(),
+                self.debug_to_file,
+            );
             self.task_handles.insert(id, task_handle);
         }
     }
