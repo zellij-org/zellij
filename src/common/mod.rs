@@ -551,11 +551,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             }
             AppInstruction::Error(backtrace) => {
                 let _ = send_server_instructions.send(ServerInstruction::Quit);
-                //let _ = ipc_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-                let _ = screen_thread.join();
                 let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                let _ = screen_thread.join();
                 let _ = wasm_thread.join();
+                let _ = ipc_thread.join();
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
                 let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
@@ -578,11 +578,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     }
 
     let _ = send_server_instructions.send(ServerInstruction::Quit);
-    //let _ = ipc_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
-    screen_thread.join().unwrap();
     let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+    screen_thread.join().unwrap();
     wasm_thread.join().unwrap();
+    ipc_thread.join().unwrap();
 
     // cleanup();
     let reset_style = "\u{1b}[m";
