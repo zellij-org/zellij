@@ -412,12 +412,7 @@ impl vte::Perform for TerminalPane {
             }
             9 => {
                 // tab
-                let terminal_tab_character = TerminalCharacter {
-                    character: '\t',
-                    styles: self.pending_styles,
-                };
-                // TODO: handle better with line wrapping
-                self.grid.add_character(terminal_tab_character);
+                self.grid.advance_to_next_tabstop(self.pending_styles);
             }
             10 => {
                 // 0a, newline

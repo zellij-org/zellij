@@ -3,6 +3,8 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+static TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
@@ -170,6 +172,16 @@ impl Grid {
             scroll_region: None,
             width: columns,
             height: rows,
+        }
+    }
+    pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
+        let columns_until_next_tabstop = TABSTOP_WIDTH - (self.cursor.x % TABSTOP_WIDTH);
+        let columns_until_screen_end = self.width - self.cursor.x;
+        let columns_to_advance = std::cmp::min(columns_until_next_tabstop, columns_until_screen_end);
+        let mut empty_character = EMPTY_TERMINAL_CHARACTER;
+        empty_character.styles = styles;
+        for _ in 0..columns_to_advance {
+            self.add_character(empty_character)
         }
     }
     fn cursor_canonical_line_index(&self) -> usize {
