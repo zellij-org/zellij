@@ -1433,7 +1433,7 @@ impl Tab {
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_left(
@@ -1455,7 +1455,7 @@ impl Tab {
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_down(
@@ -1477,7 +1477,7 @@ impl Tab {
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: usize) -> bool {
@@ -1495,7 +1495,7 @@ impl Tab {
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1514,7 +1514,7 @@ impl Tab {
                     .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1533,7 +1533,7 @@ impl Tab {
                     .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1552,7 +1552,7 @@ impl Tab {
                     .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1571,7 +1571,7 @@ impl Tab {
                     .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     pub fn resize_right(&mut self) {
