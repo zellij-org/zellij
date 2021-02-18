@@ -43,7 +43,7 @@ use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ApiCommand {
+pub enum ServerInstruction {
     OpenFile(PathBuf),
     SplitHorizontally,
     SplitVertically,
@@ -52,6 +52,13 @@ pub enum ApiCommand {
     ToScreen(ScreenInstruction),
     ClosePluginPane(u32),
     Quit,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ClientInstruction {
+    ToScreen(ScreenInstruction),
+    ClosePluginPane(u32),
+    Error(String),
 }
 
 // FIXME: It would be good to add some more things to this over time
@@ -142,7 +149,7 @@ impl IpcSenderWithContext {
         self.err_ctx = ctx;
     }
 
-    pub fn send(&mut self, msg: ApiCommand) -> std::io::Result<()> {
+    pub fn send(&mut self, msg: ServerInstruction) -> std::io::Result<()> {
         let command = bincode::serialize(&(self.err_ctx, msg)).unwrap();
         let x = self.sender.write_all(&command);
         self.sender.flush();
@@ -564,7 +571,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                let _ = send_server_instructions.send(ApiCommand::Quit);
+                let _ = send_server_instructions.send(ServerInstruction::Quit);
                 //let _ = pty_thread.join();
                 let _ = send_screen_instructions.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
@@ -586,12 +593,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                 send_plugin_instructions.send(instruction).unwrap();
             }
             AppInstruction::ToPty(instruction) => {
-                let _ = send_server_instructions.send(ApiCommand::ToPty(instruction));
+                let _ = send_server_instructions.send(ServerInstruction::ToPty(instruction));
             }
         }
     }
 
-    let _ = send_server_instructions.send(ApiCommand::Quit);
+    let _ = send_server_instructions.send(ServerInstruction::Quit);
     //let _ = pty_thread.join().unwrap();
     let _ = send_screen_instructions.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();

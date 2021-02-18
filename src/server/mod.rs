@@ -1,8 +1,8 @@
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::common::{
-	ApiCommand, AppInstruction, ChannelWithContext, IpcSenderWithContext, SenderType,
-	SenderWithContext,
+	AppInstruction, ChannelWithContext, IpcSenderWithContext, SenderType, SenderWithContext,
+	ServerInstruction,
 };
 use crate::errors::{ContextType, ErrorContext, PtyContext};
 use crate::layout::Layout;
@@ -67,7 +67,7 @@ pub fn start_server(
 						let pid = pty_bus.spawn_terminal(file_to_open);
 						pty_bus
 							.send_server_instructions
-							.send(ApiCommand::ToScreen(ScreenInstruction::NewPane(
+							.send(ServerInstruction::ToScreen(ScreenInstruction::NewPane(
 								PaneId::Terminal(pid),
 							)))
 							.unwrap();
@@ -76,18 +76,18 @@ pub fn start_server(
 						let pid = pty_bus.spawn_terminal(file_to_open);
 						pty_bus
 							.send_server_instructions
-							.send(ApiCommand::ToScreen(ScreenInstruction::VerticalSplit(
-								PaneId::Terminal(pid),
-							)))
+							.send(ServerInstruction::ToScreen(
+								ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
+							))
 							.unwrap();
 					}
 					PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
 						let pid = pty_bus.spawn_terminal(file_to_open);
 						pty_bus
 							.send_server_instructions
-							.send(ApiCommand::ToScreen(ScreenInstruction::HorizontalSplit(
-								PaneId::Terminal(pid),
-							)))
+							.send(ServerInstruction::ToScreen(
+								ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
+							))
 							.unwrap();
 					}
 					PtyInstruction::NewTab => {
@@ -97,7 +97,7 @@ pub fn start_server(
 							let pid = pty_bus.spawn_terminal(None);
 							pty_bus
 								.send_server_instructions
-								.send(ApiCommand::ToScreen(ScreenInstruction::NewTab(pid)))
+								.send(ServerInstruction::ToScreen(ScreenInstruction::NewTab(pid)))
 								.unwrap();
 						}
 					}
@@ -164,51 +164,51 @@ fn handle_stream(
 		let bytes = reader
 			.read(&mut buffer)
 			.expect("failed to parse ipc message");
-		let (mut err_ctx, decoded): (ErrorContext, ApiCommand) =
+		let (mut err_ctx, decoded): (ErrorContext, ServerInstruction) =
 			match bincode::deserialize(&buffer[..bytes]) {
 				Ok(d) => d,
-				Err(e) => break,
+				Err(_) => break,
 			};
 		err_ctx.add_call(ContextType::IPCServer);
 		send_pty_instructions.update(err_ctx);
 		send_app_instructions.update(err_ctx);
 
 		match decoded {
-			ApiCommand::OpenFile(file_name) => {
+			ServerInstruction::OpenFile(file_name) => {
 				let path = PathBuf::from(file_name);
 				send_pty_instructions
 					.send(PtyInstruction::SpawnTerminal(Some(path)))
 					.unwrap();
 			}
-			ApiCommand::SplitHorizontally => {
+			ServerInstruction::SplitHorizontally => {
 				send_pty_instructions
 					.send(PtyInstruction::SpawnTerminalHorizontally(None))
 					.unwrap();
 			}
-			ApiCommand::SplitVertically => {
+			ServerInstruction::SplitVertically => {
 				send_pty_instructions
 					.send(PtyInstruction::SpawnTerminalVertically(None))
 					.unwrap();
 			}
-			ApiCommand::MoveFocus => {
+			ServerInstruction::MoveFocus => {
 				send_app_instructions
 					.send(AppInstruction::ToScreen(ScreenInstruction::MoveFocus))
 					.unwrap();
 			}
-			ApiCommand::ToPty(instruction) => {
+			ServerInstruction::ToPty(instruction) => {
 				send_pty_instructions.send(instruction).unwrap();
 			}
-			ApiCommand::ToScreen(instruction) => {
+			ServerInstruction::ToScreen(instruction) => {
 				send_app_instructions
 					.send(AppInstruction::ToScreen(instruction))
 					.unwrap();
 			}
-			ApiCommand::ClosePluginPane(pid) => {
+			ServerInstruction::ClosePluginPane(pid) => {
 				send_app_instructions
 					.send(AppInstruction::ToPlugin(PluginInstruction::Unload(pid)))
 					.unwrap();
 			}
-			ApiCommand::Quit => {
+			ServerInstruction::Quit => {
 				let _ = send_pty_instructions.send(PtyInstruction::Quit);
 				break;
 			}
