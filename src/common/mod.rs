@@ -225,7 +225,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    let ipc_thread = start_server(os_input.clone(), opts.clone(), command_is_executing.clone());
+    let ipc_thread = start_server(os_input.clone(), opts.clone());
 
     let (client_buffer_path, client_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
     let mut send_server_instructions = IpcSenderWithContext::to_server();
@@ -379,6 +379,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         }
                         ScreenInstruction::CloseFocusedPane => {
                             screen.get_active_tab_mut().unwrap().close_focused_pane();
+                            command_is_executing.done_closing_pane();
                             screen.render();
                         }
                         ScreenInstruction::SetSelectable(id, selectable) => {
@@ -402,6 +403,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);
+                            command_is_executing.done_closing_pane();
                             screen.render();
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
@@ -416,7 +418,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         }
                         ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
                         ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
-                        ScreenInstruction::CloseTab => screen.close_tab(),
+                        ScreenInstruction::CloseTab => {
+                            screen.close_tab();
+                            command_is_executing.done_closing_pane();
+                        }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
                             command_is_executing.done_opening_new_pane();

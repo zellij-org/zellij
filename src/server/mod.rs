@@ -15,11 +15,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(
-	os_input: Box<dyn OsApi>,
-	opts: CliArgs,
-	command_is_executing: CommandIsExecuting,
-) -> thread::JoinHandle<()> {
+pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
 	let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
 		channel();
 	let mut send_pty_instructions = SenderWithContext::new(
@@ -47,64 +43,55 @@ pub fn start_server(
 
 	let pty_thread = thread::Builder::new()
 		.name("pty".to_string())
-		.spawn({
-			let mut command_is_executing = command_is_executing.clone();
-			move || loop {
-				let (event, mut err_ctx) = pty_bus
-					.receive_pty_instructions
-					.recv()
-					.expect("failed to receive event on channel");
-				err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-				match event {
-					PtyInstruction::SpawnTerminal(file_to_open) => {
-						let pid = pty_bus.spawn_terminal(file_to_open);
+		.spawn(move || loop {
+			let (event, mut err_ctx) = pty_bus
+				.receive_pty_instructions
+				.recv()
+				.expect("failed to receive event on channel");
+			err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+			match event {
+				PtyInstruction::SpawnTerminal(file_to_open) => {
+					let pid = pty_bus.spawn_terminal(file_to_open);
+					pty_bus
+						.send_server_instructions
+						.send(ServerInstruction::ToScreen(ScreenInstruction::NewPane(
+							PaneId::Terminal(pid),
+						)))
+						.unwrap();
+				}
+				PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+					let pid = pty_bus.spawn_terminal(file_to_open);
+					pty_bus
+						.send_server_instructions
+						.send(ServerInstruction::ToScreen(
+							ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
+						))
+						.unwrap();
+				}
+				PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+					let pid = pty_bus.spawn_terminal(file_to_open);
+					pty_bus
+						.send_server_instructions
+						.send(ServerInstruction::ToScreen(
+							ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
+						))
+						.unwrap();
+				}
+				PtyInstruction::NewTab => {
+					if let Some(layout) = maybe_layout.clone() {
+						pty_bus.spawn_terminals_for_layout(layout);
+					} else {
+						let pid = pty_bus.spawn_terminal(None);
 						pty_bus
 							.send_server_instructions
-							.send(ServerInstruction::ToScreen(ScreenInstruction::NewPane(
-								PaneId::Terminal(pid),
-							)))
+							.send(ServerInstruction::ToScreen(ScreenInstruction::NewTab(pid)))
 							.unwrap();
 					}
-					PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-						let pid = pty_bus.spawn_terminal(file_to_open);
-						pty_bus
-							.send_server_instructions
-							.send(ServerInstruction::ToScreen(
-								ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
-							))
-							.unwrap();
-					}
-					PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-						let pid = pty_bus.spawn_terminal(file_to_open);
-						pty_bus
-							.send_server_instructions
-							.send(ServerInstruction::ToScreen(
-								ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
-							))
-							.unwrap();
-					}
-					PtyInstruction::NewTab => {
-						if let Some(layout) = maybe_layout.clone() {
-							pty_bus.spawn_terminals_for_layout(layout);
-						} else {
-							let pid = pty_bus.spawn_terminal(None);
-							pty_bus
-								.send_server_instructions
-								.send(ServerInstruction::ToScreen(ScreenInstruction::NewTab(pid)))
-								.unwrap();
-						}
-					}
-					PtyInstruction::ClosePane(id) => {
-						pty_bus.close_pane(id);
-						command_is_executing.done_closing_pane();
-					}
-					PtyInstruction::CloseTab(ids) => {
-						pty_bus.close_tab(ids);
-						command_is_executing.done_closing_pane();
-					}
-					PtyInstruction::Exit => {
-						break;
-					}
+				}
+				PtyInstruction::ClosePane(id) => pty_bus.close_pane(id),
+				PtyInstruction::CloseTab(ids) => pty_bus.close_tab(ids),
+				PtyInstruction::Exit => {
+					break;
 				}
 			}
 		})
@@ -115,7 +102,7 @@ pub fn start_server(
 		.spawn({
 			let recv_server_instructions = IpcReceiver::new(server_buffer);
 			// Fixme: We cannot use uninitialised sender, therefore this Vec.
-			// We make sure that the first message is `NewClient` so there are no out of bouns panics.
+			// For now, We make sure that the first message is `NewClient` so there are no out of bound panics.
 			let mut send_client_instructions: Vec<IpcSenderWithContext> = Vec::with_capacity(1);
 			move || loop {
 				let (mut err_ctx, instruction): (ErrorContext, ServerInstruction) =
