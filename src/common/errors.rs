@@ -327,6 +327,7 @@ pub enum AppContext {
     ToPty,
     ToPlugin,
     ToScreen,
+    DoneClosingPane,
 }
 
 impl From<&AppInstruction> for AppContext {
@@ -337,6 +338,7 @@ impl From<&AppInstruction> for AppContext {
             AppInstruction::ToPty(_) => AppContext::ToPty,
             AppInstruction::ToPlugin(_) => AppContext::ToPlugin,
             AppInstruction::ToScreen(_) => AppContext::ToScreen,
+            AppInstruction::DoneClosingPane => AppContext::DoneClosingPane,
         }
     }
 }

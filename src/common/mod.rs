@@ -9,7 +9,7 @@ pub mod setup;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
@@ -51,6 +51,7 @@ pub enum ServerInstruction {
     NewClient(String),
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
+    DoneClosingPane,
     ClosePluginPane(u32),
     Exit,
 }
@@ -60,6 +61,7 @@ pub enum ClientInstruction {
     ToScreen(ScreenInstruction),
     ClosePluginPane(u32),
     Error(String),
+    DoneClosingPane,
     Exit,
 }
 
@@ -177,6 +179,7 @@ pub enum AppInstruction {
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
     ToPlugin(PluginInstruction),
+    DoneClosingPane,
 }
 
 impl From<ClientInstruction> for AppInstruction {
@@ -187,6 +190,7 @@ impl From<ClientInstruction> for AppInstruction {
             ClientInstruction::ClosePluginPane(p) => {
                 AppInstruction::ToPlugin(PluginInstruction::Unload(p))
             }
+            ClientInstruction::DoneClosingPane => AppInstruction::DoneClosingPane,
             ClientInstruction::Exit => AppInstruction::Exit,
         }
     }
@@ -202,9 +206,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
         .write(take_snapshot.as_bytes())
         .unwrap();
 
-    env::set_var(&"ZELLIJ", "0");
-
-    let command_is_executing = CommandIsExecuting::new();
+    let mut command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.set_raw_mode(0);
@@ -379,7 +381,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         }
                         ScreenInstruction::CloseFocusedPane => {
                             screen.get_active_tab_mut().unwrap().close_focused_pane();
-                            command_is_executing.done_closing_pane();
                             screen.render();
                         }
                         ScreenInstruction::SetSelectable(id, selectable) => {
@@ -403,7 +404,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         }
                         ScreenInstruction::ClosePane(id) => {
                             screen.get_active_tab_mut().unwrap().close_pane(id);
-                            command_is_executing.done_closing_pane();
                             screen.render();
                         }
                         ScreenInstruction::ToggleActiveTerminalFullscreen => {
@@ -420,7 +420,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                         ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
                         ScreenInstruction::CloseTab => {
                             screen.close_tab();
-                            command_is_executing.done_closing_pane();
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
@@ -539,6 +538,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             let send_screen_instructions = send_screen_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
+            let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
             let config = config;
             move || {
@@ -612,6 +612,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             AppInstruction::ToPty(instruction) => {
                 let _ = send_server_instructions.send(ServerInstruction::ToPty(instruction));
             }
+            AppInstruction::DoneClosingPane => command_is_executing.done_closing_pane(),
         }
     }
 
