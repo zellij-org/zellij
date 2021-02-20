@@ -50,6 +50,7 @@ fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Posi
 
 pub struct Tab {
     pub index: usize,
+    pub position: usize,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
@@ -168,6 +169,7 @@ impl Tab {
     // FIXME: Too many arguments here! Maybe bundle all of the senders for the whole program in a struct?
     pub fn new(
         index: usize,
+        position: usize,
         full_screen_ws: &PositionAndSize,
         mut os_api: Box<dyn OsApi>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -191,6 +193,7 @@ impl Tab {
         };
         Tab {
             index,
+            position,
             panes,
             max_panes,
             panes_to_hide: HashSet::new(),

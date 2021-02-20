@@ -7,6 +7,7 @@ pub trait ZellijTile {
     fn draw(&mut self, rows: usize, cols: usize) {}
     fn handle_key(&mut self, key: Key) {}
     fn handle_global_key(&mut self, key: Key) {}
+    fn update_tabs(&mut self, active_tab_index: usize, num_active_tabs: usize) {}
 }
 
 #[macro_export]
@@ -41,6 +42,15 @@ macro_rules! register_tile {
             STATE.with(|state| {
                 state.borrow_mut().handle_global_key($crate::get_key());
             });
+        }
+
+        #[no_mangle]
+        pub fn update_tabs(active_tab_index: i32, num_active_tabs: i32) {
+            STATE.with(|state| {
+                state
+                    .borrow_mut()
+                    .update_tabs(active_tab_index as usize, num_active_tabs as usize);
+            })
         }
     };
 }

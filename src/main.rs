@@ -33,6 +33,7 @@ pub fn main() {
     let data_dir = project_dirs.data_dir();
     let assets = asset_map! {
         "target/status-bar.wasm" => "plugins/status-bar.wasm",
+        "target/tab-bar.wasm" => "plugins/tab-bar.wasm",
         "target/strider.wasm" => "plugins/strider.wasm",
         "assets/layouts/default.yaml" => "layouts/default.yaml",
         "assets/layouts/strider.yaml" => "layouts/strider.yaml",

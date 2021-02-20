@@ -42,6 +42,7 @@ fn main() {
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
     drop(fs::remove_file(data_dir.join("plugins/status-bar.wasm")));
+    drop(fs::remove_file(data_dir.join("plugins/tab-bar.wasm")));
     drop(fs::remove_file(data_dir.join("plugins/strider.wasm")));
     drop(fs::remove_file(data_dir.join("layouts/default.yaml")));
     drop(fs::remove_file(data_dir.join("layouts/strider.yaml")));
