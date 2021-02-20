@@ -1,3 +1,5 @@
+//! Things related to [`Screen`]s.
+
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
@@ -53,19 +55,31 @@ pub enum ScreenInstruction {
     CloseTab,
 }
 
+/// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
+/// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub struct Screen {
+    /// A [`ScreenInstruction`] and [`ErrorContext`] receiver.
     pub receiver: Receiver<(ScreenInstruction, ErrorContext)>,
+    /// An optional maximal amount of panes allowed per [`Tab`] in this [`Screen`] instance.
     max_panes: Option<usize>,
+    /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
+    /// A [`PtyInstruction`] and [`ErrorContext`] sender.
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    /// A [`PluginInstruction`] and [`ErrorContext`] sender.
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
+    /// An [`AppInstruction`] and [`ErrorContext`] sender.
     pub send_app_instructions: SenderWithContext<AppInstruction>,
+    /// The full size of this [`Screen`].
     full_screen_ws: PositionAndSize,
+    /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
+    /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
 }
 
 impl Screen {
+    /// Creates and returns a new [`Screen`].
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -87,8 +101,11 @@ impl Screen {
             os_api,
         }
     }
+
+    /// Creates a new [`Tab`] in this [`Screen`], containing a single
+    /// [pane](crate::client::panes) with PTY file descriptor `pane_id`.
     pub fn new_tab(&mut self, pane_id: RawFd) {
-        let tab_index = self.get_next_tab_index();
+        let tab_index = self.get_new_tab_index();
         let tab = Tab::new(
             tab_index,
             &self.full_screen_ws,
@@ -103,13 +120,19 @@ impl Screen {
         self.tabs.insert(tab_index, tab);
         self.render();
     }
-    fn get_next_tab_index(&self) -> usize {
+
+    /// Returns the index where a new [`Tab`] should be created in this [`Screen`].
+    /// Currently, this is right after the last currently existing tab, or `0` if
+    /// no tabs exist in this screen yet.
+    fn get_new_tab_index(&self) -> usize {
         if let Some(index) = self.tabs.keys().last() {
             *index + 1
         } else {
             0
         }
     }
+
+    /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
     pub fn switch_tab_next(&mut self) {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
@@ -122,6 +145,8 @@ impl Screen {
         }
         self.render();
     }
+
+    /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
     pub fn switch_tab_prev(&mut self) {
         let active_tab_id = self.get_active_tab().unwrap().index;
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
@@ -136,6 +161,9 @@ impl Screen {
         }
         self.render();
     }
+
+    /// Closes this [`Screen`]'s active [`Tab`], exiting the application if it happens
+    /// to be the last tab.
     pub fn close_tab(&mut self) {
         let active_tab_index = self.active_tab_index.unwrap();
         if self.tabs.len() > 1 {
@@ -156,6 +184,8 @@ impl Screen {
                 .unwrap();
         }
     }
+
+    /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
         if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_pane().is_some() {
@@ -166,23 +196,31 @@ impl Screen {
         };
     }
 
+    /// Returns a mutable reference to this [`Screen`]'s tabs.
+    pub fn get_tabs_mut(&mut self) -> &mut BTreeMap<usize, Tab> {
+        &mut self.tabs
+    }
+
+    /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self) -> Option<&Tab> {
         match self.active_tab_index {
             Some(tab) => self.tabs.get(&tab),
             None => None,
         }
     }
-    pub fn get_tabs_mut(&mut self) -> &mut BTreeMap<usize, Tab> {
-        &mut self.tabs
-    }
+
+    /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab_mut(&mut self) -> Option<&mut Tab> {
         match self.active_tab_index {
             Some(tab_index) => self.get_tabs_mut().get_mut(&tab_index),
             None => None,
         }
     }
+
+    /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
+    /// and switching to it.
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
-        let tab_index = self.get_next_tab_index();
+        let tab_index = self.get_new_tab_index();
         let mut tab = Tab::new(
             tab_index,
             &self.full_screen_ws,

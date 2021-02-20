@@ -2,11 +2,12 @@ use crate::panes::PositionAndSize;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
-use nix::sys::termios::{cfmakeraw, tcdrain, tcgetattr, tcsetattr, SetArg, Termios};
+use nix::sys::termios;
 use nix::sys::wait::waitpid;
-use nix::unistd::{read, write, ForkResult, Pid};
+use nix::unistd;
+use nix::unistd::{ForkResult, Pid};
+use std::io;
 use std::io::prelude::*;
-use std::io::{stdin, Write};
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -15,16 +16,16 @@ use std::sync::{Arc, Mutex};
 use std::env;
 
 fn into_raw_mode(pid: RawFd) {
-    let mut tio = tcgetattr(pid).expect("could not get terminal attribute");
-    cfmakeraw(&mut tio);
-    match tcsetattr(pid, SetArg::TCSANOW, &tio) {
+    let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
+    termios::cfmakeraw(&mut tio);
+    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &tio) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: Termios) {
-    match tcsetattr(pid, SetArg::TCSANOW, &orig_termios) {
+fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
+    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios) {
         Ok(_) => {}
         Err(e) => panic!("error {:?}", e),
     };
@@ -60,16 +61,22 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     unsafe { ioctl(fd, TIOCSWINSZ, &winsize) };
 }
 
+/// Handle some signals for the child process. This will loop until the child
+/// process exits.
 fn handle_command_exit(mut child: Child) {
     use signal_hook::{consts::signal::SIGINT, iterator::Signals};
     use std::{thread::sleep, time::Duration};
 
+    // register the SIGINT signal (TODO handle more signals)
     let mut signals = Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
+        // test whether the child process has exited
         match child.try_wait() {
             Ok(Some(_status)) => {
+                // if the child process has exited, break outside of the loop
+                // and exit this function
                 // TODO: handle errors?
-                break;
+                break 'handle_exit;
             }
             Ok(None) => {
                 sleep(Duration::from_millis(100));
@@ -91,7 +98,21 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
-fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawFd, RawFd) {
+/// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
+/// `orig_termios`.
+///
+/// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
+/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
+/// file open. If no file is given, the shell specified by environment variable `SHELL` will
+/// be started in the new terminal.
+///
+/// # Panics
+///
+/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
+/// set.
+// FIXME this should probably be split into different functions, or at least have less levels
+// of indentation in some way
+fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
     let (pid_primary, pid_secondary): (RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -139,56 +160,75 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: Termios) -> (RawF
 
 #[derive(Clone)]
 pub struct OsInputOutput {
-    orig_termios: Arc<Mutex<Termios>>,
+    orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
+/// The `OsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij requires.
 pub trait OsApi: Send + Sync {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize;
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16);
-    fn set_raw_mode(&mut self, pid: RawFd);
-    fn unset_raw_mode(&mut self, pid: RawFd);
+    /// Returns the size of the terminal associated to file descriptor `fd`.
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+    /// Sets the size of the terminal associated to file descriptor `fd`.
+    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn set_raw_mode(&mut self, fd: RawFd);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn unset_raw_mode(&mut self, fd: RawFd);
+    /// Spawn a new terminal, with an optional file to open in a terminal program.
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
+    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
+    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    /// Wait until all output written to the object referred to by `fd` has been transmitted.
+    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error>;
+    /// Terminate the process with process ID `pid`.
+    // FIXME `RawFd` is semantically the wrong type here. It should either be a raw libc::pid_t,
+    // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
+    // called `pid` and of type `pid_t`, and not `fd`)
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    /// Returns the raw contents of standard input.
     fn read_from_stdin(&self) -> Vec<u8>;
-    fn get_stdout_writer(&self) -> Box<dyn Write>;
+    /// Returns the writer that allows writing to standard output.
+    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn OsApi>;
 }
 
 impl OsApi for OsInputOutput {
-    fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
-        get_terminal_size_using_fd(pid)
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
+        get_terminal_size_using_fd(fd)
     }
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
-        set_terminal_size_using_fd(pid, cols, rows);
+    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16) {
+        set_terminal_size_using_fd(fd, cols, rows);
     }
-    fn set_raw_mode(&mut self, pid: RawFd) {
-        into_raw_mode(pid);
+    fn set_raw_mode(&mut self, fd: RawFd) {
+        into_raw_mode(fd);
     }
-    fn unset_raw_mode(&mut self, pid: RawFd) {
+    fn unset_raw_mode(&mut self, fd: RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(pid, orig_termios.clone());
+        unset_raw_mode(fd, orig_termios.clone());
     }
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(file_to_open, orig_termios.clone())
     }
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        read(pid, buf)
+    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        unistd::read(fd, buf)
     }
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        write(pid, buf)
+    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        unistd::write(fd, buf)
     }
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        tcdrain(pid)
+    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error> {
+        termios::tcdrain(fd)
     }
     fn box_clone(&self) -> Box<dyn OsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {
-        let stdin = stdin();
+        let stdin = std::io::stdin();
         let mut stdin = stdin.lock();
         let buffer = stdin.fill_buf().unwrap();
         let length = buffer.len();
@@ -196,13 +236,13 @@ impl OsApi for OsInputOutput {
         stdin.consume(length);
         read_bytes
     }
-    fn get_stdout_writer(&self) -> Box<dyn Write> {
+    fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        kill(Pid::from_raw(fd), Some(Signal::SIGINT)).unwrap();
-        waitpid(Pid::from_raw(fd), None).unwrap();
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+        kill(Pid::from_raw(pid), Some(Signal::SIGINT)).unwrap();
+        waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
 }
@@ -214,7 +254,7 @@ impl Clone for Box<dyn OsApi> {
 }
 
 pub fn get_os_input() -> OsInputOutput {
-    let current_termios = tcgetattr(0).unwrap();
+    let current_termios = termios::tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
     OsInputOutput { orig_termios }
 }

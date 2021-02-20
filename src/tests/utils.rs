@@ -1,6 +1,8 @@
 use crate::panes::PositionAndSize;
 use crate::panes::TerminalPane;
 
+use crate::utils::logging::debug_log_to_file;
+
 pub fn get_output_frame_snapshots(
     output_frames: &[Vec<u8>],
     win_size: &PositionAndSize,

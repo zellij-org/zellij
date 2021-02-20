@@ -18,6 +18,9 @@ pub enum PaneId {
     Terminal(RawFd),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
+
+/// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
+/// in character rows and columns.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {
     pub x: usize,
@@ -409,12 +412,7 @@ impl vte::Perform for TerminalPane {
             }
             9 => {
                 // tab
-                let terminal_tab_character = TerminalCharacter {
-                    character: '\t',
-                    styles: self.pending_styles,
-                };
-                // TODO: handle better with line wrapping
-                self.grid.add_character(terminal_tab_character);
+                self.grid.advance_to_next_tabstop(self.pending_styles);
             }
             10 => {
                 // 0a, newline

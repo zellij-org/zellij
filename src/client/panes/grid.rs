@@ -3,6 +3,8 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+static TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
@@ -164,12 +166,23 @@ impl Grid {
     pub fn new(rows: usize, columns: usize) -> Self {
         Grid {
             lines_above: vec![],
-            viewport: vec![],
+            viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             cursor: Cursor::new(0, 0),
             scroll_region: None,
             width: columns,
             height: rows,
+        }
+    }
+    pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
+        let columns_until_next_tabstop = TABSTOP_WIDTH - (self.cursor.x % TABSTOP_WIDTH);
+        let columns_until_screen_end = self.width - self.cursor.x;
+        let columns_to_advance =
+            std::cmp::min(columns_until_next_tabstop, columns_until_screen_end);
+        let mut empty_character = EMPTY_TERMINAL_CHARACTER;
+        empty_character.styles = styles;
+        for _ in 0..columns_to_advance {
+            self.add_character(empty_character)
         }
     }
     fn cursor_canonical_line_index(&self) -> usize {
@@ -553,14 +566,14 @@ impl Grid {
         }
     }
     fn pad_lines_until(&mut self, position: usize) {
-        for _ in self.viewport.len()..position {
+        for _ in self.viewport.len()..=position {
             self.viewport.push(Row::new().canonical());
         }
     }
     pub fn move_cursor_to(&mut self, x: usize, y: usize) {
-        self.cursor.x = x;
-        self.cursor.y = y;
-        self.pad_lines_until(self.cursor.y + 1);
+        self.cursor.x = std::cmp::min(self.width - 1, x);
+        self.cursor.y = std::cmp::min(self.height - 1, y);
+        self.pad_lines_until(self.cursor.y);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
@@ -664,8 +677,8 @@ impl Grid {
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_to_line(&mut self, line: usize) {
-        self.cursor.y = line;
-        self.pad_lines_until(self.cursor.y + 1);
+        self.cursor.y = std::cmp::min(self.height - 1, line);
+        self.pad_lines_until(self.cursor.y);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: CharacterStyles) {

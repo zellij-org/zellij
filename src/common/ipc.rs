@@ -1,4 +1,5 @@
-// IPC stuff for starting to split things into a client and server model
+//! IPC stuff for starting to split things into a client and server model.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -38,7 +39,7 @@ pub enum ClientToServerMsg {
 
 // Types of messages sent from the server to the client
 // @@@ Implement Serialize and Deserialize for this...
-pub enum ServerToClientMsg {
+pub enum _ServerToClientMsg {
     // Info about a particular session
     SessionInfo(Session),
     // A list of sessions

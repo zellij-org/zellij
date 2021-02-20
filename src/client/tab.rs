@@ -1,3 +1,5 @@
+//! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size, as well as how they should be resized
+
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -12,15 +14,6 @@ use std::{
 use std::{io::Write, sync::mpsc::channel};
 
 use crate::utils::logging::debug_log_to_file;
-
-/*
- * Tab
- *
- * this holds multiple panes (currently terminal panes) which are currently displayed
- * when this tab is active.
- * it tracks their coordinates (x/y) and size, as well as how they should be resized
- *
- */
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -616,6 +609,10 @@ impl Tab {
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );
+        let hide_cursor = "\u{1b}[?25l";
+        stdout
+            .write_all(&hide_cursor.as_bytes())
+            .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 boundaries.add_rect(terminal.as_ref());

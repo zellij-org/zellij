@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="assets/logo.png" alt="logo" width="200">
+  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/logo.png" alt="logo" width="200">
   <br>
   Zellij
   <br>
@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <img src="assets/demo.gif" alt="demo">
+  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
 
 <p align="center">

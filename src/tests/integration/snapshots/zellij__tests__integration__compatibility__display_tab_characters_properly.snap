@@ -10,12 +10,12 @@ expression: snapshot_before_quit
  Disk usage:                                                                                                        
                                                                                                                     
 df: /run/user/1000/doc: Operation not permitted                                                                     
-	/	321G / 514G  66%                                                                                                 
-	/efi	 27M /  96M  28%                                                                                              
+        /       321G / 514G  66%                                                                                    
+        /efi     27M /  96M  28%                                                                                    
                                                                                                                     
  Network:                                                                                                           
                                                                                                                     
-	wlp2s0  192.168.0.3                                                                                                
+        wlp2s0  192.168.0.3                                                                                         
                                                                                                                     
 [I] [20:07] kingdom:mosaic (main) | █                                                                               
                                                                                                                     

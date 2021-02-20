@@ -1,3 +1,4 @@
 /target
 *.new
 .vscode
+.vim
