@@ -139,6 +139,16 @@ pub trait Pane {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
     }
+    fn reduce_width_rec(&self, columns_to_reduce: usize) {
+        if columns_to_reduce <= 0 {
+            return;
+        }
+        if self.columns() >= columns_to_reduce + self.min_width() {
+            self.reduce_width_right(columns_to_reduce);
+        } else {
+            
+        }
+    }
     fn min_width(&self) -> usize {
         MIN_TERMINAL_WIDTH
     }
@@ -490,6 +500,34 @@ impl Tab {
                 self.render();
             }
         }
+    }
+    pub fn get_panes_with_right_coord(&self, right_border_coord: Option<usize>) -> Vec<&dyn Pane> {
+        let right_border_coord = right_border_coord.unwrap_or(self.full_screen_ws.columns);
+        let mut pane_list = Vec::new();
+
+        for (_, pane) in self.get_panes() {
+            if pane.right_boundary_x_coords() == right_border_coord {
+                pane_list.push(Box::as_ref(pane));
+            }
+        }
+        pane_list
+    }
+    pub fn reduce_pane_right_border_by(&self, columns: usize) {
+        let panes_on_right_border = self.get_panes_with_right_coord(None);
+        for pane in panes_on_right_border {
+            pane.
+        }
+    }
+    pub fn get_panes_with_bottom_coord(&self, bottom_border_coord: Option<usize>) -> Vec<&dyn Pane> {
+        let bottom_border_coord = bottom_border_coord.unwrap_or(self.full_screen_ws.rows);
+        let mut pane_list = Vec::new();
+
+        for (_, pane) in self.get_panes() {
+            if pane.bottom_boundary_y_coords() == bottom_border_coord {
+                pane_list.push(Box::as_ref(pane));
+            }
+        }
+        pane_list
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
         // FIXME: Could use Option::map() here
