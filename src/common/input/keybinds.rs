@@ -172,7 +172,7 @@ pub fn key_to_actions(
             // FIXME in command mode, unbound keystrokes should probably do nothing instead of
             // writing to the terminal. Will be easier to implement after a big refactor of the
             // input system (@categorille)
-            .unwrap_or(vec![Action::Write(input)])
+            .unwrap_or_else(|| vec![Action::Write(input)])
     } else {
         unreachable!("Unrecognized mode: {:?}", mode);
     }
