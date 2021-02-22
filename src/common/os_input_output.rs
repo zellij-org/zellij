@@ -86,6 +86,7 @@ fn handle_command_exit(mut child: Child) {
 
         for signal in signals.pending() {
             // FIXME: We need to handle more signals here!
+            #[allow(clippy::single_match)]
             match signal {
                 SIGINT => {
                     child.kill().unwrap();
