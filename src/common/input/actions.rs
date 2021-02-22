@@ -39,6 +39,8 @@ pub enum Action {
     CloseFocus,
     /// Create a new tab.
     NewTab,
+    /// Do nothing.
+    NoOp,
     /// Go to the next tab.
     GoToNextTab,
     /// Go to the previous tab.

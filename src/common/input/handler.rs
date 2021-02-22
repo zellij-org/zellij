@@ -227,6 +227,7 @@ impl InputHandler {
                     .unwrap();
                 self.command_is_executing.wait_until_pane_is_closed();
             }
+            Action::NoOp => {}
         }
 
         should_break
