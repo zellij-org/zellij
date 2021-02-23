@@ -6,6 +6,7 @@ pub struct State {
     pub path: PathBuf,
     pub files: Vec<FsEntry>,
     pub cursor_hist: HashMap<PathBuf, (usize, usize)>,
+    pub hide_hidden_files: bool,
 }
 
 impl State {
@@ -20,6 +21,9 @@ impl State {
     }
     pub fn scroll(&self) -> usize {
         self.cursor_hist.get(&self.path).unwrap_or(&(0, 0)).1
+    }
+    pub fn toggle_hidden_files(&mut self) {
+        self.hide_hidden_files = !self.hide_hidden_files;
     }
 }
 
@@ -51,5 +55,9 @@ impl FsEntry {
             let padding = " ".repeat(space - name.len());
             [name, padding, info].concat()
         }
+    }
+
+    pub fn is_hidden_file(&self) -> bool {
+        self.name().chars().nth(0).unwrap() == '.'.into()
     }
 }

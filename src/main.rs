@@ -32,10 +32,10 @@ pub fn main() {
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
     let assets = asset_map! {
-        "plugins/status-bar.wasm",
-        "plugins/strider.wasm",
-        "layouts/default.yaml",
-        "layouts/strider.yaml"
+        "target/status-bar.wasm" => "plugins/status-bar.wasm",
+        "target/strider.wasm" => "plugins/strider.wasm",
+        "assets/layouts/default.yaml" => "layouts/default.yaml",
+        "assets/layouts/strider.yaml" => "layouts/strider.yaml",
     };
 
     for (path, bytes) in assets {
