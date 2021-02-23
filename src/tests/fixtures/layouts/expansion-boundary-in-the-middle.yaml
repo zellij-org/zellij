@@ -2,14 +2,18 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    split_size:
+      Percent: 40
+  - direction: Vertical
     parts:
       - direction: Horizontal
         split_size:
-          Percent: 20
-        plugin: strider
+          Percent: 40
       - direction: Horizontal
         expansion_boundary: true
+      - direction: Horizontal
+        split_size:
+          Percent: 40
   - direction: Vertical
     split_size:
-      Fixed: 1
-    plugin: status-bar
+      Percent: 40
