@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! asset_map {
-    ($($path:literal),+) => {
+    ($($src:literal => $dst:literal),+ $(,)?) => {
         {
             let mut assets = std::collections::HashMap::new();
             $(
-                assets.insert($path, include_bytes!(concat!("../", $path)).to_vec());
+                assets.insert($dst, include_bytes!(concat!("../", $src)).to_vec());
             )+
             assets
         }
