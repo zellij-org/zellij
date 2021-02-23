@@ -18,8 +18,6 @@ jobs:
     - uses: actions/checkout@v2
     - name: Add WASM target
       run: rustup target add wasm32-wasi
-    - name: Install wasm-opt (binaryen)
-      run: sudo apt-get update && sudo apt-get -y install binaryen
     - name: Build
       run: ./build-all.sh --verbose
     - name: Run tests
