@@ -35,7 +35,7 @@ pub fn main() {
         "target/status-bar.wasm" => "plugins/status-bar.wasm",
         "target/strider.wasm" => "plugins/strider.wasm",
         "assets/layouts/default.yaml" => "layouts/default.yaml",
-        "assets/layouts/strider.yaml" => "layouts/strider.yaml"
+        "assets/layouts/strider.yaml" => "layouts/strider.yaml",
     };
 
     for (path, bytes) in assets {

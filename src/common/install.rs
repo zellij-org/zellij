@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! asset_map {
-    ($($src:literal => $dst:literal),+) => {
+    ($($src:literal => $dst:literal),+ $(,)?) => {
         {
             let mut assets = std::collections::HashMap::new();
             $(
