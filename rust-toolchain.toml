@@ -1,8 +1,0 @@
-# https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
-[toolchain]
-# can be further pinned eg:
-# date: "stable-2020-07-10"
-# version: "nightly-1.0.0"
-channel = "stable"
-components = [ "rustfmt", "rust-src", "clippy", "rust-analysis"]
-# targets = [ ]
