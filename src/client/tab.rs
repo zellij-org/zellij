@@ -1,4 +1,5 @@
-//! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size, as well as how they should be resized
+//! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
+//! as well as how they should be resized
 
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
@@ -296,9 +297,8 @@ impl Tab {
                         * terminal_to_check.columns();
                     let terminal_can_be_split = terminal_to_check.columns() >= MIN_TERMINAL_WIDTH
                         && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
-                        && ((terminal_to_check.columns() >= terminal_to_check.min_width() * 2 + 1)
-                            || (terminal_to_check.rows()
-                                >= terminal_to_check.min_height() * 2 + 1));
+                        && ((terminal_to_check.columns() > terminal_to_check.min_width() * 2)
+                            || (terminal_to_check.rows() > terminal_to_check.min_height() * 2));
                     if terminal_can_be_split && terminal_size > current_largest_terminal_size {
                         (terminal_size, Some(*id_of_terminal_to_check))
                     } else {
@@ -321,7 +321,7 @@ impl Tab {
                 y: terminal_to_split.y(),
             };
             if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns()
-                && terminal_to_split.rows() >= terminal_to_split.min_height() * 2 + 1
+                && terminal_to_split.rows() > terminal_to_split.min_height() * 2
             {
                 // FIXME: This could use a second look
                 if let PaneId::Terminal(term_pid) = pid {
@@ -343,7 +343,7 @@ impl Tab {
                     }
                     self.active_terminal = Some(pid);
                 }
-            } else if terminal_to_split.columns() >= terminal_to_split.min_width() * 2 + 1 {
+            } else if terminal_to_split.columns() > terminal_to_split.min_width() * 2 {
                 // FIXME: This could use a second look
                 if let PaneId::Terminal(term_pid) = pid {
                     let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
@@ -1437,7 +1437,7 @@ impl Tab {
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_left(
@@ -1459,7 +1459,7 @@ impl Tab {
                 p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_down(
@@ -1481,7 +1481,7 @@ impl Tab {
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: usize) -> bool {
@@ -1499,7 +1499,7 @@ impl Tab {
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1518,7 +1518,7 @@ impl Tab {
                     .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1537,7 +1537,7 @@ impl Tab {
                     .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1556,7 +1556,7 @@ impl Tab {
                     .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
@@ -1575,7 +1575,7 @@ impl Tab {
                     .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
-            return false;
+            false
         }
     }
     pub fn resize_right(&mut self) {
