@@ -16,6 +16,8 @@ all contributors are expected to adhere to.
 ## Building
 To work around a [Cargo bug][https://github.com/rust-lang/cargo/issues/7004], you'll need to use the included `build-all.sh` script.
 
+The build script depends on `binaryen --version` > 97, for it's command `wasm-opt`.
+
 ```sh
 # An unoptimized debug build
 ./build-all.sh
