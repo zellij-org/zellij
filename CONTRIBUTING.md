@@ -16,7 +16,6 @@ all contributors are expected to adhere to.
 ## Building
 To work around a [Cargo bug][https://github.com/rust-lang/cargo/issues/7004], you'll need to use the included `build-all.sh` script.
 
-
 ```sh
 # An unoptimized debug build
 ./build-all.sh
