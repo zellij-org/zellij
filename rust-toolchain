@@ -3,6 +3,6 @@
 # can be further pinned eg:
 # date: "stable-2020-07-10"
 # version: "nightly-1.0.0"
-channel = "stable"
+channel = "1.49.0"
 components = [ "rustfmt", "rust-src", "clippy", "rust-analysis"]
-# targets = [ ]
+targets = ["wasm32-wasi"]
