@@ -23,6 +23,8 @@ To work around a [Cargo bug][https://github.com/rust-lang/cargo/issues/7004], yo
 ./build-all.sh --release
 ```
 
+The build script has an optional dependency on `binaryen --version` > 97, for it's command `wasm-opt`.
+
 ## Looking for something to work on?
 
 If you are new contributor to `Zellij` going through [beginners][good-first-issue]
