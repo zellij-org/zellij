@@ -13,8 +13,6 @@ use std::{
 };
 use std::{io::Write, sync::mpsc::channel};
 
-use crate::utils::logging::debug_log_to_file;
-
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
 const MIN_TERMINAL_WIDTH: usize = 4;
@@ -563,20 +561,8 @@ impl Tab {
             })
     }
     pub fn toggle_active_pane_fullscreen(&mut self) {
-        // TODO: CONTINUE HERE
-        // * add the same "is_within_expand_to" logic (find a better name) to resizing panes,
-        // opening new panes (non directional new pane) and ideally also the max_height stuff
-        // * when satisfied, write tests for this
-        // TODO: if pane is not inside expansion boundary, this should be a noop
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            // TODO: change conditional to self.fullscreen_is_active
             if self.fullscreen_is_active {
-//            if self
-//                .get_active_pane()
-//                .unwrap()
-//                .position_and_size_override()
-//                .is_some()
-//            {
                 for terminal_id in self.panes_to_hide.iter() {
                     self.panes
                         .get_mut(terminal_id)
@@ -592,7 +578,8 @@ impl Tab {
                 let pane_ids_to_hide =
                     panes.filter_map(
                         |(&id, pane)| {
-                            if id != active_pane_id && pane.x() >= expand_to.x && pane.y() >= expand_to.y {
+                            let position_and_size_for_pane = pane.position_and_size();
+                            if id != active_pane_id && self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) {
                                 Some(id)
                             } else {
                                 None
