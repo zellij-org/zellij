@@ -588,7 +588,6 @@ impl Tab {
                 });
                 self.panes_to_hide = pane_ids_to_hide.collect();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                // active_terminal.override_size_and_position(0, 0, &self.full_screen_ws);
                 active_terminal.override_size_and_position(expand_to.x, expand_to.y, &expand_to);
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
