@@ -30,7 +30,7 @@ Zellij was initially called "Mosaic".
 
 ## How to use it?
 * Clone the project
-* In the project folder, run: `cargo run`
+* In the project folder, run: `./build-all.sh && cargo run`
 
 (note that right now Zellij only supports linux and mac)
 

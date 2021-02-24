@@ -1,5 +1,5 @@
 use directories_next::ProjectDirs;
-use std::fs;
+use std::{ffi::OsStr, fs};
 use structopt::clap::Shell;
 use walkdir::WalkDir;
 
@@ -24,9 +24,19 @@ fn main() {
     clap_app.gen_completions(BIN_NAME, Shell::Fish, &out_dir);
 
     // Clear Default Plugins and Layouts
-    for entry in WalkDir::new("assets/") {
+
+    // Rerun on layout change
+    for entry in WalkDir::new("assets/layouts") {
         let entry = entry.unwrap();
         println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
+    }
+
+    // Rerun on plugin change
+    for entry in WalkDir::new("target") {
+        let entry = entry.unwrap();
+        if entry.path().extension() == Some(OsStr::new("wasm")) {
+            println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
+        }
     }
 
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
