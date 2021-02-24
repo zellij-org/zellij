@@ -4,14 +4,8 @@ use std::path::PathBuf;
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    COMMAND_TOGGLE,
-    PANE_MODE,
-    SPAWN_TERMINAL_IN_PANE_MODE,
-    ESC,
-    RESIZE_MODE,
-    RESIZE_DOWN_IN_RESIZE_MODE,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
-    QUIT
+    COMMAND_TOGGLE, ESC, PANE_MODE, QUIT, RESIZE_DOWN_IN_RESIZE_MODE, RESIZE_MODE,
+    SPAWN_TERMINAL_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
@@ -33,11 +27,11 @@ pub fn new_panes_are_open_inside_expansion_border() {
         &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
-        &QUIT
+        &QUIT,
     ]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
-        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml"
+        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
     start(Box::new(fake_input_output.clone()), opts);
@@ -68,11 +62,11 @@ pub fn resize_pane_inside_expansion_border() {
         &ESC,
         &RESIZE_MODE,
         &RESIZE_DOWN_IN_RESIZE_MODE,
-        &QUIT
+        &QUIT,
     ]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
-        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml"
+        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
     start(Box::new(fake_input_output.clone()), opts);
@@ -101,11 +95,11 @@ pub fn toggling_fullcsreen_in_expansion_border_expands_only_until_border() {
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
-        &QUIT
+        &QUIT,
     ]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
-        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml"
+        "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
     start(Box::new(fake_input_output.clone()), opts);

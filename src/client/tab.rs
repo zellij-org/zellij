@@ -575,17 +575,17 @@ impl Tab {
             } else {
                 let expand_to = self.expansion_boundary.unwrap_or(self.full_screen_ws);
                 let panes = self.get_panes();
-                let pane_ids_to_hide =
-                    panes.filter_map(
-                        |(&id, pane)| {
-                            let position_and_size_for_pane = pane.position_and_size();
-                            if id != active_pane_id && self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) {
-                                Some(id)
-                            } else {
-                                None
-                            }
-                        },
-                    );
+                let pane_ids_to_hide = panes.filter_map(|(&id, pane)| {
+                    let position_and_size_for_pane = pane.position_and_size();
+                    if id != active_pane_id
+                        && self
+                            .pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                });
                 self.panes_to_hide = pane_ids_to_hide.collect();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
                 // active_terminal.override_size_and_position(0, 0, &self.full_screen_ws);
@@ -1432,14 +1432,16 @@ impl Tab {
     fn pos_and_size_is_within_expansion_boundary(&self, pos_and_size: PositionAndSize) -> bool {
         match self.expansion_boundary {
             Some(expansion_boundary) => {
-                pos_and_size.x >= expansion_boundary.x &&
-                pos_and_size.x < expansion_boundary.x + expansion_boundary.columns &&
-                pos_and_size.y >= expansion_boundary.y &&
-                pos_and_size.y < expansion_boundary.y + expansion_boundary.rows &&
-                pos_and_size.x + pos_and_size.columns <= expansion_boundary.x + expansion_boundary.columns &&
-                pos_and_size.y + pos_and_size.rows <= expansion_boundary.y + expansion_boundary.rows
-            },
-            None => true // no expansion boundary, no problem
+                pos_and_size.x >= expansion_boundary.x
+                    && pos_and_size.x < expansion_boundary.x + expansion_boundary.columns
+                    && pos_and_size.y >= expansion_boundary.y
+                    && pos_and_size.y < expansion_boundary.y + expansion_boundary.rows
+                    && pos_and_size.x + pos_and_size.columns
+                        <= expansion_boundary.x + expansion_boundary.columns
+                    && pos_and_size.y + pos_and_size.rows
+                        <= expansion_boundary.y + expansion_boundary.rows
+            }
+            None => true, // no expansion boundary, no problem
         }
     }
     fn can_increase_pane_and_surroundings_right(
@@ -1458,16 +1460,16 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.columns += increase_by;
         if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
-            return false
+            return false;
         }
 
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.columns() > increase_by &&
-                p.columns() - increase_by >= p.min_width()
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.columns() > increase_by
+                    && p.columns() - increase_by >= p.min_width()
             });
         } else {
             return false;
@@ -1489,15 +1491,16 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.x = new_pos_and_size_for_pane.x.saturating_sub(increase_by);
         if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
-            return false
+            return false;
         }
 
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.columns() > increase_by
+                    && p.columns() - increase_by >= p.min_width()
             });
         } else {
             return false;
@@ -1519,15 +1522,16 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.rows += increase_by;
         if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
-            return false
+            return false;
         }
 
         if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.rows() > increase_by
+                    && p.rows() - increase_by >= p.min_height()
             });
         } else {
             return false;
@@ -1545,15 +1549,16 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.y = new_pos_and_size_for_pane.y.saturating_sub(increase_by);
         if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
-            return false
+            return false;
         }
 
         if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.rows() > increase_by
+                    && p.rows() - increase_by >= p.min_height()
             });
         } else {
             return false;
@@ -1571,10 +1576,10 @@ impl Tab {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.max_width()
-                    .map(|max_width| p.columns() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_width()
+                        .map(|max_width| p.columns() + reduce_by <= max_width)
+                        .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
             return false;
@@ -1592,10 +1597,10 @@ impl Tab {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.max_width()
-                    .map(|max_width| p.columns() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_width()
+                        .map(|max_width| p.columns() + reduce_by <= max_width)
+                        .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
             return false;
@@ -1613,10 +1618,10 @@ impl Tab {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_height()
+                        .map(|max_height| p.rows() + reduce_by <= max_height)
+                        .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
             return false;
@@ -1634,10 +1639,10 @@ impl Tab {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 let position_and_size_for_pane = p.position_and_size();
-                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane) &&
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_height()
+                        .map(|max_height| p.rows() + reduce_by <= max_height)
+                        .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
             return false;

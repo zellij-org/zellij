@@ -1,8 +1,8 @@
 pub mod basic;
 pub mod close_pane;
 pub mod compatibility;
-pub mod layouts;
 pub mod expansion_boundary;
+pub mod layouts;
 pub mod move_focus_down;
 pub mod move_focus_left;
 pub mod move_focus_right;
