@@ -1977,11 +1977,6 @@ impl Tab {
         }
     }
     pub fn set_pane_invisible_borders(&mut self, id: PaneId, invisible_borders: bool) {
-        debug_log_to_file(format!(
-            "set_pane_invisible_borders: {:?}",
-            invisible_borders
-        ))
-        .expect("Must be able to write to log file");
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.set_invisible_borders(invisible_borders);
         }
