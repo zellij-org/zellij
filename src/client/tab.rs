@@ -14,8 +14,6 @@ use std::{
 };
 use std::{io::Write, sync::mpsc::channel};
 
-use crate::utils::logging::debug_log_to_file;
-
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
 const MIN_TERMINAL_WIDTH: usize = 4;
@@ -62,6 +60,7 @@ pub struct Tab {
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
+    expansion_boundary: Option<PositionAndSize>,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -140,6 +139,14 @@ pub trait Pane {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
     }
+    fn position_and_size(&self) -> PositionAndSize {
+        PositionAndSize {
+            x: self.x(),
+            y: self.y(),
+            columns: self.columns(),
+            rows: self.rows(),
+        }
+    }
     fn min_width(&self) -> usize {
         MIN_TERMINAL_WIDTH
     }
@@ -194,6 +201,7 @@ impl Tab {
             send_app_instructions,
             send_pty_instructions,
             send_plugin_instructions,
+            expansion_boundary: None,
         }
     }
 
@@ -232,6 +240,9 @@ impl Tab {
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
             // Just a regular terminal
+            if layout.expansion_boundary {
+                self.expansion_boundary = Some(*position_and_size);
+            }
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.send_plugin_instructions
@@ -295,7 +306,9 @@ impl Tab {
                     let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
                     let terminal_size = (terminal_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO)
                         * terminal_to_check.columns();
+                    let terminal_pos_and_size = terminal_to_check.position_and_size();
                     let terminal_can_be_split = terminal_to_check.columns() >= MIN_TERMINAL_WIDTH
+                        && self.pos_and_size_is_within_expansion_boundary(terminal_pos_and_size)
                         && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
                         && ((terminal_to_check.columns() > terminal_to_check.min_width() * 2)
                             || (terminal_to_check.rows() > terminal_to_check.min_height() * 2));
@@ -549,12 +562,7 @@ impl Tab {
     }
     pub fn toggle_active_pane_fullscreen(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self
-                .get_active_pane()
-                .unwrap()
-                .position_and_size_override()
-                .is_some()
-            {
+            if self.fullscreen_is_active {
                 for terminal_id in self.panes_to_hide.iter() {
                     self.panes
                         .get_mut(terminal_id)
@@ -565,20 +573,22 @@ impl Tab {
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
                 active_terminal.reset_size_and_position_override();
             } else {
-                let terminals = self.get_panes();
-                let all_ids_except_current =
-                    terminals.filter_map(
-                        |(&id, _)| {
-                            if id != active_pane_id {
-                                Some(id)
-                            } else {
-                                None
-                            }
-                        },
-                    );
-                self.panes_to_hide = all_ids_except_current.collect();
+                let expand_to = self.expansion_boundary.unwrap_or(self.full_screen_ws);
+                let panes = self.get_panes();
+                let pane_ids_to_hide = panes.filter_map(|(&id, pane)| {
+                    let position_and_size_for_pane = pane.position_and_size();
+                    if id != active_pane_id
+                        && self
+                            .pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                });
+                self.panes_to_hide = pane_ids_to_hide.collect();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                active_terminal.override_size_and_position(0, 0, &self.full_screen_ws);
+                active_terminal.override_size_and_position(expand_to.x, expand_to.y, &expand_to);
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
             if let PaneId::Terminal(active_pid) = active_pane_id {
@@ -1418,6 +1428,21 @@ impl Tab {
             self.increase_pane_width_left(&terminal_id, count);
         }
     }
+    fn pos_and_size_is_within_expansion_boundary(&self, pos_and_size: PositionAndSize) -> bool {
+        match self.expansion_boundary {
+            Some(expansion_boundary) => {
+                pos_and_size.x >= expansion_boundary.x
+                    && pos_and_size.x < expansion_boundary.x + expansion_boundary.columns
+                    && pos_and_size.y >= expansion_boundary.y
+                    && pos_and_size.y < expansion_boundary.y + expansion_boundary.rows
+                    && pos_and_size.x + pos_and_size.columns
+                        <= expansion_boundary.x + expansion_boundary.columns
+                    && pos_and_size.y + pos_and_size.rows
+                        <= expansion_boundary.y + expansion_boundary.rows
+            }
+            None => true, // no expansion boundary, no problem
+        }
+    }
     fn can_increase_pane_and_surroundings_right(
         &self,
         pane_id: &PaneId,
@@ -1431,10 +1456,19 @@ impl Tab {
         if !can_increase_pane_size {
             return false;
         }
+        let mut new_pos_and_size_for_pane = pane.position_and_size();
+        new_pos_and_size_for_pane.columns += increase_by;
+        if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
+            return false;
+        }
+
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.columns() > increase_by
+                    && p.columns() - increase_by >= p.min_width()
             });
         } else {
             false
@@ -1453,10 +1487,19 @@ impl Tab {
         if !can_increase_pane_size {
             return false;
         }
+        let mut new_pos_and_size_for_pane = pane.position_and_size();
+        new_pos_and_size_for_pane.x = new_pos_and_size_for_pane.x.saturating_sub(increase_by);
+        if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
+            return false;
+        }
+
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.columns() > increase_by && p.columns() - increase_by >= p.min_width()
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.columns() > increase_by
+                    && p.columns() - increase_by >= p.min_width()
             });
         } else {
             false
@@ -1475,10 +1518,19 @@ impl Tab {
         if !can_increase_pane_size {
             return false;
         }
+        let mut new_pos_and_size_for_pane = pane.position_and_size();
+        new_pos_and_size_for_pane.rows += increase_by;
+        if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
+            return false;
+        }
+
         if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.rows() > increase_by
+                    && p.rows() - increase_by >= p.min_height()
             });
         } else {
             false
@@ -1493,10 +1545,19 @@ impl Tab {
         if !can_increase_pane_size {
             return false;
         }
+        let mut new_pos_and_size_for_pane = pane.position_and_size();
+        new_pos_and_size_for_pane.y = new_pos_and_size_for_pane.y.saturating_sub(increase_by);
+        if !self.pos_and_size_is_within_expansion_boundary(new_pos_and_size_for_pane) {
+            return false;
+        }
+
         if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.rows() > increase_by
+                    && p.rows() - increase_by >= p.min_height()
             });
         } else {
             false
@@ -1513,9 +1574,11 @@ impl Tab {
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.max_width()
-                    .map(|max_width| p.columns() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_width()
+                        .map(|max_width| p.columns() + reduce_by <= max_width)
+                        .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
             false
@@ -1532,9 +1595,11 @@ impl Tab {
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.max_width()
-                    .map(|max_width| p.columns() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_width()
+                        .map(|max_width| p.columns() + reduce_by <= max_width)
+                        .unwrap_or(true) // no max width, increase to your heart's content
             });
         } else {
             false
@@ -1551,9 +1616,11 @@ impl Tab {
         if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_height()
+                        .map(|max_height| p.rows() + reduce_by <= max_height)
+                        .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
             false
@@ -1570,9 +1637,11 @@ impl Tab {
         if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
+                let position_and_size_for_pane = p.position_and_size();
+                self.pos_and_size_is_within_expansion_boundary(position_and_size_for_pane)
+                    && p.max_height()
+                        .map(|max_height| p.rows() + reduce_by <= max_height)
+                        .unwrap_or(true) // no max height, increase to your heart's content
             });
         } else {
             false
@@ -1899,11 +1968,6 @@ impl Tab {
         }
     }
     pub fn set_pane_invisible_borders(&mut self, id: PaneId, invisible_borders: bool) {
-        debug_log_to_file(format!(
-            "set_pane_invisible_borders: {:?}",
-            invisible_borders
-        ))
-        .expect("Must be able to write to log file");
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.set_invisible_borders(invisible_borders);
         }

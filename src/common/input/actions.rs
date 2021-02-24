@@ -3,7 +3,7 @@
 use super::handler;
 
 /// The four directions (left, right, up, down).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Direction {
     Left,
     Right,
@@ -12,7 +12,7 @@ pub enum Direction {
 }
 
 /// Actions that can be bound to keys.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Action {
     /// Quit Zellij.
     Quit,

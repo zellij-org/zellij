@@ -1,6 +1,6 @@
 use crate::tests::tty_inputs::{
-    COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_29, COL_30, COL_34, COL_39, COL_4,
-    COL_40, COL_50, COL_60, COL_70, COL_8, COL_9, COL_90, COL_96,
+    COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_25, COL_29, COL_30, COL_34,
+    COL_39, COL_4, COL_40, COL_47, COL_50, COL_60, COL_70, COL_8, COL_9, COL_90, COL_96,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -59,11 +59,13 @@ pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     let col_19_bytes = Bytes::new().content_from_str(&COL_19);
     let col_20_bytes = Bytes::new().content_from_str(&COL_20);
     let col_24_bytes = Bytes::new().content_from_str(&COL_24);
+    let col_25_bytes = Bytes::new().content_from_str(&COL_25);
     let col_29_bytes = Bytes::new().content_from_str(&COL_29);
     let col_30_bytes = Bytes::new().content_from_str(&COL_30);
     let col_34_bytes = Bytes::new().content_from_str(&COL_34);
     let col_39_bytes = Bytes::new().content_from_str(&COL_39);
     let col_40_bytes = Bytes::new().content_from_str(&COL_40);
+    let col_47_bytes = Bytes::new().content_from_str(&COL_47);
     let col_50_bytes = Bytes::new().content_from_str(&COL_50);
     let col_60_bytes = Bytes::new().content_from_str(&COL_60);
     let col_70_bytes = Bytes::new().content_from_str(&COL_70);
@@ -79,11 +81,13 @@ pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     possible_inputs.insert(19, col_19_bytes);
     possible_inputs.insert(20, col_20_bytes);
     possible_inputs.insert(24, col_24_bytes);
+    possible_inputs.insert(25, col_25_bytes);
     possible_inputs.insert(29, col_29_bytes);
     possible_inputs.insert(30, col_30_bytes);
     possible_inputs.insert(34, col_34_bytes);
     possible_inputs.insert(39, col_39_bytes);
     possible_inputs.insert(40, col_40_bytes);
+    possible_inputs.insert(47, col_47_bytes);
     possible_inputs.insert(50, col_50_bytes);
     possible_inputs.insert(60, col_60_bytes);
     possible_inputs.insert(70, col_70_bytes);

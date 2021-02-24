@@ -178,6 +178,8 @@ pub struct Layout {
     pub split_size: Option<SplitSize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin: Option<PathBuf>,
+    #[serde(default)]
+    pub expansion_boundary: bool,
 }
 
 impl Layout {
