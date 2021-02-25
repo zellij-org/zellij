@@ -20,6 +20,6 @@ echo "Optimising WASM executables (5/$total)..."
 cd ../..
 wasm-opt -O target/wasm32-wasi/release/status-bar.wasm -o target/status-bar.wasm || cp target/wasm32-wasi/release/status-bar.wasm target/status-bar.wasm
 wasm-opt -O target/wasm32-wasi/release/strider.wasm -o target/strider.wasm || cp target/wasm32-wasi/release/strider.wasm target/strider.wasm
-wasm-opt -O target/wasm32-wasi/release/tab-bar.wasm -o assets/plugins/tab-bar.wasm || cp target/wasm32-wasi/release/tab-bar.wasm target/tab-bar.wasm
+wasm-opt -O target/wasm32-wasi/release/tab-bar.wasm -o target/tab-bar.wasm || cp target/wasm32-wasi/release/tab-bar.wasm target/tab-bar.wasm
 echo "Building zellij (6/$total)..."
 cargo build $@
