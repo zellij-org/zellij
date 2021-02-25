@@ -70,6 +70,10 @@ fn transfer_rows_down(
                         }
                         None => vec![Row::from_rows(next_lines)],
                     };
+                    if next_lines.is_empty() {
+                        // no more lines at source, the line we popped was probably empty
+                        break;
+                    }
                 }
                 None => break, // no more rows
             }
