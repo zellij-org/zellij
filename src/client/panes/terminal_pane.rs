@@ -507,7 +507,8 @@ impl vte::Perform for TerminalPane {
             let move_down_count = if params[0] == 0 { 1 } else { params[0] };
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.pending_styles;
-            self.grid.move_cursor_down(move_down_count as usize, pad_character);
+            self.grid
+                .move_cursor_down(move_down_count as usize, pad_character);
         } else if c == 'D' {
             let move_back_count = if params[0] == 0 {
                 1
@@ -671,9 +672,11 @@ impl vte::Perform for TerminalPane {
             };
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.pending_styles;
-            self.grid.delete_lines_in_scroll_region(count, pad_character);
+            self.grid
+                .delete_lines_in_scroll_region(count, pad_character);
             // TODO: since delete_lines_in_scroll_region also adds lines, is the below redundant?
-            self.grid.add_empty_lines_in_scroll_region(count, pad_character);
+            self.grid
+                .add_empty_lines_in_scroll_region(count, pad_character);
         } else {
             let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
         }

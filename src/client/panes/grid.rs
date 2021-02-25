@@ -643,7 +643,11 @@ impl Grid {
     pub fn set_scroll_region_to_viewport_size(&mut self) {
         self.scroll_region = Some((0, self.height - 1));
     }
-    pub fn delete_lines_in_scroll_region(&mut self, count: usize, pad_character: TerminalCharacter) {
+    pub fn delete_lines_in_scroll_region(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
             if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
@@ -661,7 +665,11 @@ impl Grid {
             }
         }
     }
-    pub fn add_empty_lines_in_scroll_region(&mut self, count: usize, pad_character: TerminalCharacter) {
+    pub fn add_empty_lines_in_scroll_region(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
             if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
