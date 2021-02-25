@@ -47,4 +47,5 @@ pub enum Action {
     GoToPreviousTab,
     /// Close the current tab.
     CloseTab,
+    GoToTab(u32),
 }

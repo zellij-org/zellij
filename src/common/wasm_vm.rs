@@ -18,6 +18,7 @@ pub enum PluginInstruction {
     Input(u32, Vec<u8>),                     // plugin id, input bytes
     GlobalInput(Vec<u8>),                    // input bytes
     Unload(u32),
+    UpdateTabs(usize, usize), // num tabs, active tab
     Quit,
 }
 

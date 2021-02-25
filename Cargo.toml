@@ -53,6 +53,7 @@ members = [
     "zellij-tile",
     "default-tiles/status-bar",
     "default-tiles/strider",
+    "default-tiles/tab-bar",
 ]
 
 [profile.release]

@@ -197,6 +197,7 @@ pub enum ScreenContext {
     SwitchTabNext,
     SwitchTabPrev,
     CloseTab,
+    GoToTab,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -234,6 +235,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
+            ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
         }
     }
 }
@@ -277,6 +279,7 @@ pub enum PluginContext {
     GlobalInput,
     Unload,
     Quit,
+    Tabs,
 }
 
 impl From<&PluginInstruction> for PluginContext {
@@ -288,6 +291,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
+            PluginInstruction::UpdateTabs(..) => PluginContext::Tabs,
         }
     }
 }

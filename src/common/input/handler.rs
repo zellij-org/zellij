@@ -227,6 +227,11 @@ impl InputHandler {
                     .unwrap();
                 self.command_is_executing.wait_until_pane_is_closed();
             }
+            Action::GoToTab(i) => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::GoToTab(i))
+                    .unwrap();
+            }
             Action::NoOp => {}
         }
 

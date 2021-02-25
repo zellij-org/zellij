@@ -133,6 +133,9 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
             );
+            for i in '1'..='9' {
+                defaults.insert(Key::Char(i), vec![Action::GoToTab(i.to_digit(10).unwrap())]);
+            }
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Scroll => {
