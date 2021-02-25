@@ -5,6 +5,7 @@ authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "Terminal workspace (WIP)"
 license = "MIT"
+repository = "https://github.com/zellij-org/zellij"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
