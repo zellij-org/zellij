@@ -20,4 +20,4 @@ wasm-opt -O target/wasm32-wasi/release/status-bar.wasm -o assets/plugins/status-
 wasm-opt -O target/wasm32-wasi/release/strider.wasm -o assets/plugins/strider.wasm
 wasm-opt -O target/wasm32-wasi/release/tab-bar.wasm -o assets/plugins/tab-bar.wasm
 echo "Publishing zellij (6/$total)..."
-cargo publish $@
+cargo publish --features publish $@
