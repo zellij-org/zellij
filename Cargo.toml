@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "Terminal workspace (WIP)"
