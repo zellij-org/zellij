@@ -61,6 +61,12 @@ impl ZellijTile for State {
                 self.path.pop();
                 refresh_directory(self);
             }
+
+            Key::Char('.') => {
+                self.toggle_hidden_files();
+                refresh_directory(self);
+            }
+
             _ => (),
         };
     }
@@ -80,6 +86,7 @@ fn refresh_directory(state: &mut State) {
                 }
             })
             .ok()
+            .filter(|d| !d.is_hidden_file() || !state.hide_hidden_files)
         })
         .collect();
 

@@ -53,6 +53,7 @@ pub enum ScreenInstruction {
     SwitchTabNext,
     SwitchTabPrev,
     CloseTab,
+    GoToTab(u32),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -106,8 +107,10 @@ impl Screen {
     /// [pane](crate::client::panes) with PTY file descriptor `pane_id`.
     pub fn new_tab(&mut self, pane_id: RawFd) {
         let tab_index = self.get_new_tab_index();
+        let position = self.tabs.len();
         let tab = Tab::new(
             tab_index,
+            position,
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -118,6 +121,7 @@ impl Screen {
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
+        self.update_tabs();
         self.render();
     }
 
@@ -134,32 +138,50 @@ impl Screen {
 
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
     pub fn switch_tab_next(&mut self) {
-        let active_tab_id = self.get_active_tab().unwrap().index;
-        let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
-        let first_tab = tab_ids.get(0).unwrap();
-        let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
-        if let Some(next_tab) = tab_ids.get(active_tab_id_position + 1) {
-            self.active_tab_index = Some(*next_tab);
-        } else {
-            self.active_tab_index = Some(*first_tab);
+        let active_tab_pos = self.get_active_tab().unwrap().position;
+        let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+
+        for tab in self.tabs.values() {
+            if tab.position == new_tab_pos {
+                self.active_tab_index = Some(tab.index);
+                break;
+            }
         }
+        self.update_tabs();
         self.render();
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
     pub fn switch_tab_prev(&mut self) {
-        let active_tab_id = self.get_active_tab().unwrap().index;
-        let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
-        let first_tab = tab_ids.get(0).unwrap();
-        let last_tab = tab_ids.last().unwrap();
-
-        let active_tab_id_position = tab_ids.iter().position(|id| id == &active_tab_id).unwrap();
-        if active_tab_id == *first_tab {
-            self.active_tab_index = Some(*last_tab)
-        } else if let Some(prev_tab) = tab_ids.get(active_tab_id_position - 1) {
-            self.active_tab_index = Some(*prev_tab)
+        let active_tab_pos = self.get_active_tab().unwrap().position;
+        let new_tab_pos = if active_tab_pos == 0 {
+            self.tabs.len() - 1
+        } else {
+            active_tab_pos - 1
+        };
+        for tab in self.tabs.values() {
+            if tab.position == new_tab_pos {
+                self.active_tab_index = Some(tab.index);
+                break;
+            }
         }
+        self.update_tabs();
         self.render();
+    }
+
+    pub fn go_to_tab(&mut self, mut tab_index: usize) {
+        tab_index -= 1;
+        let active_tab = self.get_active_tab().unwrap();
+        match self.tabs.values().find(|t| t.position == tab_index) {
+            Some(t) => {
+                if t.index != active_tab.index {
+                    self.active_tab_index = Some(t.index);
+                    self.update_tabs();
+                    self.render();
+                }
+            }
+            None => {}
+        }
     }
 
     /// Closes this [`Screen`]'s active [`Tab`], exiting the application if it happens
@@ -182,6 +204,13 @@ impl Screen {
             self.send_app_instructions
                 .send(AppInstruction::Exit)
                 .unwrap();
+        } else {
+            for t in self.tabs.values_mut() {
+                if t.position > active_tab.position {
+                    t.position -= 1;
+                }
+            }
+            self.update_tabs();
         }
     }
 
@@ -221,8 +250,10 @@ impl Screen {
     /// and switching to it.
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         let tab_index = self.get_new_tab_index();
+        let position = self.tabs.len();
         let mut tab = Tab::new(
             tab_index,
+            position,
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -234,6 +265,18 @@ impl Screen {
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
+        self.update_tabs();
+    }
+
+    fn update_tabs(&self) {
+        if let Some(active_tab) = self.get_active_tab() {
+            self.send_plugin_instructions
+                .send(PluginInstruction::UpdateTabs(
+                    active_tab.position,
+                    self.tabs.len(),
+                ))
+                .unwrap();
+        }
     }
 
     pub fn get_terminal_size(&self, fd: Option<RawFd>) -> PositionAndSize {

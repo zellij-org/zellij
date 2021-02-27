@@ -1,0 +1,10 @@
+[package]
+name = "tab-bar"
+version = "0.1.0"
+authors = ["Jonah Caplan <jonahcaplan@gmail.com>"]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+zellij-tile = { path = "../../zellij-tile" }

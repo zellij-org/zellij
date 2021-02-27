@@ -31,12 +31,23 @@ pub fn main() {
     // First run installation of default plugins & layouts
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
-    let assets = asset_map! {
-        "plugins/status-bar.wasm",
-        "plugins/strider.wasm",
-        "layouts/default.yaml",
-        "layouts/strider.yaml"
+    let mut assets = asset_map! {
+        "assets/layouts/default.yaml" => "layouts/default.yaml",
+        "assets/layouts/strider.yaml" => "layouts/strider.yaml",
     };
+    // FIXME: This is a hideous hack and I hate it (a lot)
+    #[cfg(not(feature = "publish"))]
+    assets.extend(asset_map! {
+        "target/status-bar.wasm" => "plugins/status-bar.wasm",
+        "target/tab-bar.wasm" => "plugins/tab-bar.wasm",
+        "target/strider.wasm" => "plugins/strider.wasm",
+    });
+    #[cfg(feature = "publish")]
+    assets.extend(asset_map! {
+        "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",
+        "assets/plugins/tab-bar.wasm" => "plugins/tab-bar.wasm",
+        "assets/plugins/strider.wasm" => "plugins/strider.wasm",
+    });
 
     for (path, bytes) in assets {
         let path = data_dir.join(path);

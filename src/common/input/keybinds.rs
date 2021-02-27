@@ -133,6 +133,9 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
             );
+            for i in '1'..='9' {
+                defaults.insert(Key::Char(i), vec![Action::GoToTab(i.to_digit(10).unwrap())]);
+            }
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
         }
         InputMode::Scroll => {
@@ -165,15 +168,16 @@ pub fn key_to_actions(
     mode: &InputMode,
     keybinds: &Keybinds,
 ) -> Vec<Action> {
-    if let Some(mode_keybinds) = keybinds.get(mode) {
-        mode_keybinds
+    let mode_keybind_or_action = |action: Action| {
+        keybinds
+            .get(mode)
+            .unwrap_or_else(|| unreachable!("Unrecognized mode: {:?}", mode))
             .get(key)
             .cloned()
-            // FIXME in command mode, unbound keystrokes should probably do nothing instead of
-            // writing to the terminal. Will be easier to implement after a big refactor of the
-            // input system (@categorille)
-            .unwrap_or_else(|| vec![Action::Write(input)])
-    } else {
-        unreachable!("Unrecognized mode: {:?}", mode);
+            .unwrap_or_else(|| vec![action])
+    };
+    match *mode {
+        InputMode::Normal => mode_keybind_or_action(Action::Write(input)),
+        _ => mode_keybind_or_action(Action::NoOp),
     }
 }

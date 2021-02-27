@@ -70,6 +70,10 @@ fn transfer_rows_down(
                         }
                         None => vec![Row::from_rows(next_lines)],
                     };
+                    if next_lines.is_empty() {
+                        // no more lines at source, the line we popped was probably empty
+                        break;
+                    }
                 }
                 None => break, // no more rows
             }
@@ -431,7 +435,7 @@ impl Grid {
     pub fn rotate_scroll_region_down(&mut self, _count: usize) {
         // TBD
     }
-    pub fn add_canonical_line(&mut self) {
+    pub fn add_canonical_line(&mut self, pad_character: TerminalCharacter) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y == scroll_region_bottom {
                 // end of scroll region
@@ -441,12 +445,16 @@ impl Grid {
                 // controlling the scroll region (presumably filled by whatever comes next in the
                 // scroll buffer, but that's not something we control)
                 self.viewport.remove(scroll_region_top);
+                let columns = vec![pad_character; self.width];
                 self.viewport
-                    .insert(scroll_region_bottom, Row::new().canonical());
+                    .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 return;
             }
         }
         if self.viewport.len() <= self.cursor.y + 1 {
+            // FIXME: this should add an empty line with the pad_character
+            // but for some reason this breaks rendering in various situations
+            // it needs to be investigated and fixed
             let new_row = Row::new().canonical();
             self.viewport.push(new_row);
         }
@@ -565,15 +573,16 @@ impl Grid {
             current_row.push(EMPTY_TERMINAL_CHARACTER);
         }
     }
-    fn pad_lines_until(&mut self, position: usize) {
+    fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
-            self.viewport.push(Row::new().canonical());
+            let columns = vec![pad_character; self.width];
+            self.viewport.push(Row::from_columns(columns).canonical());
         }
     }
-    pub fn move_cursor_to(&mut self, x: usize, y: usize) {
+    pub fn move_cursor_to(&mut self, x: usize, y: usize, pad_character: TerminalCharacter) {
         self.cursor.x = std::cmp::min(self.width - 1, x);
         self.cursor.y = std::cmp::min(self.height - 1, y);
-        self.pad_lines_until(self.cursor.y);
+        self.pad_lines_until(self.cursor.y, pad_character);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn move_cursor_up(&mut self, count: usize) {
@@ -600,7 +609,7 @@ impl Grid {
             }
         }
     }
-    pub fn move_cursor_down(&mut self, count: usize) {
+    pub fn move_cursor_down(&mut self, count: usize, pad_character: TerminalCharacter) {
         let lines_to_add = if self.cursor.y + count > self.height - 1 {
             (self.cursor.y + count) - (self.height - 1)
         } else {
@@ -612,9 +621,9 @@ impl Grid {
             self.cursor.y + count
         };
         for _ in 0..lines_to_add {
-            self.add_canonical_line();
+            self.add_canonical_line(pad_character);
         }
-        self.pad_lines_until(self.cursor.y);
+        self.pad_lines_until(self.cursor.y, pad_character);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
         if self.cursor.x < count {
@@ -638,7 +647,11 @@ impl Grid {
     pub fn set_scroll_region_to_viewport_size(&mut self) {
         self.scroll_region = Some((0, self.height - 1));
     }
-    pub fn delete_lines_in_scroll_region(&mut self, count: usize) {
+    pub fn delete_lines_in_scroll_region(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
             if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
@@ -649,13 +662,18 @@ impl Grid {
                 // region
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
+                    let columns = vec![pad_character; self.width];
                     self.viewport
-                        .insert(scroll_region_bottom, Row::new().canonical());
+                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 }
             }
         }
     }
-    pub fn add_empty_lines_in_scroll_region(&mut self, count: usize) {
+    pub fn add_empty_lines_in_scroll_region(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             let current_line_index = self.cursor.y;
             if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
@@ -666,8 +684,9 @@ impl Grid {
                 // of the scroll region
                 for _ in 0..count {
                     self.viewport.remove(scroll_region_bottom);
+                    let columns = vec![pad_character; self.width];
                     self.viewport
-                        .insert(current_line_index, Row::new().canonical());
+                        .insert(current_line_index, Row::from_columns(columns).canonical());
                 }
             }
         }
@@ -676,9 +695,9 @@ impl Grid {
         self.cursor.x = column;
         self.pad_current_line_until(self.cursor.x);
     }
-    pub fn move_cursor_to_line(&mut self, line: usize) {
+    pub fn move_cursor_to_line(&mut self, line: usize, pad_character: TerminalCharacter) {
         self.cursor.y = std::cmp::min(self.height - 1, line);
-        self.pad_lines_until(self.cursor.y);
+        self.pad_lines_until(self.cursor.y, pad_character);
         self.pad_current_line_until(self.cursor.x);
     }
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: CharacterStyles) {

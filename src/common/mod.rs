@@ -459,6 +459,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             screen.apply_layout(layout, new_pane_pids);
                             command_is_executing.done_opening_new_pane();
                         }
+                        ScreenInstruction::GoToTab(tab_index) => {
+                            screen.go_to_tab(tab_index as usize)
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -579,6 +582,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             .unwrap();
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                    }
+                    PluginInstruction::UpdateTabs(active_tab_index, num_tabs) => {
+                        for (instance, _) in plugin_map.values() {
+                            let handler = instance.exports.get_function("update_tabs").unwrap();
+                            handler
+                                .call(&[
+                                    Value::I32(active_tab_index as i32),
+                                    Value::I32(num_tabs as i32),
+                                ])
+                                .unwrap();
+                        }
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(pid, input_bytes) => {

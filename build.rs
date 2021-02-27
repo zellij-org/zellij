@@ -1,5 +1,5 @@
 use directories_next::ProjectDirs;
-use std::fs;
+use std::{ffi::OsStr, fs};
 use structopt::clap::Shell;
 use walkdir::WalkDir;
 
@@ -24,14 +24,29 @@ fn main() {
     clap_app.gen_completions(BIN_NAME, Shell::Fish, &out_dir);
 
     // Clear Default Plugins and Layouts
-    for entry in WalkDir::new("assets/") {
+
+    // Rerun on layout change
+    for entry in WalkDir::new("assets/layouts") {
         let entry = entry.unwrap();
         println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
+    }
+
+    // Rerun on plugin change
+    #[cfg(not(feature = "publish"))]
+    let plugin_dir = "target";
+    #[cfg(feature = "publish")]
+    let plugin_dir = "assets/plugins";
+    for entry in WalkDir::new(plugin_dir) {
+        let entry = entry.unwrap();
+        if entry.path().extension() == Some(OsStr::new("wasm")) {
+            println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
+        }
     }
 
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     let data_dir = project_dirs.data_dir();
     drop(fs::remove_file(data_dir.join("plugins/status-bar.wasm")));
+    drop(fs::remove_file(data_dir.join("plugins/tab-bar.wasm")));
     drop(fs::remove_file(data_dir.join("plugins/strider.wasm")));
     drop(fs::remove_file(data_dir.join("layouts/default.yaml")));
     drop(fs::remove_file(data_dir.join("layouts/strider.yaml")));

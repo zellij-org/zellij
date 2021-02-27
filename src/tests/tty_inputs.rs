@@ -227,6 +227,29 @@ pub const COL_24: [&str; 20] = [
     "line19-bbbbbbbbbbbbbbbbb\r\n",
     "prompt $ ",
 ];
+
+pub const COL_25: [&str; 20] = [
+    "line1-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line2-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line3-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line4-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line5-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line6-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line7-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line8-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line9-bbbbbbbbbbbbbbbbbbb\r\n",
+    "line10-bbbbbbbbbbbbbbbbbb\r\n",
+    "line11-bbbbbbbbbbbbbbbbbb\r\n",
+    "line12-bbbbbbbbbbbbbbbbbb\r\n",
+    "line13-bbbbbbbbbbbbbbbbbb\r\n",
+    "line14-bbbbbbbbbbbbbbbbbb\r\n",
+    "line15-bbbbbbbbbbbbbbbbbb\r\n",
+    "line16-bbbbbbbbbbbbbbbbbb\r\n",
+    "line17-bbbbbbbbbbbbbbbbbb\r\n",
+    "line18-bbbbbbbbbbbbbbbbbb\r\n",
+    "line19-bbbbbbbbbbbbbbbbbb\r\n",
+    "prompt $ ",
+];
 pub const COL_29: [&str; 20] = [
     "line1-bbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "line2-bbbbbbbbbbbbbbbbbbbbbbb\r\n",
@@ -339,6 +362,29 @@ pub const COL_39: [&str; 20] = [
     "line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "prompt $ ",
+];
+
+pub const COL_47: [&str; 20] = [
+    "line1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line3-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line4-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line5-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line6-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line7-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line8-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line9-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line10-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line12-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line13-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line14-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line15-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line16-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line17-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line18-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
+    "line19-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\r\n",
     "prompt $ ",
 ];
 
