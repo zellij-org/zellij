@@ -38,6 +38,7 @@ pub enum InputMode {
     Resize,
     Pane,
     Tab,
+    RenameTab,
     Scroll,
     Exiting,
 }

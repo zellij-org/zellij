@@ -419,6 +419,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::GoToTab(tab_index) => {
                             screen.go_to_tab(tab_index as usize)
                         }
+                        ScreenInstruction::UpdateTabName(c) => {
+                            screen.update_active_tab_name(c);
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -527,19 +530,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(pid, input_bytes) => {
-                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                        let handle_key = instance.exports.get_function("handle_key").unwrap();
-                        for key in input_bytes.keys() {
-                            if let Ok(key) = key {
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&key).unwrap(),
-                                );
-                                handle_key.call(&[]).unwrap();
+                        /* add event type to PluginInstruction::Input so plugins can filter */
+                        for (&plugin_pid, (instance, plugin_env)) in plugin_map.iter() {
+                            if pid != 0 && pid != plugin_pid {
+                                continue;
+                            }
+                            let handle_key = instance.exports.get_function("handle_key").unwrap();
+                            for key in input_bytes.keys() {
+                                if let Ok(key) = key {
+                                    wasi_write_string(
+                                        &plugin_env.wasi_env,
+                                        &serde_json::to_string(&key).unwrap(),
+                                    );
+                                    handle_key.call(&[]).unwrap();
+                                }
                             }
                         }
-
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::GlobalInput(input_bytes) => {

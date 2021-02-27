@@ -232,6 +232,22 @@ impl InputHandler {
                     .send(ScreenInstruction::GoToTab(i))
                     .unwrap();
             }
+            Action::TabNameInput(c) => {
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Input(0, c.clone()))
+                    .unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::UpdateTabName(c))
+                    .unwrap();
+            }
+            Action::SaveTabName => {
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Input(0, vec![b'\n']))
+                    .unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::UpdateTabName(vec![b'\n']))
+                    .unwrap();
+            }
             Action::NoOp => {}
         }
 
@@ -265,6 +281,7 @@ pub enum InputMode {
     Tab,
     /// `Scroll` mode allows scrolling up and down within a pane.
     Scroll,
+    RenameTab,
 }
 
 /// Represents the contents of the help message that is printed in the status bar,
@@ -310,9 +327,13 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
             keybinds.push(("n".to_string(), "New".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
+            keybinds.push(("r".to_string(), "Rename".to_string()));
         }
         InputMode::Scroll => {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
+        }
+        InputMode::RenameTab => {
+            keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
     keybinds.push(("ESC".to_string(), "BACK".to_string()));

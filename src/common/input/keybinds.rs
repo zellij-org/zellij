@@ -128,6 +128,13 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Char('n'), vec![Action::NewTab]);
             defaults.insert(Key::Char('x'), vec![Action::CloseTab]);
 
+            defaults.insert(
+                Key::Char('r'),
+                vec![
+                    Action::SwitchToMode(InputMode::RenameTab),
+                    Action::TabNameInput(vec![0]),
+                ],
+            );
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
             defaults.insert(
                 Key::Ctrl('g'),
@@ -149,6 +156,17 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Ctrl('p'), vec![Action::ScrollUp]);
 
             defaults.insert(Key::Char('q'), vec![Action::Quit]);
+            defaults.insert(
+                Key::Ctrl('g'),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
+            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
+        }
+        InputMode::RenameTab => {
+            defaults.insert(
+                Key::Char('\n'),
+                vec![Action::SaveTabName, Action::SwitchToMode(InputMode::Tab)],
+            );
             defaults.insert(
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
@@ -178,6 +196,7 @@ pub fn key_to_actions(
     };
     match *mode {
         InputMode::Normal => mode_keybind_or_action(Action::Write(input)),
+        InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(input)),
         _ => mode_keybind_or_action(Action::NoOp),
     }
 }

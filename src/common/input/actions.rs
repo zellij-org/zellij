@@ -48,4 +48,6 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
+    TabNameInput(Vec<u8>),
+    SaveTabName,
 }

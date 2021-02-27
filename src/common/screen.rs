@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
+use std::str;
 use std::sync::mpsc::Receiver;
 
 use super::{AppInstruction, SenderWithContext};
@@ -46,6 +47,7 @@ pub enum ScreenInstruction {
     SwitchTabPrev,
     CloseTab,
     GoToTab(u32),
+    UpdateTabName(Vec<u8>),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -69,6 +71,7 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
+    tabname_buf: String,
 }
 
 impl Screen {
@@ -92,6 +95,7 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
+            tabname_buf: String::new(),
         }
     }
 
@@ -275,5 +279,24 @@ impl Screen {
         self.send_plugin_instructions
             .send(PluginInstruction::UpdateTabs(tab_data))
             .unwrap();
+    }
+
+    pub fn update_active_tab_name(&mut self, buf: Vec<u8>) {
+        let s = str::from_utf8(&buf).unwrap();
+        match s {
+            "\0" => {
+                self.tabname_buf = String::new();
+            }
+            "\n" => {
+                let new_name = self.tabname_buf.clone();
+                let active_tab = self.get_active_tab_mut().unwrap();
+                active_tab.name = new_name;
+                self.update_tabs();
+                self.render();
+            }
+            c => {
+                self.tabname_buf.push_str(c);
+            }
+        }
     }
 }
