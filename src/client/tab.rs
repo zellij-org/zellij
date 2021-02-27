@@ -7,11 +7,11 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
+use std::{collections::HashMap, os::unix::io::RawFd};
 use std::{io::Write, sync::mpsc::channel};
 
 use crate::utils::logging::debug_log_to_file;
@@ -491,29 +491,84 @@ impl Tab {
             }
         }
     }
-    pub fn get_panes_with_right_coord(&mut self, right_border_coord: Option<usize>) -> Vec<&mut (dyn Pane + 'static)> {
+    pub fn get_panes_ids_leaning_on_right_border(
+        &mut self,
+        right_border_coord: Option<usize>,
+    ) -> HashSet<&PaneId> {
         let right_border_coord = right_border_coord.unwrap_or(self.full_screen_ws.columns);
-        let mut pane_list = Vec::new();
 
-        for (_, pane) in self.panes.iter_mut() {
-            if pane.right_boundary_x_coords() == right_border_coord {
-                pane_list.push(pane.as_mut());
-            }
-        }
-        pane_list
+        self.panes
+            .iter_mut()
+            .filter_map(|(pane_id, pane)| {
+                if pane.right_boundary_x_coords() == right_border_coord {
+                    Some(pane_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<&PaneId>>()
     }
-    pub fn reduce_pane_width_rec(&mut self, columns_to_reduce: usize, right_border_coord: Option<usize>) {
-        if columns_to_reduce <= 0 { return; }
+    pub fn reduce_pane_left_and_pull_surrondings_dryrun(
+        &self,
+        root_pane_id: PaneId,
+        reduce_by: usize,
+        pane_ids_to_reduce: &mut HashSet<PaneId>,
+    ) {
+        let current_pane = self
+            .panes
+            .get(&root_pane_id)
+            .expect("Could not find the requested pane.");
+        let current_pane_right_boundary = current_pane.right_boundary_x_coords();
+        let current_pane_top_boundary = current_pane.y();
+        let current_pane_bottom_boundary = current_pane.bottom_boundary_y_coords();
 
-        let panes_on_right_border = self.get_panes_with_right_coord(right_border_coord);
-        let panes_on_right_border_clone = panes_on_right_border.to_owned();
+        pane_ids_to_reduce.insert(root_pane_id);
 
-        for pane in panes_on_right_border_clone {
+        let pane_ids_right_adjacent: HashSet<&PaneId> = self
+            .panes
+            .iter()
+            .filter_map(|(pane_id, pane)| {
+                let is_x_adjacent = pane.x() == current_pane_right_boundary;
+                let is_top_y_inside =
+                    pane.y() < current_pane_top_boundary && pane.y() > current_pane_bottom_boundary;
+                let is_bottom_y_inside = pane.bottom_boundary_y_coords()
+                    < current_pane_top_boundary
+                    && pane.bottom_boundary_y_coords() > current_pane_bottom_boundary;
+
+                if is_x_adjacent && (is_top_y_inside || is_bottom_y_inside) {
+                    Some(pane_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for pane_id in pane_ids_right_adjacent {
+            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+        }
+    }
+    pub fn reduce_pane_width_rec(
+        &mut self,
+        columns_to_reduce: usize,
+        right_border_coord: Option<usize>,
+    ) {
+        if columns_to_reduce <= 0 {
+            return;
+        }
+
+        let pane_ids_on_right_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
+
+        for pane_id in pane_ids_on_right_border {
+            let pane = self.panes.get_mut(pane_id).unwrap();
+            let mut reduced_by = 0;
+
             if pane.columns() >= pane.min_width() + columns_to_reduce {
                 pane.reduce_width_left(columns_to_reduce);
+                reduced_by = columns_to_reduce;
             } else if columns_to_reduce >= pane.min_width() {
                 let columns_allowed_to_reduce = columns_to_reduce - pane.min_width();
                 pane.reduce_width_left(columns_allowed_to_reduce);
+                reduced_by += columns_allowed_to_reduce;
 
                 self.reduce_pane_width_rec(columns_allowed_to_reduce, Some(pane.x()));
             } else {
