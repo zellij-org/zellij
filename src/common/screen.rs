@@ -8,7 +8,7 @@ use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::tab::Tab;
+use crate::tab::{Tab, TabData};
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
@@ -103,6 +103,7 @@ impl Screen {
         let tab = Tab::new(
             tab_index,
             position,
+            String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -246,6 +247,7 @@ impl Screen {
         let mut tab = Tab::new(
             tab_index,
             position,
+            String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_pty_instructions.clone(),
@@ -261,13 +263,17 @@ impl Screen {
     }
 
     fn update_tabs(&self) {
-        if let Some(active_tab) = self.get_active_tab() {
-            self.send_plugin_instructions
-                .send(PluginInstruction::UpdateTabs(
-                    active_tab.position,
-                    self.tabs.len(),
-                ))
-                .unwrap();
+        let mut tab_data = vec![];
+        let active_tab_index = self.active_tab_index.unwrap();
+        for tab in self.tabs.values() {
+            tab_data.push(TabData {
+                position: tab.position,
+                name: tab.name.clone(),
+                active: active_tab_index == tab.index,
+            });
         }
+        self.send_plugin_instructions
+            .send(PluginInstruction::UpdateTabs(tab_data))
+            .unwrap();
     }
 }

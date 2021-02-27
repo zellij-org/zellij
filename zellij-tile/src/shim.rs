@@ -42,6 +42,14 @@ pub enum InputMode {
     Exiting,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TabData {
+    /* subset of fields to publish to plugins */
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
+}
+
 impl Default for InputMode {
     fn default() -> InputMode {
         InputMode::Normal
@@ -73,6 +81,10 @@ pub fn set_selectable(selectable: bool) {
 
 pub fn get_help() -> Help {
     unsafe { host_get_help() };
+    deserialize_from_stdin().unwrap_or_default()
+}
+
+pub fn get_tabs() -> Vec<TabData> {
     deserialize_from_stdin().unwrap_or_default()
 }
 

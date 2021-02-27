@@ -7,6 +7,7 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -51,6 +52,7 @@ fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Posi
 pub struct Tab {
     pub index: usize,
     pub position: usize,
+    pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
@@ -62,6 +64,14 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TabData {
+    /* subset of fields to publish to plugins */
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -170,6 +180,7 @@ impl Tab {
     pub fn new(
         index: usize,
         position: usize,
+        name: String,
         full_screen_ws: &PositionAndSize,
         mut os_api: Box<dyn OsApi>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -195,6 +206,7 @@ impl Tab {
             index,
             position,
             panes,
+            name,
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,

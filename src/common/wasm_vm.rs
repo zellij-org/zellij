@@ -1,10 +1,10 @@
+use crate::tab::TabData;
 use std::{
     path::PathBuf,
     sync::mpsc::{channel, Sender},
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-// use crate::utils::logging::debug_log_to_file;
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
@@ -18,7 +18,7 @@ pub enum PluginInstruction {
     Input(u32, Vec<u8>),                     // plugin id, input bytes
     GlobalInput(Vec<u8>),                    // input bytes
     Unload(u32),
-    UpdateTabs(usize, usize), // num tabs, active tab
+    UpdateTabs(Vec<TabData>), // num tabs, active tab
     Quit,
 }
 

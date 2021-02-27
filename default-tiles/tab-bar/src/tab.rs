@@ -38,15 +38,16 @@ pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
     }
 }
 
-pub fn tab(text: String, is_active_tab: bool, is_furthest_to_the_left: bool) -> LinePart {
-    if is_active_tab {
-        active_tab(text, is_furthest_to_the_left)
+pub fn tab_style(text: String, is_active_tab: bool, position: usize) -> LinePart {
+    let tab_text;
+    if text.is_empty() {
+        tab_text = format!(" Tab #{} ", position + 1);
     } else {
-        non_active_tab(text, is_furthest_to_the_left)
+        tab_text = text;
     }
-}
-
-pub fn nameless_tab(index: usize, is_active_tab: bool) -> LinePart {
-    let tab_text = format!(" Tab #{} ", index + 1);
-    tab(tab_text, is_active_tab, index == 0)
+    if is_active_tab {
+        active_tab(tab_text, position == 0)
+    } else {
+        non_active_tab(tab_text, position == 0)
+    }
 }
