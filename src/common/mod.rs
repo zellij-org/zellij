@@ -348,24 +348,24 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .resize_left_by(current_term_size.columns - new_term_size.columns);
+                                    .reduce_pane_width_rec(current_term_size.columns - new_term_size.columns, None);
                             } else if new_term_size.columns > current_term_size.columns {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_right_by(new_term_size.columns - current_term_size.columns);
+                                // screen
+                                    // .get_active_tab_mut()
+                                    // .unwrap()
+                                    // .reduce_pane_width_rec(new_term_size.columns - current_term_size.columns, None);
                             }
 
                             if new_term_size.rows < current_term_size.rows {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_down_by(current_term_size.rows - new_term_size.rows);
+                                // screen
+                                    // .get_active_tab_mut()
+                                    // .unwrap()
+                                    // .resize_down_by(current_term_size.rows - new_term_size.rows);
                             } else if new_term_size.rows > current_term_size.rows {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .resize_up_by(new_term_size.rows - current_term_size.rows);
+                                // screen
+                                    // .get_active_tab_mut()
+                                    // .unwrap()
+                                    // .resize_up_by(new_term_size.rows - current_term_size.rows);
                             }
                         }
                         ScreenInstruction::ResizeLeft => {

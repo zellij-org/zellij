@@ -7,10 +7,7 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use std::{
-    cmp::Reverse,
-    collections::{BTreeMap, HashSet},
-};
+use std::{borrow::BorrowMut, cmp::Reverse, collections::{BTreeMap, HashSet}};
 use std::{collections::HashMap, os::unix::io::RawFd};
 use std::{io::Write, sync::mpsc::channel};
 
@@ -494,20 +491,22 @@ impl Tab {
     pub fn get_panes_ids_leaning_on_right_border(
         &mut self,
         right_border_coord: Option<usize>,
-    ) -> HashSet<&PaneId> {
+    ) -> HashSet<PaneId> {
         let right_border_coord = right_border_coord.unwrap_or(self.full_screen_ws.columns);
 
         self.panes
             .iter_mut()
             .filter_map(|(pane_id, pane)| {
                 if pane.right_boundary_x_coords() == right_border_coord {
-                    Some(pane_id)
+                    Some(*pane_id)
                 } else {
                     None
                 }
             })
-            .collect::<HashSet<&PaneId>>()
+            .collect::<HashSet<PaneId>>()
     }
+    /// This function finds recursively all of the panes that share an edge with the
+    /// previous (leftside) pane and marks them for minimization.
     pub fn reduce_pane_left_and_pull_surrondings_dryrun(
         &self,
         root_pane_id: PaneId,
@@ -556,23 +555,16 @@ impl Tab {
             return;
         }
 
-        let pane_ids_on_right_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
+        let mut pane_ids_on_right_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
+        let pane_ids_on_right_border_clone = pane_ids_on_right_border.clone();
 
-        for pane_id in pane_ids_on_right_border {
-            let pane = self.panes.get_mut(pane_id).unwrap();
-            let mut reduced_by = 0;
+        for pane_id in pane_ids_on_right_border_clone.iter() {
+            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, columns_to_reduce, &mut pane_ids_on_right_border);
+        }
 
-            if pane.columns() >= pane.min_width() + columns_to_reduce {
-                pane.reduce_width_left(columns_to_reduce);
-                reduced_by = columns_to_reduce;
-            } else if columns_to_reduce >= pane.min_width() {
-                let columns_allowed_to_reduce = columns_to_reduce - pane.min_width();
-                pane.reduce_width_left(columns_allowed_to_reduce);
-                reduced_by += columns_allowed_to_reduce;
-
-                self.reduce_pane_width_rec(columns_allowed_to_reduce, Some(pane.x()));
-            } else {
-                self.reduce_pane_width_rec(columns_to_reduce, Some(pane.x()));
+        for (pane_id, pane) in self.panes.iter_mut() {
+            if pane_ids_on_right_border.contains(pane_id) {
+                pane.reduce_width_right(columns_to_reduce);
             }
         }
     }
