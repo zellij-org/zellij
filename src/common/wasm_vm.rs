@@ -12,7 +12,7 @@ use super::{
     PaneId, SenderWithContext,
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub enum EventType {
     Tab,
 }

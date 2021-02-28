@@ -34,7 +34,7 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction, PluginInputType};
+use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction, PluginInputType, EventType};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -441,6 +441,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
+            let handler_map: HashMap<EventType, String> = [(EventType::Tab, "handle_tab_event".to_string())].iter().cloned().collect();
 
             move || loop {
                 let (event, mut err_ctx) = receive_plugin_instructions
@@ -521,6 +522,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     PluginInstruction::UpdateTabs(mut tabs) => {
                         for (instance, plugin_env) in plugin_map.values() {
+                            if !plugin_env.events.contains(&EventType::Tab) {
+                                continue;
+                            }
                             let handler = instance.exports.get_function("update_tabs").unwrap();
                             tabs.sort_by(|a, b| a.position.cmp(&b.position));
                             wasi_write_string(
@@ -532,7 +536,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(input_type, input_bytes) => {
-                        /* TODO add event type to PluginInstruction::Input so plugins can filter */
                         match input_type {
                             PluginInputType::Normal(pid) => {
                                 let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
@@ -549,20 +552,21 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             }
                             PluginInputType::Event(event) => {
                                 for (instance, plugin_env) in plugin_map.values() {
-                                    /* TODO how does the recipient know? each event needs unique callback */
-                                    if plugin_env.events.contains(&event) {
-                                        let handle_key = instance.exports.get_function("handle_key").unwrap();
-                                        for key in input_bytes.keys() {
-                                            if let Ok(key) = key {
-                                                wasi_write_string(
-                                                    &plugin_env.wasi_env,
-                                                    &serde_json::to_string(&key).unwrap(),
-                                                );
-                                                handle_key.call(&[]).unwrap();
-                                            }
+                                    if !plugin_env.events.contains(&event) {
+                                        continue;
+                                    }
+                                    let handle_key = instance.exports.get_function(
+                                        handler_map.get(&event).unwrap()
+                                    ).unwrap();
+                                    for key in input_bytes.keys() {
+                                        if let Ok(key) = key {
+                                            wasi_write_string(
+                                                &plugin_env.wasi_env,
+                                                &serde_json::to_string(&key).unwrap(),
+                                            );
+                                            handle_key.call(&[]).unwrap();
                                         }
                                     }
-                                    /* TODO if plugin has event tab in it then send */
                                 }
                             }
                         }

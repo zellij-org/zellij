@@ -79,7 +79,7 @@ impl ZellijTile for State {
         self.tabs = get_tabs();
     }
 
-    fn handle_key(&mut self, key: Key) {
+    fn handle_tab_event(&mut self, key: Key) {
         self.mode = Mode::Rename;
         match key {
             Key::Char('\n') => self.mode = Mode::Normal,
