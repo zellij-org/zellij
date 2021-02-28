@@ -34,7 +34,7 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction, PluginInputType};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -451,7 +451,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 send_pty_instructions.update(err_ctx);
                 send_app_instructions.update(err_ctx);
                 match event {
-                    PluginInstruction::Load(pid_tx, path) => {
+                    PluginInstruction::Load(pid_tx, path, events) => {
+                        /* TODO, this comes from the layout, the layout should know if we want tab data or not */
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
@@ -493,6 +494,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
                             wasi_env,
+                            events,
                         };
 
                         let zellij = zellij_imports(&store, &plugin_env);
@@ -529,23 +531,42 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         }
                     }
                     // FIXME: Deduplicate this with the callback below!
-                    PluginInstruction::Input(pid, input_bytes) => {
-                        /* add event type to PluginInstruction::Input so plugins can filter */
-                        for (&plugin_pid, (instance, plugin_env)) in plugin_map.iter() {
-                            if pid != 0 && pid != plugin_pid {
-                                continue;
+                    PluginInstruction::Input(input_type, input_bytes) => {
+                        /* TODO add event type to PluginInstruction::Input so plugins can filter */
+                        match input_type {
+                            PluginInputType::Normal(pid) => {
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+                                let handle_key = instance.exports.get_function("handle_key").unwrap();
+                                for key in input_bytes.keys() {
+                                    if let Ok(key) = key {
+                                        wasi_write_string(
+                                            &plugin_env.wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
+                                        handle_key.call(&[]).unwrap();
+                                    }
+                                }
                             }
-                            let handle_key = instance.exports.get_function("handle_key").unwrap();
-                            for key in input_bytes.keys() {
-                                if let Ok(key) = key {
-                                    wasi_write_string(
-                                        &plugin_env.wasi_env,
-                                        &serde_json::to_string(&key).unwrap(),
-                                    );
-                                    handle_key.call(&[]).unwrap();
+                            PluginInputType::Event(event) => {
+                                for (instance, plugin_env) in plugin_map.values() {
+                                    /* TODO how does the recipient know? each event needs unique callback */
+                                    if plugin_env.events.contains(&event) {
+                                        let handle_key = instance.exports.get_function("handle_key").unwrap();
+                                        for key in input_bytes.keys() {
+                                            if let Ok(key) = key {
+                                                wasi_write_string(
+                                                    &plugin_env.wasi_env,
+                                                    &serde_json::to_string(&key).unwrap(),
+                                                );
+                                                handle_key.call(&[]).unwrap();
+                                            }
+                                        }
+                                    }
+                                    /* TODO if plugin has event tab in it then send */
                                 }
                             }
                         }
+                        
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::GlobalInput(input_bytes) => {

@@ -2,10 +2,11 @@
 //! as well as how they should be resized
 
 use crate::common::{AppInstruction, SenderWithContext};
+use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
@@ -261,7 +262,11 @@ impl Tab {
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Load(pid_tx, plugin.clone()))
+                    .send(PluginInstruction::Load(
+                        pid_tx,
+                        plugin.clone(),
+                        layout.events.clone(),
+                    ))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let new_plugin = PluginPane::new(
@@ -558,7 +563,10 @@ impl Tab {
             }
             Some(PaneId::Plugin(pid)) => {
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Input(pid, input_bytes))
+                    .send(PluginInstruction::Input(
+                        PluginInputType::Normal(pid),
+                        input_bytes,
+                    ))
                     .unwrap();
             }
             _ => {}

@@ -7,7 +7,7 @@ use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::wasm_vm::PluginInstruction;
+use crate::wasm_vm::{EventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
 use serde::{Deserialize, Serialize};
@@ -234,7 +234,10 @@ impl InputHandler {
             }
             Action::TabNameInput(c) => {
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Input(0, c.clone()))
+                    .send(PluginInstruction::Input(
+                        PluginInputType::Event(EventType::Tab),
+                        c.clone(),
+                    ))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::UpdateTabName(c))
@@ -242,7 +245,10 @@ impl InputHandler {
             }
             Action::SaveTabName => {
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Input(0, vec![b'\n']))
+                    .send(PluginInstruction::Input(
+                        PluginInputType::Event(EventType::Tab),
+                        vec![b'\n'],
+                    ))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::UpdateTabName(vec![b'\n']))

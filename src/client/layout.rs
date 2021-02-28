@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::{fs::File, io::prelude::*};
 
+use crate::common::wasm_vm::EventType;
 use crate::panes::PositionAndSize;
 
 fn split_space_to_parts_vertically(
@@ -180,6 +181,8 @@ pub struct Layout {
     pub plugin: Option<PathBuf>,
     #[serde(default)]
     pub expansion_boundary: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<EventType>,
 }
 
 impl Layout {
