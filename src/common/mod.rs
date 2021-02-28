@@ -34,7 +34,9 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction, PluginInputType, EventType};
+use wasm_vm::{
+    wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -441,7 +443,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
-            let handler_map: HashMap<EventType, String> = [(EventType::Tab, "handle_tab_event".to_string())].iter().cloned().collect();
+            let handler_map: HashMap<EventType, String> =
+                [(EventType::Tab, "handle_tab_event".to_string())]
+                    .iter()
+                    .cloned()
+                    .collect();
 
             move || loop {
                 let (event, mut err_ctx) = receive_plugin_instructions
@@ -453,7 +459,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 send_app_instructions.update(err_ctx);
                 match event {
                     PluginInstruction::Load(pid_tx, path, events) => {
-                        /* TODO, this comes from the layout, the layout should know if we want tab data or not */
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
@@ -539,7 +544,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         match input_type {
                             PluginInputType::Normal(pid) => {
                                 let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-                                let handle_key = instance.exports.get_function("handle_key").unwrap();
+                                let handle_key =
+                                    instance.exports.get_function("handle_key").unwrap();
                                 for key in input_bytes.keys() {
                                     if let Ok(key) = key {
                                         wasi_write_string(
@@ -555,9 +561,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                     if !plugin_env.events.contains(&event) {
                                         continue;
                                     }
-                                    let handle_key = instance.exports.get_function(
-                                        handler_map.get(&event).unwrap()
-                                    ).unwrap();
+                                    let handle_key = instance
+                                        .exports
+                                        .get_function(handler_map.get(&event).unwrap())
+                                        .unwrap();
                                     for key in input_bytes.keys() {
                                         if let Ok(key) = key {
                                             wasi_write_string(
@@ -570,7 +577,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 }
                             }
                         }
-                        
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::GlobalInput(input_bytes) => {
