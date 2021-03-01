@@ -504,6 +504,23 @@ impl Tab {
             }
         }
     }
+    pub fn get_panes_ids_leaning_on_top_border(
+        &mut self,
+        top_border_coord: Option<usize>,
+    ) -> HashSet<PaneId> {
+        let top_border_coord = top_border_coord.unwrap_or(self.full_screen_ws.rows);
+
+        self.panes
+            .iter_mut()
+            .filter_map(|(pane_id, pane)| {
+                if pane.right_boundary_x_coords() == top_border_coord {
+                    Some(*pane_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<PaneId>>()
+    }
     pub fn get_panes_ids_leaning_on_right_border(
         &mut self,
         right_border_coord: Option<usize>,
@@ -522,7 +539,47 @@ impl Tab {
             .collect::<HashSet<PaneId>>()
     }
     /// This function finds recursively all of the panes that share an edge with the
-    /// previous (leftside) pane and marks them for minimization.
+    /// previous (top) pane and marks them for minimization.
+    pub fn reduce_pane_down_and_pull_surrondings_dryrun(
+        &self,
+        root_pane_id: PaneId,
+        reduce_by: usize,
+        pane_ids_to_reduce: &mut HashSet<PaneId>,
+    ) {
+        let current_pane = self
+            .panes
+            .get(&root_pane_id)
+            .expect("Could not find the requested pane.");
+        let current_pane_top_boundary = current_pane.y();
+        let current_pane_right_boundary = current_pane.right_boundary_x_coords();
+        let current_pane_left_boundary = current_pane.x();
+
+        pane_ids_to_reduce.insert(root_pane_id);
+
+        let pane_ids_bottom_adjacent: HashSet<&PaneId> = self
+            .panes
+            .iter()
+            .filter_map(|(pane_id, pane)| {
+                let is_y_adjacent = pane.y() == current_pane_top_boundary;
+                let is_left_x_inside =
+                    pane.x() < current_pane_right_boundary && pane.x() > current_pane_left_boundary;
+                let is_right_x_inside = pane.right_boundary_x_coords()
+                    < current_pane_right_boundary
+                    && pane.x() > current_pane_left_boundary;
+
+                if is_y_adjacent && (is_left_x_inside || is_right_x_inside) {
+                    Some(pane_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for pane_id in pane_ids_bottom_adjacent {
+            self.reduce_pane_down_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+        }
+    }/// This function finds recursively all of the panes that share an edge with the
+    /// previous (left) pane and marks them for minimization.
     pub fn reduce_pane_left_and_pull_surrondings_dryrun(
         &self,
         root_pane_id: PaneId,
@@ -562,25 +619,37 @@ impl Tab {
             self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
         }
     }
-    pub fn reduce_pane_width_rec(
+    pub fn reduce_pane_height_with_bottom_adj(
+        &mut self,
+        rows_to_reduce: usize,
+        top_border_coord: Option<usize>,
+    ) {
+        let mut pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
+
+        for pane_id in pane_ids_on_bottom_border.clone().iter() {
+            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, rows_to_reduce, &mut pane_ids_on_bottom_border);
+        }
+
+        for (pane_id, pane) in self.panes.iter_mut() {
+            if pane_ids_on_bottom_border.contains(pane_id) {
+                pane.reduce_width_left(rows_to_reduce);
+            }
+        }
+    }
+    pub fn reduce_pane_width_with_left_adj(
         &mut self,
         columns_to_reduce: usize,
         right_border_coord: Option<usize>,
     ) {
-        if columns_to_reduce <= 0 {
-            return;
-        }
-
         let mut pane_ids_on_right_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
-        let pane_ids_on_right_border_clone = pane_ids_on_right_border.clone();
 
-        for pane_id in pane_ids_on_right_border_clone.iter() {
+        for pane_id in pane_ids_on_right_border.clone().iter() {
             self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, columns_to_reduce, &mut pane_ids_on_right_border);
         }
 
         for (pane_id, pane) in self.panes.iter_mut() {
             if pane_ids_on_right_border.contains(pane_id) {
-                pane.reduce_width_right(columns_to_reduce);
+                pane.reduce_width_left(columns_to_reduce);
             }
         }
     }

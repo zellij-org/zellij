@@ -176,7 +176,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut send_screen_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
 
-    let (send_sig_instructions, receive_sig_instructions): ChannelWithContext<SigInstruction> =
+    let (send_sig_instructions, _receive_sig_instructions): ChannelWithContext<SigInstruction> =
         channel();
     let send_sig_instructions =
         SenderWithContext::new(err_ctx, SenderType::Sender(send_sig_instructions));
@@ -344,28 +344,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let new_term_size = screen.get_terminal_size(None);
                             let current_term_size = screen.get_active_tab().unwrap().get_tab_size();
 
-                            if new_term_size.columns < current_term_size.columns {
+                            let column_delta = new_term_size.columns as isize - current_term_size.columns as isize;
+                            let column_delta = column_delta.abs() as usize;
+                            if column_delta > 0 {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .reduce_pane_width_rec(current_term_size.columns - new_term_size.columns, None);
-                            } else if new_term_size.columns > current_term_size.columns {
-                                // screen
-                                    // .get_active_tab_mut()
-                                    // .unwrap()
-                                    // .reduce_pane_width_rec(new_term_size.columns - current_term_size.columns, None);
+                                    .reduce_pane_width_with_left_adj(column_delta, None);
                             }
 
-                            if new_term_size.rows < current_term_size.rows {
-                                // screen
-                                    // .get_active_tab_mut()
-                                    // .unwrap()
-                                    // .resize_down_by(current_term_size.rows - new_term_size.rows);
-                            } else if new_term_size.rows > current_term_size.rows {
-                                // screen
-                                    // .get_active_tab_mut()
-                                    // .unwrap()
-                                    // .resize_up_by(new_term_size.rows - current_term_size.rows);
+                            let row_delta = new_term_size.rows as isize - current_term_size.rows as isize;
+                            let row_delta = row_delta.abs() as usize;
+                            if row_delta > 0 {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .reduce_pane_height_with_bottom_adj(row_delta, None);
                             }
                         }
                         ScreenInstruction::ResizeLeft => {
