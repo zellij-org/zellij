@@ -539,8 +539,8 @@ impl Tab {
             .collect::<HashSet<PaneId>>()
     }
     /// This function finds recursively all of the panes that share an edge with the
-    /// previous (top) pane and marks them for minimization.
-    pub fn reduce_pane_down_and_pull_surrondings_dryrun(
+    /// previous (top) pane and **marks** them for minimization.
+    pub fn reduce_pane_height_and_pull_surrondings_dryrun(
         &self,
         root_pane_id: PaneId,
         reduce_by: usize,
@@ -576,11 +576,12 @@ impl Tab {
             .collect();
 
         for pane_id in pane_ids_bottom_adjacent {
-            self.reduce_pane_down_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+            self.reduce_pane_height_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
         }
-    }/// This function finds recursively all of the panes that share an edge with the
-    /// previous (left) pane and marks them for minimization.
-    pub fn reduce_pane_left_and_pull_surrondings_dryrun(
+    }
+    /// This function finds recursively all of the panes that share an edge with the
+    /// previous (left) pane and **marks** them for minimization.
+    pub fn reduce_pane_width_and_pull_surrondings_dryrun(
         &self,
         root_pane_id: PaneId,
         reduce_by: usize,
@@ -616,10 +617,10 @@ impl Tab {
             .collect();
 
         for pane_id in pane_ids_right_adjacent {
-            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+            self.reduce_pane_width_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
         }
     }
-    pub fn reduce_pane_height_with_bottom_adj(
+    pub fn reduce_pane_height_with_top_adj(
         &mut self,
         rows_to_reduce: usize,
         top_border_coord: Option<usize>,
@@ -627,12 +628,12 @@ impl Tab {
         let mut pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
 
         for pane_id in pane_ids_on_bottom_border.clone().iter() {
-            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, rows_to_reduce, &mut pane_ids_on_bottom_border);
+            self.reduce_pane_height_and_pull_surrondings_dryrun(*pane_id, rows_to_reduce, &mut pane_ids_on_bottom_border);
         }
 
         for (pane_id, pane) in self.panes.iter_mut() {
             if pane_ids_on_bottom_border.contains(pane_id) {
-                pane.reduce_width_left(rows_to_reduce);
+                pane.reduce_height_down(rows_to_reduce);
             }
         }
     }
@@ -641,24 +642,28 @@ impl Tab {
         columns_to_reduce: usize,
         right_border_coord: Option<usize>,
     ) {
-        let mut pane_ids_on_right_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
+        let mut pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
 
-        for pane_id in pane_ids_on_right_border.clone().iter() {
-            self.reduce_pane_left_and_pull_surrondings_dryrun(*pane_id, columns_to_reduce, &mut pane_ids_on_right_border);
+        for pane_id in pane_ids_on_bottom_border.clone().iter() {
+            self.reduce_pane_width_and_pull_surrondings_dryrun(*pane_id, columns_to_reduce, &mut pane_ids_on_bottom_border);
         }
 
         for (pane_id, pane) in self.panes.iter_mut() {
-            if pane_ids_on_right_border.contains(pane_id) {
+            if pane_ids_on_bottom_border.contains(pane_id) {
                 pane.reduce_width_left(columns_to_reduce);
             }
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
         // FIXME: Could use Option::map() here
-        match self.get_active_pane_id() {
-            Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
-            None => None,
-        }
+        // match self.get_active_pane_id() {
+            // Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
+            // None => None,
+        // }
+        self.get_active_pane_id()
+            .map(|active_pane_id| {
+                self.panes.get(&active_pane_id).map(Box::as_ref).unwrap()
+            })
     }
     fn get_active_pane_id(&self) -> Option<PaneId> {
         self.active_terminal

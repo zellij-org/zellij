@@ -359,7 +359,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .reduce_pane_height_with_bottom_adj(row_delta, None);
+                                    .reduce_pane_height_with_top_adj(row_delta, None);
                             }
                         }
                         ScreenInstruction::ResizeLeft => {
