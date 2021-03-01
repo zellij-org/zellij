@@ -516,12 +516,12 @@ impl Tab {
         &self,
         top_border_coord: Option<usize>,
     ) -> HashSet<&PaneId> {
-        let top_border_coord = top_border_coord.unwrap_or(self.full_screen_ws.rows);
+        let top_border_coord = top_border_coord.unwrap_or(0);
 
         self.panes
             .iter()
             .filter_map(|(pane_id, pane)| {
-                if pane.right_boundary_x_coords() == top_border_coord {
+                if pane.y() == top_border_coord {
                     Some(pane_id)
                 } else {
                     None
@@ -558,30 +558,31 @@ impl Tab {
             .panes
             .get(&root_pane_id)
             .expect("Could not find the requested pane.");
-        let current_pane_top_boundary = current_pane.y();
+
+        let allowed_to_reduce_by =
+            if current_pane.columns() >= current_pane.min_height() + reduce_by {
+                reduce_by
+            } else if reduce_by > current_pane.min_height() {
+                reduce_by - current_pane.min_height()
+            } else {
+                0
+            };
+        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
+
+        let current_pane_bottom_boundary = current_pane.bottom_boundary_y_coords();
         let current_pane_left_boundary = current_pane.x();
         let current_pane_right_boundary = current_pane.right_boundary_x_coords();
-
-        // The default value is 0 in case the pane cannot be resized at all
-        let mut allowed_to_reduce_by = 0;
-        if current_pane.columns() >= current_pane.min_height() + reduce_by {
-            allowed_to_reduce_by = reduce_by;
-        } else if reduce_by > current_pane.min_height() {
-            allowed_to_reduce_by = reduce_by - current_pane.min_height();
-        }
-
-        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
 
         let pane_ids_bottom_adjacent: HashSet<&PaneId> = self
             .panes
             .iter()
             .filter_map(|(pane_id, pane)| {
-                let is_y_adjacent = pane.y() == current_pane_top_boundary;
+                let is_y_adjacent = pane.y() == current_pane_bottom_boundary;
                 let is_left_x_inside =
                     pane.x() < current_pane_right_boundary && pane.x() > current_pane_left_boundary;
                 let is_right_x_inside = pane.right_boundary_x_coords()
                     < current_pane_right_boundary
-                    && pane.x() > current_pane_left_boundary;
+                    && pane.right_boundary_x_coords() > current_pane_left_boundary;
 
                 if is_y_adjacent && (is_left_x_inside || is_right_x_inside) {
                     Some(pane_id)
@@ -611,19 +612,20 @@ impl Tab {
             .panes
             .get(&root_pane_id)
             .expect("Could not find the requested pane.");
+
+        let allowed_to_reduce_by =
+            if current_pane.columns() >= current_pane.min_height() + reduce_by {
+                reduce_by
+            } else if reduce_by > current_pane.min_height() {
+                reduce_by - current_pane.min_height()
+            } else {
+                0
+            };
+        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
+
         let current_pane_right_boundary = current_pane.right_boundary_x_coords();
         let current_pane_top_boundary = current_pane.y();
         let current_pane_bottom_boundary = current_pane.bottom_boundary_y_coords();
-
-        // The default value is 0 in case the pane cannot be resized at all
-        let mut allowed_to_reduce_by = 0;
-        if current_pane.columns() >= current_pane.min_height() + reduce_by {
-            allowed_to_reduce_by = reduce_by;
-        } else if reduce_by > current_pane.min_height() {
-            allowed_to_reduce_by = reduce_by - current_pane.min_height();
-        }
-
-        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
 
         let pane_ids_right_adjacent: HashSet<&PaneId> = self
             .panes
@@ -658,10 +660,7 @@ impl Tab {
         top_border_coord: Option<usize>,
     ) {
         let pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
-        let mut pane_ids_to_resize = pane_ids_on_bottom_border
-            .iter()
-            .map(|&pane_id| (*pane_id, 0))
-            .collect::<HashMap<PaneId, usize>>();
+        let mut pane_ids_to_resize: HashMap<PaneId, usize> = HashMap::new();
 
         for &pane_id in pane_ids_on_bottom_border {
             self.reduce_pane_height_and_pull_surrondings_dryrun(
@@ -670,7 +669,8 @@ impl Tab {
                 &mut pane_ids_to_resize,
             );
         }
-
+    
+        let _ = crate::utils::logging::debug_log_to_file(format!("Height change: {:?}", pane_ids_to_resize));
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.reduce_height_down(resize_by);
@@ -682,12 +682,8 @@ impl Tab {
         columns_to_reduce: usize,
         left_border_coord: Option<usize>,
     ) {
-        let pane_ids_on_left_border =
-            self.get_panes_ids_leaning_on_left_border(left_border_coord);
-        let mut pane_ids_to_resize = pane_ids_on_left_border
-            .iter()
-            .map(|&pane_id| (*pane_id, 0))
-            .collect::<HashMap<PaneId, usize>>();
+        let pane_ids_on_left_border = self.get_panes_ids_leaning_on_left_border(left_border_coord);
+        let mut pane_ids_to_resize: HashMap<PaneId, usize> = HashMap::new();
 
         for &pane_id in pane_ids_on_left_border {
             self.reduce_pane_width_and_pull_surrondings_dryrun(
@@ -697,6 +693,7 @@ impl Tab {
             );
         }
 
+        let _ = crate::utils::logging::debug_log_to_file(format!("Width change: {:?}", pane_ids_to_resize));
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.reduce_width_left(resize_by);
@@ -704,11 +701,6 @@ impl Tab {
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
-        // FIXME: Could use Option::map() here
-        // match self.get_active_pane_id() {
-        // Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
-        // None => None,
-        // }
         self.get_active_pane_id()
             .map(|active_pane_id| self.panes.get(&active_pane_id).map(Box::as_ref).unwrap())
     }

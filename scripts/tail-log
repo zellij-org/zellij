@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log_file="${1:-log.txt}"
-log_file_path="/tmp/mosaic/mosaic-log/${log_file}"
+log_file_path="/tmp/zellij/zellij-log/${log_file}"
 
 [[ -f $log_file_path ]] && rm "${log_file_path}"
 printf "\n%${COLUMNS}s" | tr " " "-"
