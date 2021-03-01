@@ -1,15 +1,23 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{AppInstruction, SenderWithContext};
-use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::{layout::Layout, wasm_vm::PluginInstruction};
-use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use std::{borrow::BorrowMut, cmp::Reverse, collections::{BTreeMap, HashSet}};
-use std::{collections::HashMap, os::unix::io::RawFd};
-use std::{io::Write, sync::mpsc::channel};
+use crate::{
+    boundaries::Boundaries,
+    common::{AppInstruction, SenderWithContext},
+    layout::Layout,
+    os_input_output::OsApi,
+    panes::{PaneId, PluginPane, PositionAndSize, TerminalPane},
+    pty_bus::{PtyInstruction, VteEvent},
+    utils::shared::pad_to_size,
+    wasm_vm::PluginInstruction,
+};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashMap, HashSet},
+    io::Write,
+    os::unix::io::RawFd,
+    sync::mpsc::channel,
+};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -505,38 +513,38 @@ impl Tab {
         }
     }
     pub fn get_panes_ids_leaning_on_top_border(
-        &mut self,
+        &self,
         top_border_coord: Option<usize>,
-    ) -> HashSet<PaneId> {
+    ) -> HashSet<&PaneId> {
         let top_border_coord = top_border_coord.unwrap_or(self.full_screen_ws.rows);
 
         self.panes
-            .iter_mut()
+            .iter()
             .filter_map(|(pane_id, pane)| {
                 if pane.right_boundary_x_coords() == top_border_coord {
-                    Some(*pane_id)
+                    Some(pane_id)
                 } else {
                     None
                 }
             })
-            .collect::<HashSet<PaneId>>()
+            .collect::<HashSet<&PaneId>>()
     }
-    pub fn get_panes_ids_leaning_on_right_border(
-        &mut self,
+    pub fn get_panes_ids_leaning_on_left_border(
+        &self,
         right_border_coord: Option<usize>,
-    ) -> HashSet<PaneId> {
-        let right_border_coord = right_border_coord.unwrap_or(self.full_screen_ws.columns);
+    ) -> HashSet<&PaneId> {
+        let left_border_coord = right_border_coord.unwrap_or(0);
 
         self.panes
-            .iter_mut()
+            .iter()
             .filter_map(|(pane_id, pane)| {
-                if pane.right_boundary_x_coords() == right_border_coord {
-                    Some(*pane_id)
+                if pane.x() == left_border_coord {
+                    Some(pane_id)
                 } else {
                     None
                 }
             })
-            .collect::<HashSet<PaneId>>()
+            .collect::<HashSet<&PaneId>>()
     }
     /// This function finds recursively all of the panes that share an edge with the
     /// previous (top) pane and **marks** them for minimization.
@@ -544,17 +552,25 @@ impl Tab {
         &self,
         root_pane_id: PaneId,
         reduce_by: usize,
-        pane_ids_to_reduce: &mut HashSet<PaneId>,
+        pane_ids_to_minimize_by: &mut HashMap<PaneId, usize>,
     ) {
         let current_pane = self
             .panes
             .get(&root_pane_id)
             .expect("Could not find the requested pane.");
         let current_pane_top_boundary = current_pane.y();
-        let current_pane_right_boundary = current_pane.right_boundary_x_coords();
         let current_pane_left_boundary = current_pane.x();
+        let current_pane_right_boundary = current_pane.right_boundary_x_coords();
 
-        pane_ids_to_reduce.insert(root_pane_id);
+        // The default value is 0 in case the pane cannot be resized at all
+        let mut allowed_to_reduce_by = 0;
+        if current_pane.columns() >= current_pane.min_height() + reduce_by {
+            allowed_to_reduce_by = reduce_by;
+        } else if reduce_by > current_pane.min_height() {
+            allowed_to_reduce_by = reduce_by - current_pane.min_height();
+        }
+
+        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
 
         let pane_ids_bottom_adjacent: HashSet<&PaneId> = self
             .panes
@@ -575,8 +591,12 @@ impl Tab {
             })
             .collect();
 
-        for pane_id in pane_ids_bottom_adjacent {
-            self.reduce_pane_height_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+        for &pane_id in pane_ids_bottom_adjacent {
+            self.reduce_pane_height_and_pull_surrondings_dryrun(
+                pane_id,
+                reduce_by - allowed_to_reduce_by,
+                pane_ids_to_minimize_by,
+            );
         }
     }
     /// This function finds recursively all of the panes that share an edge with the
@@ -585,7 +605,7 @@ impl Tab {
         &self,
         root_pane_id: PaneId,
         reduce_by: usize,
-        pane_ids_to_reduce: &mut HashSet<PaneId>,
+        pane_ids_to_minimize_by: &mut HashMap<PaneId, usize>,
     ) {
         let current_pane = self
             .panes
@@ -595,7 +615,15 @@ impl Tab {
         let current_pane_top_boundary = current_pane.y();
         let current_pane_bottom_boundary = current_pane.bottom_boundary_y_coords();
 
-        pane_ids_to_reduce.insert(root_pane_id);
+        // The default value is 0 in case the pane cannot be resized at all
+        let mut allowed_to_reduce_by = 0;
+        if current_pane.columns() >= current_pane.min_height() + reduce_by {
+            allowed_to_reduce_by = reduce_by;
+        } else if reduce_by > current_pane.min_height() {
+            allowed_to_reduce_by = reduce_by - current_pane.min_height();
+        }
+
+        pane_ids_to_minimize_by.insert(root_pane_id, allowed_to_reduce_by);
 
         let pane_ids_right_adjacent: HashSet<&PaneId> = self
             .panes
@@ -616,8 +644,12 @@ impl Tab {
             })
             .collect();
 
-        for pane_id in pane_ids_right_adjacent {
-            self.reduce_pane_width_and_pull_surrondings_dryrun(*pane_id, reduce_by, pane_ids_to_reduce);
+        for &pane_id in pane_ids_right_adjacent {
+            self.reduce_pane_width_and_pull_surrondings_dryrun(
+                pane_id,
+                reduce_by - allowed_to_reduce_by,
+                pane_ids_to_minimize_by,
+            );
         }
     }
     pub fn reduce_pane_height_with_top_adj(
@@ -625,45 +657,60 @@ impl Tab {
         rows_to_reduce: usize,
         top_border_coord: Option<usize>,
     ) {
-        let mut pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
+        let pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
+        let mut pane_ids_to_resize = pane_ids_on_bottom_border
+            .iter()
+            .map(|&pane_id| (*pane_id, 0))
+            .collect::<HashMap<PaneId, usize>>();
 
-        for pane_id in pane_ids_on_bottom_border.clone().iter() {
-            self.reduce_pane_height_and_pull_surrondings_dryrun(*pane_id, rows_to_reduce, &mut pane_ids_on_bottom_border);
+        for &pane_id in pane_ids_on_bottom_border {
+            self.reduce_pane_height_and_pull_surrondings_dryrun(
+                pane_id,
+                rows_to_reduce,
+                &mut pane_ids_to_resize,
+            );
         }
 
-        for (pane_id, pane) in self.panes.iter_mut() {
-            if pane_ids_on_bottom_border.contains(pane_id) {
-                pane.reduce_height_down(rows_to_reduce);
+        for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
+            if let Some(pane) = self.panes.get_mut(pane_id) {
+                pane.reduce_height_down(resize_by);
             }
         }
     }
     pub fn reduce_pane_width_with_left_adj(
         &mut self,
         columns_to_reduce: usize,
-        right_border_coord: Option<usize>,
+        left_border_coord: Option<usize>,
     ) {
-        let mut pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_right_border(right_border_coord);
+        let pane_ids_on_left_border =
+            self.get_panes_ids_leaning_on_left_border(left_border_coord);
+        let mut pane_ids_to_resize = pane_ids_on_left_border
+            .iter()
+            .map(|&pane_id| (*pane_id, 0))
+            .collect::<HashMap<PaneId, usize>>();
 
-        for pane_id in pane_ids_on_bottom_border.clone().iter() {
-            self.reduce_pane_width_and_pull_surrondings_dryrun(*pane_id, columns_to_reduce, &mut pane_ids_on_bottom_border);
+        for &pane_id in pane_ids_on_left_border {
+            self.reduce_pane_width_and_pull_surrondings_dryrun(
+                pane_id,
+                columns_to_reduce,
+                &mut pane_ids_to_resize,
+            );
         }
 
-        for (pane_id, pane) in self.panes.iter_mut() {
-            if pane_ids_on_bottom_border.contains(pane_id) {
-                pane.reduce_width_left(columns_to_reduce);
+        for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
+            if let Some(pane) = self.panes.get_mut(pane_id) {
+                pane.reduce_height_down(resize_by);
             }
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
         // FIXME: Could use Option::map() here
         // match self.get_active_pane_id() {
-            // Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
-            // None => None,
+        // Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
+        // None => None,
         // }
         self.get_active_pane_id()
-            .map(|active_pane_id| {
-                self.panes.get(&active_pane_id).map(Box::as_ref).unwrap()
-            })
+            .map(|active_pane_id| self.panes.get(&active_pane_id).map(Box::as_ref).unwrap())
     }
     fn get_active_pane_id(&self) -> Option<PaneId> {
         self.active_terminal
