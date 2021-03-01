@@ -699,7 +699,7 @@ impl Tab {
 
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
-                pane.reduce_height_down(resize_by);
+                pane.reduce_width_left(resize_by);
             }
         }
     }
