@@ -4,7 +4,7 @@ use crate::common::{
 	ServerInstruction,
 };
 use crate::errors::{ContextType, ErrorContext, PtyContext};
-use crate::os_input_output::OsApi;
+use crate::os_input_output::{OsApi, OsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
@@ -23,6 +23,12 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 	);
 
 	let server_buffer = SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap();
+
+        let (send_os_instructions, receive_os_instructions): ChannelWithContext<OsApiInstruction> = channel();
+        let mut send_os_instructions = SenderWithContext::new(
+            ErrorContext::new(),
+            SenderType::Sender(send_os_instructions),
+            );
 
 	// Don't use default layouts in tests, but do everywhere else
 	#[cfg(not(test))]
@@ -160,6 +166,9 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 							.send(ClientInstruction::ToScreen(instr))
 							.unwrap();
 					}
+                                        ServerInstruction::OsApi(instr) => {
+                                            send_os_instructions.send(instr).unwrap();
+                                        }
 					ServerInstruction::DoneClosingPane => {
 						send_client_instructions[0]
 							.send(ClientInstruction::DoneClosingPane)

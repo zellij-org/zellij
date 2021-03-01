@@ -31,7 +31,7 @@ use crate::server::start_server;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
-use os_input_output::OsApi;
+use os_input_output::{OsApi, OsApiInstruction};
 use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,7 @@ pub enum ServerInstruction {
     NewClient(String),
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
+    OsApi(OsApiInstruction),
     DoneClosingPane,
     ClosePluginPane(u32),
     Exit,
