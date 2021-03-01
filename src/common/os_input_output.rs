@@ -12,6 +12,7 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
 
 use signal_hook::{consts::signal::*, iterator::Signals};
 
@@ -261,6 +262,22 @@ impl OsApi for OsInputOutput {
             }
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OsApiInstruction {
+    GetTerminalSizeUsingFd(RawFd),
+    SetTerminalSizeUsingFd(RawFd, u16, u16),
+    SetRawMode(RawFd),
+    UnsetRawMode(RawFd),
+    SpawnTerminal(Option<PathBuf>),
+    ReadFromTtyStdout(RawFd, Vec<u8>),
+    WriteToTtyStdin(RawFd, Vec<u8>),
+    TcDrain(RawFd),
+    Kill(RawFd),
+    ReadFromStdin,
+    GetStdoutWriter,
+    BoxClone
 }
 
 impl Clone for Box<dyn OsApi> {
