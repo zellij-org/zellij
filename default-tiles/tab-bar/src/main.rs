@@ -10,7 +10,7 @@ struct State {
 register_tile!(State);
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
@@ -33,8 +33,8 @@ impl ZellijTile for State {
         println!("Tabs: {}\u{1b}[40m\u{1b}[0K", s);
     }
 
-    fn update_tabs(&mut self, active_tab_index: usize, num_tabs: usize) {
-        self.active_tab_index = active_tab_index;
-        self.num_tabs = num_tabs;
+    fn update(&mut self, dt: f64) {
+        /* self.active_tab_index = active_tab_index;
+        self.num_tabs = num_tabs; */
     }
 }

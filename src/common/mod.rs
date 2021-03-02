@@ -514,17 +514,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                     }
-                    PluginInstruction::UpdateTabs(active_tab_index, num_tabs) => {
-                        for (instance, _) in plugin_map.values() {
-                            let handler = instance.exports.get_function("update_tabs").unwrap();
-                            handler
-                                .call(&[
-                                    Value::I32(active_tab_index as i32),
-                                    Value::I32(num_tabs as i32),
-                                ])
-                                .unwrap();
-                        }
-                    }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(pid, input_bytes) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();

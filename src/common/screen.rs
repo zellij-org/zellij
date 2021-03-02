@@ -113,7 +113,6 @@ impl Screen {
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
-        self.update_tabs();
         self.render();
     }
 
@@ -139,7 +138,6 @@ impl Screen {
                 break;
             }
         }
-        self.update_tabs();
         self.render();
     }
 
@@ -157,7 +155,6 @@ impl Screen {
                 break;
             }
         }
-        self.update_tabs();
         self.render();
     }
 
@@ -168,7 +165,6 @@ impl Screen {
             Some(t) => {
                 if t.index != active_tab.index {
                     self.active_tab_index = Some(t.index);
-                    self.update_tabs();
                     self.render();
                 }
             }
@@ -202,7 +198,6 @@ impl Screen {
                     t.position -= 1;
                 }
             }
-            self.update_tabs();
         }
     }
 
@@ -257,17 +252,5 @@ impl Screen {
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
-        self.update_tabs();
-    }
-
-    fn update_tabs(&self) {
-        if let Some(active_tab) = self.get_active_tab() {
-            self.send_plugin_instructions
-                .send(PluginInstruction::UpdateTabs(
-                    active_tab.position,
-                    self.tabs.len(),
-                ))
-                .unwrap();
-        }
     }
 }

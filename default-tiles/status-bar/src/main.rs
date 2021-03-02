@@ -230,7 +230,7 @@ fn keybinds(help: &Help, max_width: usize) -> LinePart {
 }
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);

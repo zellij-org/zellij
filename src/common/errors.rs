@@ -279,7 +279,6 @@ pub enum PluginContext {
     GlobalInput,
     Unload,
     Quit,
-    Tabs,
 }
 
 impl From<&PluginInstruction> for PluginContext {
@@ -291,7 +290,6 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
-            PluginInstruction::UpdateTabs(..) => PluginContext::Tabs,
         }
     }
 }
