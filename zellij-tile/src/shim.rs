@@ -1,6 +1,6 @@
+use crate::data::*;
 use serde::de::DeserializeOwned;
 use std::{io, path::Path};
-use crate::data::*;
 
 pub fn get_key() -> Key {
     deserialize_from_stdin().unwrap()

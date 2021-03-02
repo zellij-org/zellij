@@ -1,8 +1,8 @@
-mod shim;
 mod data;
+mod shim;
 
-pub use shim::*;
 pub use data::*;
+pub use shim::*;
 #[allow(unused_variables)]
 pub trait ZellijTile {
     fn load(&mut self) {}

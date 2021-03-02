@@ -20,7 +20,6 @@ use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::handler::InputMode;
 use serde::{Deserialize, Serialize};
-use termion::input::TermRead;
 use wasm_vm::PluginEnv;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
@@ -34,7 +33,9 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasm_vm::{
+    send_keys_to_handler, wasi_stdout, zellij_imports, PluginInstruction,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -514,37 +515,24 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                     }
-                    // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(pid, input_bytes) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
                         let handle_key = instance.exports.get_function("handle_key").unwrap();
-                        for key in input_bytes.keys() {
-                            if let Ok(key) = key {
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&key).unwrap(),
-                                );
-                                handle_key.call(&[]).unwrap();
-                            }
-                        }
+
+                        send_keys_to_handler(&plugin_env.wasi_env, &input_bytes, handle_key);
 
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::GlobalInput(input_bytes) => {
-                        // FIXME: Set up an event subscription system, and timed callbacks
                         for (instance, plugin_env) in plugin_map.values() {
-                            let handler =
+                            let handle_global_key =
                                 instance.exports.get_function("handle_global_key").unwrap();
-                            for key in input_bytes.keys() {
-                                if let Ok(key) = key {
-                                    wasi_write_string(
-                                        &plugin_env.wasi_env,
-                                        &serde_json::to_string(&key).unwrap(),
-                                    );
-                                    handler.call(&[]).unwrap();
-                                }
-                            }
+
+                            send_keys_to_handler(
+                                &plugin_env.wasi_env,
+                                &input_bytes,
+                                handle_global_key,
+                            );
                         }
 
                         drop(send_screen_instructions.send(ScreenInstruction::Render));

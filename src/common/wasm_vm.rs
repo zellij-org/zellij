@@ -2,6 +2,7 @@ use std::{
     path::PathBuf,
     sync::mpsc::{channel, Sender},
 };
+use termion::input::TermRead;
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
@@ -116,4 +117,13 @@ pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
     let mut state = wasi_env.state();
     let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
     writeln!(wasi_file, "{}\r", buf).unwrap();
+}
+
+pub fn send_keys_to_handler(wasi_env: &WasiEnv, input_bytes: &[u8], handler: &Function) {
+    for key in input_bytes.keys() {
+        if let Ok(key) = key {
+            wasi_write_string(wasi_env, &serde_json::to_string(&key).unwrap());
+            handler.call(&[]).unwrap();
+        }
+    }
 }
