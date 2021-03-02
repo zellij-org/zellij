@@ -683,7 +683,7 @@ impl Tab {
     }
     pub fn increase_all_panes_height(&mut self, rows: usize) {
         self.panes.iter_mut().for_each(|(_, pane)| {
-            pane.increase_height_up(rows);
+            pane.increase_height_down(rows);
         });
     }
     pub fn reduce_pane_width_with_left_adj(
