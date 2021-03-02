@@ -1,7 +1,6 @@
-use crate::utils::consts::ZELLIJ_ROOT_LAYOUT_DIR;
 use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{fs::File, io::prelude::*};
 
 use crate::panes::PositionAndSize;
@@ -186,11 +185,9 @@ impl Layout {
     pub fn new(layout_path: PathBuf) -> Self {
         let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
         let layout_dir = project_dirs.data_dir().join("layouts/");
-        let root_layout_dir = Path::new(ZELLIJ_ROOT_LAYOUT_DIR);
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("yaml")))
             .or_else(|_| File::open(&layout_dir.join(&layout_path).with_extension("yaml")))
-            .or_else(|_| File::open(root_layout_dir.join(&layout_path).with_extension("yaml")))
             .unwrap_or_else(|_| panic!("cannot find layout {}", &layout_path.display()));
 
         let mut layout = String::new();

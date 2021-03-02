@@ -3,8 +3,7 @@ use zellij_tile::*;
 
 #[derive(Default)]
 struct State {
-    active_tab_index: usize,
-    num_tabs: usize,
+    tabs: Vec<TabInfo>,
 }
 
 register_tile!(State);
@@ -14,27 +13,32 @@ impl ZellijTile for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
-        self.active_tab_index = 0;
-        self.num_tabs = 0;
+    }
+
+    fn update(&mut self, _dt: f64) {
+        let tabs = get_tab_info();
+        if self.tabs != tabs {
+            self.tabs = tabs;
+            request_rerender();
+        }
     }
 
     fn draw(&mut self, _rows: usize, _cols: usize) {
-        let mut s = String::new();
-        let active_tab = self.active_tab_index + 1;
-        for i in 1..=self.num_tabs {
-            let tab;
-            if i == active_tab {
-                tab = format!("*{} ", i).black().bold().on_magenta();
-            } else {
-                tab = format!("-{} ", i).white();
-            }
-            s = format!("{}{}", s, tab);
-        }
-        println!("Tabs: {}\u{1b}[40m\u{1b}[0K", s);
-    }
-
-    fn update(&mut self, dt: f64) {
-        /* self.active_tab_index = active_tab_index;
-        self.num_tabs = num_tabs; */
+        let tabs: Vec<_> = self
+            .tabs
+            .iter()
+            .map(|tab| {
+                if tab.active {
+                    format!("*{} ", tab.position)
+                        .black()
+                        .bold()
+                        .on_magenta()
+                        .to_string()
+                } else {
+                    format!("-{} ", tab.position).white().to_string()
+                }
+            })
+            .collect();
+        println!("Tabs: {}\u{1b}[40m\u{1b}[0K", tabs.concat());
     }
 }

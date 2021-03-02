@@ -198,6 +198,7 @@ pub enum ScreenContext {
     SwitchTabPrev,
     CloseTab,
     GoToTab,
+    GetTabInfo,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -236,6 +237,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
+            ScreenInstruction::GetTabInfo(_) => ScreenContext::GetTabInfo,
         }
     }
 }

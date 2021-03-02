@@ -34,6 +34,13 @@ macro_rules! register_tile {
         }
 
         #[no_mangle]
+        pub fn update(dt: f64) {
+            STATE.with(|state| {
+                state.borrow_mut().update(dt);
+            });
+        }
+
+        #[no_mangle]
         pub fn handle_key() {
             STATE.with(|state| {
                 state.borrow_mut().handle_key($crate::get_key());

@@ -6,6 +6,10 @@ pub fn get_key() -> Key {
     deserialize_from_stdin().unwrap()
 }
 
+pub fn request_rerender() {
+    unsafe { host_request_rerender() };
+}
+
 pub fn open_file(path: &Path) {
     println!("{}", path.to_string_lossy());
     unsafe { host_open_file() };
@@ -30,6 +34,11 @@ pub fn get_help() -> Help {
     deserialize_from_stdin().unwrap_or_default()
 }
 
+pub fn get_tab_info() -> Vec<TabInfo> {
+    unsafe { host_get_tab_info() };
+    deserialize_from_stdin().unwrap_or_default()
+}
+
 fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
@@ -38,9 +47,11 @@ fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
 
 #[link(wasm_import_module = "zellij")]
 extern "C" {
+    fn host_request_rerender();
     fn host_open_file();
     fn host_set_max_height(max_height: i32);
     fn host_set_selectable(selectable: i32);
     fn host_set_invisible_borders(invisible_borders: i32);
     fn host_get_help();
+    fn host_get_tab_info();
 }

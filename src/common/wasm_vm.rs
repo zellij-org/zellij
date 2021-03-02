@@ -1,6 +1,11 @@
 use std::{
+    collections::HashMap,
     path::PathBuf,
-    sync::mpsc::{channel, Sender},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
+    time::{Duration, Instant},
 };
 use termion::input::TermRead;
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
@@ -24,6 +29,8 @@ pub enum PluginInstruction {
 #[derive(WasmerEnv, Clone)]
 pub struct PluginEnv {
     pub plugin_id: u32,
+    pub last_update: Instant,
+    pub lock_cache: Arc<Mutex<HashMap<String, String>>>,
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
@@ -35,13 +42,23 @@ pub struct PluginEnv {
 pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "zellij" => {
+            "host_request_rerender" => Function::new_native_with_env(store, plugin_env.clone(), host_request_rerender),
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
             "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
             "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
+            "host_get_tab_info" => Function::new_native_with_env(store, plugin_env.clone(), host_get_tab_info),
         }
     }
+}
+
+fn host_request_rerender(plugin_env: &PluginEnv) {
+    drop(
+        plugin_env
+            .send_screen_instructions
+            .send(ScreenInstruction::Render),
+    );
 }
 
 // FIXME: Bundle up all of the channels! Pair that with WasiEnv?
@@ -100,6 +117,29 @@ fn host_get_help(plugin_env: &PluginEnv) {
         let help = get_help(state_rx.recv().unwrap().input_mode);
         wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
     }
+}
+
+fn host_get_tab_info(plugin_env: &PluginEnv) {
+    let (tab_info_tx, tab_info_rx) = channel();
+    plugin_env
+        .send_screen_instructions
+        .send(ScreenInstruction::GetTabInfo(tab_info_tx))
+        .unwrap();
+    let cache_id = "tab_info";
+    // FIXME: The lock cache allows this to timeout (avoiding a deadlock) while still
+    // returning something sane. The real solution here is moving shared state (like TabInfo)
+    // into something like the global App state (ie AppInstruction::SetState)
+    let mut lock_cache = plugin_env.lock_cache.lock().unwrap();
+    if let Ok(tab_info) = tab_info_rx.recv_timeout(Duration::from_millis(1)) {
+        lock_cache.insert(
+            cache_id.to_string(),
+            serde_json::to_string(&tab_info).unwrap(),
+        );
+    }
+    wasi_write_string(
+        &plugin_env.wasi_env,
+        lock_cache.get(cache_id).unwrap_or(&String::new()),
+    );
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

@@ -1,14 +1,14 @@
 //! Things related to [`Screen`]s.
 
-use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::Receiver;
+use std::{collections::BTreeMap, sync::mpsc};
 
 use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::tab::Tab;
+use crate::tab::{Tab, TabInfo};
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
@@ -46,6 +46,7 @@ pub enum ScreenInstruction {
     SwitchTabPrev,
     CloseTab,
     GoToTab(u32),
+    GetTabInfo(mpsc::Sender<Vec<TabInfo>>),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -231,6 +232,19 @@ impl Screen {
             Some(tab) => self.get_tabs_mut().get_mut(&tab),
             None => None,
         }
+    }
+
+    /// Returns a [`TabInfo`] struct for passing data to the tab-bar plugin
+    pub fn get_tab_info(&self) -> Vec<TabInfo> {
+        let mut tabs = Vec::new();
+        for tab in self.tabs.values() {
+            tabs.push(TabInfo {
+                position: tab.position,
+                _name: String::new(),
+                active: self.active_tab_index == Some(tab.index),
+            })
+        }
+        tabs
     }
 
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]

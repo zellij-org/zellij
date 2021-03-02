@@ -29,6 +29,12 @@ pub struct Help {
     pub mode: InputMode,
     pub keybinds: Vec<(String, String)>,
 }
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TabInfo {
+    pub position: usize,
+    pub _name: String, // FIXME: Implement this soon!
+    pub active: bool,
+}
 
 // TODO: use same struct from main crate?
 #[derive(Debug, Clone, Deserialize, Serialize)]

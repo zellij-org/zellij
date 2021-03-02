@@ -9,12 +9,12 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
+use std::{io::Write, time::Instant};
+use std::{path::PathBuf, time::Duration};
 
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
@@ -32,10 +32,8 @@ use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{
-    send_keys_to_handler, wasi_stdout, zellij_imports, PluginInstruction,
-};
+use utils::consts::ZELLIJ_IPC_PIPE;
+use wasm_vm::{send_keys_to_handler, wasi_stdout, zellij_imports, PluginInstruction};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -420,6 +418,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::GoToTab(tab_index) => {
                             screen.go_to_tab(tab_index as usize)
                         }
+                        ScreenInstruction::GetTabInfo(tab_info_tx) => {
+                            drop(tab_info_tx.send(screen.get_tab_info()));
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -441,104 +442,113 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let mut plugin_map = HashMap::new();
 
             move || loop {
-                let (event, mut err_ctx) = receive_plugin_instructions
-                    .recv()
-                    .expect("failed to receive event on channel");
-                err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                send_screen_instructions.update(err_ctx);
-                send_pty_instructions.update(err_ctx);
-                send_app_instructions.update(err_ctx);
-                match event {
-                    PluginInstruction::Load(pid_tx, path) => {
-                        let project_dirs =
-                            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-                        let plugin_dir = project_dirs.data_dir().join("plugins/");
-                        // FIXME: This really shouldn't need to exist anymore, let's get rid of it!
-                        let root_plugin_dir = Path::new(ZELLIJ_ROOT_PLUGIN_DIR);
-                        let wasm_bytes = fs::read(&path)
-                            .or_else(|_| fs::read(&path.with_extension("wasm")))
-                            .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
-                            .or_else(|_| {
-                                fs::read(&root_plugin_dir.join(&path).with_extension("wasm"))
-                            })
-                            .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
+                if let Ok((event, mut err_ctx)) =
+                    receive_plugin_instructions.recv_timeout(Duration::from_millis(50))
+                {
+                    err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+                    send_screen_instructions.update(err_ctx);
+                    send_pty_instructions.update(err_ctx);
+                    send_app_instructions.update(err_ctx);
+                    match event {
+                        PluginInstruction::Load(pid_tx, path) => {
+                            let project_dirs =
+                                ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+                            let plugin_dir = project_dirs.data_dir().join("plugins/");
+                            let wasm_bytes = fs::read(&path)
+                                .or_else(|_| fs::read(&path.with_extension("wasm")))
+                                .or_else(|_| {
+                                    fs::read(&plugin_dir.join(&path).with_extension("wasm"))
+                                })
+                                .unwrap_or_else(|_| {
+                                    panic!("cannot find plugin {}", &path.display())
+                                });
 
-                        // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                        let module = Module::new(&store, &wasm_bytes).unwrap();
+                            // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                            let module = Module::new(&store, &wasm_bytes).unwrap();
 
-                        let output = Pipe::new();
-                        let input = Pipe::new();
-                        let mut wasi_env = WasiState::new("Zellij")
-                            .env("CLICOLOR_FORCE", "1")
-                            .preopen(|p| {
-                                p.directory(".") // FIXME: Change this to a more meaningful dir
-                                    .alias(".")
-                                    .read(true)
-                                    .write(true)
-                                    .create(true)
-                            })
-                            .unwrap()
-                            .stdin(Box::new(input))
-                            .stdout(Box::new(output))
-                            .finalize()
-                            .unwrap();
+                            let output = Pipe::new();
+                            let input = Pipe::new();
+                            let mut wasi_env = WasiState::new("Zellij")
+                                .env("CLICOLOR_FORCE", "1")
+                                .preopen(|p| {
+                                    p.directory(".") // FIXME: Change this to a more meaningful dir
+                                        .alias(".")
+                                        .read(true)
+                                        .write(true)
+                                        .create(true)
+                                })
+                                .unwrap()
+                                .stdin(Box::new(input))
+                                .stdout(Box::new(output))
+                                .finalize()
+                                .unwrap();
 
-                        let wasi = wasi_env.import_object(&module).unwrap();
+                            let wasi = wasi_env.import_object(&module).unwrap();
 
-                        let plugin_env = PluginEnv {
-                            plugin_id,
-                            send_pty_instructions: send_pty_instructions.clone(),
-                            send_screen_instructions: send_screen_instructions.clone(),
-                            send_app_instructions: send_app_instructions.clone(),
-                            wasi_env,
-                        };
+                            let plugin_env = PluginEnv {
+                                plugin_id,
+                                last_update: Instant::now(),
+                                lock_cache: Default::default(),
+                                send_pty_instructions: send_pty_instructions.clone(),
+                                send_screen_instructions: send_screen_instructions.clone(),
+                                send_app_instructions: send_app_instructions.clone(),
+                                wasi_env,
+                            };
 
-                        let zellij = zellij_imports(&store, &plugin_env);
-                        let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                            let zellij = zellij_imports(&store, &plugin_env);
+                            let instance =
+                                Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
-                        let start = instance.exports.get_function("_start").unwrap();
+                            let start = instance.exports.get_function("_start").unwrap();
 
-                        // This eventually calls the `.init()` method
-                        start.call(&[]).unwrap();
+                            // This eventually calls the `.init()` method
+                            start.call(&[]).unwrap();
 
-                        plugin_map.insert(plugin_id, (instance, plugin_env));
-                        pid_tx.send(plugin_id).unwrap();
-                        plugin_id += 1;
-                    }
-                    PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
-                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                        let draw = instance.exports.get_function("draw").unwrap();
-
-                        draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                            .unwrap();
-
-                        buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
-                    }
-                    PluginInstruction::Input(pid, input_bytes) => {
-                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-                        let handle_key = instance.exports.get_function("handle_key").unwrap();
-
-                        send_keys_to_handler(&plugin_env.wasi_env, &input_bytes, handle_key);
-
-                        drop(send_screen_instructions.send(ScreenInstruction::Render));
-                    }
-                    PluginInstruction::GlobalInput(input_bytes) => {
-                        for (instance, plugin_env) in plugin_map.values() {
-                            let handle_global_key =
-                                instance.exports.get_function("handle_global_key").unwrap();
-
-                            send_keys_to_handler(
-                                &plugin_env.wasi_env,
-                                &input_bytes,
-                                handle_global_key,
-                            );
+                            plugin_map.insert(plugin_id, (instance, plugin_env));
+                            pid_tx.send(plugin_id).unwrap();
+                            plugin_id += 1;
                         }
+                        PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                            let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
-                        drop(send_screen_instructions.send(ScreenInstruction::Render));
+                            let draw = instance.exports.get_function("draw").unwrap();
+
+                            draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                                .unwrap();
+
+                            buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                        }
+                        PluginInstruction::Input(pid, input_bytes) => {
+                            let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+                            let handle_key = instance.exports.get_function("handle_key").unwrap();
+
+                            send_keys_to_handler(&plugin_env.wasi_env, &input_bytes, handle_key);
+
+                            drop(send_screen_instructions.send(ScreenInstruction::Render));
+                        }
+                        PluginInstruction::GlobalInput(input_bytes) => {
+                            for (instance, plugin_env) in plugin_map.values() {
+                                let handle_global_key =
+                                    instance.exports.get_function("handle_global_key").unwrap();
+
+                                send_keys_to_handler(
+                                    &plugin_env.wasi_env,
+                                    &input_bytes,
+                                    handle_global_key,
+                                );
+                            }
+                            drop(send_screen_instructions.send(ScreenInstruction::Render));
+                        }
+                        PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+                        PluginInstruction::Quit => break,
                     }
-                    PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
-                    PluginInstruction::Quit => break,
+                } else {
+                    for (instance, plugin_env) in plugin_map.values_mut() {
+                        let update = instance.exports.get_function("update").unwrap();
+                        let dt = plugin_env.last_update.elapsed().as_secs_f64();
+                        plugin_env.last_update = Instant::now();
+                        update.call(&[Value::F64(dt)]).unwrap();
+                    }
                 }
             }
         })

@@ -7,6 +7,7 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -62,6 +63,14 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+}
+
+// FIXME: This might need a better home eventually so it's deduplicated from zellij-tile
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TabInfo {
+    pub position: usize,
+    pub _name: String, // FIXME: Implement this soon!
+    pub active: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
