@@ -344,22 +344,38 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let new_term_size = screen.get_terminal_size(None);
                             let current_term_size = screen.get_active_tab().unwrap().get_tab_size();
 
-                            let column_delta = new_term_size.columns as isize - current_term_size.columns as isize;
-                            let column_delta = column_delta.abs() as usize;
+                            let column_delta =
+                                new_term_size.columns as isize - current_term_size.columns as isize;
                             if column_delta > 0 {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .reduce_pane_width_with_left_adj(column_delta, None);
+                                    .reduce_pane_width_with_left_adj(
+                                        column_delta.abs() as usize,
+                                        None,
+                                    );
+                            } else {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .increase_all_panes_width(column_delta.abs() as usize);
                             }
 
-                            let row_delta = new_term_size.rows as isize - current_term_size.rows as isize;
-                            let row_delta = row_delta.abs() as usize;
+                            let row_delta =
+                                new_term_size.rows as isize - current_term_size.rows as isize;
                             if row_delta > 0 {
                                 screen
                                     .get_active_tab_mut()
                                     .unwrap()
-                                    .reduce_pane_height_with_top_adj(row_delta, None);
+                                    .reduce_pane_height_with_top_adj(
+                                        row_delta.abs() as usize,
+                                        None,
+                                    );
+                            } else {
+                                screen
+                                    .get_active_tab_mut()
+                                    .unwrap()
+                                    .increase_all_panes_height(row_delta.abs() as usize);
                             }
                         }
                         ScreenInstruction::ResizeLeft => {
@@ -465,30 +481,30 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
-        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
-        let signal_handler = signals.handle();
+    let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+    let signal_handler = signals.handle();
 
-        let signal_thread = thread::Builder::new()
-            .name("signal_listener".to_string())
-            .spawn({
-                let send_screen_instructions = send_screen_instructions.clone();
+    let signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let send_screen_instructions = send_screen_instructions.clone();
 
-                move || {
-                    for signal in signals.forever() {
-                        match signal {
-                            SIGWINCH => {
-                                send_screen_instructions
-                                    .send(ScreenInstruction::TerminalResize)
-                                    .unwrap();
-                            }
-                            SIGTERM | SIGINT | SIGQUIT => {
-                                return;
-                            }
-                            _ => unreachable!(),
+            move || {
+                for signal in signals.forever() {
+                    match signal {
+                        SIGWINCH => {
+                            send_screen_instructions
+                                .send(ScreenInstruction::TerminalResize)
+                                .unwrap();
                         }
+                        SIGTERM | SIGINT | SIGQUIT => {
+                            return;
+                        }
+                        _ => unreachable!(),
                     }
                 }
-            })
+            }
+        })
         .unwrap();
 
     let wasm_thread = thread::Builder::new()
