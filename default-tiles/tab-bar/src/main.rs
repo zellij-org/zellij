@@ -1,7 +1,13 @@
-use colored::*;
+mod tab;
+mod line;
+
 use zellij_tile::*;
 
-struct LinePart {
+use crate::tab::nameless_tab;
+use crate::line::tab_line;
+
+#[derive(Debug)]
+pub struct LinePart {
     part: String,
     len: usize,
 }
@@ -25,36 +31,21 @@ impl ZellijTile for State {
         self.num_tabs = 0;
     }
 
-    fn draw(&mut self, _rows: usize, _cols: usize) {
+    fn draw(&mut self, _rows: usize, cols: usize) {
+        if self.num_tabs == 0 {
+            return;
+        }
+        let mut all_tabs: Vec<LinePart> = vec![];
+        for i in 0..self.num_tabs {
+            let tab = nameless_tab(i, i == self.active_tab_index);
+            all_tabs.push(tab);
+        }
+
+        let tab_line = tab_line(all_tabs, self.active_tab_index, cols);
+
         let mut s = String::new();
-        let active_tab = self.active_tab_index + 1;
-        // TODO:
-        // * loop through tabs, find the length of each tab string and add to it the length of the
-        // arrows and padding
-        // * register this length in a global place
-        // * if the length is greater than cols + calculated MORE_MESSAGE length:
-        //   - if we have already reached the active_tab, break the loop and render all the tabs
-        //   - if not, remove the first tab to be rendered and continue
-        for i in 1..=self.num_tabs {
-            let tab;
-            if i == active_tab {
-                let right_separator = if i == self.num_tabs {
-                    format!("{}", ARROW_SEPARATOR.magenta().on_black())
-                } else {
-                    format!("{}{}", ARROW_SEPARATOR.magenta().on_black(), ARROW_SEPARATOR.black().on_green())
-                };
-                tab = format!(" Tab #{} {}", i, right_separator).black().bold().on_magenta();
-            } else {
-                let right_separator = if i == self.num_tabs {
-                    format!("{}", ARROW_SEPARATOR.green().on_black())
-                } else if i + 1 == active_tab {
-                    format!("{}{}", ARROW_SEPARATOR.green().on_black(), ARROW_SEPARATOR.black().on_magenta())
-                } else {
-                    format!("{}{}", ARROW_SEPARATOR.green().on_black(), ARROW_SEPARATOR.black().on_green())
-                };
-                tab = format!(" Tab #{} {}", i, right_separator).black().bold().on_green();
-            }
-            s = format!("{}{}", s, tab);
+        for bar_part in tab_line {
+            s = format!("{}{}", s, bar_part.part);
         }
         println!("{}\u{1b}[40m\u{1b}[0K", s);
     }
