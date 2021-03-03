@@ -1,10 +1,10 @@
-mod tab;
 mod line;
+mod tab;
 
 use zellij_tile::*;
 
-use crate::tab::nameless_tab;
 use crate::line::tab_line;
+use crate::tab::nameless_tab;
 
 #[derive(Debug)]
 pub struct LinePart {
