@@ -32,7 +32,11 @@ fn main() {
     }
 
     // Rerun on plugin change
-    for entry in WalkDir::new("target") {
+    #[cfg(not(feature = "publish"))]
+    let plugin_dir = "target";
+    #[cfg(feature = "publish")]
+    let plugin_dir = "assets/plugins";
+    for entry in WalkDir::new(plugin_dir) {
         let entry = entry.unwrap();
         if entry.path().extension() == Some(OsStr::new("wasm")) {
             println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
