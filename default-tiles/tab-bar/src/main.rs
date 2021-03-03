@@ -1,11 +1,24 @@
-use colored::*;
+mod line;
+mod tab;
+
 use zellij_tile::*;
+
+use crate::line::tab_line;
+use crate::tab::nameless_tab;
+
+#[derive(Debug)]
+pub struct LinePart {
+    part: String,
+    len: usize,
+}
 
 #[derive(Default)]
 struct State {
     active_tab_index: usize,
     num_tabs: usize,
 }
+
+static ARROW_SEPARATOR: &str = "";
 
 register_tile!(State);
 
@@ -18,19 +31,23 @@ impl ZellijTile for State {
         self.num_tabs = 0;
     }
 
-    fn draw(&mut self, _rows: usize, _cols: usize) {
-        let mut s = String::new();
-        let active_tab = self.active_tab_index + 1;
-        for i in 1..=self.num_tabs {
-            let tab;
-            if i == active_tab {
-                tab = format!("*{} ", i).black().bold().on_magenta();
-            } else {
-                tab = format!("-{} ", i).white();
-            }
-            s = format!("{}{}", s, tab);
+    fn draw(&mut self, _rows: usize, cols: usize) {
+        if self.num_tabs == 0 {
+            return;
         }
-        println!("Tabs: {}\u{1b}[40m\u{1b}[0K", s);
+        let mut all_tabs: Vec<LinePart> = vec![];
+        for i in 0..self.num_tabs {
+            let tab = nameless_tab(i, i == self.active_tab_index);
+            all_tabs.push(tab);
+        }
+
+        let tab_line = tab_line(all_tabs, self.active_tab_index, cols);
+
+        let mut s = String::new();
+        for bar_part in tab_line {
+            s = format!("{}{}", s, bar_part.part);
+        }
+        println!("{}\u{1b}[40m\u{1b}[0K", s);
     }
 
     fn update_tabs(&mut self, active_tab_index: usize, num_tabs: usize) {
