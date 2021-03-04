@@ -1,3 +1,4 @@
+pub mod config;
 pub mod command_is_executing;
 pub mod errors;
 pub mod input;
@@ -26,6 +27,7 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
+use crate::common::config::Config;
 use crate::layout::Layout;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
@@ -47,6 +49,7 @@ pub enum ApiCommand {
 #[derive(Debug, Clone, Default)]
 pub struct AppState {
     pub input_mode: InputMode,
+    pub config : Config,
 }
 
 // FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted

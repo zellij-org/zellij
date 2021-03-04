@@ -3,3 +3,4 @@
 pub mod actions;
 pub mod handler;
 pub mod keybinds;
+pub mod macros;

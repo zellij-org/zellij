@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use termion::event::Key;
 
-type Keybinds = HashMap<InputMode, ModeKeybinds>;
+pub type Keybinds = HashMap<InputMode, ModeKeybinds>;
 type ModeKeybinds = HashMap<Key, Vec<Action>>;
 
 /// Populates the default hashmap of keybinds.

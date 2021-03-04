@@ -1,9 +1,11 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::handler;
+//use super::macros;
+use serde::Deserialize;
 
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub enum Direction {
     Left,
     Right,
@@ -12,7 +14,7 @@ pub enum Direction {
 }
 
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
