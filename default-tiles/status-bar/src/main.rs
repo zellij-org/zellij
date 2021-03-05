@@ -1,9 +1,11 @@
 use colored::*;
+use ansi_term::{Style, ANSIStrings};
+use ansi_term::Colour::{Fixed, Black, White};
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::*;
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
-static ARROW_SEPARATOR: &str = " ";
+static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
 
 #[derive(Default)]
@@ -23,145 +25,128 @@ impl Display for LinePart {
 }
 
 fn prefix(help: &Help) -> LinePart {
-    let prefix_text = " Zellij ";
-    let part = match &help.mode {
-        InputMode::Command => {
-            let prefix = prefix_text.bold().white().on_black();
-            let separator = ARROW_SEPARATOR.black().on_magenta();
-            format!("{}{}", prefix, separator)
-        }
-        InputMode::Normal => {
-            let prefix = prefix_text.bold().white().on_black();
-            let separator = ARROW_SEPARATOR.black().on_green();
-            format!("{}{}", prefix, separator)
-        }
-        _ => {
-            let prefix = prefix_text.bold().white().on_black();
-            let separator = ARROW_SEPARATOR.black().on_magenta();
-            format!("{}{}", prefix, separator)
-        }
-    };
-    let len = prefix_text.chars().count() + ARROW_SEPARATOR.chars().count();
-    LinePart { part, len }
+    let prefix_text = " Ctrl + ";
+    let prefix = Style::new().fg(White).on(Fixed(238)).bold().paint(prefix_text);
+    LinePart {
+        part: format!("{}", prefix),
+        len: prefix_text.chars().count(),
+    }
 }
 
 fn key_path(help: &Help) -> LinePart {
-    let superkey_text = "<Ctrl-g> ";
     let (part, len) = match &help.mode {
-        InputMode::Command => {
-            let key_path = superkey_text.bold().on_magenta();
-            let first_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + ARROW_SEPARATOR.chars().count();
-            (format!("{}{}", key_path, first_separator), len)
+        InputMode::Locked => {
+            let lock_key = selected_mode_shortcut('g', "LOCK");
+            let pane_shortcut = disabled_mode_shortcut(" <p> PANE ");
+            let resize_shortcut = disabled_mode_shortcut(" <r> RESIZE ");
+            let tab_shortcut = disabled_mode_shortcut(" <t> TAB ");
+            let scroll_shortcut = disabled_mode_shortcut(" <s> SCROLL ");
+            let quit_shortcut = disabled_mode_shortcut(" <q> QUIT ");
+            (
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
+            )
         }
         InputMode::Resize => {
-            let mode_shortcut_text = "r ";
-            let superkey = superkey_text.bold().on_magenta();
-            let first_superkey_separator = ARROW_SEPARATOR.magenta().on_black();
-            let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
-            let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
-            let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + mode_shortcut_text.chars().count()
-                + ARROW_SEPARATOR.chars().count();
+            let lock_key = unselected_mode_shortcut('g', "BACK");
+            let pane_shortcut = unselected_mode_shortcut('p', "PANE");
+            let resize_shortcut = selected_mode_shortcut('r', "RESIZE");
+            let tab_shortcut = unselected_mode_shortcut('t', "TAB");
+            let scroll_shortcut = unselected_mode_shortcut('s', "SCROLL");
+            let quit_shortcut = unselected_mode_shortcut('q', "QUIT");
             (
-                format!(
-                    "{}{}{}{}{}",
-                    superkey,
-                    first_superkey_separator,
-                    second_superkey_separator,
-                    mode_shortcut,
-                    mode_shortcut_separator
-                ),
-                len,
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
             )
         }
         InputMode::Pane => {
-            let mode_shortcut_text = "p ";
-            let superkey = superkey_text.bold().on_magenta();
-            let first_superkey_separator = ARROW_SEPARATOR.magenta().on_black();
-            let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
-            let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
-            let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + mode_shortcut_text.chars().count()
-                + ARROW_SEPARATOR.chars().count();
+            let lock_key = unselected_mode_shortcut('g', "BACK");
+            let pane_shortcut = selected_mode_shortcut('p', "PANE");
+            let resize_shortcut = unselected_mode_shortcut('r', "RESIZE");
+            let tab_shortcut = unselected_mode_shortcut('t', "TAB");
+            let scroll_shortcut = unselected_mode_shortcut('s', "SCROLL");
+            let quit_shortcut = unselected_mode_shortcut('q', "QUIT");
             (
-                format!(
-                    "{}{}{}{}{}",
-                    superkey,
-                    first_superkey_separator,
-                    second_superkey_separator,
-                    mode_shortcut,
-                    mode_shortcut_separator
-                ),
-                len,
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
             )
         }
         InputMode::Tab => {
-            let mode_shortcut_text = "t ";
-            let superkey = superkey_text.bold().on_magenta();
-            let first_superkey_separator = ARROW_SEPARATOR.magenta().on_black();
-            let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
-            let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
-            let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + mode_shortcut_text.chars().count()
-                + ARROW_SEPARATOR.chars().count();
+            let lock_key = unselected_mode_shortcut('g', "BACK");
+            let pane_shortcut = unselected_mode_shortcut('p', "PANE");
+            let resize_shortcut = unselected_mode_shortcut('r', "RESIZE");
+            let tab_shortcut = selected_mode_shortcut('t', "TAB");
+            let scroll_shortcut = unselected_mode_shortcut('s', "SCROLL");
+            let quit_shortcut = unselected_mode_shortcut('q', "QUIT");
             (
-                format!(
-                    "{}{}{}{}{}",
-                    superkey,
-                    first_superkey_separator,
-                    second_superkey_separator,
-                    mode_shortcut,
-                    mode_shortcut_separator
-                ),
-                len,
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
             )
         }
         InputMode::Scroll => {
-            let mode_shortcut_text = "s ";
-            let superkey = superkey_text.bold().on_magenta();
-            let first_superkey_separator = ARROW_SEPARATOR.magenta().on_black();
-            let second_superkey_separator = ARROW_SEPARATOR.black().on_magenta();
-            let mode_shortcut = mode_shortcut_text.white().bold().on_magenta();
-            let mode_shortcut_separator = ARROW_SEPARATOR.magenta().on_black();
-            let len = superkey_text.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + ARROW_SEPARATOR.chars().count()
-                + mode_shortcut_text.chars().count()
-                + ARROW_SEPARATOR.chars().count();
+            let lock_key = unselected_mode_shortcut('g', "BACK");
+            let pane_shortcut = unselected_mode_shortcut('p', "PANE");
+            let resize_shortcut = unselected_mode_shortcut('r', "RESIZE");
+            let tab_shortcut = unselected_mode_shortcut('t', "TAB");
+            let scroll_shortcut = selected_mode_shortcut('s', "SCROLL");
+            let quit_shortcut = unselected_mode_shortcut('q', "QUIT");
             (
-                format!(
-                    "{}{}{}{}{}",
-                    superkey,
-                    first_superkey_separator,
-                    second_superkey_separator,
-                    mode_shortcut,
-                    mode_shortcut_separator
-                ),
-                len,
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
             )
         }
         InputMode::Normal | _ => {
-            let key_path = superkey_text.on_green();
-            let separator = ARROW_SEPARATOR.green().on_black();
+            let lock_key = unselected_mode_shortcut('g', "LOCK");
+            let pane_shortcut = unselected_mode_shortcut('p', "PANE");
+            let resize_shortcut = unselected_mode_shortcut('r', "RESIZE");
+            let tab_shortcut = unselected_mode_shortcut('t', "TAB");
+            let scroll_shortcut = unselected_mode_shortcut('s', "SCROLL");
+            let quit_shortcut = unselected_mode_shortcut('q', "QUIT");
             (
-                format!("{}{}", key_path, separator),
-                superkey_text.chars().count() + ARROW_SEPARATOR.chars().count(),
+                format!("{}{}{}{}{}{}", lock_key, pane_shortcut, resize_shortcut, tab_shortcut, scroll_shortcut, quit_shortcut),
+                lock_key.len + pane_shortcut.len + resize_shortcut.len + tab_shortcut.len + scroll_shortcut.len + quit_shortcut.len
             )
         }
     };
     LinePart { part, len }
+}
+
+fn unselected_mode_shortcut(letter: char, text: &str) -> LinePart {
+    let prefix_separator = Style::new().fg(Fixed(238)).on(Fixed(69)).paint(ARROW_SEPARATOR);
+    let char_left_separator = Style::new().bold().fg(Fixed(16)).on(Fixed(69)).bold().paint(format!(" <"));
+    let char_shortcut = Style::new().bold().fg(Fixed(88)).on(Fixed(69)).bold().paint(format!("{}", letter));
+    let char_right_separator = Style::new().bold().fg(Fixed(16)).on(Fixed(69)).bold().paint(format!("> "));
+    let styled_text = Style::new().fg(Fixed(16)).on(Fixed(69)).bold().paint(format!("{} ", text));
+    let suffix_separator = Style::new().fg(Fixed(69)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    LinePart {
+        part: format!("{}", ANSIStrings(&[prefix_separator, char_left_separator, char_shortcut, char_right_separator, styled_text, suffix_separator])),
+        // TODO: fix length here, it doesn't account for the letter and <>s
+        len: text.chars().count() + 2, // 2 for the arrows
+    }
+}
+
+fn selected_mode_shortcut(letter: char, text: &str) -> LinePart {
+    let prefix_separator = Style::new().fg(Fixed(238)).on(Fixed(183)).paint(ARROW_SEPARATOR);
+    let char_left_separator = Style::new().bold().fg(Fixed(16)).on(Fixed(183)).bold().paint(format!(" <"));
+    let char_shortcut = Style::new().bold().fg(Fixed(88)).on(Fixed(183)).bold().paint(format!("{}", letter));
+    let char_right_separator = Style::new().bold().fg(Fixed(16)).on(Fixed(183)).bold().paint(format!("> "));
+    let styled_text = Style::new().fg(Fixed(16)).on(Fixed(183)).bold().paint(format!("{} ", text));
+    let suffix_separator = Style::new().fg(Fixed(183)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    LinePart {
+        // part: format!("{}{}{}{}", prefix_separator, char_shortcut, styled_text, suffix_separator),
+        part: format!("{}", ANSIStrings(&[prefix_separator, char_left_separator, char_shortcut, char_right_separator, styled_text, suffix_separator])),
+        len: text.chars().count() + 2, // 2 for the arrows
+    }
+}
+
+fn disabled_mode_shortcut(text: &str) -> LinePart {
+    let prefix_separator = Style::new().fg(Fixed(238)).on(Fixed(245)).paint(ARROW_SEPARATOR);
+    let styled_text = Style::new().fg(Fixed(255)).on(Fixed(245)).dimmed().italic().paint(text);
+    let suffix_separator = Style::new().fg(Fixed(245)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    LinePart {
+        part: format!("{}{}{}", prefix_separator, styled_text, suffix_separator),
+        len: text.chars().count() + 2, // 2 for the arrows
+    }
 }
 
 fn keybinds(help: &Help, max_width: usize) -> LinePart {
@@ -179,14 +164,15 @@ fn keybinds(help: &Help, max_width: usize) -> LinePart {
             });
     if full_keybinds_len < max_width {
         for (i, (shortcut, description)) in help.keybinds.iter().enumerate() {
-            let separator = if i > 0 { " / " } else { "" };
+            let separator = if i > 0 { " / " } else { " " };
+            let separator = Style::new().on(Fixed(238)).fg(Fixed(183)).paint(separator);
             let shortcut_len = shortcut.chars().count();
-            let shortcut = match help.mode {
-                InputMode::Normal => shortcut.cyan(),
-                _ => shortcut.white().bold(),
-            };
-            keybinds = format!("{}{}<{}> {}", keybinds, separator, shortcut, description);
+            let shortcut_left_separator = Style::new().on(Fixed(238)).fg(Fixed(183)).paint("<");
+            let shortcut = Style::new().on(Fixed(238)).fg(Fixed(77)).bold().paint(shortcut);
+            let shortcut_right_separator = Style::new().on(Fixed(238)).fg(Fixed(183)).paint("> ");
+            let description = Style::new().on(Fixed(238)).fg(Fixed(183)).bold().paint(description);
             len += shortcut_len + separator.chars().count();
+            keybinds = format!("{}{}", keybinds, ANSIStrings(&[separator, shortcut_left_separator, shortcut, shortcut_right_separator, description]));
         }
     } else {
         for (i, (shortcut, description)) in help.keybinds.iter().enumerate() {
@@ -256,6 +242,6 @@ impl ZellijTile for State {
         // 40m is black background, 0K is so that it fills the rest of the line,
         // I could not find a way to do this with colored and did not want to have to
         // manually fill the line with spaces to achieve the same
-        println!("{}\u{1b}[40m\u{1b}[0K", status_bar);
+        println!("{}\u{1b}[48;5;238m\u{1b}[0K", status_bar);
     }
 }

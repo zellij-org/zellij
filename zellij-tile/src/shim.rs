@@ -34,7 +34,7 @@ pub struct Help {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum InputMode {
     Normal,
-    Command,
+    Locked,
     Resize,
     Pane,
     Tab,

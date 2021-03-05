@@ -253,10 +253,8 @@ pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for one special input that
     /// triggers the switch to [`InputMode::Command`] mode.
     Normal,
-    /// In `Command` mode, input is bound to actions (more precisely, sequences of actions).
-    /// `Command` mode gives access to the other modes non-`InputMode::Normal` modes.
-    /// etc.
-    Command,
+    // TBD: description
+    Locked,
     /// `Resize` mode allows resizing the different existing panes.
     Resize,
     /// `Pane` mode allows creating and closing panes, as well as moving between them.
@@ -288,11 +286,11 @@ impl Default for InputMode {
 pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
-        InputMode::Normal | InputMode::Command => {
-            keybinds.push(("p".to_string(), "PANE".to_string()));
-            keybinds.push(("t".to_string(), "TAB".to_string()));
-            keybinds.push(("r".to_string(), "RESIZE".to_string()));
-            keybinds.push(("s".to_string(), "SCROLL".to_string()));
+        InputMode::Normal | InputMode::Locked => { // TODO: fix this
+//            keybinds.push(("p".to_string(), "PANE".to_string()));
+//            keybinds.push(("t".to_string(), "TAB".to_string()));
+//            keybinds.push(("r".to_string(), "RESIZE".to_string()));
+//            keybinds.push(("s".to_string(), "SCROLL".to_string()));
         }
         InputMode::Resize => {
             keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
@@ -315,8 +313,8 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
         }
     }
-    keybinds.push(("ESC".to_string(), "BACK".to_string()));
-    keybinds.push(("q".to_string(), "QUIT".to_string()));
+//    keybinds.push(("ESC".to_string(), "BACK".to_string()));
+//    keybinds.push(("q".to_string(), "QUIT".to_string()));
     Help { mode, keybinds }
 }
 
