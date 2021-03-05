@@ -57,7 +57,11 @@ impl ZellijTile for State {
         for t in self.tabs.iter_mut() {
             let mut tabname = t.name.clone();
             if t.active && self.mode == BarMode::Rename {
-                tabname = self.new_name.clone();
+                if self.new_name.is_empty() {
+                    tabname = String::from("Enter name...");
+                } else {
+                    tabname = self.new_name.clone();
+                }
                 active_tab_index = t.position;
             }
             let tab = tab_style(tabname, t.active, t.position);
