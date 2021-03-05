@@ -2,6 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
+use crate::common::config::Config;
 use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
@@ -22,6 +23,7 @@ struct InputHandler {
     /// The current input mode
     mode: InputMode,
     os_input: Box<dyn OsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -34,6 +36,7 @@ impl InputHandler {
     fn new(
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
+        config: Config,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -42,6 +45,7 @@ impl InputHandler {
         InputHandler {
             mode: InputMode::Normal,
             os_input,
+            config,
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
@@ -59,6 +63,8 @@ impl InputHandler {
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
+            let mut merged_keybinds = keybinds;
+            merged_keybinds.extend(self.config.keybinds.clone().into_iter());
             'input_loop: loop {
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
@@ -76,9 +82,14 @@ impl InputHandler {
                                 // been revised. Sorry about this (@categorille)
                                 if {
                                     let mut should_break = false;
-                                    for action in
-                                        key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                                    {
+                                    // Hacked on way to have a means of testing Macros, needs to
+                                    // get properly integrated
+                                    for action in key_to_actions(
+                                        &key,
+                                        raw_bytes,
+                                        &self.mode,
+                                        &merged_keybinds,
+                                    ) {
                                         should_break |= self.dispatch_action(action);
                                     }
                                     should_break
@@ -324,6 +335,7 @@ pub fn get_help(mode: InputMode) -> Help {
 /// its [`InputHandler::handle_input()`] loop.
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -333,6 +345,7 @@ pub fn input_loop(
     let _handler = InputHandler::new(
         os_input,
         command_is_executing,
+        config,
         send_screen_instructions,
         send_pty_instructions,
         send_plugin_instructions,

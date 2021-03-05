@@ -1,5 +1,5 @@
-pub mod config;
 pub mod command_is_executing;
+pub mod config;
 pub mod errors;
 pub mod input;
 pub mod install;
@@ -46,10 +46,17 @@ pub enum ApiCommand {
     MoveFocus,
 }
 // FIXME: It would be good to add some more things to this over time
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub input_mode: InputMode,
-    pub config : Config,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        AppState {
+            input_mode: InputMode::default(),
+        }
+    }
 }
 
 // FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
@@ -158,7 +165,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
         .unwrap();
+
     let mut app_state = AppState::default();
+
+    let config = Config::from_option_or_default(opts.config)
+        .map_err(|e| eprintln!{"Config Error: {}", e})
+        .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
 
@@ -638,9 +650,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
+            let config = config.clone();
             move || {
                 input_loop(
                     os_input,
+                    config,
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,

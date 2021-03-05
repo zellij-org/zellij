@@ -1,14 +1,15 @@
 //! Deserializes configuration options.
 use std;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 use std::error;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self,Read};
+use std::io::{self, Read};
 use std::path::PathBuf;
 
-use super::input::{keybinds,handler};
+use super::input::{keybinds, macros};
 
+use directories_next::ProjectDirs;
 use serde::Deserialize;
 
 /// Intermediate struct
@@ -16,17 +17,17 @@ use serde::Deserialize;
 
 //}
 
-
 /// Intermediate struct
-//#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFromYaml {
-    keybinds: HashMap<handler::InputMode,Vec<keybinds::Keybinds>>,
+    keybinds: Option<keybinds::Keybinds>,
+    macros: Option<Vec<macros::Macro>>,
 }
 
 ///// Deserialized config state
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
-    keybinds: Vec<keybinds::Keybinds>,
+    pub keybinds: keybinds::Keybinds,
 }
 
 #[derive(Debug)]
@@ -43,36 +44,51 @@ pub enum ConfigError {
     Serde(serde_yaml::Error),
     //Eof,
     // io::Error
-    Io(io::Error)
+    Io(io::Error),
 }
 
 impl Config {
     /// Deserializes from given path
-    pub fn new(path: &PathBuf) -> Result<Config,ConfigError> {
-        let config_deserialized: Config;
+    pub fn new(path: &PathBuf) -> Result<Config, ConfigError> {
+        let config: Config;
+        let config_deserialized: ConfigFromYaml;
         let mut config_string = String::new();
 
+        // TODO fix this unwrap
         match File::open(path) {
             Ok(mut file) => {
                 file.read_to_string(&mut config_string)?;
                 config_deserialized = serde_yaml::from_str(&config_string)?;
+                config = Config {
+                    keybinds: config_deserialized
+                        .keybinds
+                        .unwrap_or_else(|| keybinds::get_default_keybinds().unwrap()),
+                }
             }
-            Err(_) => {
+            Err(e) => {
                 // TODO logging, if a file is not found
                 // at an expected position - should not
                 // panic @a-kenji
-                config_deserialized = Config::default();
+                eprintln!("{}", e);
+                config = Config::default();
             }
         }
-            Ok(config_deserialized)
+        Ok(config)
+    }
+
+    pub fn from_option_or_default(option: Option<PathBuf>) -> Result<Config, ConfigError> {
+        let config;
+        if let Some(config_path) = option {
+            config = Config::new(&config_path)?;
+        } else {
+        let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+        //let config_path = PathBuf::from(project_dirs.config_dir().as_os_str());
+        let config_path = project_dirs.config_dir().to_owned().into();
+            config = Config::new(&config_path)?;
+        }
+        return Ok(config);
     }
 }
-
-//impl de::Error for ConfigError {
-    //fn custom<T: Display>(msg: T) -> Self {
-        //ConfigError::Message(msg.to_string())
-    //}
-//}
 
 impl Display for ConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -88,25 +104,17 @@ impl Display for ConfigError {
 }
 
 impl std::error::Error for ConfigError {
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
-            //ConfigError::Message(ref err) => err,
-            ConfigError::Io(ref err) => err.to_string().as_str(),
-            ConfigError::Serde(ref err) => err.to_string().as_str(),
+            // N.B. Both of these implicitly cast `err` from their concrete
+            // types (either `&io::Error` or `&num::ParseIntError`)
+            // to a trait object `&Error`. This works because both error types
+            // implement `Error`.
+            ConfigError::Io(ref err) => Some(err),
+            //ConfigError::Message(ref err) => Some(err),
+            ConfigError::Serde(ref err) => Some(err),
         }
     }
-
-  fn cause(&self) -> Option<&dyn error::Error> {
-    match *self {
-        // N.B. Both of these implicitly cast `err` from their concrete
-        // types (either `&io::Error` or `&num::ParseIntError`)
-        // to a trait object `&Error`. This works because both error types
-        // implement `Error`.
-        ConfigError::Io(ref err) => Some(err),
-        //ConfigError::Message(ref err) => Some(err),
-        ConfigError::Serde(ref err) => Some(err),
-    }
-}
 }
 
 impl From<io::Error> for ConfigError {
@@ -120,10 +128,3 @@ impl From<serde_yaml::Error> for ConfigError {
         ConfigError::Serde(err)
     }
 }
-
-//impl From<de::Error::Message> for ConfigError {
-    //fn from(err: de::Error::Message) -> ConfigError {
-        //ConfigError::Message(err)
-    //}
-//}
-

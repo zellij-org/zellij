@@ -1,0 +1,8 @@
+---
+macro:
+    {name:"closePane", sequence: [NewPane: Right,]}
+
+keybinds:
+    Normal:
+        Backspace: [NewPane:, NewPane:,]
+        {F: 1}:  [NewPane:,]

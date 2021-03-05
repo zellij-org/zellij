@@ -23,7 +23,7 @@ pub fn get_default_keybinds() -> Result<Keybinds, String> {
     Ok(defaults)
 }
 
-/// Returns the default keybinds for a givent [`InputMode`].
+/// Returns the default keybinds for a given [`InputMode`].
 fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
     let mut defaults = ModeKeybinds::new();
 
