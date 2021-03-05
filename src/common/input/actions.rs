@@ -2,10 +2,10 @@
 
 use super::handler;
 //use super::macros;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -14,7 +14,7 @@ pub enum Direction {
 }
 
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,

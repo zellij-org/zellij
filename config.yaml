@@ -1,8 +1,12 @@
 ---
-macro:
-    {name:"closePane", sequence: [NewPane: Right,]}
-
 keybinds:
     Normal:
-        Backspace: [NewPane:, NewPane:,]
-        {F: 1}:  [NewPane:,]
+    - {F: 1}: [GoToTab: 1,]
+    - {F: 2}: [GoToTab: 2,]
+    - {F: 3}: [GoToTab: 3,]
+    - {F: 4}: [GoToTab: 4,]
+    - {F: 5}: [NewTab: ,]
+    - ? - F: 6
+        - F: 7
+      : - {GoToTab: 5}
+    - Backspace: [NewPane: Right, NewPane: Right,]

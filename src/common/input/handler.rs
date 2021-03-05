@@ -1,7 +1,7 @@
 //! Main input logic.
 
 use super::actions::Action;
-use super::keybinds::get_default_keybinds;
+use super::keybinds::Keybinds;
 use crate::common::config::Config;
 use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
@@ -14,8 +14,6 @@ use crate::CommandIsExecuting;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use termion::input::TermReadEventsAndRaw;
-
-use super::keybinds::key_to_actions;
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -62,9 +60,8 @@ impl InputHandler {
         self.send_pty_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
-        if let Ok(keybinds) = get_default_keybinds() {
-            let mut merged_keybinds = keybinds;
-            merged_keybinds.extend(self.config.keybinds.clone().into_iter());
+        if let Ok(_keybinds) = Keybinds::get_default_keybinds() {
+            let keybinds = self.config.keybinds.clone();
             'input_loop: loop {
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
@@ -84,11 +81,8 @@ impl InputHandler {
                                     let mut should_break = false;
                                     // Hacked on way to have a means of testing Macros, needs to
                                     // get properly integrated
-                                    for action in key_to_actions(
-                                        &key,
-                                        raw_bytes,
-                                        &self.mode,
-                                        &merged_keybinds,
+                                    for action in Keybinds::key_to_actions(
+                                        &key, raw_bytes, &self.mode, &keybinds,
                                     ) {
                                         should_break |= self.dispatch_action(action);
                                     }
