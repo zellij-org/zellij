@@ -171,7 +171,13 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
             );
-            defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
+            defaults.insert(
+                Key::Esc,
+                vec![
+                    Action::TabNameInput(vec![0x1b]),
+                    Action::SwitchToMode(InputMode::Tab),
+                ],
+            );
         }
     }
 

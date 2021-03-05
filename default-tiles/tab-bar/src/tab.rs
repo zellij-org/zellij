@@ -27,7 +27,7 @@ pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
         ARROW_SEPARATOR.black().on_green()
     };
     let right_separator = ARROW_SEPARATOR.green().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
+    let tab_styled_text = format!("{} {} {}", left_separator, text, right_separator)
         .black()
         .bold()
         .on_green();
