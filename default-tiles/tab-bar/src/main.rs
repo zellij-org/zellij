@@ -75,7 +75,7 @@ impl ZellijTile for State {
         self.tabs = get_tabs();
     }
 
-    fn handle_tab_event(&mut self, key: Key) {
+    fn handle_tab_rename_keypress(&mut self, key: Key) {
         self.mode = BarMode::Rename;
         match key {
             Key::Char('\n') | Key::Esc => {

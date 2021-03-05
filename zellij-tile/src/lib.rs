@@ -8,7 +8,7 @@ pub trait ZellijTile {
     fn handle_key(&mut self, key: Key) {}
     fn handle_global_key(&mut self, key: Key) {}
     fn update_tabs(&mut self) {}
-    fn handle_tab_event(&mut self, key: Key) {}
+    fn handle_tab_rename_keypress(&mut self, key: Key) {}
 }
 
 #[macro_export]
@@ -53,9 +53,11 @@ macro_rules! register_tile {
         }
 
         #[no_mangle]
-        pub fn handle_tab_event() {
+        pub fn handle_tab_rename_keypress() {
             STATE.with(|state| {
-                state.borrow_mut().handle_tab_event($crate::get_key());
+                state
+                    .borrow_mut()
+                    .handle_tab_rename_keypress($crate::get_key());
             })
         }
     };

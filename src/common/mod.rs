@@ -444,7 +444,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
             let handler_map: HashMap<EventType, String> =
-                [(EventType::Tab, "handle_tab_event".to_string())]
+                [(EventType::Tab, "handle_tab_rename_keypress".to_string())]
                     .iter()
                     .cloned()
                     .collect();
