@@ -276,6 +276,26 @@ impl Pane for TerminalPane {
         self.reflow_lines();
         self.mark_for_rerender();
     }
+    fn pull_up(&mut self, count: usize) {
+        self.position_and_size.y = if let Some(y_delta) = self.position_and_size.y.checked_sub(count)
+        {
+            y_delta
+        } else {
+            0
+        };
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn pull_left(&mut self, count: usize) {
+        self.position_and_size.x =
+            if let Some(x_delta) = self.position_and_size.x.checked_sub(count) {
+                x_delta
+            } else {
+                0
+            };
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
     fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.columns -= count;
         self.reflow_lines();

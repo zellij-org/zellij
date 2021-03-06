@@ -341,43 +341,51 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .write_to_active_terminal(bytes);
                         }
                         ScreenInstruction::TerminalResize => {
-                            let new_term_size = screen.get_terminal_size(None);
-                            let current_term_size = screen.get_active_tab().unwrap().get_tab_size();
+                            if let Some(active_tab) = screen.get_active_tab() {
+                                let current_term_size = active_tab.get_tab_size();
+                                let new_term_size = screen.get_terminal_size(None);
 
-                            let column_delta =
-                                new_term_size.columns as isize - current_term_size.columns as isize;
-                            let _ = crate::utils::logging::debug_log_to_file(format!("Column delta: {:?}", column_delta));
-                            if column_delta < 0 {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .reduce_pane_width_with_left_adj(
-                                        column_delta.abs() as usize,
-                                        None,
-                                    );
-                            } else {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .increase_all_panes_width(column_delta.abs() as usize);
-                            }
+                                let column_delta = new_term_size.columns as isize
+                                    - current_term_size.columns as isize;
+                                let _ = crate::utils::logging::debug_log_to_file(format!(
+                                    "Column delta: {:?}",
+                                    column_delta
+                                ));
+                                if column_delta < 0 {
+                                    screen
+                                        .get_active_tab_mut()
+                                        .unwrap()
+                                        .reduce_pane_width_with_left_adj(
+                                            column_delta.abs() as usize,
+                                            None,
+                                        );
+                                } else {
+                                    screen
+                                        .get_active_tab_mut()
+                                        .unwrap()
+                                        .increase_all_panes_width(column_delta.abs() as usize);
+                                }
 
-                            let row_delta =
-                                new_term_size.rows as isize - current_term_size.rows as isize;
-                            let _ = crate::utils::logging::debug_log_to_file(format!("Row delta: {:?}", row_delta));
-                            if row_delta < 0 {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .reduce_pane_height_with_top_adj(
-                                        row_delta.abs() as usize,
-                                        None,
-                                    );
-                            } else {
-                                screen
-                                    .get_active_tab_mut()
-                                    .unwrap()
-                                    .increase_all_panes_height(row_delta.abs() as usize);
+                                let row_delta =
+                                    new_term_size.rows as isize - current_term_size.rows as isize;
+                                let _ = crate::utils::logging::debug_log_to_file(format!(
+                                    "Row delta: {:?}",
+                                    row_delta
+                                ));
+                                if row_delta < 0 {
+                                    screen
+                                        .get_active_tab_mut()
+                                        .unwrap()
+                                        .reduce_pane_height_with_top_adj(
+                                            row_delta.abs() as usize,
+                                            None,
+                                        );
+                                } else {
+                                    screen
+                                        .get_active_tab_mut()
+                                        .unwrap()
+                                        .increase_all_panes_height(row_delta.abs() as usize);
+                                }
                             }
                         }
                         ScreenInstruction::ResizeLeft => {

@@ -173,6 +173,14 @@ impl Pane for PluginPane {
         self.position_and_size.columns += count;
         self.should_render = true;
     }
+    fn pull_up(&mut self, count: usize) {
+        self.position_and_size.y = if let Some(y_delta) = self.position_and_size.y.checked_sub(count) { y_delta } else { 0 };
+        self.should_render = true;
+    }
+    fn pull_left(&mut self, count: usize) {
+        self.position_and_size.x = if let Some(x_delta) = self.position_and_size.x.checked_sub(count) { x_delta } else { 0 };
+        self.should_render = true;
+    }
     fn scroll_up(&mut self, _count: usize) {
         unimplemented!()
     }

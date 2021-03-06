@@ -99,6 +99,8 @@ pub trait Pane {
     fn reduce_width_right(&mut self, count: usize);
     fn reduce_width_left(&mut self, count: usize);
     fn increase_width_left(&mut self, count: usize);
+    fn pull_up(&mut self, count: usize);
+    fn pull_left(&mut self, count: usize);
     fn scroll_up(&mut self, count: usize);
     fn scroll_down(&mut self, count: usize);
     fn clear_scroll(&mut self);
@@ -554,12 +556,16 @@ impl Tab {
         reduce_by: usize,
         pane_ids_to_minimize_by: &mut HashMap<PaneId, usize>,
     ) {
+        if reduce_by <= 0 {
+            return;
+        }
+
         let current_pane = self
             .panes
             .get(&root_pane_id)
             .expect("Could not find the requested pane.");
 
-        let allowed_to_reduce_by =
+        let allowed_to_reduce_by: usize =
             if current_pane.columns() >= current_pane.min_height() + reduce_by {
                 reduce_by
             } else if reduce_by > current_pane.min_height() {
@@ -609,12 +615,16 @@ impl Tab {
         reduce_by: usize,
         pane_ids_to_minimize_by: &mut HashMap<PaneId, usize>,
     ) {
+        if reduce_by <= 0 {
+            return;
+        }
+
         let current_pane = self
             .panes
             .get(&root_pane_id)
             .expect("Could not find the requested pane.");
 
-        let allowed_to_reduce_by =
+        let allowed_to_reduce_by: usize =
             if current_pane.columns() >= current_pane.min_height() + reduce_by {
                 reduce_by
             } else if reduce_by > current_pane.min_height() {
@@ -678,13 +688,9 @@ impl Tab {
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.reduce_height_down(resize_by);
+                pane.pull_up(rows_to_reduce);
             }
         }
-    }
-    pub fn increase_all_panes_height(&mut self, rows: usize) {
-        self.panes.iter_mut().for_each(|(_, pane)| {
-            pane.increase_height_down(rows);
-        });
     }
     pub fn reduce_pane_width_with_left_adj(
         &mut self,
@@ -709,8 +715,14 @@ impl Tab {
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.reduce_width_left(resize_by);
+                pane.pull_left(columns_to_reduce);
             }
         }
+    }
+    pub fn increase_all_panes_height(&mut self, rows: usize) {
+        self.panes.iter_mut().for_each(|(_, pane)| {
+            pane.increase_height_down(rows);
+        });
     }
     pub fn increase_all_panes_width(&mut self, columns: usize) {
         self.panes.iter_mut().for_each(|(_, pane)| {
