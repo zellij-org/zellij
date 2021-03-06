@@ -583,13 +583,11 @@ impl Tab {
             .panes
             .iter()
             .filter_map(|(pane_id, pane)| {
-                let is_y_adjacent = pane.y() == current_pane_bottom_boundary
-                    || pane.y() == current_pane_bottom_boundary + 1;
+                let is_y_adjacent = pane.y() == current_pane_bottom_boundary;
                 let is_left_x_inside =
-                    pane.x() < current_pane_right_boundary && pane.x() > current_pane_left_boundary;
-                let is_right_x_inside = pane.right_boundary_x_coords()
-                    < current_pane_right_boundary
-                    && pane.right_boundary_x_coords() > current_pane_left_boundary;
+                    pane.x() > current_pane_left_boundary && pane.x() < current_pane_right_boundary;
+                let is_right_x_inside = pane.right_boundary_x_coords() > current_pane_left_boundary
+                    && pane.right_boundary_x_coords() < current_pane_right_boundary;
 
                 if is_y_adjacent && (is_left_x_inside || is_right_x_inside) {
                     Some(pane_id)
@@ -687,7 +685,7 @@ impl Tab {
         ));
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
-                pane.reduce_height_down(resize_by);
+                pane.reduce_height_up(resize_by);
                 pane.pull_up(rows_to_reduce);
             }
         }
