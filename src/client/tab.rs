@@ -625,7 +625,10 @@ impl Tab {
             .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
-                boundaries.add_rect(terminal.as_ref());
+                match self.active_terminal.unwrap() == terminal.pid() {
+                    true => boundaries.add_rect(terminal.as_ref(), true),
+                    false => boundaries.add_rect(terminal.as_ref(), false)
+                }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output
