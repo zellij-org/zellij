@@ -314,6 +314,26 @@ impl Pane for TerminalPane {
         self.grid.reset_viewport();
         self.mark_for_rerender();
     }
+    fn safe_reduce_height_up(&mut self, count: usize) {
+        self.position_and_size.rows = self
+            .position_and_size
+            .rows
+            .checked_sub(count)
+            .filter(|&delta| delta > self.min_height())
+            .unwrap_or(self.min_height());
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
+    fn safe_reduce_width_left(&mut self, count: usize) {
+        self.position_and_size.columns = self
+            .position_and_size
+            .columns
+            .checked_sub(count)
+            .filter(|&delta| delta > self.min_width())
+            .unwrap_or(self.min_width());
+        self.reflow_lines();
+        self.mark_for_rerender();
+    }
 }
 
 impl TerminalPane {

@@ -155,6 +155,15 @@ impl Pane for PluginPane {
         self.position_and_size.rows -= count;
         self.should_render = true;
     }
+    fn safe_reduce_height_up(&mut self, count: usize) {
+        self.position_and_size.rows = self
+            .position_and_size
+            .rows
+            .checked_sub(count)
+            .filter(|&delta| delta > self.min_height())
+            .unwrap_or(self.min_height());
+        self.should_render = true;
+    }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
         self.position_and_size.columns -= count;
@@ -162,6 +171,15 @@ impl Pane for PluginPane {
     }
     fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.columns -= count;
+        self.should_render = true;
+    }
+    fn safe_reduce_width_left(&mut self, count: usize) {
+        self.position_and_size.columns = self
+            .position_and_size
+            .columns
+            .checked_sub(count)
+            .filter(|&delta| delta > self.min_width())
+            .unwrap_or(self.min_width());
         self.should_render = true;
     }
     fn increase_width_left(&mut self, count: usize) {

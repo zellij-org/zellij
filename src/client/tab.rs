@@ -95,9 +95,11 @@ pub trait Pane {
     fn increase_height_down(&mut self, count: usize);
     fn increase_height_up(&mut self, count: usize);
     fn reduce_height_up(&mut self, count: usize);
+    fn safe_reduce_height_up(&mut self, count: usize);
     fn increase_width_right(&mut self, count: usize);
     fn reduce_width_right(&mut self, count: usize);
     fn reduce_width_left(&mut self, count: usize);
+    fn safe_reduce_width_left(&mut self, count: usize);
     fn increase_width_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
@@ -585,9 +587,9 @@ impl Tab {
             .filter_map(|(pane_id, pane)| {
                 let is_y_adjacent = pane.y() == current_pane_bottom_boundary;
                 let is_left_x_inside =
-                    pane.x() > current_pane_left_boundary && pane.x() < current_pane_right_boundary;
-                let is_right_x_inside = pane.right_boundary_x_coords() > current_pane_left_boundary
-                    && pane.right_boundary_x_coords() < current_pane_right_boundary;
+                    pane.x() >= current_pane_left_boundary && pane.x() <= current_pane_right_boundary;
+                let is_right_x_inside = pane.right_boundary_x_coords() >= current_pane_left_boundary
+                    && pane.right_boundary_x_coords() <= current_pane_right_boundary;
 
                 if is_y_adjacent && (is_left_x_inside || is_right_x_inside) {
                     Some(pane_id)
@@ -671,7 +673,7 @@ impl Tab {
         let pane_ids_on_bottom_border = self.get_panes_ids_leaning_on_top_border(top_border_coord);
         let mut pane_ids_to_resize: HashMap<PaneId, usize> = HashMap::new();
 
-        for &pane_id in pane_ids_on_bottom_border {
+        for &&pane_id in pane_ids_on_bottom_border.iter() {
             self.reduce_pane_height_and_pull_surrondings_dryrun(
                 pane_id,
                 rows_to_reduce,
@@ -680,12 +682,19 @@ impl Tab {
         }
 
         let _ = crate::utils::logging::debug_log_to_file(format!(
+            "All pane postitions (height change): {:?}",
+            self.panes
+                .iter()
+                .map(|(pane_id, pane)| (pane_id, pane.position_and_size()))
+                .collect::<Vec<(&PaneId, PositionAndSize)>>()
+        ));
+        let _ = crate::utils::logging::debug_log_to_file(format!(
             "Height change: {:?}",
             pane_ids_to_resize
         ));
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
-                pane.reduce_height_up(resize_by);
+                pane.safe_reduce_height_up(resize_by);
                 pane.pull_up(rows_to_reduce);
             }
         }
@@ -698,7 +707,7 @@ impl Tab {
         let pane_ids_on_left_border = self.get_panes_ids_leaning_on_left_border(left_border_coord);
         let mut pane_ids_to_resize: HashMap<PaneId, usize> = HashMap::new();
 
-        for &pane_id in pane_ids_on_left_border {
+        for &&pane_id in pane_ids_on_left_border.iter() {
             self.reduce_pane_width_and_pull_surrondings_dryrun(
                 pane_id,
                 columns_to_reduce,
@@ -707,12 +716,19 @@ impl Tab {
         }
 
         let _ = crate::utils::logging::debug_log_to_file(format!(
+            "All pane positions (width change): {:?}",
+            self.panes
+                .iter()
+                .map(|(pane_id, pane)| (pane_id, pane.position_and_size()))
+                .collect::<Vec<(&PaneId, PositionAndSize)>>()
+        ));
+        let _ = crate::utils::logging::debug_log_to_file(format!(
             "Width change: {:?}",
             pane_ids_to_resize
         ));
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
-                pane.reduce_width_left(resize_by);
+                pane.safe_reduce_width_left(resize_by);
                 pane.pull_left(columns_to_reduce);
             }
         }

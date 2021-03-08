@@ -3,6 +3,9 @@
 log_file="${1:-log.txt}"
 log_file_path="/tmp/zellij/zellij-log/${log_file}"
 
-[[ -f $log_file_path ]] && rm "${log_file_path}"
-printf "\n%${COLUMNS}s" | tr " " "-"
+if [[ -f $log_file_path ]]; then
+	rm "${log_file_path}"
+	touch "${log_file_path}"
+fi
+printf "%${COLUMNS}s\n\n" | tr " " "-"
 tail -F "${log_file_path}"
