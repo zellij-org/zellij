@@ -745,7 +745,8 @@ impl Tab {
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
         self.get_active_pane_id()
-            .map(|active_pane_id| self.panes.get(&active_pane_id).map(Box::as_ref).unwrap())
+            .map(|active_pane_id| self.panes.get(&active_pane_id).map(Box::as_ref))
+            .unwrap_or(None)
     }
     fn get_active_pane_id(&self) -> Option<PaneId> {
         self.active_terminal

@@ -160,7 +160,7 @@ impl Pane for PluginPane {
             .position_and_size
             .rows
             .checked_sub(count)
-            .filter(|&delta| delta > self.min_height())
+            .filter(|&new_height| new_height > self.min_height())
             .unwrap_or(self.min_height());
         self.should_render = true;
     }
@@ -178,7 +178,7 @@ impl Pane for PluginPane {
             .position_and_size
             .columns
             .checked_sub(count)
-            .filter(|&delta| delta > self.min_width())
+            .filter(|&new_width| new_width > self.min_width())
             .unwrap_or(self.min_width());
         self.should_render = true;
     }

@@ -319,7 +319,7 @@ impl Pane for TerminalPane {
             .position_and_size
             .rows
             .checked_sub(count)
-            .filter(|&delta| delta > self.min_height())
+            .filter(|&new_height| new_height > self.min_height())
             .unwrap_or(self.min_height());
         self.reflow_lines();
         self.mark_for_rerender();
@@ -329,7 +329,7 @@ impl Pane for TerminalPane {
             .position_and_size
             .columns
             .checked_sub(count)
-            .filter(|&delta| delta > self.min_width())
+            .filter(|&new_width| new_width > self.min_width())
             .unwrap_or(self.min_width());
         self.reflow_lines();
         self.mark_for_rerender();
