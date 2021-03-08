@@ -9,7 +9,7 @@ pub fn active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
         ARROW_SEPARATOR.black().on_magenta()
     };
     let right_separator = ARROW_SEPARATOR.magenta().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
+    let tab_styled_text = format!("{} {} {}", left_separator, text, right_separator)
         .black()
         .bold()
         .on_magenta();
@@ -41,7 +41,7 @@ pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
 pub fn tab_style(text: String, is_active_tab: bool, position: usize) -> LinePart {
     let tab_text;
     if text.is_empty() {
-        tab_text = format!(" Tab #{} ", position + 1);
+        tab_text = format!("Tab #{}", position + 1);
     } else {
         tab_text = text;
     }
