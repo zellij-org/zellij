@@ -116,7 +116,6 @@ fn add_next_tabs_msg(
     cols: usize,
 ) {
     while get_current_title_len(&title_bar) +
-        // get_tabs_after_len(tabs_after_active.len()) >= cols {
         right_more_message(tabs_after_active.len()).len
         >= cols
     {

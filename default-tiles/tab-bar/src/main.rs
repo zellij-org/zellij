@@ -63,6 +63,8 @@ impl ZellijTile for State {
                     tabname = self.new_name.clone();
                 }
                 active_tab_index = t.position;
+            } else if t.active {
+                active_tab_index = t.position;
             }
             let tab = tab_style(tabname, t.active, t.position);
             all_tabs.push(tab);
