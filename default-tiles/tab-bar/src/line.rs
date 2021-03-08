@@ -115,8 +115,7 @@ fn add_next_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
 ) {
-    while get_current_title_len(&title_bar) +
-        right_more_message(tabs_after_active.len()).len
+    while get_current_title_len(&title_bar) + right_more_message(tabs_after_active.len()).len
         >= cols
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
