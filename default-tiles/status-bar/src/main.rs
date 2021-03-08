@@ -104,7 +104,7 @@ fn key_path(help: &Help) -> LinePart {
                 len,
             )
         }
-        InputMode::Tab => {
+        InputMode::Tab | InputMode::RenameTab => {
             let mode_shortcut_text = "t ";
             let superkey = superkey_text.bold().on_magenta();
             let first_superkey_separator = ARROW_SEPARATOR.magenta().on_black();

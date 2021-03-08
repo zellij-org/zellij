@@ -9,11 +9,11 @@ pub fn active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
         ARROW_SEPARATOR.black().on_magenta()
     };
     let right_separator = ARROW_SEPARATOR.magenta().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
+    let tab_styled_text = format!("{} {} {}", left_separator, text, right_separator)
         .black()
         .bold()
         .on_magenta();
-    let tab_text_len = text.chars().count() + 2; // 2 for left and right separators
+    let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
     LinePart {
         part: format!("{}", tab_styled_text),
         len: tab_text_len,
@@ -27,26 +27,27 @@ pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
         ARROW_SEPARATOR.black().on_green()
     };
     let right_separator = ARROW_SEPARATOR.green().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
+    let tab_styled_text = format!("{} {} {}", left_separator, text, right_separator)
         .black()
         .bold()
         .on_green();
-    let tab_text_len = text.chars().count() + 2; // 2 for the left and right separators
+    let tab_text_len = text.chars().count() + 4; // 2 for the left and right separators, 2 for the text padding
     LinePart {
         part: format!("{}", tab_styled_text),
         len: tab_text_len,
     }
 }
 
-pub fn tab(text: String, is_active_tab: bool, is_furthest_to_the_left: bool) -> LinePart {
-    if is_active_tab {
-        active_tab(text, is_furthest_to_the_left)
+pub fn tab_style(text: String, is_active_tab: bool, position: usize) -> LinePart {
+    let tab_text;
+    if text.is_empty() {
+        tab_text = format!("Tab #{}", position + 1);
     } else {
-        non_active_tab(text, is_furthest_to_the_left)
+        tab_text = text;
     }
-}
-
-pub fn nameless_tab(index: usize, is_active_tab: bool) -> LinePart {
-    let tab_text = format!(" Tab #{} ", index + 1);
-    tab(tab_text, is_active_tab, index == 0)
+    if is_active_tab {
+        active_tab(tab_text, position == 0)
+    } else {
+        non_active_tab(tab_text, position == 0)
+    }
 }
