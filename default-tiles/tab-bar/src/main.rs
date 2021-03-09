@@ -1,7 +1,7 @@
 mod line;
 mod tab;
 
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 use crate::line::tab_line;
 use crate::tab::tab_style;

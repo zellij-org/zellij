@@ -1,6 +1,6 @@
 use colored::*;
 use std::fmt::{Display, Error, Formatter};
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = " ";
@@ -152,7 +152,7 @@ fn key_path(help: &Help) -> LinePart {
                 len,
             )
         }
-        InputMode::Normal | _ => {
+        InputMode::Normal => {
             let key_path = superkey_text.on_green();
             let separator = ARROW_SEPARATOR.green().on_black();
             (

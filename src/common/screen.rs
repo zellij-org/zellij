@@ -9,9 +9,11 @@ use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::tab::{Tab, TabData};
+use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
+
+use zellij_tile::data::TabData;
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]

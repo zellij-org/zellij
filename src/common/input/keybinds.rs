@@ -1,12 +1,12 @@
 //! Mapping of inputs to sequences of actions.
 
 use super::actions::{Action, Direction};
-use super::handler::InputMode;
 
 use std::collections::HashMap;
 
 use strum::IntoEnumIterator;
 use termion::event::Key;
+use zellij_tile::data::*;
 
 type Keybinds = HashMap<InputMode, ModeKeybinds>;
 type ModeKeybinds = HashMap<Key, Vec<Action>>;

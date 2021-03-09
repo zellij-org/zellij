@@ -1,61 +1,7 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::{io, path::Path};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Key {
-    Backspace,
-    Left,
-    Right,
-    Up,
-    Down,
-    Home,
-    End,
-    PageUp,
-    PageDown,
-    BackTab,
-    Delete,
-    Insert,
-    F(u8),
-    Char(char),
-    Alt(char),
-    Ctrl(char),
-    Null,
-    Esc,
-}
-
-// TODO: use same struct from main crate?
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Help {
-    pub mode: InputMode,
-    pub keybinds: Vec<(String, String)>,
-}
-
-// TODO: use same struct from main crate?
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum InputMode {
-    Normal,
-    Command,
-    Resize,
-    Pane,
-    Tab,
-    RenameTab,
-    Scroll,
-    Exiting,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TabData {
-    /* subset of fields to publish to plugins */
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
-}
-
-impl Default for InputMode {
-    fn default() -> InputMode {
-        InputMode::Normal
-    }
-}
+use crate::data::*;
 
 pub fn get_key() -> Key {
     deserialize_from_stdin().unwrap()

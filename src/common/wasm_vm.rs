@@ -1,4 +1,3 @@
-use crate::tab::TabData;
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
@@ -6,6 +5,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
+use zellij_tile::data::TabData;
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,

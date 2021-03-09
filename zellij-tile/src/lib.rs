@@ -1,6 +1,9 @@
-mod shim;
+pub mod data;
+pub mod prelude;
+pub mod shim;
 
-pub use shim::*;
+use data::*;
+
 #[allow(unused_variables)]
 pub trait ZellijTile {
     fn load(&mut self) {}
@@ -34,14 +37,16 @@ macro_rules! register_tile {
         #[no_mangle]
         pub fn handle_key() {
             STATE.with(|state| {
-                state.borrow_mut().handle_key($crate::get_key());
+                state.borrow_mut().handle_key($crate::shim::get_key());
             });
         }
 
         #[no_mangle]
         pub fn handle_global_key() {
             STATE.with(|state| {
-                state.borrow_mut().handle_global_key($crate::get_key());
+                state
+                    .borrow_mut()
+                    .handle_global_key($crate::shim::get_key());
             });
         }
 
@@ -57,7 +62,7 @@ macro_rules! register_tile {
             STATE.with(|state| {
                 state
                     .borrow_mut()
-                    .handle_tab_rename_keypress($crate::get_key());
+                    .handle_tab_rename_keypress($crate::shim::get_key());
             })
         }
     };

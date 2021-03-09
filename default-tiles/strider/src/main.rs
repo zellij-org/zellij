@@ -3,7 +3,7 @@ mod state;
 use colored::*;
 use state::{FsEntry, State};
 use std::{cmp::min, fs::read_dir};
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 register_tile!(State);
 

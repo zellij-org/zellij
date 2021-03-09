@@ -8,7 +8,6 @@ use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -65,14 +64,6 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TabData {
-    /* subset of fields to publish to plugins */
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication

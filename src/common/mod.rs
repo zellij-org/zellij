@@ -16,27 +16,26 @@ use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
 
-use crate::panes::PaneId;
-use directories_next::ProjectDirs;
-use input::handler::InputMode;
-use serde::{Deserialize, Serialize};
-use termion::input::TermRead;
-use wasm_vm::PluginEnv;
-use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-use wasmer_wasi::{Pipe, WasiState};
-
 use crate::cli::CliArgs;
 use crate::layout::Layout;
+use crate::panes::PaneId;
 use command_is_executing::CommandIsExecuting;
+use directories_next::ProjectDirs;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
 use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
+use serde::{Deserialize, Serialize};
+use termion::input::TermRead;
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
+use wasm_vm::PluginEnv;
 use wasm_vm::{
     wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
 };
+use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+use wasmer_wasi::{Pipe, WasiState};
+use zellij_tile::data::InputMode;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {

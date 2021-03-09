@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::handler;
+use zellij_tile::data::InputMode;
 
 /// The four directions (left, right, up, down).
 #[derive(Clone, Debug)]
@@ -19,7 +19,7 @@ pub enum Action {
     /// Write to the terminal.
     Write(Vec<u8>),
     /// Switch to the specified input mode.
-    SwitchToMode(handler::InputMode),
+    SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
     Resize(Direction),
     /// Switch focus to next pane in specified direction.
