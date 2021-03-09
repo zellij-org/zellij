@@ -3,7 +3,7 @@ mod shim;
 pub use shim::*;
 #[allow(unused_variables)]
 pub trait ZellijTile {
-    fn init(&mut self) {}
+    fn load(&mut self) {}
     fn draw(&mut self, rows: usize, cols: usize) {}
     fn handle_key(&mut self, key: Key) {}
     fn handle_global_key(&mut self, key: Key) {}
@@ -20,7 +20,7 @@ macro_rules! register_tile {
 
         fn main() {
             STATE.with(|state| {
-                state.borrow_mut().init();
+                state.borrow_mut().load();
             });
         }
 

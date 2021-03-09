@@ -38,7 +38,7 @@ static ARROW_SEPARATOR: &str = "";
 register_tile!(State);
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);

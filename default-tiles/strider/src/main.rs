@@ -8,7 +8,7 @@ use zellij_tile::*;
 register_tile!(State);
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         refresh_directory(self);
     }
 
