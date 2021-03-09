@@ -171,15 +171,12 @@ impl Screen {
     pub fn go_to_tab(&mut self, mut tab_index: usize) {
         tab_index -= 1;
         let active_tab = self.get_active_tab().unwrap();
-        match self.tabs.values().find(|t| t.position == tab_index) {
-            Some(t) => {
-                if t.index != active_tab.index {
-                    self.active_tab_index = Some(t.index);
-                    self.update_tabs();
-                    self.render();
-                }
+        if let Some(t) = self.tabs.values().find(|t| t.position == tab_index) {
+            if t.index != active_tab.index {
+                self.active_tab_index = Some(t.index);
+                self.update_tabs();
+                self.render();
             }
-            None => {}
         }
     }
 

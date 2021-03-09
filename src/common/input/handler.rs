@@ -73,15 +73,12 @@ impl InputHandler {
                                 // framework relies on it to not create dead threads that loop
                                 // and eat up CPUs. Do not remove until the test framework has
                                 // been revised. Sorry about this (@categorille)
-                                if {
-                                    let mut should_break = false;
-                                    for action in
-                                        key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                                    {
-                                        should_break |= self.dispatch_action(action);
-                                    }
-                                    should_break
-                                } {
+                                let mut should_break = false;
+                                for action in key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                                {
+                                    should_break |= self.dispatch_action(action);
+                                }
+                                if should_break {
                                     break 'input_loop;
                                 }
                             }

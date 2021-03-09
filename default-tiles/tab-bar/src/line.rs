@@ -56,7 +56,7 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     let more_text = if tab_count_to_the_left < 10000 {
         format!(" ← +{} ", tab_count_to_the_left)
     } else {
-        format!(" ← +many ")
+        " ← +many ".to_string()
     };
     let more_styled_text = format!(
         "{}{}",
@@ -79,7 +79,7 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
     let more_text = if tab_count_to_the_right < 10000 {
         format!(" +{} → ", tab_count_to_the_right)
     } else {
-        format!(" +many → ")
+        " +many → ".to_string()
     };
     let more_styled_text = format!(
         "{}{}{}",

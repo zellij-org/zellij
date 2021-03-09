@@ -553,14 +553,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
                                 let handle_key =
                                     instance.exports.get_function("handle_key").unwrap();
-                                for key in input_bytes.keys() {
-                                    if let Ok(key) = key {
-                                        wasi_write_string(
-                                            &plugin_env.wasi_env,
-                                            &serde_json::to_string(&key).unwrap(),
-                                        );
-                                        handle_key.call(&[]).unwrap();
-                                    }
+                                for key in input_bytes.keys().flatten() {
+                                    wasi_write_string(
+                                        &plugin_env.wasi_env,
+                                        &serde_json::to_string(&key).unwrap(),
+                                    );
+                                    handle_key.call(&[]).unwrap();
                                 }
                             }
                             PluginInputType::Event(event) => {
@@ -572,14 +570,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                         .exports
                                         .get_function(handler_map.get(&event).unwrap())
                                         .unwrap();
-                                    for key in input_bytes.keys() {
-                                        if let Ok(key) = key {
-                                            wasi_write_string(
-                                                &plugin_env.wasi_env,
-                                                &serde_json::to_string(&key).unwrap(),
-                                            );
-                                            handle_key.call(&[]).unwrap();
-                                        }
+                                    for key in input_bytes.keys().flatten() {
+                                        wasi_write_string(
+                                            &plugin_env.wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
+                                        handle_key.call(&[]).unwrap();
                                     }
                                 }
                             }
@@ -591,14 +587,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         for (instance, plugin_env) in plugin_map.values() {
                             let handler =
                                 instance.exports.get_function("handle_global_key").unwrap();
-                            for key in input_bytes.keys() {
-                                if let Ok(key) = key {
-                                    wasi_write_string(
-                                        &plugin_env.wasi_env,
-                                        &serde_json::to_string(&key).unwrap(),
-                                    );
-                                    handler.call(&[]).unwrap();
-                                }
+                            for key in input_bytes.keys().flatten() {
+                                wasi_write_string(
+                                    &plugin_env.wasi_env,
+                                    &serde_json::to_string(&key).unwrap(),
+                                );
+                                handler.call(&[]).unwrap();
                             }
                         }
 
@@ -626,7 +620,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
                     .expect("could not listen on ipc socket");
                 let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-                err_ctx.add_call(ContextType::IPCServer);
+                err_ctx.add_call(ContextType::IpcServer);
                 send_pty_instructions.update(err_ctx);
                 send_screen_instructions.update(err_ctx);
 

@@ -133,7 +133,7 @@ pub enum ContextType {
     Plugin(PluginContext),
     /// An app-related call.
     App(AppContext),
-    IPCServer,
+    IpcServer,
     StdinHandler,
     AsyncTask,
     /// An empty, placeholder call. This should be thought of as representing no call at all.
@@ -152,7 +152,7 @@ impl Display for ContextType {
 
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
             ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
-            ContextType::IPCServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
+            ContextType::IpcServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
             ContextType::StdinHandler => {
                 write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
             }

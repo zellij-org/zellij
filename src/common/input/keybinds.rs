@@ -17,14 +17,14 @@ pub fn get_default_keybinds() -> Result<Keybinds, String> {
     let mut defaults = Keybinds::new();
 
     for mode in InputMode::iter() {
-        defaults.insert(mode, get_defaults_for_mode(&mode)?);
+        defaults.insert(mode, get_defaults_for_mode(&mode));
     }
 
     Ok(defaults)
 }
 
 /// Returns the default keybinds for a givent [`InputMode`].
-fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
+fn get_defaults_for_mode(mode: &InputMode) -> ModeKeybinds {
     let mut defaults = ModeKeybinds::new();
 
     match *mode {
@@ -181,7 +181,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
         }
     }
 
-    Ok(defaults)
+    defaults
 }
 
 /// Converts a [`Key`] terminal event to a sequence of [`Action`]s according to the current

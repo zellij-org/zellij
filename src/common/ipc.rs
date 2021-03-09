@@ -3,12 +3,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-type SessionID = u64;
+type SessionId = u64;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Session {
     // Unique ID for this session
-    id: SessionID,
+    id: SessionId,
     // Identifier for the underlying IPC primitive (socket, pipe)
     conn_name: String,
     // User configured alias for the session
@@ -30,9 +30,9 @@ pub enum ClientToServerMsg {
     // Create a new session
     CreateSession,
     // Attach to a running session
-    AttachToSession(SessionID, ClientType),
+    AttachToSession(SessionId, ClientType),
     // Force detach
-    DetachSession(SessionID),
+    DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,
 }

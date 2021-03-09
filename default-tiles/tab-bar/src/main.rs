@@ -26,8 +26,6 @@ impl Default for BarMode {
 
 #[derive(Default)]
 struct State {
-    active_tab_index: usize,
-    num_tabs: usize,
     tabs: Vec<TabInfo>,
     mode: BarMode,
     new_name: String,
@@ -42,8 +40,6 @@ impl ZellijTile for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
-        self.active_tab_index = 0;
-        self.num_tabs = 0;
         self.mode = BarMode::Normal;
         self.new_name = String::new();
     }
