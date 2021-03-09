@@ -28,7 +28,7 @@ impl Default for BarMode {
 struct State {
     active_tab_index: usize,
     num_tabs: usize,
-    tabs: Vec<TabData>,
+    tabs: Vec<TabInfo>,
     mode: BarMode,
     new_name: String,
 }

@@ -9,12 +9,16 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
+use std::{
+    collections::HashSet,
+    io::Write,
+    sync::{Arc, Mutex},
+};
 
 use crate::cli::CliArgs;
 use crate::layout::Layout;
@@ -31,7 +35,8 @@ use termion::input::TermRead;
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
 use wasm_vm::PluginEnv;
 use wasm_vm::{
-    wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
+    wasi_stdout, wasi_write_string, zellij_imports, NaughtyEventType, PluginInputType,
+    PluginInstruction,
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
@@ -442,11 +447,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
-            let handler_map: HashMap<EventType, String> =
-                [(EventType::Tab, "handle_tab_rename_keypress".to_string())]
-                    .iter()
-                    .cloned()
-                    .collect();
+            let handler_map: HashMap<NaughtyEventType, String> = [(
+                NaughtyEventType::Tab,
+                "handle_tab_rename_keypress".to_string(),
+            )]
+            .iter()
+            .cloned()
+            .collect();
 
             move || loop {
                 let (event, mut err_ctx) = receive_plugin_instructions
@@ -499,6 +506,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
                             wasi_env,
+                            subscriptions: Arc::new(Mutex::new(HashSet::new())),
                             events,
                         };
 
@@ -526,7 +534,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     PluginInstruction::UpdateTabs(mut tabs) => {
                         for (instance, plugin_env) in plugin_map.values() {
-                            if !plugin_env.events.contains(&EventType::Tab) {
+                            if !plugin_env.events.contains(&NaughtyEventType::Tab) {
                                 continue;
                             }
                             let handler = instance.exports.get_function("update_tabs").unwrap();

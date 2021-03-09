@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+use strum_macros::{EnumDiscriminants, EnumIter, ToString};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
@@ -21,6 +21,15 @@ pub enum Key {
     Ctrl(char),
     Null,
     Esc,
+}
+
+#[derive(Debug, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[strum_discriminants(derive(Hash, Serialize, Deserialize))]
+#[strum_discriminants(name(EventType))]
+pub enum Event {
+    ModeUpdate(Help), // FIXME: Rename the `Help` struct
+    TabUpdate(TabInfo),
+    KeyPress(Key),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
@@ -56,11 +65,12 @@ impl Default for InputMode {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Help {
     pub mode: InputMode,
+    // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TabData {
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct TabInfo {
     /* subset of fields to publish to plugins */
     pub position: usize,
     pub name: String,

@@ -164,6 +164,7 @@ impl Display for ContextType {
     }
 }
 
+// FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
@@ -201,6 +202,7 @@ pub enum ScreenContext {
     UpdateTabName,
 }
 
+// FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {

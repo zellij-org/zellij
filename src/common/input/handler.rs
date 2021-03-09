@@ -7,7 +7,7 @@ use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::wasm_vm::{EventType, PluginInputType, PluginInstruction};
+use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
 use termion::input::TermReadEventsAndRaw;
@@ -234,7 +234,7 @@ impl InputHandler {
             Action::TabNameInput(c) => {
                 self.send_plugin_instructions
                     .send(PluginInstruction::Input(
-                        PluginInputType::Event(EventType::Tab),
+                        PluginInputType::Event(NaughtyEventType::Tab),
                         c.clone(),
                     ))
                     .unwrap();
@@ -245,7 +245,7 @@ impl InputHandler {
             Action::SaveTabName => {
                 self.send_plugin_instructions
                     .send(PluginInstruction::Input(
-                        PluginInputType::Event(EventType::Tab),
+                        PluginInputType::Event(NaughtyEventType::Tab),
                         vec![b'\n'],
                     ))
                     .unwrap();

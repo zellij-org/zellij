@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     path::PathBuf,
-    sync::mpsc::{channel, Sender},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_tile::data::TabData;
+use zellij_tile::data::{EventType, TabInfo};
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
@@ -13,24 +17,24 @@ use super::{
 };
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
-pub enum EventType {
+pub enum NaughtyEventType {
     Tab,
 }
 
 #[derive(Clone, Debug)]
 pub enum PluginInputType {
     Normal(u32),
-    Event(EventType),
+    Event(NaughtyEventType),
 }
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Sender<u32>, PathBuf, Vec<EventType>),
+    Load(Sender<u32>, PathBuf, Vec<NaughtyEventType>),
     Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Input(PluginInputType, Vec<u8>),         // plugin id, input bytes
     GlobalInput(Vec<u8>),                    // input bytes
     Unload(u32),
-    UpdateTabs(Vec<TabData>), // num tabs, active tab
+    UpdateTabs(Vec<TabInfo>), // num tabs, active tab
     Quit,
 }
 
@@ -41,7 +45,8 @@ pub struct PluginEnv {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
-    pub events: Vec<EventType>,
+    pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    pub events: Vec<NaughtyEventType>, // FIXME: Murder this very soon (should not survive into main)
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
@@ -49,6 +54,8 @@ pub struct PluginEnv {
 pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "zellij" => {
+            "host_subscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_subscribe),
+            "host_unsubscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_unsubscribe),
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
             "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
@@ -58,7 +65,18 @@ pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     }
 }
 
-// FIXME: Bundle up all of the channels! Pair that with WasiEnv?
+fn host_subscribe(plugin_env: &PluginEnv) {
+    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let new: HashSet<EventType> = serde_json::from_str(&wasi_stdout(&plugin_env.wasi_env)).unwrap();
+    subscriptions.extend(new);
+}
+
+fn host_unsubscribe(plugin_env: &PluginEnv) {
+    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let old: HashSet<EventType> = serde_json::from_str(&wasi_stdout(&plugin_env.wasi_env)).unwrap();
+    subscriptions.retain(|k| !old.contains(k));
+}
+
 fn host_open_file(plugin_env: &PluginEnv) {
     let path = PathBuf::from(wasi_stdout(&plugin_env.wasi_env).lines().next().unwrap());
     plugin_env
@@ -67,7 +85,6 @@ fn host_open_file(plugin_env: &PluginEnv) {
         .unwrap();
 }
 
-// FIXME: Think about these naming conventions – should everything be prefixed by 'host'?
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     let selectable = selectable != 0;
     plugin_env

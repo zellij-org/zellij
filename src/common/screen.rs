@@ -13,7 +13,7 @@ use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
-use zellij_tile::data::TabData;
+use zellij_tile::data::TabInfo;
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -272,7 +272,7 @@ impl Screen {
         let mut tab_data = vec![];
         let active_tab_index = self.active_tab_index.unwrap();
         for tab in self.tabs.values() {
-            tab_data.push(TabData {
+            tab_data.push(TabInfo {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,

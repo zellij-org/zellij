@@ -7,6 +7,16 @@ pub fn get_key() -> Key {
     deserialize_from_stdin().unwrap()
 }
 
+pub fn subscribe(event_types: &[EventType]) {
+    println!("{}", serde_json::to_string(event_types).unwrap());
+    unsafe { host_subscribe() };
+}
+
+pub fn unsubscribe(event_types: &[EventType]) {
+    println!("{}", serde_json::to_string(event_types).unwrap());
+    unsafe { host_unsubscribe() };
+}
+
 pub fn open_file(path: &Path) {
     println!("{}", path.to_string_lossy());
     unsafe { host_open_file() };
@@ -31,7 +41,7 @@ pub fn get_help() -> Help {
     deserialize_from_stdin().unwrap_or_default()
 }
 
-pub fn get_tabs() -> Vec<TabData> {
+pub fn get_tabs() -> Vec<TabInfo> {
     deserialize_from_stdin().unwrap_or_default()
 }
 
@@ -43,6 +53,8 @@ fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
 
 #[link(wasm_import_module = "zellij")]
 extern "C" {
+    fn host_subscribe();
+    fn host_unsubscribe();
     fn host_open_file();
     fn host_set_max_height(max_height: i32);
     fn host_set_selectable(selectable: i32);
