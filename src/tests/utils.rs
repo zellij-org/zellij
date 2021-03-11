@@ -46,10 +46,10 @@ pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String> {
 
 pub mod commands {
     pub const COMMAND_TOGGLE: [u8; 1] = [7]; // ctrl-g
-    pub const QUIT: [u8; 1] = [113]; // q
+    pub const QUIT: [u8; 1] = [17]; // ctrl-q
     pub const ESC: [u8; 1] = [27];
 
-    pub const PANE_MODE: [u8; 1] = [112]; // p
+    pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
     pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
     pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
     pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
@@ -61,17 +61,17 @@ pub mod commands {
     pub const MOVE_FOCUS_LEFT_IN_PANE_MODE: [u8; 1] = [104]; // h
     pub const MOVE_FOCUS_RIGHT_IN_PANE_MODE: [u8; 1] = [108]; // l
 
-    pub const SCROLL_MODE: [u8; 1] = [115]; // s
+    pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
     pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
     pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
 
-    pub const RESIZE_MODE: [u8; 1] = [114]; // r
+    pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
     pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
     pub const RESIZE_UP_IN_RESIZE_MODE: [u8; 1] = [107]; // k
     pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
     pub const RESIZE_RIGHT_IN_RESIZE_MODE: [u8; 1] = [108]; // l
 
-    pub const TAB_MODE: [u8; 1] = [116]; // t
+    pub const TAB_MODE: [u8; 1] = [20]; // ctrl-t
     pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
     pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
     pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h

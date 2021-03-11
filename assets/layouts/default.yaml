@@ -9,5 +9,5 @@ parts:
     expansion_boundary: true
   - direction: Vertical
     split_size:
-      Fixed: 1
+      Fixed: 2
     plugin: status-bar

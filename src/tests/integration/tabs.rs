@@ -6,7 +6,7 @@ use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_PANE_IN_PANE_M
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
-    CLOSE_TAB_IN_TAB_MODE, COMMAND_TOGGLE, ESC, NEW_TAB_IN_TAB_MODE, PANE_MODE, QUIT,
+    CLOSE_TAB_IN_TAB_MODE, NEW_TAB_IN_TAB_MODE, PANE_MODE, QUIT,
     SPLIT_DOWN_IN_PANE_MODE, SWITCH_NEXT_TAB_IN_TAB_MODE, SWITCH_PREV_TAB_IN_TAB_MODE, TAB_MODE,
     TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
@@ -25,10 +25,8 @@ pub fn open_new_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &QUIT,
@@ -56,10 +54,8 @@ pub fn switch_to_prev_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &SWITCH_PREV_TAB_IN_TAB_MODE,
@@ -88,10 +84,8 @@ pub fn switch_to_next_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &SWITCH_NEXT_TAB_IN_TAB_MODE,
@@ -120,10 +114,8 @@ pub fn close_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &CLOSE_TAB_IN_TAB_MODE,
@@ -152,10 +144,8 @@ pub fn close_last_pane_in_a_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
-        &ESC,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &CLOSE_PANE_IN_PANE_MODE,
@@ -185,13 +175,10 @@ pub fn close_the_middle_tab() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
-        &ESC,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &SWITCH_PREV_TAB_IN_TAB_MODE,
@@ -221,23 +208,17 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
-        &ESC,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &SWITCH_PREV_TAB_IN_TAB_MODE,
-        &ESC,
         &PANE_MODE,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
@@ -265,10 +246,8 @@ pub fn closing_last_tab_exits_the_app() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &TAB_MODE,
         &NEW_TAB_IN_TAB_MODE,
         &CLOSE_TAB_IN_TAB_MODE,

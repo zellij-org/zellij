@@ -47,7 +47,7 @@ impl ZellijTile for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        println!("{}\u{1b}[40m\u{1b}[0K", s);
+        println!("{}\u{1b}[48;5;238m\u{1b}[0K", s);
     }
 
     fn update_tabs(&mut self, active_tab_index: usize, num_tabs: usize) {

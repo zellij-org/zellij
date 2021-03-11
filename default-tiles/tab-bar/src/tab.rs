@@ -1,39 +1,51 @@
-use colored::*;
-
+use ansi_term::{Style, ANSIStrings};
+use ansi_term::Colour::Fixed;
 use crate::{LinePart, ARROW_SEPARATOR};
 
 pub fn active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
     let left_separator = if is_furthest_to_the_left {
-        " ".black().on_magenta()
+        Style::new().fg(Fixed(238)).on(Fixed(154)).paint(ARROW_SEPARATOR)
     } else {
-        ARROW_SEPARATOR.black().on_magenta()
+        Style::new().fg(Fixed(238)).on(Fixed(154)).paint(ARROW_SEPARATOR)
     };
-    let right_separator = ARROW_SEPARATOR.magenta().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
-        .black()
-        .bold()
-        .on_magenta();
-    let tab_text_len = text.chars().count() + 2; // 2 for left and right separators
+    let tab_text_len = if is_furthest_to_the_left {
+        text.chars().count() + 2 // 1 for the right separators
+    } else {
+        text.chars().count() + 2 // 2 for left and right separators
+    };
+    let tab_styled_text = Style::new().fg(Fixed(16)).on(Fixed(154)).bold().paint(text);
+    let right_separator = Style::new().fg(Fixed(154)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    let tab_styled_text = format!("{}", ANSIStrings(&[
+        left_separator,
+        tab_styled_text,
+        right_separator,
+    ]));
     LinePart {
-        part: format!("{}", tab_styled_text),
+        part: tab_styled_text,
         len: tab_text_len,
     }
 }
 
 pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
     let left_separator = if is_furthest_to_the_left {
-        " ".black().on_green()
+        Style::new().fg(Fixed(238)).on(Fixed(245)).paint(ARROW_SEPARATOR)
     } else {
-        ARROW_SEPARATOR.black().on_green()
+        Style::new().fg(Fixed(238)).on(Fixed(245)).paint(ARROW_SEPARATOR)
     };
-    let right_separator = ARROW_SEPARATOR.green().on_black();
-    let tab_styled_text = format!("{}{}{}", left_separator, text, right_separator)
-        .black()
-        .bold()
-        .on_green();
-    let tab_text_len = text.chars().count() + 2; // 2 for the left and right separators
+    let tab_text_len = if is_furthest_to_the_left {
+        text.chars().count() + 2 // 1 for the right separators
+    } else {
+        text.chars().count() + 2 // 2 for left and right separators
+    };
+    let tab_styled_text = Style::new().fg(Fixed(16)).on(Fixed(245)).bold().paint(text);
+    let right_separator = Style::new().fg(Fixed(245)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    let tab_styled_text = format!("{}", ANSIStrings(&[
+        left_separator,
+        tab_styled_text,
+        right_separator,
+    ]));
     LinePart {
-        part: format!("{}", tab_styled_text),
+        part: tab_styled_text,
         len: tab_text_len,
     }
 }

@@ -250,10 +250,11 @@ impl InputHandler {
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
-    /// In `Normal` mode, input is always written to the terminal, except for one special input that
-    /// triggers the switch to [`InputMode::Command`] mode.
+    /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
+    /// to other modes
     Normal,
-    // TBD: description
+    /// In `Locked` mode, input is always written to the terminal and all shortcuts are disabled
+    /// except the one leading back to normal mode
     Locked,
     /// `Resize` mode allows resizing the different existing panes.
     Resize,
@@ -286,12 +287,7 @@ impl Default for InputMode {
 pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
-        InputMode::Normal | InputMode::Locked => { // TODO: fix this
-//            keybinds.push(("p".to_string(), "PANE".to_string()));
-//            keybinds.push(("t".to_string(), "TAB".to_string()));
-//            keybinds.push(("r".to_string(), "RESIZE".to_string()));
-//            keybinds.push(("s".to_string(), "SCROLL".to_string()));
-        }
+        InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {
             keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
         }
@@ -299,8 +295,8 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
             keybinds.push(("p".to_string(), "Next".to_string()));
             keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("d".to_string(), "Split down".to_string()));
-            keybinds.push(("r".to_string(), "Split right".to_string()));
+            keybinds.push(("d".to_string(), "Down split".to_string()));
+            keybinds.push(("r".to_string(), "Right split".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
             keybinds.push(("f".to_string(), "Fullscreen".to_string()));
         }
@@ -313,8 +309,6 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
         }
     }
-//    keybinds.push(("ESC".to_string(), "BACK".to_string()));
-//    keybinds.push(("q".to_string(), "QUIT".to_string()));
     Help { mode, keybinds }
 }
 
