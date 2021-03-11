@@ -54,18 +54,17 @@ impl Keybinds {
     /// Merges two Keybinds structs into one Keybinds struct
     /// `other` overrides the ModeKeybinds of `self`.
     fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
-        let mut keybinds = Keybinds::default();
+        let mut keybinds = Keybinds::new();
 
-        for mode in InputMode::iter() {
-            let mut mode_keybinds: ModeKeybinds = if let Some(keybind) = self.0.get(&mode) {
-                keybind.clone()
-            } else {
-                ModeKeybinds::default()
+        for mode in self.0.keys().chain(other.0.keys()) {
+            let mut mode_keybinds = ModeKeybinds::new();
+            if let Some(keybind) = self.0.get(&mode) {
+                mode_keybinds.0.extend(keybind.0.clone());
             };
             if let Some(keybind) = other.0.get(&mode) {
                 mode_keybinds.0.extend(keybind.0.clone());
             }
-            keybinds.0.insert(mode, mode_keybinds);
+            keybinds.0.insert(mode.clone(), mode_keybinds);
         }
         keybinds
     }
