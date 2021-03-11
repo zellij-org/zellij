@@ -5,6 +5,8 @@ parts:
     split_size:
       Fixed: 1
     plugin: tab-bar
+    events:
+      - Tab
   - direction: Vertical
     expansion_boundary: true
   - direction: Vertical

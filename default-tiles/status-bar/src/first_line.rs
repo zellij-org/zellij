@@ -283,7 +283,7 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
             ])
         }
-        InputMode::Tab => {
+        InputMode::Tab | InputMode::RenameTab => {
             key_indicators(max_len, &vec![
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),

@@ -1,20 +1,12 @@
 use ansi_term::{Style, ANSIStrings};
-use ansi_term::Colour::Fixed;
 use crate::{LinePart, ARROW_SEPARATOR};
+use crate::colors::{GRAY, GREEN, BLACK, BRIGHT_GRAY};
 
-pub fn active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
-    let left_separator = if is_furthest_to_the_left {
-        Style::new().fg(Fixed(238)).on(Fixed(154)).paint(ARROW_SEPARATOR)
-    } else {
-        Style::new().fg(Fixed(238)).on(Fixed(154)).paint(ARROW_SEPARATOR)
-    };
-    let tab_text_len = if is_furthest_to_the_left {
-        text.chars().count() + 2 // 1 for the right separators
-    } else {
-        text.chars().count() + 2 // 2 for left and right separators
-    };
-    let tab_styled_text = Style::new().fg(Fixed(16)).on(Fixed(154)).bold().paint(text);
-    let right_separator = Style::new().fg(Fixed(154)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+pub fn active_tab(text: String) -> LinePart {
+    let left_separator = Style::new().fg(GRAY).on(GREEN).paint(ARROW_SEPARATOR);
+    let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
+    let tab_styled_text = Style::new().fg(BLACK).on(GREEN).bold().paint(format!(" {} ", text));
+    let right_separator = Style::new().fg(GREEN).on(GRAY).paint(ARROW_SEPARATOR);
     let tab_styled_text = format!("{}", ANSIStrings(&[
         left_separator,
         tab_styled_text,
@@ -26,19 +18,11 @@ pub fn active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
     }
 }
 
-pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
-    let left_separator = if is_furthest_to_the_left {
-        Style::new().fg(Fixed(238)).on(Fixed(245)).paint(ARROW_SEPARATOR)
-    } else {
-        Style::new().fg(Fixed(238)).on(Fixed(245)).paint(ARROW_SEPARATOR)
-    };
-    let tab_text_len = if is_furthest_to_the_left {
-        text.chars().count() + 2 // 1 for the right separators
-    } else {
-        text.chars().count() + 2 // 2 for left and right separators
-    };
-    let tab_styled_text = Style::new().fg(Fixed(16)).on(Fixed(245)).bold().paint(text);
-    let right_separator = Style::new().fg(Fixed(245)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+pub fn non_active_tab(text: String) -> LinePart {
+    let left_separator = Style::new().fg(GRAY).on(BRIGHT_GRAY).paint(ARROW_SEPARATOR);
+    let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
+    let tab_styled_text = Style::new().fg(BLACK).on(BRIGHT_GRAY).bold().paint(format!(" {} ", text));
+    let right_separator = Style::new().fg(BRIGHT_GRAY).on(GRAY).paint(ARROW_SEPARATOR);
     let tab_styled_text = format!("{}", ANSIStrings(&[
         left_separator,
         tab_styled_text,
@@ -50,15 +34,15 @@ pub fn non_active_tab(text: String, is_furthest_to_the_left: bool) -> LinePart {
     }
 }
 
-pub fn tab(text: String, is_active_tab: bool, is_furthest_to_the_left: bool) -> LinePart {
+pub fn tab_style(text: String, is_active_tab: bool, position: usize) -> LinePart {
+    let tab_text = if text.is_empty() {
+        format!("Tab #{}", position + 1)
+    } else {
+        text
+    };
     if is_active_tab {
-        active_tab(text, is_furthest_to_the_left)
+        active_tab(tab_text)
     } else {
-        non_active_tab(text, is_furthest_to_the_left)
+        non_active_tab(tab_text)
     }
-}
-
-pub fn nameless_tab(index: usize, is_active_tab: bool) -> LinePart {
-    let tab_text = format!(" Tab #{} ", index + 1);
-    tab(tab_text, is_active_tab, index == 0)
 }

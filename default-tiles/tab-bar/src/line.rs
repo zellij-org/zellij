@@ -1,5 +1,5 @@
 use ansi_term::{Style, ANSIStrings};
-use ansi_term::Colour::Fixed;
+use crate::colors::{GRAY, BLACK, ORANGE, WHITE};
 
 use crate::{LinePart, ARROW_SEPARATOR};
 
@@ -61,9 +61,9 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     };
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
-    let left_separator = Style::new().fg(Fixed(238)).on(Fixed(166)).paint(ARROW_SEPARATOR);
-    let more_styled_text = Style::new().fg(Fixed(16)).on(Fixed(166)).bold().paint(more_text);
-    let right_separator = Style::new().fg(Fixed(166)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
+    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[
@@ -91,9 +91,9 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
         format!(" +many → ")
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
-    let left_separator = Style::new().fg(Fixed(238)).on(Fixed(166)).paint(ARROW_SEPARATOR);
-    let more_styled_text = Style::new().fg(Fixed(16)).on(Fixed(166)).bold().paint(more_text);
-    let right_separator = Style::new().fg(Fixed(166)).on(Fixed(238)).paint(ARROW_SEPARATOR);
+    let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
+    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[
@@ -142,7 +142,7 @@ fn add_next_tabs_msg(
 fn tab_line_prefix () -> LinePart {
     let prefix_text = format!(" Zellij ");
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = Style::new().fg(Fixed(255)).on(Fixed(238)).bold().paint(prefix_text);
+    let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
     LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
