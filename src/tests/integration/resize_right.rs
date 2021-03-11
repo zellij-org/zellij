@@ -6,9 +6,8 @@ use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots}
 use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
-    COMMAND_TOGGLE, ESC, MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_MODE,
-    RESIZE_RIGHT_IN_RESIZE_MODE, RESIZE_UP_IN_RESIZE_MODE, SPLIT_DOWN_IN_PANE_MODE,
-    SPLIT_RIGHT_IN_PANE_MODE,
+    MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_MODE, RESIZE_RIGHT_IN_RESIZE_MODE,
+    RESIZE_UP_IN_RESIZE_MODE, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -31,10 +30,8 @@ pub fn resize_right_with_pane_to_the_left() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -68,11 +65,9 @@ pub fn resize_right_with_pane_to_the_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -106,13 +101,11 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -147,14 +140,12 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -190,7 +181,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -199,7 +189,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -235,13 +224,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -277,7 +264,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -285,7 +271,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -321,14 +306,12 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -366,7 +349,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -376,7 +358,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -414,7 +395,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
@@ -426,7 +406,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,
@@ -464,17 +443,14 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
-        &ESC,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -493,7 +469,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
@@ -533,17 +508,14 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
-        &ESC,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -564,7 +536,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
@@ -601,10 +572,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
         &PANE_MODE,
         &SPLIT_RIGHT_IN_PANE_MODE,
-        &ESC,
         &RESIZE_MODE,
         &RESIZE_RIGHT_IN_RESIZE_MODE,
         &QUIT,

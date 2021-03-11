@@ -37,7 +37,9 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasm_vm::{
+    wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -440,6 +442,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::GoToTab(tab_index) => {
                             screen.go_to_tab(tab_index as usize)
                         }
+                        ScreenInstruction::UpdateTabName(c) => {
+                            screen.update_active_tab_name(c);
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -459,6 +464,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
+            let handler_map: HashMap<EventType, String> =
+                [(EventType::Tab, "handle_tab_rename_keypress".to_string())]
+                    .iter()
+                    .cloned()
+                    .collect();
 
             move || loop {
                 let (event, mut err_ctx) = receive_plugin_instructions
@@ -469,7 +479,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 send_pty_instructions.update(err_ctx);
                 send_app_instructions.update(err_ctx);
                 match event {
-                    PluginInstruction::Load(pid_tx, path) => {
+                    PluginInstruction::Load(pid_tx, path, events) => {
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
@@ -511,6 +521,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
                             wasi_env,
+                            events,
                         };
 
                         let zellij = zellij_imports(&store, &plugin_env);
@@ -535,32 +546,58 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
                     }
-                    PluginInstruction::UpdateTabs(active_tab_index, num_tabs) => {
-                        for (instance, _) in plugin_map.values() {
+                    PluginInstruction::UpdateTabs(mut tabs) => {
+                        for (instance, plugin_env) in plugin_map.values() {
+                            if !plugin_env.events.contains(&EventType::Tab) {
+                                continue;
+                            }
                             let handler = instance.exports.get_function("update_tabs").unwrap();
-                            handler
-                                .call(&[
-                                    Value::I32(active_tab_index as i32),
-                                    Value::I32(num_tabs as i32),
-                                ])
-                                .unwrap();
+                            tabs.sort_by(|a, b| a.position.cmp(&b.position));
+                            wasi_write_string(
+                                &plugin_env.wasi_env,
+                                &serde_json::to_string(&tabs).unwrap(),
+                            );
+                            handler.call(&[]).unwrap();
                         }
                     }
                     // FIXME: Deduplicate this with the callback below!
-                    PluginInstruction::Input(pid, input_bytes) => {
-                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                        let handle_key = instance.exports.get_function("handle_key").unwrap();
-                        for key in input_bytes.keys() {
-                            if let Ok(key) = key {
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&key).unwrap(),
-                                );
-                                handle_key.call(&[]).unwrap();
+                    PluginInstruction::Input(input_type, input_bytes) => {
+                        match input_type {
+                            PluginInputType::Normal(pid) => {
+                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+                                let handle_key =
+                                    instance.exports.get_function("handle_key").unwrap();
+                                for key in input_bytes.keys() {
+                                    if let Ok(key) = key {
+                                        wasi_write_string(
+                                            &plugin_env.wasi_env,
+                                            &serde_json::to_string(&key).unwrap(),
+                                        );
+                                        handle_key.call(&[]).unwrap();
+                                    }
+                                }
+                            }
+                            PluginInputType::Event(event) => {
+                                for (instance, plugin_env) in plugin_map.values() {
+                                    if !plugin_env.events.contains(&event) {
+                                        continue;
+                                    }
+                                    let handle_key = instance
+                                        .exports
+                                        .get_function(handler_map.get(&event).unwrap())
+                                        .unwrap();
+                                    for key in input_bytes.keys() {
+                                        if let Ok(key) = key {
+                                            wasi_write_string(
+                                                &plugin_env.wasi_env,
+                                                &serde_json::to_string(&key).unwrap(),
+                                            );
+                                            handle_key.call(&[]).unwrap();
+                                        }
+                                    }
+                                }
                             }
                         }
-
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::GlobalInput(input_bytes) => {
