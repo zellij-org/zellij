@@ -33,18 +33,12 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Locked)],
             );
-            defaults.insert(
-                Key::Ctrl('p'),
-                vec![Action::SwitchToMode(InputMode::Pane)],
-            );
+            defaults.insert(Key::Ctrl('p'), vec![Action::SwitchToMode(InputMode::Pane)]);
             defaults.insert(
                 Key::Ctrl('r'),
                 vec![Action::SwitchToMode(InputMode::Resize)],
             );
-            defaults.insert(
-                Key::Ctrl('t'),
-                vec![Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Ctrl('t'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('s'),
                 vec![Action::SwitchToMode(InputMode::Scroll)],
@@ -62,26 +56,26 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Locked)],
             );
-            defaults.insert(
-                Key::Ctrl('p'),
-                vec![Action::SwitchToMode(InputMode::Pane)],
-            );
+            defaults.insert(Key::Ctrl('p'), vec![Action::SwitchToMode(InputMode::Pane)]);
             defaults.insert(
                 Key::Ctrl('r'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
             );
-            defaults.insert(
-                Key::Ctrl('t'),
-                vec![Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Ctrl('t'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('s'),
                 vec![Action::SwitchToMode(InputMode::Scroll)],
             );
             defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char(' '), vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(
+                Key::Char('\n'),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
+            defaults.insert(
+                Key::Char(' '),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
 
             defaults.insert(Key::Char('h'), vec![Action::Resize(Direction::Left)]);
             defaults.insert(Key::Char('j'), vec![Action::Resize(Direction::Down)]);
@@ -106,18 +100,21 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('r'),
                 vec![Action::SwitchToMode(InputMode::Resize)],
             );
-            defaults.insert(
-                Key::Ctrl('t'),
-                vec![Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Ctrl('t'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('s'),
                 vec![Action::SwitchToMode(InputMode::Scroll)],
             );
             defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char(' '), vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(
+                Key::Char('\n'),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
+            defaults.insert(
+                Key::Char(' '),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
 
             defaults.insert(Key::Char('h'), vec![Action::MoveFocus(Direction::Left)]);
             defaults.insert(Key::Char('j'), vec![Action::MoveFocus(Direction::Down)]);
@@ -144,10 +141,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Locked)],
             );
-            defaults.insert(
-                Key::Ctrl('p'),
-                vec![Action::SwitchToMode(InputMode::Pane)],
-            );
+            defaults.insert(Key::Ctrl('p'), vec![Action::SwitchToMode(InputMode::Pane)]);
             defaults.insert(
                 Key::Ctrl('r'),
                 vec![Action::SwitchToMode(InputMode::Resize)],
@@ -162,11 +156,14 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             );
             defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char(' '), vec![Action::SwitchToMode(InputMode::Normal)]);
-
-
-
+            defaults.insert(
+                Key::Char('\n'),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
+            defaults.insert(
+                Key::Char(' '),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
 
             defaults.insert(Key::Char('h'), vec![Action::GoToPreviousTab]);
             defaults.insert(Key::Char('j'), vec![Action::GoToNextTab]);
@@ -202,26 +199,26 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Locked)],
             );
-            defaults.insert(
-                Key::Ctrl('p'),
-                vec![Action::SwitchToMode(InputMode::Pane)],
-            );
+            defaults.insert(Key::Ctrl('p'), vec![Action::SwitchToMode(InputMode::Pane)]);
             defaults.insert(
                 Key::Ctrl('r'),
                 vec![Action::SwitchToMode(InputMode::Resize)],
             );
-            defaults.insert(
-                Key::Ctrl('t'),
-                vec![Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Ctrl('t'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('s'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
             );
             defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
             defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Normal)]);
-            defaults.insert(Key::Char(' '), vec![Action::SwitchToMode(InputMode::Normal)]);
+            defaults.insert(
+                Key::Char('\n'),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
+            defaults.insert(
+                Key::Char(' '),
+                vec![Action::SwitchToMode(InputMode::Normal)],
+            );
 
             defaults.insert(Key::Char('j'), vec![Action::ScrollDown]);
             defaults.insert(Key::Char('k'), vec![Action::ScrollUp]);

@@ -1,5 +1,5 @@
-use ansi_term::{Style, ANSIStrings};
-use crate::colors::{GRAY, BLACK, ORANGE, WHITE};
+use crate::colors::{BLACK, GRAY, ORANGE, WHITE};
+use ansi_term::{ANSIStrings, Style};
 
 use crate::{LinePart, ARROW_SEPARATOR};
 
@@ -66,11 +66,7 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
-        ANSIStrings(&[
-            left_separator,
-            more_styled_text,
-            right_separator,
-        ])
+        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
     );
     LinePart {
         part: more_styled_text,
@@ -96,11 +92,7 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
     let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
-        ANSIStrings(&[
-            left_separator,
-            more_styled_text,
-            right_separator,
-        ])
+        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
     );
     LinePart {
         part: more_styled_text,
@@ -114,8 +106,7 @@ fn add_previous_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
 ) {
-    while get_current_title_len(&tabs_to_render) +
-        left_more_message(tabs_before_active.len()).len
+    while get_current_title_len(&tabs_to_render) + left_more_message(tabs_before_active.len()).len
         >= cols
     {
         tabs_before_active.push(tabs_to_render.remove(0));
@@ -129,8 +120,7 @@ fn add_next_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
 ) {
-    while get_current_title_len(&title_bar) +
-        right_more_message(tabs_after_active.len()).len
+    while get_current_title_len(&title_bar) + right_more_message(tabs_after_active.len()).len
         >= cols
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
@@ -139,7 +129,7 @@ fn add_next_tabs_msg(
     title_bar.push(right_more_message);
 }
 
-fn tab_line_prefix () -> LinePart {
+fn tab_line_prefix() -> LinePart {
     let prefix_text = format!(" Zellij ");
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);

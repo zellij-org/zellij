@@ -1,17 +1,20 @@
-use ansi_term::{Style, ANSIStrings};
+use crate::colors::{BLACK, BRIGHT_GRAY, GRAY, GREEN};
 use crate::{LinePart, ARROW_SEPARATOR};
-use crate::colors::{GRAY, GREEN, BLACK, BRIGHT_GRAY};
+use ansi_term::{ANSIStrings, Style};
 
 pub fn active_tab(text: String) -> LinePart {
     let left_separator = Style::new().fg(GRAY).on(GREEN).paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
-    let tab_styled_text = Style::new().fg(BLACK).on(GREEN).bold().paint(format!(" {} ", text));
+    let tab_styled_text = Style::new()
+        .fg(BLACK)
+        .on(GREEN)
+        .bold()
+        .paint(format!(" {} ", text));
     let right_separator = Style::new().fg(GREEN).on(GRAY).paint(ARROW_SEPARATOR);
-    let tab_styled_text = format!("{}", ANSIStrings(&[
-        left_separator,
-        tab_styled_text,
-        right_separator,
-    ]));
+    let tab_styled_text = format!(
+        "{}",
+        ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
+    );
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,
@@ -21,13 +24,16 @@ pub fn active_tab(text: String) -> LinePart {
 pub fn non_active_tab(text: String) -> LinePart {
     let left_separator = Style::new().fg(GRAY).on(BRIGHT_GRAY).paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
-    let tab_styled_text = Style::new().fg(BLACK).on(BRIGHT_GRAY).bold().paint(format!(" {} ", text));
+    let tab_styled_text = Style::new()
+        .fg(BLACK)
+        .on(BRIGHT_GRAY)
+        .bold()
+        .paint(format!(" {} ", text));
     let right_separator = Style::new().fg(BRIGHT_GRAY).on(GRAY).paint(ARROW_SEPARATOR);
-    let tab_styled_text = format!("{}", ANSIStrings(&[
-        left_separator,
-        tab_styled_text,
-        right_separator,
-    ]));
+    let tab_styled_text = format!(
+        "{}",
+        ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
+    );
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,
