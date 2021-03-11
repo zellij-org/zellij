@@ -7,4 +7,5 @@ license = "MIT"
 
 [dependencies]
 colored = "2"
+ansi_term = "0.12"
 zellij-tile = { path = "../../zellij-tile" }
