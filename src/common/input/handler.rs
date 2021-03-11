@@ -60,49 +60,43 @@ impl InputHandler {
         self.send_pty_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
-        if let Ok(_keybinds) = Keybinds::get_default_keybinds() {
-            let keybinds = self.config.keybinds.clone();
-            'input_loop: loop {
-                //@@@ I think this should actually just iterate over stdin directly
-                let stdin_buffer = self.os_input.read_from_stdin();
-                drop(
-                    self.send_plugin_instructions
-                        .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
-                );
-                for key_result in stdin_buffer.events_and_raw() {
-                    match key_result {
-                        Ok((event, raw_bytes)) => match event {
-                            termion::event::Event::Key(key) => {
-                                // FIXME this explicit break is needed because the current test
-                                // framework relies on it to not create dead threads that loop
-                                // and eat up CPUs. Do not remove until the test framework has
-                                // been revised. Sorry about this (@categorille)
-                                if {
-                                    let mut should_break = false;
-                                    // Hacked on way to have a means of testing Macros, needs to
-                                    // get properly integrated
-                                    for action in Keybinds::key_to_actions(
-                                        &key, raw_bytes, &self.mode, &keybinds,
-                                    ) {
-                                        should_break |= self.dispatch_action(action);
-                                    }
-                                    should_break
-                                } {
-                                    break 'input_loop;
+        let keybinds = self.config.keybinds.clone();
+        'input_loop: loop {
+            //@@@ I think this should actually just iterate over stdin directly
+            let stdin_buffer = self.os_input.read_from_stdin();
+            drop(
+                self.send_plugin_instructions
+                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
+            );
+            for key_result in stdin_buffer.events_and_raw() {
+                match key_result {
+                    Ok((event, raw_bytes)) => match event {
+                        termion::event::Event::Key(key) => {
+                            // FIXME this explicit break is needed because the current test
+                            // framework relies on it to not create dead threads that loop
+                            // and eat up CPUs. Do not remove until the test framework has
+                            // been revised. Sorry about this (@categorille)
+                            if {
+                                let mut should_break = false;
+                                // Hacked on way to have a means of testing Macros, needs to
+                                // get properly integrated
+                                for action in
+                                    Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                                {
+                                    should_break |= self.dispatch_action(action);
                                 }
+                                should_break
+                            } {
+                                break 'input_loop;
                             }
-                            termion::event::Event::Mouse(_)
-                            | termion::event::Event::Unsupported(_) => {
-                                unimplemented!("Mouse and unsupported events aren't supported!");
-                            }
-                        },
-                        Err(err) => panic!("Encountered read error: {:?}", err),
-                    }
+                        }
+                        termion::event::Event::Mouse(_) | termion::event::Event::Unsupported(_) => {
+                            unimplemented!("Mouse and unsupported events aren't supported!");
+                        }
+                    },
+                    Err(err) => panic!("Encountered read error: {:?}", err),
                 }
             }
-        } else {
-            //@@@ Error handling?
-            self.exit();
         }
     }
 

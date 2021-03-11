@@ -8,50 +8,41 @@ use serde::Deserialize;
 use strum::IntoEnumIterator;
 use termion::event::Key;
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 
-/// Intermediate struct for configuration.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-pub struct MultipleKeybinds(HashMap<InputMode, Vec<ModeKeybind>>);
-/// Intermediate struct for configuration.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-struct MultipleModeKeybinds(HashMap<Vec<Key>, Vec<Action>>);
+/// Intermediate struct used for deserialisation
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct KeybindsFromYaml(HashMap<InputMode, Vec<KeyActionFromYaml>>);
 
-/// Intermediate enum for configuration.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(untagged)]
-enum ModeKeybind {
-    ModeKeybinds(ModeKeybinds),
-    MultipleModeKeybinds(MultipleModeKeybinds),
+/// Intermediate struct used for deserialisation
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct KeyActionFromYaml {
+    action: Vec<Action>,
+    key: Vec<Key>,
 }
 
 impl Default for Keybinds {
     fn default() -> Keybinds {
-        Keybinds::get_default_keybinds().expect("Something is wrong with the default Keybinds")
-    }
-}
-
-impl Keybinds {
-    pub fn new() -> Keybinds {
-        Keybinds::from(HashMap::<InputMode, ModeKeybinds>::new())
-    }
-
-    pub fn get_default_keybinds() -> Result<Keybinds, String> {
         let mut defaults = Keybinds::new();
 
         for mode in InputMode::iter() {
             defaults
                 .0
-                .insert(mode, Keybinds::get_defaults_for_mode(&mode)?);
+                .insert(mode, Keybinds::get_defaults_for_mode(&mode));
         }
+        defaults
+    }
+}
 
-        Ok(defaults)
+impl Keybinds {
+    pub fn new() -> Keybinds {
+        Keybinds(HashMap::<InputMode, ModeKeybinds>::new())
     }
 
-    pub fn get_default_keybinds_with_config(keybinds: Option<MultipleKeybinds>) -> Keybinds {
+    pub fn get_default_keybinds_with_config(keybinds: Option<KeybindsFromYaml>) -> Keybinds {
         let default_keybinds = Keybinds::default();
         if let Some(keybinds) = keybinds {
             default_keybinds.merge_keybinds(Keybinds::from(keybinds))
@@ -80,7 +71,7 @@ impl Keybinds {
     }
 
     /// Returns the default keybinds for a given [`InputMode`].
-    fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
+    fn get_defaults_for_mode(mode: &InputMode) -> ModeKeybinds {
         let mut defaults = HashMap::new();
 
         match *mode {
@@ -212,8 +203,7 @@ impl Keybinds {
                 defaults.insert(Key::Esc, vec![Action::SwitchToMode(InputMode::Command)]);
             }
         }
-
-        Ok(ModeKeybinds::from(defaults))
+        ModeKeybinds(defaults)
     }
 
     /// Converts a [`Key`] terminal event to a sequence of [`Action`]s according to the current
@@ -242,39 +232,27 @@ impl Keybinds {
 }
 
 impl ModeKeybinds {
-    pub fn new() -> ModeKeybinds {
-        ModeKeybinds::from(HashMap::<Key, Vec<Action>>::new())
+    fn new() -> ModeKeybinds {
+        ModeKeybinds(HashMap::<Key, Vec<Action>>::new())
     }
 
     /// Merges `self` with `other`, if keys are the same, `other` overwrites.
-    pub fn merge(self, other: ModeKeybinds) -> ModeKeybinds {
+    fn merge(self, other: ModeKeybinds) -> ModeKeybinds {
         let mut merged = self;
-        merged.0.extend(other.0.clone());
+        merged.0.extend(other.0);
         merged
     }
 }
 
-/// Converts from the `MultipleKeybinds` struct to a `Keybinds` struct.
-/// TODO @a-kenji Error on conflicting keybinds?
-/// Atm the Lower Keybind will take precedence and will overwrite the
-/// one further up.
-impl From<MultipleKeybinds> for Keybinds {
-    fn from(multiple: MultipleKeybinds) -> Keybinds {
+impl From<KeybindsFromYaml> for Keybinds {
+    fn from(keybinds_from_yaml: KeybindsFromYaml) -> Keybinds {
         let mut keybinds = Keybinds::new();
 
         for mode in InputMode::iter() {
             let mut mode_keybinds = ModeKeybinds::new();
-            for mode_keybind in multiple.0.get(&mode).iter() {
-                for keybind in mode_keybind.iter() {
-                    match keybind {
-                        ModeKeybind::ModeKeybinds(k) => {
-                            mode_keybinds = mode_keybinds.clone().merge(k.clone());
-                        }
-                        ModeKeybind::MultipleModeKeybinds(k) => {
-                            mode_keybinds =
-                                mode_keybinds.clone().merge(ModeKeybinds::from(k.clone()));
-                        }
-                    }
+            for key_action in keybinds_from_yaml.0.get(&mode).iter() {
+                for keybind in key_action.iter() {
+                    mode_keybinds = mode_keybinds.merge(ModeKeybinds::from(keybind.clone()));
                 }
             }
             keybinds.0.insert(mode, mode_keybinds);
@@ -283,25 +261,18 @@ impl From<MultipleKeybinds> for Keybinds {
     }
 }
 
-impl From<HashMap<InputMode, ModeKeybinds>> for Keybinds {
-    fn from(map: HashMap<InputMode, ModeKeybinds>) -> Keybinds {
-        Keybinds(map)
-    }
-}
-impl From<HashMap<Key, Vec<Action>>> for ModeKeybinds {
-    fn from(map: HashMap<Key, Vec<Action>>) -> ModeKeybinds {
-        ModeKeybinds(map)
-    }
-}
+/// For each `Key` assigned to `Action`s,
+/// map the `Action`s to the key
+impl From<KeyActionFromYaml> for ModeKeybinds {
+    fn from(key_action: KeyActionFromYaml) -> ModeKeybinds {
+        let keys = key_action.key;
+        let actions = key_action.action;
 
-impl From<MultipleModeKeybinds> for ModeKeybinds {
-    fn from(multiple: MultipleModeKeybinds) -> ModeKeybinds {
-        let single: HashMap<Key, Vec<Action>> = multiple
-            .0
-            .into_iter()
-            .flat_map(|(k, v)| (k.into_iter().map(move |k| (k, v.clone()))))
-            .collect();
-        ModeKeybinds::from(single)
+        ModeKeybinds(
+            keys.into_iter()
+                .map(|k| (k, actions.clone()))
+                .collect::<HashMap<Key, Vec<Action>>>(),
+        )
     }
 }
 

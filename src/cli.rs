@@ -25,7 +25,7 @@ pub struct CliArgs {
     pub layout: Option<PathBuf>,
 
     /// Path to the configuration yaml file
-    #[structopt(short, long)]
+    #[structopt(long)]
     pub config: Option<PathBuf>,
 
     #[structopt(short, long)]

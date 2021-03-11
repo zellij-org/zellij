@@ -1,12 +1,11 @@
 //! Deserializes configuration options.
-use std;
 use std::error;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::input::keybinds::{Keybinds, MultipleKeybinds};
+use super::input::keybinds::{Keybinds, KeybindsFromYaml};
 use crate::utils::logging::*;
 
 use directories_next::ProjectDirs;
@@ -15,7 +14,7 @@ use serde::Deserialize;
 /// Intermediate deserialisation config struct
 #[derive(Debug, Deserialize)]
 pub struct ConfigFromYaml {
-    pub keybinds: Option<MultipleKeybinds>,
+    pub keybinds: Option<KeybindsFromYaml>,
 }
 
 /// Main configuration.
@@ -53,7 +52,7 @@ impl Config {
     /// The allow is here, because rust assumes there is no
     /// error handling when logging the error to the log file.
     #[allow(unused_must_use)]
-    pub fn new(path: &PathBuf) -> Result<Config, ConfigError> {
+    pub fn new(path: &Path) -> Result<Config, ConfigError> {
         match File::open(path) {
             Ok(mut file) => {
                 let mut yaml_config = String::new();
@@ -81,7 +80,7 @@ impl Config {
             Ok(Config::new(&config_path)?)
         } else {
             let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-            let mut config_path: PathBuf = project_dirs.config_dir().to_owned().into();
+            let mut config_path: PathBuf = project_dirs.config_dir().to_owned();
             config_path.push("config.yaml");
             Ok(Config::new(&config_path)?)
         }

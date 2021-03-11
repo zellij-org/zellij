@@ -656,7 +656,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
-            let config = config.clone();
+            let config = config;
             move || {
                 input_loop(
                     os_input,
