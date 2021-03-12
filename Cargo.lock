@@ -333,12 +333,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "colors-transform"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9226dbc05df4fb986f48d730b001532580883c4c06c5d1c213f4b34c1c157178"
-
-[[package]]
 name = "concurrent-queue"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,12 +353,6 @@ dependencies = [
  "terminal_size",
  "winapi",
 ]
-
-[[package]]
-name = "const_fn"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28b9d6de7f49e22cf97ad17fc4036ece69300032f45f78f30b4a4482cdc3f4a6"
 
 [[package]]
 name = "cpuid-bool"
@@ -1569,6 +1557,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
+name = "socket2"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e3dfc207c526015c632472a77be09cf1b6e46866581aecae5cc38fb4235dea2"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2331,7 +2329,6 @@ dependencies = [
  "async-std",
  "backtrace",
  "bincode",
- "colors-transform",
  "directories-next",
  "futures",
  "insta",
@@ -2355,8 +2352,6 @@ dependencies = [
  "vte 0.8.0",
  "wasmer",
  "wasmer-wasi",
- "zellij-tile",
- "zellij-tile-extra",
 ]
 
 [[package]]

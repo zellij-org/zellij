@@ -13,7 +13,7 @@ use zellij_tile::data::Palette;
 
 use crate::tests::utils::commands::{QUIT, SLEEP};
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(300);
 
 #[derive(Clone)]
 pub enum IoEvent {
