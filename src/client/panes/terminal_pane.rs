@@ -205,12 +205,11 @@ impl Pane for TerminalPane {
                 for line_index in 0..self.grid.height {
                     let x = self.get_x();
                     let y = self.get_y();
-                    vte_output = format!(
-                        "{}\u{1b}[{};{}H\u{1b}[m",
-                        vte_output,
+                    vte_output.push_str(&format!(
+                        "\u{1b}[{};{}H\u{1b}[m",
                         y + line_index + 1,
                         x + 1
-                    ); // goto row/col and reset styles
+                    )); // goto row/col and reset styles
                     for _col_index in 0..self.grid.width {
                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
                     }
@@ -220,7 +219,7 @@ impl Pane for TerminalPane {
             for (row, line) in buffer_lines.iter().enumerate() {
                 let x = self.get_x();
                 let y = self.get_y();
-                vte_output = format!("{}\u{1b}[{};{}H\u{1b}[m", vte_output, y + row + 1, x + 1); // goto row/col and reset styles
+                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + row + 1, x + 1)); // goto row/col and reset styles
                 for (col, t_character) in line.iter().enumerate() {
                     if col < display_cols {
                         // in some cases (eg. while resizing) some characters will spill over
@@ -232,7 +231,7 @@ impl Pane for TerminalPane {
                             // the terminal keeps the previous styles as long as we're in the same
                             // line, so we only want to update the new styles here (this also
                             // includes resetting previous styles as needed)
-                            vte_output = format!("{}{}", vte_output, new_styles);
+                            vte_output.push_str(&new_styles.to_string());
                         }
                         vte_output.push(t_character.character);
                     }
