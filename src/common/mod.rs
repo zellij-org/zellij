@@ -228,10 +228,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    let ipc_thread = start_server(os_input.clone(), opts.clone());
+    let (ipc_thread, server_name) = start_server(os_input.clone(), opts.clone());
 
     let (client_buffer_path, client_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
-    let mut send_server_instructions = IpcSenderWithContext::to_server();
+    let mut send_server_instructions =
+        IpcSenderWithContext::new(SharedRingBuffer::open(&server_name).unwrap());
     send_server_instructions
         .send(ServerInstruction::NewClient(client_buffer_path))
         .unwrap();

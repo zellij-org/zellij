@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
+pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHandle<()>, String) {
 	let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
 		channel();
 	let mut send_pty_instructions = SenderWithContext::new(
@@ -22,7 +22,13 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 		SenderType::Sender(send_pty_instructions),
 	);
 
-	let server_buffer = SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap();
+	#[cfg(not(test))]
+	let (server_name, server_buffer) = (
+		String::from(ZELLIJ_IPC_PIPE),
+		SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap(),
+	);
+	#[cfg(test)]
+	let (server_name, server_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
 
         let (send_os_instructions, receive_os_instructions): ChannelWithContext<OsApiInstruction> = channel();
         let mut send_os_instructions = SenderWithContext::new(
@@ -114,7 +120,7 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 		})
 		.unwrap();
 
-	thread::Builder::new()
+	let join_handle = thread::Builder::new()
 		.name("ipc_server".to_string())
 		.spawn({
 			let recv_server_instructions = IpcReceiver::new(server_buffer);
@@ -188,5 +194,6 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> thread::JoinHand
 				}
 			}
 		})
-		.unwrap()
+		.unwrap();
+	(join_handle, server_name)
 }
