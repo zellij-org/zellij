@@ -1,6 +1,6 @@
 ---
 keybinds:
-    Normal:
+    normal:
         - action: [GoToTab: 1,]
           key: [F: 1,]
         - action: [GoToTab: 2,]
@@ -8,10 +8,6 @@ keybinds:
         - action: [GoToTab: 3,]
           key: [F: 3,]
         - action: [GoToTab: 4,]
-          key: [F: 3,]
+          key: [F: 4,]
         - action: [NewTab,]
           key: [F: 5,]
-        - action: [NewPane: Right, NewPane: Right,]
-          key: [F: 6,]
-        - action: [NewPane: Right, NewPane: Right,]
-          key: [F: 6,]

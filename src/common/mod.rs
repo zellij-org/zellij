@@ -1,5 +1,4 @@
 pub mod command_is_executing;
-pub mod config;
 pub mod errors;
 pub mod input;
 pub mod install;
@@ -27,7 +26,7 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
-use crate::common::config::Config;
+use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::utils::logging::*;
 use command_is_executing::CommandIsExecuting;

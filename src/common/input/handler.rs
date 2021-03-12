@@ -2,7 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::Keybinds;
-use crate::common::config::Config;
+use crate::common::input::config::Config;
 use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
@@ -273,18 +273,25 @@ impl InputHandler {
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
+    #[serde(alias = "normal")]
     Normal,
     /// In `Locked` mode, input is always written to the terminal and all shortcuts are disabled
     /// except the one leading back to normal mode
+    #[serde(alias = "locked")]
     Locked,
     /// `Resize` mode allows resizing the different existing panes.
+    #[serde(alias = "resize")]
     Resize,
     /// `Pane` mode allows creating and closing panes, as well as moving between them.
+    #[serde(alias = "pane")]
     Pane,
     /// `Tab` mode allows creating and closing tabs, as well as moving between them.
+    #[serde(alias = "tab")]
     Tab,
     /// `Scroll` mode allows scrolling up and down within a pane.
+    #[serde(alias = "scroll")]
     Scroll,
+    #[serde(alias = "renametab")]
     RenameTab,
 }
 

@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use super::input::keybinds::{Keybinds, KeybindsFromYaml};
+use super::keybinds::{Keybinds, KeybindsFromYaml};
 use crate::utils::logging::*;
 
 use directories_next::ProjectDirs;
@@ -61,9 +61,6 @@ impl Config {
                 Ok(Config::from_yaml(&yaml_config)?)
             }
             Err(e) => {
-                // TODO logging, if a file is not found
-                // at an expected position - should not
-                // panic, but log to file  @a-kenji
                 debug_log_to_file(format!(
                     "{}\nUsing the default configuration!",
                     ConfigError::IoPath(e, path.to_path_buf())
@@ -123,5 +120,5 @@ impl From<serde_yaml::Error> for ConfigError {
 
 // The unit test location.
 #[cfg(test)]
-#[path = "./input/ut/config_test.rs"]
+#[path = "./ut/config_test.rs"]
 mod config_test;

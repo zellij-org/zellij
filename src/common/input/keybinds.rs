@@ -56,7 +56,7 @@ impl Keybinds {
     fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
         let mut keybinds = Keybinds::new();
 
-        for mode in self.0.keys().chain(other.0.keys()) {
+        for mode in InputMode::iter() {
             let mut mode_keybinds = ModeKeybinds::new();
             if let Some(keybind) = self.0.get(&mode) {
                 mode_keybinds.0.extend(keybind.0.clone());
@@ -64,7 +64,9 @@ impl Keybinds {
             if let Some(keybind) = other.0.get(&mode) {
                 mode_keybinds.0.extend(keybind.0.clone());
             }
-            keybinds.0.insert(mode.clone(), mode_keybinds);
+            if !mode_keybinds.0.is_empty() {
+                keybinds.0.insert(mode, mode_keybinds);
+            }
         }
         keybinds
     }

@@ -1,8 +1,0 @@
----
-keybindings:
-    Normal:
-    - ? - F: 6
-        - F: 7
-        - F: 8
-      : - {GoToTab: 5}
-
