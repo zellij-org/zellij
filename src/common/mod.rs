@@ -347,10 +347,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                                 let column_delta = new_term_size.columns as isize
                                     - current_term_size.columns as isize;
-                                let _ = crate::utils::logging::debug_log_to_file(format!(
-                                    "Column delta: {:?}",
-                                    column_delta
-                                ));
                                 if column_delta < 0 {
                                     screen
                                         .get_active_tab_mut()
@@ -368,10 +364,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                                 let row_delta =
                                     new_term_size.rows as isize - current_term_size.rows as isize;
-                                let _ = crate::utils::logging::debug_log_to_file(format!(
-                                    "Row delta: {:?}",
-                                    row_delta
-                                ));
                                 if row_delta < 0 {
                                     screen
                                         .get_active_tab_mut()

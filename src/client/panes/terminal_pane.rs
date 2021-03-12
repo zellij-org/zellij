@@ -239,7 +239,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.mark_for_rerender();
+            self.should_render = false;
             Some(vte_output)
         } else {
             None
@@ -335,12 +335,10 @@ impl Pane for TerminalPane {
         self.mark_for_rerender();
     }
 }
-
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
         let grid = Grid::new(position_and_size.rows, position_and_size.columns);
         let pending_styles = CharacterStyles::new();
-
         TerminalPane {
             pid,
             grid,

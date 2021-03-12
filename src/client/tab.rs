@@ -535,9 +535,9 @@ impl Tab {
     }
     pub fn get_panes_ids_leaning_on_left_border(
         &self,
-        right_border_coord: Option<usize>,
+        left_border_coord: Option<usize>,
     ) -> HashSet<&PaneId> {
-        let left_border_coord = right_border_coord.unwrap_or(0);
+        let left_border_coord = left_border_coord.unwrap_or(0);
 
         self.panes
             .iter()
@@ -585,10 +585,12 @@ impl Tab {
             .panes
             .iter()
             .filter_map(|(pane_id, pane)| {
-                let is_y_adjacent = pane.y() == current_pane_bottom_boundary;
-                let is_left_x_inside =
-                    pane.x() >= current_pane_left_boundary && pane.x() <= current_pane_right_boundary;
-                let is_right_x_inside = pane.right_boundary_x_coords() >= current_pane_left_boundary
+                let is_y_adjacent = pane.y() >= current_pane_bottom_boundary - 1
+                    && pane.y() <= current_pane_bottom_boundary + 1;
+                let is_left_x_inside = pane.x() >= current_pane_left_boundary
+                    && pane.x() <= current_pane_right_boundary;
+                let is_right_x_inside = pane.right_boundary_x_coords()
+                    >= current_pane_left_boundary
                     && pane.right_boundary_x_coords() <= current_pane_right_boundary;
 
                 if is_y_adjacent && (is_left_x_inside || is_right_x_inside) {
@@ -642,7 +644,8 @@ impl Tab {
             .panes
             .iter()
             .filter_map(|(pane_id, pane)| {
-                let is_x_adjacent = pane.x() == current_pane_right_boundary;
+                let is_x_adjacent = pane.x() >= current_pane_right_boundary - 1
+                    && pane.x() <= current_pane_right_boundary + 1;
                 let is_top_y_inside =
                     pane.y() < current_pane_top_boundary && pane.y() > current_pane_bottom_boundary;
                 let is_bottom_y_inside = pane.bottom_boundary_y_coords()
@@ -681,17 +684,8 @@ impl Tab {
             );
         }
 
-        let _ = crate::utils::logging::debug_log_to_file(format!(
-            "All pane postitions (height change): {:?}",
-            self.panes
-                .iter()
-                .map(|(pane_id, pane)| (pane_id, pane.position_and_size()))
-                .collect::<Vec<(&PaneId, PositionAndSize)>>()
-        ));
-        let _ = crate::utils::logging::debug_log_to_file(format!(
-            "Height change: {:?}",
-            pane_ids_to_resize
-        ));
+        let _ = crate::utils::logging::debug_log_to_file(format!("Height: {:?}", pane_ids_to_resize));
+
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.safe_reduce_height_up(resize_by);
@@ -715,17 +709,8 @@ impl Tab {
             );
         }
 
-        let _ = crate::utils::logging::debug_log_to_file(format!(
-            "All pane positions (width change): {:?}",
-            self.panes
-                .iter()
-                .map(|(pane_id, pane)| (pane_id, pane.position_and_size()))
-                .collect::<Vec<(&PaneId, PositionAndSize)>>()
-        ));
-        let _ = crate::utils::logging::debug_log_to_file(format!(
-            "Width change: {:?}",
-            pane_ids_to_resize
-        ));
+        let _ = crate::utils::logging::debug_log_to_file(format!("Width: {:?}", pane_ids_to_resize));
+
         for (pane_id, &resize_by) in pane_ids_to_resize.iter() {
             if let Some(pane) = self.panes.get_mut(pane_id) {
                 pane.safe_reduce_width_left(resize_by);
