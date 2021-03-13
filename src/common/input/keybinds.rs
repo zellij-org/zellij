@@ -91,6 +91,11 @@ impl Keybinds {
                     Key::Ctrl('s'),
                     vec![Action::SwitchToMode(InputMode::Scroll)],
                 );
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+
                 defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
             }
             InputMode::Locked => {
