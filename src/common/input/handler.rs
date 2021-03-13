@@ -78,8 +78,6 @@ impl InputHandler {
                             // been revised. Sorry about this (@categorille)
                             if {
                                 let mut should_break = false;
-                                // Hacked on way to have a means of testing Macros, needs to
-                                // get properly integrated
                                 for action in
                                     Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
                                 {
