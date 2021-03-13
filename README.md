@@ -36,6 +36,42 @@ Zellij was initially called "Mosaic".
 
 The status bar on the bottom should guide you through the possible keyboard shortcuts in the app.
 
+# Configuration
+It is possible to configure keyboard shortcuts and their actions in a yaml file.
+An example file can be found under `example/config.yaml`.
+
+To pass a config file to zellij run it either with:
+`cargo run -- --config [FILE]` or `zellij --config [FILE]`.
+
+The structure is as follows:
+```
+keybinds:
+    normal:
+        - action: []
+          key: []
+```
+`normal` is one of the `modes` zellij can be in.
+It is possible to bind a sequence of actions to numerous keys at the same time.
+
+
+For example:
+```
+keybinds:
+    normal:
+        - action: [ NewTab, GoToTab: 1,]
+          key: [ Char: 'c',]
+```
+Will create a new tab and then switch to tab number 1 on pressing the
+`c` key.
+Whereas:
+```
+keybinds:
+    normal:
+        - action: [ NewTab,]
+          key: [ Char: 'c', Char: 'd',]
+```
+Will create a new tab on pressing either the `c` or the `d` key.
+
 # What is the current status of the project?
 
 Zellij is in the last stages of being VT compatible. As much as modern terminals are.
