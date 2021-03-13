@@ -19,3 +19,8 @@ keybinds:
           key: [ Alt: j,]
         - action: [MoveFocus: Up,]
           key: [ Alt: k,]
+    pane:
+        - action: [ NewPane:, SwitchToMode: Normal,]
+          key: [Char: 'n',]
+        - action: [ NewPane: , ]
+          key: [Char: 'N',]
