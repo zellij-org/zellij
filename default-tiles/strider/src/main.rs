@@ -13,7 +13,6 @@ impl ZellijTile for State {
     }
 
     fn draw(&mut self, rows: usize, cols: usize) {
-
         for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
@@ -25,8 +24,8 @@ impl ZellijTile for State {
             if let Some(entry) = self.files.get(i) {
                 let mut path = entry.as_line(cols).normal();
 
-                if !self.path.clone().into_os_string().is_empty() && i==0 {
-                println!("{}", FsEntry::from(self.path.clone()).as_line(cols).bold());
+                if !self.path.clone().into_os_string().is_empty() && i == 0 {
+                    println!("{}", FsEntry::from(self.path.clone()).as_line(cols).bold());
                 };
 
                 if let FsEntry::Dir(..) = entry {
