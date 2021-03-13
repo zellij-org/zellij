@@ -1,5 +1,6 @@
 use pretty_bytes::converter as pb;
 use std::{collections::HashMap, path::PathBuf};
+use std::convert::From;
 
 #[derive(Default)]
 pub struct State {
@@ -44,6 +45,7 @@ impl FsEntry {
 
     pub fn as_line(&self, width: usize) -> String {
         let info = match self {
+            FsEntry::Dir(_, s) if s==&(0 as usize) => ".".to_string(),
             FsEntry::Dir(_, s) => s.to_string(),
             FsEntry::File(_, s) => pb::convert(*s as f64),
         };
@@ -59,5 +61,15 @@ impl FsEntry {
 
     pub fn is_hidden_file(&self) -> bool {
         self.name().chars().nth(0).unwrap() == '.'.into()
+    }
+}
+
+impl From<PathBuf> for FsEntry {
+    fn from(path: PathBuf) -> Self {
+        if path.is_dir(){
+            FsEntry::Dir(path,0)
+        } else {
+            FsEntry::File(path,0)
+        }
     }
 }
