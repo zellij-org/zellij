@@ -100,6 +100,9 @@ impl ZellijTile for State {
                 self.new_name.clear();
             }
             Key::Char(c) => self.new_name = format!("{}{}", self.new_name, c),
+            Key::Backspace | Key::Delete => {
+                self.new_name.pop();
+            }
             _ => {}
         }
     }

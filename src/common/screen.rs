@@ -294,6 +294,10 @@ impl Screen {
                 self.update_tabs();
                 self.render();
             }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.tabname_buf.pop();
+            }
             c => {
                 self.tabname_buf.push_str(c);
             }
