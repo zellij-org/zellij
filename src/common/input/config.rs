@@ -15,12 +15,14 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct ConfigFromYaml {
     pub keybinds: Option<KeybindsFromYaml>,
+    pub auto_escape: Option<bool>,
 }
 
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub keybinds: Keybinds,
+    pub auto_escape: bool,
 }
 
 #[derive(Debug)]
@@ -36,7 +38,10 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         let keybinds = Keybinds::default();
-        Config { keybinds }
+        Config {
+            keybinds,
+            auto_escape: false,
+        }
     }
 }
 
@@ -45,7 +50,10 @@ impl Config {
     pub fn from_yaml(yaml_config: &str) -> Result<Config, ConfigError> {
         let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(&yaml_config)?;
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
-        Ok(Config { keybinds })
+        Ok(Config {
+            keybinds,
+            auto_escape: config_from_yaml.auto_escape.unwrap_or(false),
+        })
     }
 
     /// Deserializes from given path.

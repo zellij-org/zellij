@@ -194,6 +194,7 @@ impl InputHandler {
                 self.command_is_executing.opening_new_pane();
                 self.send_pty_instructions.send(pty_instr).unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
+                self.check_escape();
             }
             Action::CloseFocus => {
                 self.command_is_executing.closing_pane();
@@ -208,6 +209,7 @@ impl InputHandler {
                     .send(PtyInstruction::NewTab)
                     .unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
+                self.check_escape();
             }
             Action::GoToNextTab => {
                 self.send_screen_instructions
@@ -225,11 +227,13 @@ impl InputHandler {
                     .send(ScreenInstruction::CloseTab)
                     .unwrap();
                 self.command_is_executing.wait_until_pane_is_closed();
+                self.check_escape();
             }
             Action::GoToTab(i) => {
                 self.send_screen_instructions
                     .send(ScreenInstruction::GoToTab(i))
                     .unwrap();
+                self.check_escape();
             }
             Action::TabNameInput(c) => {
                 self.send_plugin_instructions
@@ -265,6 +269,12 @@ impl InputHandler {
         self.send_app_instructions
             .send(AppInstruction::Exit)
             .unwrap();
+    }
+
+    fn check_escape(&mut self) {
+        if self.config.auto_escape {
+            self.dispatch_action(Action::SwitchToMode(InputMode::Normal));
+        }
     }
 }
 
