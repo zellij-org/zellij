@@ -6,7 +6,7 @@ total=6
 
 echo "Building zellij-tile (1/$total)..."
 cd zellij-tile
-cargo build --release --target-dir ../../target
+cargo build --release --target-dir ../target
 
 echo "Building status-bar (2/$total)..."
 cd ../default-tiles/status-bar
