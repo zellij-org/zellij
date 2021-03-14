@@ -151,6 +151,10 @@ fn stream_terminal_bytes(
                 }
                 buf = vec![0; 1024];
             }
+            #[cfg(not(test))]
+            // this is a little hacky, and is because the tests end the file as soon as
+            // we read everything, rather than hanging until there is new data
+            // a better solution would be to fix the test fakes, but this will do for now
             send_screen_instructions
                 .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
