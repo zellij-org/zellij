@@ -72,7 +72,6 @@ fn combine_symbols(
 ) -> Option<BoundarySymbol> {
     let invisible = current_symbol.invisible || next_symbol.invisible;
     let should_be_colored = current_symbol.should_be_colored || next_symbol.should_be_colored;
-    let color = next_symbol.color;
     let current_symbol = current_symbol.boundary_type;
     let next_symbol = next_symbol.boundary_type;
     match (current_symbol, next_symbol) {
@@ -887,11 +886,11 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let mut symbol_to_add = if row == first_row_coordinates && row != 0 {
-                    BoundarySymbol::new(boundary_type::TOP_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT, false)
                 } else if row == last_row_coordinates - 1 && row != self.rows - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, false)
                 } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::VERTICAL, false)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
@@ -911,11 +910,11 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let mut symbol_to_add = if col == first_col_coordinates && col != 0 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT, false)
                 } else if col == last_col_coordinates - 1 && col != self.columns - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, false)
                 } else {
-                    BoundarySymbol::new(boundary_type::HORIZONTAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::HORIZONTAL, false)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
