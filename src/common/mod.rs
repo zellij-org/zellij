@@ -28,7 +28,6 @@ use wasmer_wasi::{Pipe, WasiState};
 use crate::cli::CliArgs;
 use crate::common::input::config::Config;
 use crate::layout::Layout;
-use crate::utils::logging::*;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
 use input::handler::input_loop;
@@ -173,7 +172,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     #[allow(unused_must_use)]
     let config = Config::from_option_or_default(opts.config)
         .map_err(|e| {
-            debug_log_to_file(format!("There was an error in the config file:\n{}", e));
             eprintln!("There was an error in the config file:\n{}", e);
             std::process::exit(1);
         })

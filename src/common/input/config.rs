@@ -6,7 +6,6 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
-use crate::utils::logging::*;
 
 use directories_next::ProjectDirs;
 use serde::Deserialize;
@@ -49,8 +48,6 @@ impl Config {
     }
 
     /// Deserializes from given path.
-    /// The allow is here, because rust assumes there is no
-    /// error handling when logging the error to the log file.
     #[allow(unused_must_use)]
     pub fn new(path: &Path) -> Result<Config, ConfigError> {
         match File::open(path) {
@@ -60,11 +57,7 @@ impl Config {
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
                 Ok(Config::from_yaml(&yaml_config)?)
             }
-            Err(e) => {
-                debug_log_to_file(format!(
-                    "{}\nUsing the default configuration!",
-                    ConfigError::IoPath(e, path.to_path_buf())
-                ));
+            Err(_) => {
                 Ok(Config::default())
             }
         }
