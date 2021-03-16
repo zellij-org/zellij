@@ -22,6 +22,7 @@ _zellij() {
 '--max-panes=[Maximum panes on screen, caution: opening more panes will close old ones]' \
 '-l+[Path to a layout yaml file]' \
 '--layout=[Path to a layout yaml file]' \
+'-c+[Path to the configuration yaml file]' \
 '--config=[Path to the configuration yaml file]' \
 '-m[Send "move focused pane" to active zellij session]' \
 '--move-focus[Send "move focused pane" to active zellij session]' \
