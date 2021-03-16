@@ -76,4 +76,5 @@ pub mod commands {
     pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
     pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
     pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
+    pub const SLEEP: [u8; 0] = [];
 }

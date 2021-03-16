@@ -7,7 +7,7 @@ use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
     MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE,
-    RESIZE_UP_IN_RESIZE_MODE, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
+    RESIZE_UP_IN_RESIZE_MODE, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE, SLEEP
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
@@ -34,6 +34,7 @@ pub fn resize_left_with_pane_to_the_left() {
         &SPLIT_RIGHT_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -70,6 +71,7 @@ pub fn resize_left_with_pane_to_the_right() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -108,6 +110,7 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());
@@ -148,6 +151,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -191,6 +195,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -231,6 +236,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -273,6 +279,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -314,6 +321,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -360,6 +368,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         &SPLIT_RIGHT_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -408,6 +417,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         &MOVE_FOCUS_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -473,6 +483,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -541,6 +552,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_UP_IN_RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
 
@@ -577,6 +589,7 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
         &SPLIT_RIGHT_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_LEFT_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());

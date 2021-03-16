@@ -1679,7 +1679,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_left(&mut self) {
@@ -1691,7 +1690,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_left(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_down(&mut self) {
@@ -1703,7 +1701,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_down(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_up(&mut self) {
@@ -1715,7 +1712,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_up(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn move_focus(&mut self) {
