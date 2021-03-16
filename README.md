@@ -40,7 +40,9 @@ The status bar on the bottom should guide you through the possible keyboard shor
 It is possible to configure keyboard shortcuts and their actions in a yaml file.
 An example file can be found under `example/config.yaml`.
 
-To pass a config file to zellij run it either with:
+Zellij will look for a file `/zellij/config.yaml` in the default configuration location of your os.
+
+To pass a config file directly to zellij run it either with:
 `cargo run -- --config [FILE]` or `zellij --config [FILE]`.
 
 The structure is as follows:
@@ -52,7 +54,7 @@ keybinds:
 ```
 `normal` is one of the `modes` zellij can be in.
 It is possible to bind a sequence of actions to numerous keys at the same time.
-
+Here a reference to the [Key](https://docs.rs/termion/1.5.6/termion/event/enum.Key.html) format that is used.
 
 For example:
 ```
