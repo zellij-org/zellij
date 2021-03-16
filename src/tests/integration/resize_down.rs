@@ -7,7 +7,8 @@ use crate::{start, CliArgs};
 
 use crate::tests::utils::commands::{
     MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_DOWN_IN_RESIZE_MODE,
-    RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE, SLEEP
+    RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, SLEEP, SPLIT_DOWN_IN_PANE_MODE,
+    SPLIT_RIGHT_IN_PANE_MODE,
 };
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {

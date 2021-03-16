@@ -191,7 +191,8 @@ impl OsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
-        let command = self.stdin_commands
+        let command = self
+            .stdin_commands
             .lock()
             .unwrap()
             .pop_front()
