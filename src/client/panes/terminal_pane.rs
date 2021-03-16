@@ -70,13 +70,11 @@ impl Pane for TerminalPane {
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size.columns = position_and_size.columns;
         self.position_and_size.rows = position_and_size.rows;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
         let position_and_size_override = PositionAndSize {
@@ -87,7 +85,6 @@ impl Pane for TerminalPane {
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn handle_event(&mut self, event: VteEvent) {
         match event {
@@ -191,12 +188,7 @@ impl Pane for TerminalPane {
         self.max_height
     }
     fn render(&mut self) -> Option<String> {
-        // if self.should_render {
-        if true {
-            // while checking should_render rather than rendering each pane every time
-            // is more performant, it causes some problems when the pane to the left should be
-            // rendered and has wide characters (eg. Chinese characters or emoji)
-            // as a (hopefully) temporary hack, we render all panes until we find a better solution
+        if self.should_render || cfg!(test) {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
@@ -238,7 +230,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.mark_for_rerender();
+            self.should_render = false;
             Some(vte_output)
         } else {
             None
@@ -251,45 +243,37 @@ impl Pane for TerminalPane {
         self.position_and_size.y += count;
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn increase_height_down(&mut self, count: usize) {
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         self.position_and_size.rows += count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn reduce_height_up(&mut self, count: usize) {
         self.position_and_size.rows -= count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.columns -= count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.columns += count;
         self.reflow_lines();
-        self.mark_for_rerender();
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
