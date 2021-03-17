@@ -169,8 +169,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let mut app_state = AppState::default();
 
-    #[allow(unused_must_use)]
-    let config = Config::from_option_or_default(opts.config)
+    let config = Config::from_cli_config(opts.config)
         .map_err(|e| {
             eprintln!("There was an error in the config file:\n{}", e);
             std::process::exit(1);

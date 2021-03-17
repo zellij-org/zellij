@@ -22,8 +22,6 @@ _zellij() {
 '--max-panes=[Maximum panes on screen, caution: opening more panes will close old ones]' \
 '-l+[Path to a layout yaml file]' \
 '--layout=[Path to a layout yaml file]' \
-'-c+[Path to the configuration yaml file]' \
-'--config=[Path to the configuration yaml file]' \
 '-m[Send "move focused pane" to active zellij session]' \
 '--move-focus[Send "move focused pane" to active zellij session]' \
 '-d[]' \
@@ -32,16 +30,59 @@ _zellij() {
 '--help[Prints help information]' \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
+":: :_zellij_commands" \
+"*::: :->zellij" \
 && ret=0
-    
+    case $state in
+    (zellij)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:zellij-command-$line[1]:"
+        case $line[1] in
+            (config)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
 }
 
 (( $+functions[_zellij_commands] )) ||
 _zellij_commands() {
     local commands; commands=(
-        
+        "config:Path to the configuration yaml file" \
+"help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'zellij commands' commands "$@"
+}
+(( $+functions[_zellij__config_commands] )) ||
+_zellij__config_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij config commands' commands "$@"
+}
+(( $+functions[_zellij__help_commands] )) ||
+_zellij__help_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij help commands' commands "$@"
 }
 
 _zellij "$@"

@@ -6,9 +6,12 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
+use crate::cli::ConfigCli;
 
 use directories_next::ProjectDirs;
 use serde::Deserialize;
+
+type ConfigResult = Result<Config, ConfigError>;
 
 /// Intermediate deserialisation config struct
 #[derive(Debug, Deserialize)]
@@ -41,7 +44,7 @@ impl Default for Config {
 
 impl Config {
     /// Uses defaults, but lets config override them.
-    pub fn from_yaml(yaml_config: &str) -> Result<Config, ConfigError> {
+    pub fn from_yaml(yaml_config: &str) -> ConfigResult {
         let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(&yaml_config)?;
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
         Ok(Config { keybinds })
@@ -49,7 +52,7 @@ impl Config {
 
     /// Deserializes from given path.
     #[allow(unused_must_use)]
-    pub fn new(path: &Path) -> Result<Config, ConfigError> {
+    pub fn new(path: &Path) -> ConfigResult {
         match File::open(path) {
             Ok(mut file) => {
                 let mut yaml_config = String::new();
@@ -57,15 +60,13 @@ impl Config {
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
                 Ok(Config::from_yaml(&yaml_config)?)
             }
-            Err(_) => {
-                Ok(Config::default())
-            }
+            Err(_) => Ok(Config::default()),
         }
     }
 
     /// Deserializes the config from an optional path, or a platform specific path,
     /// merges the default configuration - options take precedence.
-    pub fn from_option_or_default(option: Option<PathBuf>) -> Result<Config, ConfigError> {
+    fn from_option_or_default(option: Option<PathBuf>) -> ConfigResult {
         if let Some(config_path) = option {
             Ok(Config::new(&config_path)?)
         } else {
@@ -73,6 +74,14 @@ impl Config {
             let mut config_path: PathBuf = project_dirs.config_dir().to_owned();
             config_path.push("config.yaml");
             Ok(Config::new(&config_path)?)
+        }
+    }
+
+    pub fn from_cli_config(cli_config: Option<ConfigCli>) -> ConfigResult {
+        match cli_config {
+            Some(ConfigCli::Config { clean, .. }) if clean => Ok(Config::default()),
+            Some(ConfigCli::Config { path, .. }) => Ok(Config::from_option_or_default(path)?),
+            None => Ok(Config::default()),
         }
     }
 }
