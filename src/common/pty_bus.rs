@@ -202,8 +202,7 @@ pub struct PtyBus {
  * As a result, we have to add the abstraction here instead
  * of in the test. So ReadFromPid implements stream to support
  * tests, and then this function does user space polling of the stream.
- * The production code just does a read on an async_std::fs::File.r!
- * TODO: can the test path be simplified without breaking any tests?
+ * The production code just does a read on an async_std::fs::File.
  */
 fn stream_terminal_bytes(
     pid: RawFd,
@@ -220,12 +219,6 @@ fn stream_terminal_bytes(
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
 
-            /* these variables only used for testing */
-            let mut last_byte_receive_time: Option<Instant> = None;
-            let mut pending_render = false;
-            let max_render_pause = Duration::from_millis(30);
-            /* these variables only used for testing */
-
             while let Some(bytes) = terminal_bytes.next().await {
                 let bytes_is_empty = bytes.is_empty();
                 for byte in bytes {
@@ -240,32 +233,12 @@ fn stream_terminal_bytes(
                         task::sleep(::std::time::Duration::from_millis(10)).await;
                     }
                 } else {
-                    // this section is legacy code necessary to support the os_input shim for testing
+                    // the tests do a non blocking synchronous read on the fd.
+                    // put them to sleep for a little while
                     if !bytes_is_empty {
-                        match last_byte_receive_time.as_mut() {
-                            Some(receive_time) => {
-                                if receive_time.elapsed() > max_render_pause {
-                                    pending_render = false;
-                                    let _ =
-                                        send_screen_instructions.send(ScreenInstruction::Render);
-                                    last_byte_receive_time = Some(Instant::now());
-                                } else {
-                                    pending_render = true;
-                                }
-                            }
-                            None => {
-                                last_byte_receive_time = Some(Instant::now());
-                                pending_render = true;
-                            }
-                        };
-                    } else {
-                        if pending_render {
-                            pending_render = false;
-                            let _ = send_screen_instructions.send(ScreenInstruction::Render);
-                        }
-                        last_byte_receive_time = None;
-                        task::sleep(::std::time::Duration::from_millis(10)).await;
+                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
                     }
+                    task::sleep(::std::time::Duration::from_millis(30)).await;
                 }
             }
             send_screen_instructions
