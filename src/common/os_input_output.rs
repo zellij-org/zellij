@@ -1,4 +1,5 @@
 use crate::panes::PositionAndSize;
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
@@ -115,7 +116,13 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
-                    ForkResult::Parent { child } => child,
+                    ForkResult::Parent { child } => {
+                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
+                        #[cfg(test)]
+                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))
+                            .expect("could not fcntl");
+                        child
+                    }
                     ForkResult::Child => match file_to_open {
                         Some(file_to_open) => {
                             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {

@@ -1,11 +1,14 @@
 use ::async_std::fs::File;
 use ::async_std::prelude::*;
+use ::async_std::stream::*;
 use ::async_std::task;
 use ::async_std::task::*;
 use ::std::collections::HashMap;
+use ::std::os::unix::io::{FromRawFd, RawFd};
+use ::std::pin::*;
 use ::std::sync::mpsc::Receiver;
+use ::std::time::{Duration, Instant};
 use ::vte;
-use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::PathBuf;
 
 use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
@@ -16,6 +19,77 @@ use crate::{
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
+
+struct ReadFromPid {
+    pid: RawFd,
+    os_input: Box<dyn OsApi>,
+    file: Option<File>,
+}
+
+impl ReadFromPid {
+    fn new(pid: &RawFd, os_input: Box<dyn OsApi>) -> ReadFromPid {
+        let file;
+        if cfg!(not(test)) {
+            let std_file = unsafe { std::fs::File::from_raw_fd(*pid) };
+            file = Some(File::from(std_file));
+        } else {
+            file = None;
+        }
+        ReadFromPid {
+            pid: *pid,
+            os_input,
+            file,
+        }
+    }
+
+    #[cfg(not(test))]
+    async fn next(&mut self) -> Option<Vec<u8>> {
+        let mut buf = [0; 65535];
+        match self.file.as_ref().unwrap().read(&mut buf).await {
+            Ok(bytes) => {
+                if bytes == 0 {
+                    Some(vec![])
+                } else {
+                    Some(buf[..bytes].to_vec())
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Stream for ReadFromPid {
+    type Item = Vec<u8>;
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut read_buffer = [0; 65535];
+        let pid = self.pid;
+        let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
+        match read_result {
+            Ok(res) => {
+                if *res == 0 {
+                    // indicates end of file
+                    Poll::Ready(None)
+                } else {
+                    let res = Some(read_buffer[..=*res].to_vec());
+                    Poll::Ready(res)
+                }
+            }
+            Err(e) => {
+                match e {
+                    nix::Error::Sys(errno) => {
+                        if *errno == nix::errno::Errno::EAGAIN {
+                            Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
+                        } else {
+                            Poll::Ready(None)
+                        }
+                    }
+                    _ => Poll::Ready(None),
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum VteEvent {
@@ -120,9 +194,21 @@ pub struct PtyBus {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
+/*
+ * This function is a bit messy to support the integration tests.
+ * The tests feed inputs through an os_input shim. At the moment,
+ * async trait functions are not possible so there's no way to
+ * have two different async implementations in the OsApi trait.
+ * As a result, we have to add the abstraction here instead
+ * of in the test. So ReadFromPid implements stream to support
+ * tests, and then this function does user space polling of the stream.
+ * The production code just does a read on an async_std::fs::File.r!
+ * TODO: can the test path be simplified without breaking any tests?
+ */
 fn stream_terminal_bytes(
     pid: RawFd,
     mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    os_input: Box<dyn OsApi>,
     debug: bool,
 ) -> JoinHandle<()> {
     let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
@@ -132,25 +218,59 @@ fn stream_terminal_bytes(
             send_screen_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
             let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
+            let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
 
-            let std_file = unsafe { std::fs::File::from_raw_fd(pid) };
-            let mut async_file = File::from(std_file);
-            let mut buf = vec![0; 1024];
+            /* these variables only used for testing */
+            let mut last_byte_receive_time: Option<Instant> = None;
+            let mut pending_render = false;
+            let max_render_pause = Duration::from_millis(30);
+            /* these variables only used for testing */
 
-            while let Ok(bytes) = async_file.read(&mut buf).await {
-                let bytes_is_empty = bytes == 0;
-                for byte in buf {
+            while let Some(bytes) = terminal_bytes.next().await {
+                let bytes_is_empty = bytes.is_empty();
+                for byte in bytes {
                     if debug {
                         debug_to_file(byte, pid).unwrap();
                     }
                     vte_parser.advance(&mut vte_event_sender, byte);
                 }
-                if !bytes_is_empty {
-                    let _ = send_screen_instructions.send(ScreenInstruction::Render);
-                    task::sleep(::std::time::Duration::from_millis(10)).await;
+                if cfg!(not(test)) {
+                    if !bytes_is_empty {
+                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                        task::sleep(::std::time::Duration::from_millis(10)).await;
+                    }
+                } else {
+                    // this section is legacy code necessary to support the os_input shim for testing
+                    if !bytes_is_empty {
+                        match last_byte_receive_time.as_mut() {
+                            Some(receive_time) => {
+                                if receive_time.elapsed() > max_render_pause {
+                                    pending_render = false;
+                                    let _ =
+                                        send_screen_instructions.send(ScreenInstruction::Render);
+                                    last_byte_receive_time = Some(Instant::now());
+                                } else {
+                                    pending_render = true;
+                                }
+                            }
+                            None => {
+                                last_byte_receive_time = Some(Instant::now());
+                                pending_render = true;
+                            }
+                        };
+                    } else {
+                        if pending_render {
+                            pending_render = false;
+                            let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                        }
+                        last_byte_receive_time = None;
+                        task::sleep(::std::time::Duration::from_millis(10)).await;
+                    }
                 }
-                buf = vec![0; 1024];
             }
+            send_screen_instructions
+                .send(ScreenInstruction::Render)
+                .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
@@ -186,6 +306,7 @@ impl PtyBus {
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.send_screen_instructions.clone(),
+            self.os_input.clone(),
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
@@ -210,6 +331,7 @@ impl PtyBus {
             let task_handle = stream_terminal_bytes(
                 id,
                 self.send_screen_instructions.clone(),
+                self.os_input.clone(),
                 self.debug_to_file,
             );
             self.task_handles.insert(id, task_handle);
