@@ -11,6 +11,7 @@ pub struct PluginPane {
     pub should_render: bool,
     pub selectable: bool,
     pub invisible_borders: bool,
+    pub colored_borders: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -28,6 +29,7 @@ impl PluginPane {
             should_render: true,
             selectable: true,
             invisible_borders: false,
+            colored_borders: false,
             position_and_size,
             position_and_size_override: None,
             send_plugin_instructions,
@@ -187,5 +189,8 @@ impl Pane for PluginPane {
     }
     fn invisible_borders(&self) -> bool {
         self.invisible_borders
+    }
+    fn colored_borders(&self) -> bool {
+        self.colored_borders
     }
 }

@@ -174,6 +174,9 @@ pub trait Pane {
     fn invisible_borders(&self) -> bool {
         false
     }
+    fn colored_borders(&self) -> bool {
+        false
+    }
 }
 
 impl Tab {
@@ -647,7 +650,7 @@ impl Tab {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
                     true => boundaries.add_rect(terminal.as_ref(), true),
-                    false => boundaries.add_rect(terminal.as_ref(), false)
+                    false => boundaries.add_rect(terminal.as_ref(), false),
                 }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
