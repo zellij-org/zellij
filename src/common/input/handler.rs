@@ -326,7 +326,10 @@ impl Default for InputMode {
 pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
-        InputMode::Normal | InputMode::Locked => {}
+        InputMode::Normal => {
+            keybinds.push(("Alt+h/j/k/l".to_string(), "Change panes".to_string()));
+        }
+        InputMode::Locked => {}
         InputMode::Resize => {
             keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
         }

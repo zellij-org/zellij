@@ -31,7 +31,7 @@ pub struct Help {
 }
 
 // TODO: use same struct from main crate?
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum InputMode {
     Normal,
     Locked,

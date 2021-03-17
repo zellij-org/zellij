@@ -99,7 +99,6 @@ fn select_pane_shortcut(is_first_shortcut: bool) -> LinePart {
 
 fn full_shortcut_list(help: &Help) -> LinePart {
     match help.mode {
-        InputMode::Normal => LinePart::default(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
@@ -108,9 +107,11 @@ fn full_shortcut_list(help: &Help) -> LinePart {
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0);
-            line_part.len += select_pane_shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+            if help.mode != InputMode::Normal {
+                let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0);
+                line_part.len += select_pane_shortcut.len;
+                line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+            }
             line_part
         }
     }
@@ -118,7 +119,6 @@ fn full_shortcut_list(help: &Help) -> LinePart {
 
 fn shortened_shortcut_list(help: &Help) -> LinePart {
     match help.mode {
-        InputMode::Normal => LinePart::default(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
@@ -127,9 +127,11 @@ fn shortened_shortcut_list(help: &Help) -> LinePart {
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0);
-            line_part.len += select_pane_shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+            if help.mode != InputMode::Normal {
+                let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0);
+                line_part.len += select_pane_shortcut.len;
+                line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+            }
             line_part
         }
     }
@@ -137,7 +139,6 @@ fn shortened_shortcut_list(help: &Help) -> LinePart {
 
 fn best_effort_shortcut_list(help: &Help, max_len: usize) -> LinePart {
     match help.mode {
-        InputMode::Normal => LinePart::default(),
         InputMode::Locked => {
             let line_part = locked_interface_indication();
             if line_part.len <= max_len {
