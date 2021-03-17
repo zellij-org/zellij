@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Default, Debug)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
     /// Send "split (direction h == horizontal / v == vertical)" to active zellij session

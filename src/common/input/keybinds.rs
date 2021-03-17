@@ -368,5 +368,5 @@ impl From<KeyActionFromYaml> for ModeKeybinds {
 
 // The unit test location.
 #[cfg(test)]
-#[path = "./ut/keybinds_test.rs"]
+#[path = "./unit/keybinds_test.rs"]
 mod keybinds_test;

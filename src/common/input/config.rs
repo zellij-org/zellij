@@ -122,5 +122,21 @@ impl From<serde_yaml::Error> for ConfigError {
 
 // The unit test location.
 #[cfg(test)]
-#[path = "./ut/config_test.rs"]
-mod config_test;
+mod config_test {
+    use super::*;
+
+    #[test]
+    fn no_config_file_equals_default_config() {
+        let no_file = PathBuf::from(r"../fixtures/config/config.yamlll");
+        let config = Config::from_option_or_default(Some(no_file)).unwrap();
+        let default = Config::default();
+        assert_eq!(config, default);
+    }
+
+    #[test]
+    fn no_config_option_file_equals_default_config() {
+        let config = Config::from_option_or_default(None).unwrap();
+        let default = Config::default();
+        assert_eq!(config, default);
+    }
+}
