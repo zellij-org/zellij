@@ -42,10 +42,13 @@ impl ReadFromPid {
         }
     }
 
-    #[cfg(not(test))]
     async fn next(&mut self) -> Option<Vec<u8>> {
         let mut buf = [0; 65535];
-        match self.file.as_ref().unwrap().read(&mut buf).await {
+        #[cfg(not(test))]
+        let data = self.file.as_ref().unwrap().read(&mut buf).await;
+        #[cfg(test)]
+        let data = self.os_input.read_from_tty_stdout(self.pid, &mut buf);
+        match data {
             Ok(bytes) => {
                 if bytes == 0 {
                     Some(vec![])
@@ -54,39 +57,6 @@ impl ReadFromPid {
                 }
             }
             _ => None,
-        }
-    }
-}
-
-#[cfg(test)]
-impl Stream for ReadFromPid {
-    type Item = Vec<u8>;
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut read_buffer = [0; 65535];
-        let pid = self.pid;
-        let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
-        match read_result {
-            Ok(res) => {
-                if *res == 0 {
-                    // indicates end of file
-                    Poll::Ready(None)
-                } else {
-                    let res = Some(read_buffer[..=*res].to_vec());
-                    Poll::Ready(res)
-                }
-            }
-            Err(e) => {
-                match e {
-                    nix::Error::Sys(errno) => {
-                        if *errno == nix::errno::Errno::EAGAIN {
-                            Poll::Ready(Some(vec![])) // TODO: better with timeout waker somehow
-                        } else {
-                            Poll::Ready(None)
-                        }
-                    }
-                    _ => Poll::Ready(None),
-                }
-            }
         }
     }
 }
