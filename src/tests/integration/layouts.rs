@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
-use crate::tests::utils::commands::{COMMAND_TOGGLE, QUIT};
+use crate::tests::utils::commands::QUIT;
 use crate::tests::utils::get_output_frame_snapshots;
 use crate::{start, CliArgs};
 
@@ -20,7 +20,7 @@ pub fn accepts_basic_layout() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &QUIT]);
+    fake_input_output.add_terminal_input(&[&QUIT]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",

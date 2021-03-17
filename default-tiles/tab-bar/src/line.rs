@@ -1,4 +1,5 @@
-use colored::*;
+use crate::colors::{BLACK, GRAY, ORANGE, WHITE};
+use ansi_term::{ANSIStrings, Style};
 
 use crate::{LinePart, ARROW_SEPARATOR};
 
@@ -58,14 +59,18 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     } else {
         format!(" ← +many ")
     };
+    // 238
+    let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
+    let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
+    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
-        "{}{}",
-        more_text.black().on_yellow(),
-        ARROW_SEPARATOR.yellow().on_black(),
+        "{}",
+        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
     );
     LinePart {
         part: more_styled_text,
-        len: more_text.chars().count() + 1, // 1 for the arrow
+        len: more_text_len,
     }
 }
 
@@ -81,15 +86,17 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
     } else {
         format!(" +many → ")
     };
+    let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
+    let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
+    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
-        "{}{}{}",
-        ARROW_SEPARATOR.black().on_yellow(),
-        more_text.black().on_yellow(),
-        ARROW_SEPARATOR.yellow().on_black(),
+        "{}",
+        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
     );
     LinePart {
         part: more_styled_text,
-        len: more_text.chars().count() + 2, // 2 for the arrows
+        len: more_text_len,
     }
 }
 
@@ -99,9 +106,7 @@ fn add_previous_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
 ) {
-    while get_current_title_len(&tabs_to_render) +
-        // get_tabs_before_len(tabs_before_active.len()) >= cols {
-        left_more_message(tabs_before_active.len()).len
+    while get_current_title_len(&tabs_to_render) + left_more_message(tabs_before_active.len()).len
         >= cols
     {
         tabs_before_active.push(tabs_to_render.remove(0));
@@ -115,15 +120,23 @@ fn add_next_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
 ) {
-    while get_current_title_len(&title_bar) +
-        // get_tabs_after_len(tabs_after_active.len()) >= cols {
-        right_more_message(tabs_after_active.len()).len
+    while get_current_title_len(&title_bar) + right_more_message(tabs_after_active.len()).len
         >= cols
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
     }
     let right_more_message = right_more_message(tabs_after_active.len());
     title_bar.push(right_more_message);
+}
+
+fn tab_line_prefix() -> LinePart {
+    let prefix_text = format!(" Zellij ");
+    let prefix_text_len = prefix_text.chars().count();
+    let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
+    LinePart {
+        part: format!("{}", prefix_styled_text),
+        len: prefix_text_len,
+    }
 }
 
 pub fn tab_line(
@@ -141,11 +154,12 @@ pub fn tab_line(
     };
     tabs_to_render.push(active_tab);
 
+    let prefix = tab_line_prefix();
     populate_tabs_in_tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
         &mut tabs_to_render,
-        cols,
+        cols - prefix.len,
     );
 
     let mut tab_line: Vec<LinePart> = vec![];
@@ -154,12 +168,13 @@ pub fn tab_line(
             &mut tabs_before_active,
             &mut tabs_to_render,
             &mut tab_line,
-            cols,
+            cols - prefix.len,
         );
     }
     tab_line.append(&mut tabs_to_render);
     if !tabs_after_active.is_empty() {
-        add_next_tabs_msg(&mut tabs_after_active, &mut tab_line, cols);
+        add_next_tabs_msg(&mut tabs_after_active, &mut tab_line, cols - prefix.len);
     }
+    tab_line.insert(0, prefix);
     tab_line
 }

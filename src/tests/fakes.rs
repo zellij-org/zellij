@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
+use crate::tests::utils::commands::SLEEP;
+
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 
 #[derive(Clone)]
@@ -189,11 +191,16 @@ impl OsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
-        self.stdin_commands
+        let command = self
+            .stdin_commands
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or(vec![])
+            .unwrap_or(vec![]);
+        if command == SLEEP {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        command
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())

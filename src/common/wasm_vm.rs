@@ -1,24 +1,36 @@
+use crate::tab::TabData;
+use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::mpsc::{channel, Sender},
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-// use crate::utils::logging::debug_log_to_file;
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
     PaneId, SenderWithContext,
 };
 
+#[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
+pub enum EventType {
+    Tab,
+}
+
+#[derive(Clone, Debug)]
+pub enum PluginInputType {
+    Normal(u32),
+    Event(EventType),
+}
+
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Sender<u32>, PathBuf),
+    Load(Sender<u32>, PathBuf, Vec<EventType>),
     Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Input(u32, Vec<u8>),                     // plugin id, input bytes
+    Input(PluginInputType, Vec<u8>),         // plugin id, input bytes
     GlobalInput(Vec<u8>),                    // input bytes
     Unload(u32),
-    UpdateTabs(usize, usize), // num tabs, active tab
+    UpdateTabs(Vec<TabData>), // num tabs, active tab
     Quit,
 }
 
@@ -29,6 +41,7 @@ pub struct PluginEnv {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
+    pub events: Vec<EventType>,
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------

@@ -2,11 +2,13 @@
 //! as well as how they should be resized
 
 use crate::common::{AppInstruction, SenderWithContext};
+use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::{layout::Layout, wasm_vm::PluginInstruction};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -51,6 +53,7 @@ fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Posi
 pub struct Tab {
     pub index: usize,
     pub position: usize,
+    pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
@@ -62,6 +65,14 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TabData {
+    /* subset of fields to publish to plugins */
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -170,6 +181,7 @@ impl Tab {
     pub fn new(
         index: usize,
         position: usize,
+        name: String,
         full_screen_ws: &PositionAndSize,
         mut os_api: Box<dyn OsApi>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -195,6 +207,7 @@ impl Tab {
             index,
             position,
             panes,
+            name,
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
@@ -249,7 +262,11 @@ impl Tab {
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Load(pid_tx, plugin.clone()))
+                    .send(PluginInstruction::Load(
+                        pid_tx,
+                        plugin.clone(),
+                        layout.events.clone(),
+                    ))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let new_plugin = PluginPane::new(
@@ -546,7 +563,10 @@ impl Tab {
             }
             Some(PaneId::Plugin(pid)) => {
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Input(pid, input_bytes))
+                    .send(PluginInstruction::Input(
+                        PluginInputType::Normal(pid),
+                        input_bytes,
+                    ))
                     .unwrap();
             }
             _ => {}
@@ -1662,7 +1682,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_left(&mut self) {
@@ -1674,7 +1693,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_left(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_down(&mut self) {
@@ -1686,7 +1704,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_down(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn resize_up(&mut self) {
@@ -1698,7 +1715,6 @@ impl Tab {
             } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_up(&active_pane_id, count);
             }
-            self.render();
         }
     }
     pub fn move_focus(&mut self) {
