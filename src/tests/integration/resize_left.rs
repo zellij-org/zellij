@@ -37,7 +37,11 @@ pub fn resize_left_with_pane_to_the_left() {
         &SLEEP,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -74,7 +78,11 @@ pub fn resize_left_with_pane_to_the_right() {
         &SLEEP,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -113,7 +121,11 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         &SLEEP,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -155,7 +167,11 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -199,7 +215,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -240,7 +260,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -283,7 +307,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -325,7 +353,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -372,7 +404,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -421,7 +457,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -487,7 +527,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -556,7 +600,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         &QUIT,
     ]);
 
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -592,7 +640,11 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
         &SLEEP,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer

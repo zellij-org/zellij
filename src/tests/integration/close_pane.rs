@@ -38,7 +38,11 @@ pub fn close_pane_with_another_pane_above_it() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -75,7 +79,11 @@ pub fn close_pane_with_another_pane_below_it() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -109,7 +117,11 @@ pub fn close_pane_with_another_pane_to_the_left() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -144,7 +156,11 @@ pub fn close_pane_with_another_pane_to_the_right() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -184,7 +200,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -222,7 +242,11 @@ pub fn close_pane_with_multiple_panes_below_it() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -262,7 +286,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -300,7 +328,11 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -360,7 +392,11 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -416,7 +452,11 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -474,7 +514,11 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -532,7 +576,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -563,7 +611,11 @@ pub fn closing_last_pane_exits_app() {
         &CLOSE_PANE_IN_PANE_MODE,
         &CLOSE_PANE_IN_PANE_MODE,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer

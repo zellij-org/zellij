@@ -31,7 +31,7 @@ use crate::server::start_server;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
-use os_input_output::{ClientOsApi, ServerOsApiInstruction};
+use os_input_output::{ClientOsApi, ServerOsApi, ServerOsApiInstruction};
 use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
@@ -200,8 +200,12 @@ impl From<ClientInstruction> for AppInstruction {
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
-pub fn start(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
-    let (ipc_thread, server_name) = start_server(opts.clone());
+pub fn start(
+    mut os_input: Box<dyn ClientOsApi>,
+    opts: CliArgs,
+    server_os_input: Box<dyn ServerOsApi>,
+) {
+    let (ipc_thread, server_name) = start_server(server_os_input.clone(), opts.clone());
 
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);

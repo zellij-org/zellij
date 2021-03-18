@@ -26,7 +26,11 @@ pub fn accepts_basic_layout() {
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
 
-    start(Box::new(fake_input_output.clone()), opts);
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames

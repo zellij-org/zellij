@@ -29,7 +29,11 @@ pub fn move_focus_left() {
         &MOVE_FOCUS_LEFT_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -61,7 +65,11 @@ pub fn move_focus_left_to_the_largest_overlap() {
         &MOVE_FOCUS_LEFT_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Box::new(fake_input_output.clone()),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
