@@ -131,24 +131,8 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
                     .expect("failed to receive an event on the channel");
                 err_ctx.add_call(ContextType::Os(OsContext::from(&event)));
                 match event {
-                    OsApiInstruction::SpawnTerminal(file_to_open) => {
-                        os_input.spawn_terminal(file_to_open);
-                    }
-                    OsApiInstruction::GetTerminalSizeUsingFd(fd) => {
-                        os_input.get_terminal_size_using_fd(fd);
-                    }
                     OsApiInstruction::SetTerminalSizeUsingFd(fd, cols, rows) => {
                         os_input.set_terminal_size_using_fd(fd, cols, rows);
-                    }
-                    OsApiInstruction::SetRawMode(fd) => {
-                        os_input.set_raw_mode(fd);
-                    }
-                    OsApiInstruction::UnsetRawMode(fd) => {
-                        os_input.unset_raw_mode(fd);
-                    }
-                    OsApiInstruction::ReadFromTtyStdout(fd, mut buf) => {
-                        let slice = buf.as_mut_slice();
-                        os_input.read_from_tty_stdout(fd, slice).unwrap();
                     }
                     OsApiInstruction::WriteToTtyStdin(fd, mut buf) => {
                         let slice = buf.as_mut_slice();
@@ -156,18 +140,6 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
                     }
                     OsApiInstruction::TcDrain(fd) => {
                         os_input.tcdrain(fd).unwrap();
-                    }
-                    OsApiInstruction::Kill(pid) => {
-                        os_input.kill(pid).unwrap();
-                    }
-                    OsApiInstruction::ReadFromStdin => {
-                        os_input.read_from_stdin();
-                    }
-                    OsApiInstruction::GetStdoutWriter => {
-                        os_input.get_stdout_writer();
-                    }
-                    OsApiInstruction::BoxClone => {
-                        os_input.box_clone();
                     }
                 }
             }
