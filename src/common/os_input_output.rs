@@ -160,8 +160,8 @@ pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
-/// The `OsApi` trait represents an abstract interface to the features of an operating system that
-/// Zellij requires.
+/// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
@@ -234,8 +234,8 @@ pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
-/// The `OsApi` trait represents an abstract interface to the features of an operating system that
-/// Zellij requires.
+/// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij client requires.
 pub trait ClientOsApi: Send + Sync {
     /// Returns the size of the terminal associated to file descriptor `fd`.
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;

@@ -35,7 +35,7 @@ pub fn move_focus_down() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
-        Config::default(),
+        Box::new(fake_input_output.clone()),
     );
 
     let output_frames = fake_input_output
@@ -71,7 +71,7 @@ pub fn move_focus_down_to_the_most_recently_used_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
-        Config::default(),
+        Box::new(fake_input_output.clone()),
     );
 
     let output_frames = fake_input_output

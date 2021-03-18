@@ -14,10 +14,12 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(opts: CliArgs) -> (thread::JoinHandle<()>, String) {
+pub fn start_server(
+    os_input: Box<dyn ServerOsApi>,
+    opts: CliArgs,
+) -> (thread::JoinHandle<()>, String) {
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
-    let os_input = Box::new(get_server_os_input());
     let mut send_pty_instructions = SenderWithContext::new(
         ErrorContext::new(),
         SenderType::Sender(send_pty_instructions),
