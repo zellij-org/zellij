@@ -4,7 +4,7 @@ use crate::common::{
     ServerInstruction,
 };
 use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext};
-use crate::os_input_output::{OsApi, OsApiInstruction};
+use crate::os_input_output::{get_server_os_input, ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
@@ -14,9 +14,10 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHandle<()>, String) {
+pub fn start_server(opts: CliArgs) -> (thread::JoinHandle<()>, String) {
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
+    let os_input = Box::new(get_server_os_input());
     let mut send_pty_instructions = SenderWithContext::new(
         ErrorContext::new(),
         SenderType::Sender(send_pty_instructions),
@@ -30,8 +31,9 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
     #[cfg(test)]
     let (server_name, server_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
 
-    let (send_os_instructions, receive_os_instructions): ChannelWithContext<OsApiInstruction> =
-        channel();
+    let (send_os_instructions, receive_os_instructions): ChannelWithContext<
+        ServerOsApiInstruction,
+    > = channel();
     let mut send_os_instructions = SenderWithContext::new(
         ErrorContext::new(),
         SenderType::Sender(send_os_instructions),
@@ -131,22 +133,23 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
                     .expect("failed to receive an event on the channel");
                 err_ctx.add_call(ContextType::Os(OsContext::from(&event)));
                 match event {
-                    OsApiInstruction::SetTerminalSizeUsingFd(fd, cols, rows) => {
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(fd, cols, rows) => {
                         os_input.set_terminal_size_using_fd(fd, cols, rows);
                     }
-                    OsApiInstruction::WriteToTtyStdin(fd, mut buf) => {
+                    ServerOsApiInstruction::WriteToTtyStdin(fd, mut buf) => {
                         let slice = buf.as_mut_slice();
                         os_input.write_to_tty_stdin(fd, slice).unwrap();
                     }
-                    OsApiInstruction::TcDrain(fd) => {
+                    ServerOsApiInstruction::TcDrain(fd) => {
                         os_input.tcdrain(fd).unwrap();
                     }
+                    ServerOsApiInstruction::Exit => break,
                 }
             }
         })
         .unwrap();
 
-    let join_handle = thread::Builder::new()
+    let server_handle = thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
             let recv_server_instructions = IpcReceiver::new(server_buffer);
@@ -158,6 +161,7 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
                     recv_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer);
                 send_pty_instructions.update(err_ctx);
+                send_os_instructions.update(err_ctx);
                 if send_client_instructions.len() == 1 {
                     send_client_instructions[0].update(err_ctx);
                 }
@@ -213,6 +217,7 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
                     }
                     ServerInstruction::Exit => {
                         let _ = send_pty_instructions.send(PtyInstruction::Exit);
+                        let _ = send_os_instructions.send(ServerOsApiInstruction::Exit);
                         let _ = pty_thread.join();
                         let _ = os_thread.join();
                         let _ = send_client_instructions[0].send(ClientInstruction::Exit);
@@ -222,5 +227,5 @@ pub fn start_server(os_input: Box<dyn OsApi>, opts: CliArgs) -> (thread::JoinHan
             }
         })
         .unwrap();
-    (join_handle, server_name)
+    (server_handle, server_name)
 }

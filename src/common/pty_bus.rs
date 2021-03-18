@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use super::{IpcSenderWithContext, ScreenInstruction, OPENCALLS};
 use crate::layout::Layout;
-use crate::os_input_output::OsApi;
+use crate::os_input_output::ServerOsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     common::ServerInstruction,
@@ -22,11 +22,11 @@ use crate::{
 
 pub struct ReadFromPid {
     pid: RawFd,
-    os_input: Box<dyn OsApi>,
+    os_input: Box<dyn ServerOsApi>,
 }
 
 impl ReadFromPid {
-    pub fn new(pid: &RawFd, os_input: Box<dyn OsApi>) -> ReadFromPid {
+    pub fn new(pid: &RawFd, os_input: Box<dyn ServerOsApi>) -> ReadFromPid {
         ReadFromPid {
             pid: *pid,
             os_input,
@@ -187,7 +187,7 @@ pub enum PtyInstruction {
 pub struct PtyBus {
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
-    os_input: Box<dyn OsApi>,
+    os_input: Box<dyn ServerOsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
     pub send_server_instructions: IpcSenderWithContext,
@@ -195,7 +195,7 @@ pub struct PtyBus {
 
 fn stream_terminal_bytes(
     pid: RawFd,
-    os_input: Box<dyn OsApi>,
+    os_input: Box<dyn ServerOsApi>,
     mut send_server_instructions: IpcSenderWithContext,
     debug: bool,
 ) -> JoinHandle<()> {
@@ -274,7 +274,7 @@ fn stream_terminal_bytes(
 impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
-        os_input: Box<dyn OsApi>,
+        os_input: Box<dyn ServerOsApi>,
         send_server_instructions: IpcSenderWithContext,
         debug_to_file: bool,
     ) -> Self {

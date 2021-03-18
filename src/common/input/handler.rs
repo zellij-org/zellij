@@ -5,7 +5,7 @@ use super::keybinds::Keybinds;
 use crate::common::input::config::Config;
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
-use crate::os_input_output::OsApi;
+use crate::os_input_output::ClientOsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::wasm_vm::PluginInstruction;
@@ -19,8 +19,7 @@ use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 struct InputHandler {
     /// The current input mode
     mode: InputMode,
-    os_input: Box<dyn OsApi>,
-    config: Config,
+    os_input: Box<dyn ClientOsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -31,7 +30,7 @@ struct InputHandler {
 impl InputHandler {
     /// Returns a new [`InputHandler`] with the attributes specified as arguments.
     fn new(
-        os_input: Box<dyn OsApi>,
+        os_input: Box<dyn ClientOsApi>,
         command_is_executing: CommandIsExecuting,
         config: Config,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
@@ -311,8 +310,7 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts
 /// its [`InputHandler::handle_input()`] loop.
 pub fn input_loop(
-    os_input: Box<dyn OsApi>,
-    config: Config,
+    os_input: Box<dyn ClientOsApi>,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_plugin_instructions: SenderWithContext<PluginInstruction>,

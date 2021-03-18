@@ -6,13 +6,13 @@ use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd;
 use nix::unistd::{ForkResult, Pid};
+use serde::{Deserialize, Serialize};
 use std::io;
 use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-use serde::{Deserialize, Serialize};
 
 use signal_hook::{consts::signal::*, iterator::Signals};
 
@@ -155,23 +155,15 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 }
 
 #[derive(Clone)]
-pub struct OsInputOutput {
+pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
 }
 
 /// The `OsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij requires.
-pub trait OsApi: Send + Sync {
-    /// Returns the size of the terminal associated to file descriptor `fd`.
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
-    /// Set the terminal associated to file descriptor `fd` to
-    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn set_raw_mode(&mut self, fd: RawFd);
-    /// Set the terminal associated to file descriptor `fd` to
-    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&mut self, fd: RawFd);
     /// Spawn a new terminal, with an optional file to open in a terminal program.
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -185,28 +177,13 @@ pub trait OsApi: Send + Sync {
     // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
     // called `pid` and of type `pid_t`, and not `fd`)
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
-    /// Returns the raw contents of standard input.
-    fn read_from_stdin(&self) -> Vec<u8>;
-    /// Returns the writer that allows writing to standard output.
-    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
-    fn box_clone(&self) -> Box<dyn OsApi>;
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    fn box_clone(&self) -> Box<dyn ServerOsApi>;
 }
 
-impl OsApi for OsInputOutput {
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
-        get_terminal_size_using_fd(fd)
-    }
+impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(fd, cols, rows);
-    }
-    fn set_raw_mode(&mut self, fd: RawFd) {
-        into_raw_mode(fd);
-    }
-    fn unset_raw_mode(&mut self, fd: RawFd) {
-        let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(fd, orig_termios.clone());
     }
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
@@ -221,7 +198,72 @@ impl OsApi for OsInputOutput {
     fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error> {
         termios::tcdrain(fd)
     }
-    fn box_clone(&self) -> Box<dyn OsApi> {
+    fn box_clone(&self) -> Box<dyn ServerOsApi> {
+        Box::new((*self).clone())
+    }
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+        kill(Pid::from_raw(pid), Some(Signal::SIGINT)).unwrap();
+        waitpid(Pid::from_raw(pid), None).unwrap();
+        Ok(())
+    }
+}
+
+impl Clone for Box<dyn ServerOsApi> {
+    fn clone(&self) -> Box<dyn ServerOsApi> {
+        self.box_clone()
+    }
+}
+
+pub fn get_server_os_input() -> ServerOsInputOutput {
+    let current_termios = termios::tcgetattr(0).unwrap();
+    let orig_termios = Arc::new(Mutex::new(current_termios));
+    ServerOsInputOutput { orig_termios }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ServerOsApiInstruction {
+    SetTerminalSizeUsingFd(RawFd, u16, u16),
+    WriteToTtyStdin(RawFd, Vec<u8>),
+    TcDrain(RawFd),
+    Exit,
+}
+
+#[derive(Clone)]
+pub struct ClientOsInputOutput {
+    orig_termios: Arc<Mutex<termios::Termios>>,
+}
+
+/// The `OsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij requires.
+pub trait ClientOsApi: Send + Sync {
+    /// Returns the size of the terminal associated to file descriptor `fd`.
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn set_raw_mode(&mut self, fd: RawFd);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn unset_raw_mode(&mut self, fd: RawFd);
+    /// Returns the writer that allows writing to standard output.
+    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    /// Returns the raw contents of standard input.
+    fn read_from_stdin(&self) -> Vec<u8>;
+    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
+    fn box_clone(&self) -> Box<dyn ClientOsApi>;
+}
+
+impl ClientOsApi for ClientOsInputOutput {
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
+        get_terminal_size_using_fd(fd)
+    }
+    fn set_raw_mode(&mut self, fd: RawFd) {
+        into_raw_mode(fd);
+    }
+    fn unset_raw_mode(&mut self, fd: RawFd) {
+        let orig_termios = self.orig_termios.lock().unwrap();
+        unset_raw_mode(fd, orig_termios.clone());
+    }
+    fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {
@@ -237,48 +279,16 @@ impl OsApi for OsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        // TODO:
-        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
-        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
-        // that's why we're sending SIGKILL here
-        // A better solution would be to send SIGINT here and not wait for it, and then have
-        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
-        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
-        waitpid(Pid::from_raw(pid), None).unwrap();
-        Ok(())
-    }
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
-        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
-        for signal in signals.forever() {
-            match signal {
-                SIGWINCH => {
-                    cb();
-                }
-                SIGTERM | SIGINT | SIGQUIT => {
-                    break;
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum OsApiInstruction {
-    SetTerminalSizeUsingFd(RawFd, u16, u16),
-    WriteToTtyStdin(RawFd, Vec<u8>),
-    TcDrain(RawFd),
-}
-
-impl Clone for Box<dyn OsApi> {
-    fn clone(&self) -> Box<dyn OsApi> {
+impl Clone for Box<dyn ClientOsApi> {
+    fn clone(&self) -> Box<dyn ClientOsApi> {
         self.box_clone()
     }
 }
 
-pub fn get_os_input() -> OsInputOutput {
+pub fn get_client_os_input() -> ClientOsInputOutput {
     let current_termios = termios::tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    OsInputOutput { orig_termios }
+    ClientOsInputOutput { orig_termios }
 }

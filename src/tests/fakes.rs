@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::os_input_output::OsApi;
+use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
 use crate::tests::utils::commands::{QUIT, SLEEP};
@@ -114,7 +114,7 @@ impl FakeInputOutput {
     }
 }
 
-impl OsApi for FakeInputOutput {
+impl ClientOsApi for FakeInputOutput {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
         if let Some(new_position_and_size) = self.sigwinch_event {
             let (lock, _cvar) = &*self.should_trigger_sigwinch;
@@ -127,6 +127,42 @@ impl OsApi for FakeInputOutput {
         let winsize = win_sizes.get(&pid).unwrap();
         *winsize
     }
+    fn set_raw_mode(&mut self, pid: RawFd) {
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::IntoRawMode(pid));
+    }
+    fn unset_raw_mode(&mut self, pid: RawFd) {
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::UnsetRawMode(pid));
+    }
+    fn box_clone(&self) -> Box<dyn ClientOsApi> {
+        Box::new((*self).clone())
+    }
+    fn read_from_stdin(&self) -> Vec<u8> {
+        loop {
+            let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
+            if last_snapshot_time.elapsed() > MIN_TIME_BETWEEN_SNAPSHOTS {
+                break;
+            } else {
+                ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
+            }
+        }
+        self.stdin_commands
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(vec![])
+    }
+    fn get_stdout_writer(&self) -> Box<dyn Write> {
+        Box::new(self.stdout_writer.clone())
+    }
+}
+
+impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
         let terminal_input = self
             .possible_tty_inputs
@@ -141,22 +177,20 @@ impl OsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn set_raw_mode(&mut self, pid: RawFd) {
-        self.io_events
-            .lock()
-            .unwrap()
-            .push(IoEvent::IntoRawMode(pid));
-    }
-    fn unset_raw_mode(&mut self, pid: RawFd) {
-        self.io_events
-            .lock()
-            .unwrap()
-            .push(IoEvent::UnsetRawMode(pid));
-    }
     fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
         (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
+    }
+    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        let mut stdin_writes = self.stdin_writes.lock().unwrap();
+        let write_buffer = stdin_writes.get_mut(&pid).unwrap();
+        let mut bytes_written = 0;
+        for byte in buf {
+            bytes_written += 1;
+            write_buffer.push(*byte);
+        }
+        Ok(bytes_written)
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
@@ -175,21 +209,11 @@ impl OsApi for FakeInputOutput {
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
     }
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        let mut stdin_writes = self.stdin_writes.lock().unwrap();
-        let write_buffer = stdin_writes.get_mut(&pid).unwrap();
-        let mut bytes_written = 0;
-        for byte in buf {
-            bytes_written += 1;
-            write_buffer.push(*byte);
-        }
-        Ok(bytes_written)
-    }
     fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
         self.io_events.lock().unwrap().push(IoEvent::TcDrain(pid));
         Ok(())
     }
-    fn box_clone(&self) -> Box<dyn OsApi> {
+    fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {

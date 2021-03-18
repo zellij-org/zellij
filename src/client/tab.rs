@@ -11,7 +11,11 @@ use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use serde::{Deserialize, Serialize};
+use crate::{layout::Layout, wasm_vm::PluginInstruction};
+use crate::{
+    os_input_output::{ClientOsApi, ServerOsApiInstruction},
+    utils::shared::pad_to_size,
+};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -64,7 +68,7 @@ pub struct Tab {
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
-    os_api: Box<dyn OsApi>,
+    os_api: Box<dyn ClientOsApi>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
@@ -210,7 +214,7 @@ impl Tab {
         position: usize,
         name: String,
         full_screen_ws: &PositionAndSize,
-        mut os_api: Box<dyn OsApi>,
+        os_api: Box<dyn ClientOsApi>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
@@ -219,11 +223,15 @@ impl Tab {
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
-            os_api.set_terminal_size_using_fd(
-                new_terminal.pid,
-                new_terminal.columns() as u16,
-                new_terminal.rows() as u16,
-            );
+            send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        new_terminal.pid,
+                        new_terminal.columns() as u16,
+                        new_terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
             let mut panes: BTreeMap<PaneId, Box<dyn Pane>> = BTreeMap::new();
             panes.insert(PaneId::Terminal(pid), Box::new(new_terminal));
             panes
@@ -267,11 +275,15 @@ impl Tab {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
                         terminal_pane.change_pos_and_size(&position_and_size);
-                        self.os_api.set_terminal_size_using_fd(
-                            *pid,
-                            position_and_size.columns as u16,
-                            position_and_size.rows as u16,
-                        );
+                        self.send_app_instructions
+                            .send(AppInstruction::OsApi(
+                                ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                    *pid,
+                                    position_and_size.columns as u16,
+                                    position_and_size.rows as u16,
+                                ),
+                            ))
+                            .unwrap();
                     }
                     None => {
                         // we filled the entire layout, no room for this pane
@@ -310,11 +322,15 @@ impl Tab {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
                 let new_terminal = TerminalPane::new(*pid, *position_and_size);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    new_terminal.columns() as u16,
-                    new_terminal.rows() as u16,
-                );
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            new_terminal.columns() as u16,
+                            new_terminal.rows() as u16,
+                        ),
+                    ))
+                    .unwrap();
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_terminal));
             }
@@ -340,11 +356,15 @@ impl Tab {
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    new_terminal.columns() as u16,
-                    new_terminal.rows() as u16,
-                );
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            new_terminal.columns() as u16,
+                            new_terminal.rows() as u16,
+                        ),
+                    ))
+                    .unwrap();
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
@@ -391,19 +411,27 @@ impl Tab {
                 if let PaneId::Terminal(term_pid) = pid {
                     let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
                     let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
-                    self.os_api.set_terminal_size_using_fd(
-                        new_terminal.pid,
-                        bottom_winsize.columns as u16,
-                        bottom_winsize.rows as u16,
-                    );
+                    self.send_app_instructions
+                        .send(AppInstruction::OsApi(
+                            ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                new_terminal.pid,
+                                bottom_winsize.columns as u16,
+                                bottom_winsize.rows as u16,
+                            ),
+                        ))
+                        .unwrap();
                     terminal_to_split.change_pos_and_size(&top_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
-                        self.os_api.set_terminal_size_using_fd(
-                            terminal_id_to_split,
-                            top_winsize.columns as u16,
-                            top_winsize.rows as u16,
-                        );
+                        self.send_app_instructions
+                            .send(AppInstruction::OsApi(
+                                ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                    terminal_id_to_split,
+                                    top_winsize.columns as u16,
+                                    top_winsize.rows as u16,
+                                ),
+                            ))
+                            .unwrap();
                     }
                     self.active_terminal = Some(pid);
                 }
@@ -411,19 +439,27 @@ impl Tab {
                 if let PaneId::Terminal(term_pid) = pid {
                     let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
                     let new_terminal = TerminalPane::new(term_pid, right_winsize);
-                    self.os_api.set_terminal_size_using_fd(
-                        new_terminal.pid,
-                        right_winsize.columns as u16,
-                        right_winsize.rows as u16,
-                    );
+                    self.send_app_instructions
+                        .send(AppInstruction::OsApi(
+                            ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                new_terminal.pid,
+                                right_winsize.columns as u16,
+                                right_winsize.rows as u16,
+                            ),
+                        ))
+                        .unwrap();
                     terminal_to_split.change_pos_and_size(&left_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
-                        self.os_api.set_terminal_size_using_fd(
-                            terminal_id_to_split,
-                            left_winsize.columns as u16,
-                            left_winsize.rows as u16,
-                        );
+                        self.send_app_instructions
+                            .send(AppInstruction::OsApi(
+                                ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                    terminal_id_to_split,
+                                    left_winsize.columns as u16,
+                                    left_winsize.rows as u16,
+                                ),
+                            ))
+                            .unwrap();
                     }
                 }
             }
@@ -439,11 +475,15 @@ impl Tab {
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    new_terminal.columns() as u16,
-                    new_terminal.rows() as u16,
-                );
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            new_terminal.columns() as u16,
+                            new_terminal.rows() as u16,
+                        ),
+                    ))
+                    .unwrap();
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
@@ -469,20 +509,32 @@ impl Tab {
 
             active_pane.change_pos_and_size(&top_winsize);
 
-            let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
-            self.os_api.set_terminal_size_using_fd(
-                new_terminal.pid,
-                bottom_winsize.columns as u16,
-                bottom_winsize.rows as u16,
-            );
-            self.panes.insert(pid, Box::new(new_terminal));
+                let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            bottom_winsize.columns as u16,
+                            bottom_winsize.rows as u16,
+                        ),
+                    ))
+                    .unwrap();
+                self.panes.insert(pid, Box::new(new_terminal));
 
-            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    *active_terminal_pid,
-                    top_winsize.columns as u16,
-                    top_winsize.rows as u16,
-                );
+                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                    self.send_app_instructions
+                        .send(AppInstruction::OsApi(
+                            ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                *active_terminal_pid,
+                                top_winsize.columns as u16,
+                                top_winsize.rows as u16,
+                            ),
+                        ))
+                        .unwrap();
+                }
+
+                self.active_terminal = Some(pid);
+                self.render();
             }
 
             self.active_terminal = Some(pid);
@@ -497,11 +549,15 @@ impl Tab {
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    new_terminal.columns() as u16,
-                    new_terminal.rows() as u16,
-                );
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            new_terminal.columns() as u16,
+                            new_terminal.rows() as u16,
+                        ),
+                    ))
+                    .unwrap();
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
@@ -533,12 +589,32 @@ impl Tab {
             );
             self.panes.insert(pid, Box::new(new_terminal));
 
-            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    *active_terminal_pid,
-                    left_winsize.columns as u16,
-                    left_winsize.rows as u16,
-                );
+                let new_terminal = TerminalPane::new(term_pid, right_winsize);
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            new_terminal.pid,
+                            right_winsize.columns as u16,
+                            right_winsize.rows as u16,
+                        ),
+                    ))
+                    .unwrap();
+                self.panes.insert(pid, Box::new(new_terminal));
+
+                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                    self.send_app_instructions
+                        .send(AppInstruction::OsApi(
+                            ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                                *active_terminal_pid,
+                                left_winsize.columns as u16,
+                                left_winsize.rows as u16,
+                            ),
+                        ))
+                        .unwrap();
+                }
+
+                self.active_terminal = Some(pid);
+                self.render();
             }
 
             self.active_terminal = Some(pid);
@@ -580,13 +656,17 @@ impl Tab {
         match self.get_active_pane_id() {
             Some(PaneId::Terminal(active_terminal_id)) => {
                 let active_terminal = self.get_active_pane().unwrap();
-                let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                self.os_api
-                    .write_to_tty_stdin(active_terminal_id, &mut adjusted_input)
-                    .expect("failed to write to terminal");
-                self.os_api
-                    .tcdrain(active_terminal_id)
-                    .expect("failed to drain terminal");
+                let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::WriteToTtyStdin(active_terminal_id, adjusted_input),
+                    ))
+                    .unwrap();
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(ServerOsApiInstruction::TcDrain(
+                        active_terminal_id,
+                    )))
+                    .unwrap();
             }
             Some(PaneId::Plugin(pid)) => {
                 for key in parse_keys(&input_bytes) {
@@ -650,11 +730,15 @@ impl Tab {
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
             if let PaneId::Terminal(active_pid) = active_pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    active_pid,
-                    active_terminal.columns() as u16,
-                    active_terminal.rows() as u16,
-                );
+                self.send_app_instructions
+                    .send(AppInstruction::OsApi(
+                        ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                            active_pid,
+                            active_terminal.columns() as u16,
+                            active_terminal.rows() as u16,
+                        ),
+                    ))
+                    .unwrap();
             }
             self.render();
             self.toggle_fullscreen_is_active();
@@ -1194,88 +1278,120 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_down(count);
         if let PaneId::Terminal(pid) = id {
-            self.os_api.set_terminal_size_using_fd(
-                *pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        *pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn reduce_pane_height_up(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_up(count);
         if let PaneId::Terminal(pid) = id {
-            self.os_api.set_terminal_size_using_fd(
-                *pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        *pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_down(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn increase_pane_height_up(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_up(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_right(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn increase_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_left(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn reduce_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_right(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_left(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
-            self.os_api.set_terminal_size_using_fd(
-                pid,
-                terminal.columns() as u16,
-                terminal.rows() as u16,
-            );
+            self.send_app_instructions
+                .send(AppInstruction::OsApi(
+                    ServerOsApiInstruction::SetTerminalSizeUsingFd(
+                        pid,
+                        terminal.columns() as u16,
+                        terminal.rows() as u16,
+                    ),
+                ))
+                .unwrap();
         }
     }
     fn pane_is_between_vertical_borders(

@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{os_input_output::OsApiInstruction, AppInstruction, OPENCALLS};
+use super::{os_input_output::ServerOsApiInstruction, AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
@@ -291,26 +291,21 @@ impl From<&PtyInstruction> for PtyContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum OsContext {
-    SpawnTerminal,
-    GetTerminalSizeUsingFd,
     SetTerminalSizeUsingFd,
-    SetRawMode,
-    UnsetRawMode,
-    ReadFromTtyStdout,
     WriteToTtyStdin,
     TcDrain,
-    Kill,
-    ReadFromStdin,
-    GetStdoutWriter,
-    BoxClone,
+    Exit,
 }
 
-impl From<&OsApiInstruction> for OsContext {
-    fn from(os_instruction: &OsApiInstruction) -> Self {
+impl From<&ServerOsApiInstruction> for OsContext {
+    fn from(os_instruction: &ServerOsApiInstruction) -> Self {
         match *os_instruction {
-            OsApiInstruction::SetTerminalSizeUsingFd(_, _, _) => OsContext::SetTerminalSizeUsingFd,
-            OsApiInstruction::WriteToTtyStdin(_, _) => OsContext::WriteToTtyStdin,
-            OsApiInstruction::TcDrain(_) => OsContext::TcDrain,
+            ServerOsApiInstruction::SetTerminalSizeUsingFd(_, _, _) => {
+                OsContext::SetTerminalSizeUsingFd
+            }
+            ServerOsApiInstruction::WriteToTtyStdin(_, _) => OsContext::WriteToTtyStdin,
+            ServerOsApiInstruction::TcDrain(_) => OsContext::TcDrain,
+            ServerOsApiInstruction::Exit => OsContext::Exit,
         }
     }
 }
@@ -350,6 +345,7 @@ pub enum AppContext {
     ToPlugin,
     ToScreen,
     DoneClosingPane,
+    OsApi,
 }
 
 impl From<&AppInstruction> for AppContext {
@@ -358,6 +354,7 @@ impl From<&AppInstruction> for AppContext {
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
             AppInstruction::ToPty(_) => AppContext::ToPty,
+            AppInstruction::OsApi(_) => AppContext::OsApi,
             AppInstruction::ToPlugin(_) => AppContext::ToPlugin,
             AppInstruction::ToScreen(_) => AppContext::ToScreen,
             AppInstruction::DoneClosingPane => AppContext::DoneClosingPane,
