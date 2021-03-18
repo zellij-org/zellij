@@ -308,18 +308,9 @@ pub enum OsContext {
 impl From<&OsApiInstruction> for OsContext {
     fn from(os_instruction: &OsApiInstruction) -> Self {
         match *os_instruction {
-            OsApiInstruction::SpawnTerminal(_) => OsContext::SpawnTerminal,
-            OsApiInstruction::GetTerminalSizeUsingFd(_) => OsContext::GetTerminalSizeUsingFd,
             OsApiInstruction::SetTerminalSizeUsingFd(_, _, _) => OsContext::SetTerminalSizeUsingFd,
-            OsApiInstruction::SetRawMode(_) => OsContext::SetRawMode,
-            OsApiInstruction::UnsetRawMode(_) => OsContext::UnsetRawMode,
-            OsApiInstruction::ReadFromTtyStdout(_, _) => OsContext::ReadFromTtyStdout,
             OsApiInstruction::WriteToTtyStdin(_, _) => OsContext::WriteToTtyStdin,
             OsApiInstruction::TcDrain(_) => OsContext::TcDrain,
-            OsApiInstruction::Kill(_) => OsContext::Kill,
-            OsApiInstruction::ReadFromStdin => OsContext::ReadFromStdin,
-            OsApiInstruction::GetStdoutWriter => OsContext::GetStdoutWriter,
-            OsApiInstruction::BoxClone => OsContext::BoxClone
         }
     }
 }
