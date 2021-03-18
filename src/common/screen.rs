@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use super::{AppInstruction, SenderWithContext};
-use crate::os_input_output::OsApi;
+use crate::os_input_output::ClientOsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
@@ -78,10 +78,7 @@ pub struct Screen {
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
-    os_api: Box<dyn OsApi>,
-    mode_info: ModeInfo,
-    input_mode: InputMode,
-    colors: Palette,
+    os_api: Box<dyn ClientOsApi>,
 }
 
 impl Screen {
@@ -93,7 +90,7 @@ impl Screen {
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         send_app_instructions: SenderWithContext<AppInstruction>,
         full_screen_ws: &PositionAndSize,
-        os_api: Box<dyn OsApi>,
+        os_api: Box<dyn ClientOsApi>,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         input_mode: InputMode,

@@ -31,7 +31,7 @@ use crate::server::start_server;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
-use os_input_output::{OsApi, OsApiInstruction};
+use os_input_output::{ClientOsApi, ServerOsApiInstruction};
 use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,7 @@ pub enum ServerInstruction {
     NewClient(String),
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
-    OsApi(OsApiInstruction),
+    OsApi(ServerOsApiInstruction),
     DoneClosingPane,
     ClosePluginPane(u32),
     Exit,
@@ -180,6 +180,7 @@ pub enum AppInstruction {
     ToPty(PtyInstruction),
     ToScreen(ScreenInstruction),
     ToPlugin(PluginInstruction),
+    OsApi(ServerOsApiInstruction),
     DoneClosingPane,
 }
 
@@ -199,7 +200,9 @@ impl From<ClientInstruction> for AppInstruction {
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
-pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
+pub fn start(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
+    let (ipc_thread, server_name) = start_server(opts.clone());
+
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
     let _ = os_input
@@ -227,8 +230,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
         mpsc::sync_channel(500);
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
-
-    let (ipc_thread, server_name) = start_server(os_input.clone(), opts.clone());
 
     let (client_buffer_path, client_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
     let mut send_server_instructions =
@@ -612,7 +613,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                 send_plugin_instructions.send(instruction).unwrap();
             }
             AppInstruction::ToPty(instruction) => {
-                let _ = send_server_instructions.send(ServerInstruction::ToPty(instruction));
+                let _ = send_server_instructions
+                    .send(ServerInstruction::ToPty(instruction))
+                    .unwrap();
+            }
+            AppInstruction::OsApi(instruction) => {
+                let _ = send_server_instructions
+                    .send(ServerInstruction::OsApi(instruction))
+                    .unwrap();
             }
             AppInstruction::DoneClosingPane => command_is_executing.done_closing_pane(),
         }

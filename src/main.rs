@@ -14,7 +14,8 @@ use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::os_input_output::get_os_input;
+use crate::os_input_output::get_client_os_input;
+use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
@@ -86,7 +87,7 @@ pub fn main() {
             .send(ServerInstruction::OpenFile(file_to_open))
             .unwrap();
     } else {
-        let os_input = get_os_input();
+        let os_input = get_client_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
         start(Box::new(os_input), opts, config);
