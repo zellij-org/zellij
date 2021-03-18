@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
+use super::{os_input_output::OsApiInstruction, AppInstruction, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
@@ -138,6 +138,8 @@ pub enum ContextType {
     Screen(ScreenContext),
     /// A PTY-related call.
     Pty(PtyContext),
+    /// An OS-related call.
+    Os(OsContext),
     /// A plugin-related call.
     Plugin(PluginContext),
     /// An app-related call.
@@ -158,7 +160,7 @@ impl Display for ContextType {
         match *self {
             ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
             ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
-
+            ContextType::Os(c) => write!(f, "{}os_thread: {}{:?}", purple, green, c),
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
             ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
             ContextType::IpcServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
@@ -289,6 +291,41 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum OsContext {
+    SpawnTerminal,
+    GetTerminalSizeUsingFd,
+    SetTerminalSizeUsingFd,
+    SetRawMode,
+    UnsetRawMode,
+    ReadFromTtyStdout,
+    WriteToTtyStdin,
+    TcDrain,
+    Kill,
+    ReadFromStdin,
+    GetStdoutWriter,
+    BoxClone,
+}
+
+impl From<&OsApiInstruction> for OsContext {
+    fn from(os_instruction: &OsApiInstruction) -> Self {
+        match *os_instruction {
+            OsApiInstruction::SpawnTerminal(_) => OsContext::SpawnTerminal,
+            OsApiInstruction::GetTerminalSizeUsingFd(_) => OsContext::GetTerminalSizeUsingFd,
+            OsApiInstruction::SetTerminalSizeUsingFd(_, _, _) => OsContext::SetTerminalSizeUsingFd,
+            OsApiInstruction::SetRawMode(_) => OsContext::SetRawMode,
+            OsApiInstruction::UnsetRawMode(_) => OsContext::UnsetRawMode,
+            OsApiInstruction::ReadFromTtyStdout(_, _) => OsContext::ReadFromTtyStdout,
+            OsApiInstruction::WriteToTtyStdin(_, _) => OsContext::WriteToTtyStdin,
+            OsApiInstruction::TcDrain(_) => OsContext::TcDrain,
+            OsApiInstruction::Kill(_) => OsContext::Kill,
+            OsApiInstruction::ReadFromStdin => OsContext::ReadFromStdin,
+            OsApiInstruction::GetStdoutWriter => OsContext::GetStdoutWriter,
+            OsApiInstruction::BoxClone => OsContext::BoxClone
         }
     }
 }
