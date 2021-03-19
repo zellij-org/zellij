@@ -1,7 +1,9 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{os_input_output::ServerOsApiInstruction, AppInstruction, OPENCALLS};
+use super::{
+    os_input_output::ServerOsApiInstruction, AppInstruction, ServerInstruction, OPENCALLS,
+};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
@@ -144,7 +146,7 @@ pub enum ContextType {
     Plugin(PluginContext),
     /// An app-related call.
     App(AppContext),
-    IPCServer, // Fix: Create a separate ServerContext when sessions are introduced
+    IPCServer(ServerContext),
     StdinHandler,
     AsyncTask,
     /// An empty, placeholder call. This should be thought of as representing no call at all.
@@ -163,7 +165,7 @@ impl Display for ContextType {
             ContextType::Os(c) => write!(f, "{}os_thread: {}{:?}", purple, green, c),
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
             ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
-            ContextType::IpcServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
+            ContextType::IPCServer(c) => write!(f, "{}ipc_server: {}{:?}", purple, green, c),
             ContextType::StdinHandler => {
                 write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
             }
@@ -364,6 +366,40 @@ impl From<&AppInstruction> for AppContext {
             AppInstruction::ToPlugin(_) => AppContext::ToPlugin,
             AppInstruction::ToScreen(_) => AppContext::ToScreen,
             AppInstruction::DoneClosingPane => AppContext::DoneClosingPane,
+        }
+    }
+}
+
+/// Stack call representations corresponding to the different types of [`AppInstruction`]s.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ServerContext {
+    OpenFile,
+    SplitHorizontally,
+    SplitVertically,
+    MoveFocus,
+    NewClient,
+    ToPty,
+    ToScreen,
+    OsApi,
+    DoneClosingPane,
+    ClosePluginPane,
+    Exit,
+}
+
+impl From<&ServerInstruction> for ServerContext {
+    fn from(server_instruction: &ServerInstruction) -> Self {
+        match *server_instruction {
+            ServerInstruction::OpenFile(_) => ServerContext::OpenFile,
+            ServerInstruction::SplitHorizontally => ServerContext::SplitHorizontally,
+            ServerInstruction::SplitVertically => ServerContext::SplitVertically,
+            ServerInstruction::MoveFocus => ServerContext::MoveFocus,
+            ServerInstruction::NewClient(_) => ServerContext::NewClient,
+            ServerInstruction::ToPty(_) => ServerContext::ToPty,
+            ServerInstruction::ToScreen(_) => ServerContext::ToScreen,
+            ServerInstruction::OsApi(_) => ServerContext::OsApi,
+            ServerInstruction::DoneClosingPane => ServerContext::DoneClosingPane,
+            ServerInstruction::ClosePluginPane(_) => ServerContext::ClosePluginPane,
+            ServerInstruction::Exit => ServerContext::Exit,
         }
     }
 }

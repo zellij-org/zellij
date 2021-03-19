@@ -3,8 +3,8 @@ use crate::common::{
     ChannelWithContext, ClientInstruction, IpcSenderWithContext, SenderType, SenderWithContext,
     ServerInstruction,
 };
-use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext};
-use crate::os_input_output::{get_server_os_input, ServerOsApi, ServerOsApiInstruction};
+use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext, ServerContext};
+use crate::os_input_output::{ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
@@ -161,7 +161,7 @@ pub fn start_server(
             move || loop {
                 let (mut err_ctx, instruction): (ErrorContext, ServerInstruction) =
                     recv_server_instructions.recv().unwrap();
-                err_ctx.add_call(ContextType::IPCServer);
+                err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 send_pty_instructions.update(err_ctx);
                 send_os_instructions.update(err_ctx);
                 if send_client_instructions.len() == 1 {
