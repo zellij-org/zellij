@@ -34,7 +34,11 @@ pub fn new_panes_are_open_inside_expansion_border() {
         "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
-    start(Box::new(fake_input_output.clone()), opts);
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -68,7 +72,11 @@ pub fn resize_pane_inside_expansion_border() {
         "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
-    start(Box::new(fake_input_output.clone()), opts);
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -101,7 +109,11 @@ pub fn toggling_fullcsreen_in_expansion_border_expands_only_until_border() {
         "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
     ));
 
-    start(Box::new(fake_input_output.clone()), opts);
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
+use std::str;
 use std::sync::mpsc::Receiver;
 
 use super::{AppInstruction, SenderWithContext};
@@ -76,6 +77,7 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn ClientOsApi>,
+    tabname_buf: String,
 }
 
 impl Screen {

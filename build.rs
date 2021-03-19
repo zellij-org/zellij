@@ -22,7 +22,9 @@ fn main() {
     clap_app.gen_completions(BIN_NAME, Shell::Fish, &out_dir);
 
     // Clear Default Plugins and Layouts
-    for entry in WalkDir::new("assets/plugins") {
+
+    // Rerun on layout change
+    for entry in WalkDir::new("assets/layouts") {
         let entry = entry.unwrap();
         println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
     }

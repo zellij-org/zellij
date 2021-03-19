@@ -414,6 +414,12 @@ pub fn start(
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
                             command_is_executing.done_opening_new_pane();
                         }
+                        ScreenInstruction::GoToTab(tab_index) => {
+                            screen.go_to_tab(tab_index as usize)
+                        }
+                        ScreenInstruction::UpdateTabName(c) => {
+                            screen.update_active_tab_name(c);
+                        }
                         ScreenInstruction::Exit => {
                             break;
                         }
