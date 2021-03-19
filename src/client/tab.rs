@@ -4,17 +4,13 @@
 use crate::client::pane_resizer::PaneResizer;
 use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
-use crate::os_input_output::OsApi;
+use crate::os_input_output::{ClientOsApi, ServerOsApiInstruction};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteBytes};
-use crate::utils::shared::adjust_to_size;
-use crate::wasm_vm::PluginInstruction;
+use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::utils::shared::pad_to_size;
+use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::{layout::Layout, wasm_vm::PluginInstruction};
-use crate::{
-    os_input_output::{ClientOsApi, ServerOsApiInstruction},
-    utils::shared::pad_to_size,
-};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::time::Instant;
 use std::{

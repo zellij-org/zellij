@@ -26,7 +26,7 @@ pub fn starts_with_one_terminal() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&COMMAND_TOGGLE, &QUIT]);
+    fake_input_output.add_terminal_input(&[&QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
@@ -53,12 +53,7 @@ pub fn split_terminals_vertically() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &PANE_MODE,
-        &SPLIT_RIGHT_IN_PANE_MODE,
-        &QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_RIGHT_IN_PANE_MODE, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
@@ -85,12 +80,7 @@ pub fn split_terminals_horizontally() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &PANE_MODE,
-        &SPLIT_DOWN_IN_PANE_MODE,
-        &QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_DOWN_IN_PANE_MODE, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
@@ -151,12 +141,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &PANE_MODE,
-        &SPLIT_RIGHT_IN_PANE_MODE,
-        &QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_RIGHT_IN_PANE_MODE, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
@@ -183,12 +168,7 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &PANE_MODE,
-        &SPLIT_DOWN_IN_PANE_MODE,
-        &QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_DOWN_IN_PANE_MODE, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
@@ -215,12 +195,7 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[
-        &COMMAND_TOGGLE,
-        &PANE_MODE,
-        &SPAWN_TERMINAL_IN_PANE_MODE,
-        &QUIT,
-    ]);
+    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPAWN_TERMINAL_IN_PANE_MODE, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),

@@ -330,6 +330,7 @@ pub enum PluginContext {
     Render,
     Unload,
     Exit,
+    Tabs,
 }
 
 impl From<&PluginInstruction> for PluginContext {
@@ -340,6 +341,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Exit => PluginContext::Exit,
+            PluginInstruction::UpdateTabs(..) => PluginContext::Tabs,
         }
     }
 }

@@ -21,6 +21,7 @@ pub enum PluginInstruction {
     Update(Option<u32>, Event), // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
+    UpdateTabs(Vec<TabData>), // num tabs, active tab
     Exit,
 }
 
