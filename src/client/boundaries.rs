@@ -1,4 +1,5 @@
-use crate::tab::Pane;
+use crate::common::utils::logging::debug_log_to_file;
+use crate::{common::input::handler::InputMode, tab::Pane};
 use ansi_term::Colour::{self, Fixed};
 use std::collections::HashMap;
 
@@ -18,6 +19,13 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
+pub mod colors {
+    use ansi_term::Colour::{self, Fixed};
+    pub const WHITE: Colour = Fixed(255);
+    pub const GREEN: Colour = Fixed(154);
+    pub const GRAY: Colour = Fixed(238);
+}
+
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
 #[derive(Clone, Copy, Debug)]
@@ -34,16 +42,11 @@ impl BoundarySymbol {
             boundary_type,
             invisible: false,
             should_be_colored,
-            color: Fixed(245),
+            color: colors::GRAY,
         }
     }
     pub fn invisible(mut self) -> Self {
         self.invisible = true;
-        self
-    }
-    pub fn color(mut self, color: Colour) -> Self {
-        self.color = color;
-        self.should_be_colored = true;
         self
     }
 }
@@ -63,14 +66,23 @@ impl Display for BoundarySymbol {
 fn combine_symbols(
     current_symbol: BoundarySymbol,
     next_symbol: BoundarySymbol,
+    input_mode: InputMode,
 ) -> Option<BoundarySymbol> {
     let invisible = current_symbol.invisible || next_symbol.invisible;
     let should_be_colored = current_symbol.should_be_colored || next_symbol.should_be_colored;
     let current_symbol = current_symbol.boundary_type;
     let next_symbol = next_symbol.boundary_type;
     let color = match should_be_colored {
-        true => Fixed(154),
-        false => Fixed(245),
+        true => match input_mode {
+            InputMode::Normal => colors::GREEN,
+            InputMode::Locked => colors::GREEN,
+            InputMode::Pane => colors::WHITE,
+            InputMode::RenameTab => colors::WHITE,
+            InputMode::Resize => colors::WHITE,
+            InputMode::Scroll => colors::WHITE,
+            InputMode::Tab => colors::WHITE,
+        },
+        false => colors::WHITE,
     };
     match (current_symbol, next_symbol) {
         (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => {
@@ -740,11 +752,12 @@ fn combine_symbols(
 fn find_next_symbol(
     first_symbol: BoundarySymbol,
     second_symbol: BoundarySymbol,
+    input_mode: InputMode,
 ) -> Option<BoundarySymbol> {
-    if let Some(symbol) = combine_symbols(first_symbol, second_symbol) {
+    if let Some(symbol) = combine_symbols(first_symbol, second_symbol, input_mode) {
         Some(symbol)
     } else {
-        combine_symbols(second_symbol, first_symbol)
+        combine_symbols(second_symbol, first_symbol, input_mode)
     }
 }
 
@@ -826,7 +839,7 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, should_be_colored: bool) {
+    pub fn add_rect(&mut self, rect: &dyn Pane, should_be_colored: bool, input_mode: InputMode) {
         if rect.x() > 0 {
             let boundary_x_coords = rect.x() - 1;
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
@@ -843,13 +856,12 @@ impl Boundaries {
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
-                if rect.colored_borders() {
-                    symbol_to_add = symbol_to_add.color(Fixed(154));
-                }
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .and_then(|current_symbol| {
+                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
+                    })
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -870,13 +882,12 @@ impl Boundaries {
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
-                if rect.colored_borders() {
-                    symbol_to_add = symbol_to_add.color(Fixed(154));
-                }
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .and_then(|current_symbol| {
+                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
+                    })
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -898,13 +909,12 @@ impl Boundaries {
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
-                if rect.colored_borders() {
-                    symbol_to_add = symbol_to_add.color(Fixed(154));
-                }
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .and_then(|current_symbol| {
+                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
+                    })
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -925,13 +935,12 @@ impl Boundaries {
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
-                if rect.colored_borders() {
-                    symbol_to_add = symbol_to_add.color(Fixed(154));
-                }
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
+                    .and_then(|current_symbol| {
+                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
+                    })
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
