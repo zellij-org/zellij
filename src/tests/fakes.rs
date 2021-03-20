@@ -218,35 +218,6 @@ impl ServerOsApi for FakeInputOutput {
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn read_from_stdin(&self) -> Vec<u8> {
-        loop {
-            let last_snapshot_time = { *self.last_snapshot_time.lock().unwrap() };
-            if last_snapshot_time.elapsed() > MIN_TIME_BETWEEN_SNAPSHOTS {
-                break;
-            } else {
-                ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
-            }
-        }
-        let command = self
-            .stdin_commands
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or(vec![]);
-        if command == SLEEP {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        } else if command == QUIT && self.sigwinch_event.is_some() {
-            let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            *should_trigger_sigwinch = true;
-            cvar.notify_one();
-            ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS); // give some time for the app to resize before quitting
-        }
-        command
-    }
-    fn get_stdout_writer(&self) -> Box<dyn Write> {
-        Box::new(self.stdout_writer.clone())
-    }
     fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
