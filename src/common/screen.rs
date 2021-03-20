@@ -5,8 +5,6 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use wasmer::wasmparser::WasmFuncType;
-
 use super::{AppInstruction, SenderWithContext, input::handler::InputMode};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;

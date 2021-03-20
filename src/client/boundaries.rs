@@ -1,5 +1,5 @@
 use crate::{common::input::handler::InputMode, tab::Pane};
-use ansi_term::Colour::{self, Fixed};
+use ansi_term::Colour;
 use std::collections::HashMap;
 
 use std::fmt::{Display, Error, Formatter};
