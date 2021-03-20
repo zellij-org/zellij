@@ -1,4 +1,3 @@
-use crate::common::utils::logging::debug_log_to_file;
 use crate::{common::input::handler::InputMode, tab::Pane};
 use ansi_term::Colour::{self, Fixed};
 use std::collections::HashMap;
