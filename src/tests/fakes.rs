@@ -11,7 +11,7 @@ use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
 use crate::tests::utils::commands::{QUIT, SLEEP};
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(400);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
 pub enum IoEvent {
