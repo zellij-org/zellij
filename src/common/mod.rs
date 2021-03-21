@@ -26,6 +26,7 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
+use crate::common::utils::logging::debug_log_to_file;
 use crate::layout::Layout;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
@@ -37,7 +38,6 @@ use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
 use wasm_vm::{
     wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
 };
-use crate::common::utils::logging::debug_log_to_file;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -291,7 +291,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    InputMode::Normal
+                    InputMode::Normal,
                 );
                 loop {
                     let (event, mut err_ctx) = screen

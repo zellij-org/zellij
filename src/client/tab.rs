@@ -65,7 +65,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
-    pub input_mode: InputMode
+    pub input_mode: InputMode,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -74,7 +74,7 @@ pub struct TabData {
     pub position: usize,
     pub name: String,
     pub active: bool,
-    pub input_mode: InputMode
+    pub input_mode: InputMode,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -194,7 +194,7 @@ impl Tab {
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
-        input_mode: InputMode
+        input_mode: InputMode,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -224,7 +224,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
-            input_mode
+            input_mode,
         }
     }
 
@@ -654,16 +654,8 @@ impl Tab {
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
-                    true => boundaries.add_rect(
-                        terminal.as_ref(),
-                        true,
-                        self.input_mode
-                    ),
-                    false => boundaries.add_rect(
-                        terminal.as_ref(),
-                        false,
-                        self.input_mode
-                    ),
+                    true => boundaries.add_rect(terminal.as_ref(), true, self.input_mode),
+                    false => boundaries.add_rect(terminal.as_ref(), false, self.input_mode),
                 }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {

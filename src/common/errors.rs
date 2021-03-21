@@ -199,7 +199,7 @@ pub enum ScreenContext {
     CloseTab,
     GoToTab,
     UpdateTabName,
-    ChangeInputMode
+    ChangeInputMode,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -239,7 +239,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
-            ScreenInstruction::ChangeInputMode(_) => ScreenContext::ChangeInputMode
+            ScreenInstruction::ChangeInputMode(_) => ScreenContext::ChangeInputMode,
         }
     }
 }
