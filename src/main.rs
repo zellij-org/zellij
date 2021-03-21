@@ -74,8 +74,8 @@ pub fn main() {
             .send(ServerInstruction::OpenFile(file_to_open))
             .unwrap();
     } else {
-        let os_input = get_client_os_input();
         let server_os_input = get_server_os_input();
+        let os_input = get_client_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
         start(Box::new(os_input), opts, Box::new(server_os_input));

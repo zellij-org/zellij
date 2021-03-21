@@ -1,4 +1,5 @@
 use crate::panes::PositionAndSize;
+use ipmpsc::{Receiver as IpcReceiver, Result as IpcResult, SharedRingBuffer};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
@@ -6,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::common::{IpcSenderWithContext, IPC_BUFFER_SIZE};
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
@@ -71,8 +73,8 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
-    should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
-    sigwinch_event: Option<PositionAndSize>,
+    started_reading_from_pty: Arc<AtomicBool>,
+    server_buffer: SharedRingBuffer,
 }
 
 impl FakeInputOutput {
@@ -80,7 +82,9 @@ impl FakeInputOutput {
         let mut win_sizes = HashMap::new();
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
+        let (_, server_buffer) = SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
         win_sizes.insert(0, winsize); // 0 is the current terminal
+
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
             stdin_writes: Arc::new(Mutex::new(HashMap::new())),
@@ -91,8 +95,8 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
-            should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
-            sigwinch_event: None,
+            started_reading_from_pty: Arc::new(AtomicBool::new(false)),
+            server_buffer,
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -160,6 +164,9 @@ impl ClientOsApi for FakeInputOutput {
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
     }
+    fn get_server_sender(&self) -> IpcResult<IpcSenderWithContext> {
+        Ok(IpcSenderWithContext::new(self.server_buffer.clone()))
+    }
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -220,14 +227,10 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
-        if self.sigwinch_event.is_some() {
-            let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            while !*should_trigger_sigwinch {
-                should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
-            }
-            cb();
-        }
+    fn get_server_receiver(&self) -> IpcReceiver {
+        IpcReceiver::new(self.server_buffer.clone())
+    }
+    fn get_server_sender(&self) -> IpcSenderWithContext {
+        IpcSenderWithContext::new(self.server_buffer.clone())
     }
 }
