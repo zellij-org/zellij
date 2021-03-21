@@ -1,5 +1,7 @@
+use crate::common::{IpcSenderWithContext, IPC_BUFFER_SIZE};
 use crate::panes::PositionAndSize;
-use crate::utils::shared::default_palette;
+use crate::utils::consts::ZELLIJ_IPC_PIPE;
+use ipmpsc::{Receiver as IpcReceiver, Result as IpcResult, SharedRingBuffer};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -8,16 +10,13 @@ use nix::sys::wait::waitpid;
 use nix::unistd;
 use nix::unistd::{ForkResult, Pid};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::io;
 use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-
-use signal_hook::{consts::signal::*, iterator::Signals};
-
-use std::env;
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -158,6 +157,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
+    server_buffer: SharedRingBuffer,
 }
 
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
@@ -180,6 +180,8 @@ pub trait ServerOsApi: Send + Sync {
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
+    fn get_server_receiver(&self) -> IpcReceiver;
+    fn get_server_sender(&self) -> IpcSenderWithContext;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -207,6 +209,12 @@ impl ServerOsApi for ServerOsInputOutput {
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
+    fn get_server_receiver(&self) -> IpcReceiver {
+        IpcReceiver::new(self.server_buffer.clone())
+    }
+    fn get_server_sender(&self) -> IpcSenderWithContext {
+        IpcSenderWithContext::new(self.server_buffer.clone())
+    }
 }
 
 impl Clone for Box<dyn ServerOsApi> {
@@ -218,9 +226,14 @@ impl Clone for Box<dyn ServerOsApi> {
 pub fn get_server_os_input() -> ServerOsInputOutput {
     let current_termios = termios::tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    ServerOsInputOutput { orig_termios }
+    let server_buffer = SharedRingBuffer::create(ZELLIJ_IPC_PIPE, IPC_BUFFER_SIZE).unwrap();
+    ServerOsInputOutput {
+        orig_termios,
+        server_buffer,
+    }
 }
 
+/// OS Instructions sent to the Server by clients
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerOsApiInstruction {
     SetTerminalSizeUsingFd(RawFd, u16, u16),
@@ -251,6 +264,7 @@ pub trait ClientOsApi: Send + Sync {
     fn read_from_stdin(&self) -> Vec<u8>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
+    fn get_server_sender(&self) -> IpcResult<IpcSenderWithContext>;
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -279,6 +293,10 @@ impl ClientOsApi for ClientOsInputOutput {
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
+    }
+    fn get_server_sender(&self) -> IpcResult<IpcSenderWithContext> {
+        let buffer = SharedRingBuffer::open(ZELLIJ_IPC_PIPE)?;
+        Ok(IpcSenderWithContext::new(buffer))
     }
 }
 

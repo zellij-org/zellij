@@ -42,6 +42,8 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
+pub const IPC_BUFFER_SIZE: u32 = 8192;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     OpenFile(PathBuf),
@@ -205,7 +207,7 @@ pub fn start(
     opts: CliArgs,
     server_os_input: Box<dyn ServerOsApi>,
 ) {
-    let (ipc_thread, server_name) = start_server(server_os_input.clone(), opts.clone());
+    let ipc_thread = start_server(server_os_input.clone(), opts.clone());
 
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
@@ -235,9 +237,9 @@ pub fn start(
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    let (client_buffer_path, client_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
-    let mut send_server_instructions =
-        IpcSenderWithContext::new(SharedRingBuffer::open(&server_name).unwrap());
+    let (client_buffer_path, client_buffer) =
+        SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
+    let mut send_server_instructions = os_input.get_server_sender().unwrap();
     send_server_instructions
         .send(ServerInstruction::NewClient(client_buffer_path))
         .unwrap();

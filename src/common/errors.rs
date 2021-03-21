@@ -146,6 +146,7 @@ pub enum ContextType {
     Plugin(PluginContext),
     /// An app-related call.
     App(AppContext),
+    /// A server-related call.
     IPCServer(ServerContext),
     StdinHandler,
     AsyncTask,
@@ -297,6 +298,7 @@ impl From<&PtyInstruction> for PtyContext {
     }
 }
 
+/// Stack call representations corresponding to the different types of [`ServerOsApiInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum OsContext {
     SetTerminalSizeUsingFd,
@@ -372,7 +374,7 @@ impl From<&AppInstruction> for AppContext {
     }
 }
 
-/// Stack call representations corresponding to the different types of [`AppInstruction`]s.
+/// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ServerContext {
     OpenFile,

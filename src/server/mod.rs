@@ -8,30 +8,18 @@ use crate::os_input_output::{ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
-use crate::utils::consts::ZELLIJ_IPC_PIPE;
-use ipmpsc::{Receiver as IpcReceiver, SharedRingBuffer};
+use ipmpsc::SharedRingBuffer;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(
-    os_input: Box<dyn ServerOsApi>,
-    opts: CliArgs,
-) -> (thread::JoinHandle<()>, String) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
     let mut send_pty_instructions = SenderWithContext::new(
         ErrorContext::new(),
         SenderType::Sender(send_pty_instructions),
     );
-
-    #[cfg(not(test))]
-    let (server_name, server_buffer) = (
-        String::from(ZELLIJ_IPC_PIPE),
-        SharedRingBuffer::create(ZELLIJ_IPC_PIPE, 8192).unwrap(),
-    );
-    #[cfg(test)]
-    let (server_name, server_buffer) = SharedRingBuffer::create_temp(8192).unwrap();
 
     let (send_os_instructions, receive_os_instructions): ChannelWithContext<
         ServerOsApiInstruction,
@@ -48,7 +36,7 @@ pub fn start_server(
     let default_layout = None;
     let maybe_layout = opts.layout.or(default_layout);
 
-    let send_server_instructions = IpcSenderWithContext::new(server_buffer.clone());
+    let send_server_instructions = os_input.get_server_sender();
 
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
@@ -151,10 +139,10 @@ pub fn start_server(
         })
         .unwrap();
 
-    let server_handle = thread::Builder::new()
+    thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
-            let recv_server_instructions = IpcReceiver::new(server_buffer);
+            let recv_server_instructions = os_input.get_server_receiver();
             // Fixme: We cannot use uninitialised sender, therefore this Vec.
             // For now, We make sure that the first message is `NewClient` so there are no out of bound panics.
             let mut send_client_instructions: Vec<IpcSenderWithContext> = Vec::with_capacity(1);
@@ -228,6 +216,5 @@ pub fn start_server(
                 }
             }
         })
-        .unwrap();
-    (server_handle, server_name)
+        .unwrap()
 }
