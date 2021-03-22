@@ -180,7 +180,10 @@ pub trait ServerOsApi: Send + Sync {
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
+    /// Returns the receiver of ServerInstructions.
+    // Should be called by server once only.
     fn get_server_receiver(&self) -> IpcReceiver;
+    /// Returns a sender to the Server.
     fn get_server_sender(&self) -> IpcSenderWithContext;
 }
 
@@ -264,6 +267,7 @@ pub trait ClientOsApi: Send + Sync {
     fn read_from_stdin(&self) -> Vec<u8>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
+    /// Returns a sender to the Server.
     fn get_server_sender(&self) -> IpcResult<IpcSenderWithContext>;
 }
 

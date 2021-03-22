@@ -147,7 +147,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
             // For now, We make sure that the first message is `NewClient` so there are no out of bound panics.
             let mut send_client_instructions: Vec<IpcSenderWithContext> = Vec::with_capacity(1);
             move || loop {
-                let (mut err_ctx, instruction): (ErrorContext, ServerInstruction) =
+                let (instruction, mut err_ctx): (ServerInstruction, ErrorContext) =
                     recv_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 send_pty_instructions.update(err_ctx);
