@@ -164,7 +164,7 @@ impl IpcSenderWithContext {
     }
 
     pub fn send<T: Serialize>(&mut self, msg: T) -> ipmpsc::Result<()> {
-        self.sender.send(&(self.err_ctx, msg))
+        self.sender.send(&(msg, self.err_ctx))
     }
 }
 
@@ -573,7 +573,7 @@ pub fn start(
         .spawn({
             let recv_client_instructions = IpcReceiver::new(client_buffer);
             move || loop {
-                let (err_ctx, instruction): (ErrorContext, ClientInstruction) =
+                let (instruction, err_ctx): (ClientInstruction, ErrorContext) =
                     recv_client_instructions.recv().unwrap();
                 send_app_instructions.update(err_ctx);
                 match instruction {
