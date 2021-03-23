@@ -14,7 +14,7 @@ use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(100);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
 #[derive(Clone)]
 pub enum IoEvent {

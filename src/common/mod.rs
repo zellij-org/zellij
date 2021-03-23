@@ -384,7 +384,7 @@ pub fn start(
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
-                            command_is_executing.done_opening_new_pane();
+                            command_is_executing.done_updating_tabs();
                         }
                         ScreenInstruction::GoToTab(tab_index) => {
                             screen.go_to_tab(tab_index as usize);
