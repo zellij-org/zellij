@@ -281,7 +281,6 @@ pub enum PluginContext {
     Update,
     Render,
     Input,
-    GlobalInput,
     Unload,
     Quit,
     Tabs,
@@ -291,10 +290,9 @@ impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
-            PluginInstruction::Update(_) => PluginContext::Update,
+            PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Input(..) => PluginContext::Input,
-            PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
             PluginInstruction::UpdateTabs(..) => PluginContext::Tabs,

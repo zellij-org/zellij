@@ -1,11 +1,11 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{AppInstruction, SenderWithContext};
+use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::wasm_vm::{PluginInputType, PluginInstruction};
+use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use std::os::unix::io::RawFd;
@@ -14,6 +14,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
+use zellij_tile::data::Event;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -553,12 +554,11 @@ impl Tab {
                     .expect("failed to drain terminal");
             }
             Some(PaneId::Plugin(pid)) => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Normal(pid),
-                        input_bytes,
-                    ))
-                    .unwrap();
+                for key in parse_keys(&input_bytes) {
+                    self.send_plugin_instructions
+                        .send(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
+                        .unwrap()
+                }
             }
             _ => {}
         }

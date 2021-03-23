@@ -10,8 +10,6 @@ pub trait ZellijTile {
     fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
     // FIXME: Everything below this line should be purged
-    fn handle_key(&mut self, key: Key) {}
-    fn handle_global_key(&mut self, key: Key) {}
     fn update_tabs(&mut self) {}
     fn handle_tab_rename_keypress(&mut self, key: Key) {}
 }
@@ -42,22 +40,6 @@ macro_rules! register_tile {
         pub fn render(rows: i32, cols: i32) {
             STATE.with(|state| {
                 state.borrow_mut().render(rows as usize, cols as usize);
-            });
-        }
-
-        #[no_mangle]
-        pub fn handle_key() {
-            STATE.with(|state| {
-                state.borrow_mut().handle_key($crate::shim::get_key());
-            });
-        }
-
-        #[no_mangle]
-        pub fn handle_global_key() {
-            STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .handle_global_key($crate::shim::get_key());
             });
         }
 

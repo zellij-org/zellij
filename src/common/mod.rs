@@ -17,6 +17,7 @@ use std::{collections::HashMap, fs};
 use std::{
     collections::HashSet,
     io::Write,
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
@@ -40,7 +41,7 @@ use wasm_vm::{
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{InputMode, Key};
+use zellij_tile::data::{EventType, InputMode, Key};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -549,16 +550,21 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         pid_tx.send(plugin_id).unwrap();
                         plugin_id += 1;
                     }
-                    PluginInstruction::Update(event) => {
-                        for (instance, plugin_env) in plugin_map.values() {
-                            let update = instance.exports.get_function("update").unwrap();
-
-                            wasi_write_string(
-                                &plugin_env.wasi_env,
-                                &serde_json::to_string(&event).unwrap(),
-                            );
-                            update.call(&[]).unwrap();
+                    PluginInstruction::Update(pid, event) => {
+                        for (&i, (instance, plugin_env)) in &plugin_map {
+                            let subs = plugin_env.subscriptions.lock().unwrap();
+                            // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
+                            let event_type = EventType::from_str(&event.to_string()).unwrap();
+                            if pid.is_none() || pid == Some(i) && subs.contains(&event_type) {
+                                let update = instance.exports.get_function("update").unwrap();
+                                wasi_write_string(
+                                    &plugin_env.wasi_env,
+                                    &serde_json::to_string(&event).unwrap(),
+                                );
+                                update.call(&[]).unwrap();
+                            }
                         }
+                        drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::Render(buf_tx, pid, rows, cols) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
@@ -587,11 +593,15 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(input_type, input_bytes) => {
-                        match input_type {
-                            PluginInputType::Normal(pid) => {
-                                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-                                let handle_key =
-                                    instance.exports.get_function("handle_key").unwrap();
+                        if let PluginInputType::Event(event) = input_type {
+                            for (instance, plugin_env) in plugin_map.values() {
+                                if !plugin_env.events.contains(&event) {
+                                    continue;
+                                }
+                                let handle_key = instance
+                                    .exports
+                                    .get_function(handler_map.get(&event).unwrap())
+                                    .unwrap();
                                 for key in input_bytes.keys().flatten() {
                                     let key = cast_termion_key(key);
                                     wasi_write_string(
@@ -601,43 +611,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                     handle_key.call(&[]).unwrap();
                                 }
                             }
-                            PluginInputType::Event(event) => {
-                                for (instance, plugin_env) in plugin_map.values() {
-                                    if !plugin_env.events.contains(&event) {
-                                        continue;
-                                    }
-                                    let handle_key = instance
-                                        .exports
-                                        .get_function(handler_map.get(&event).unwrap())
-                                        .unwrap();
-                                    for key in input_bytes.keys().flatten() {
-                                        let key = cast_termion_key(key);
-                                        wasi_write_string(
-                                            &plugin_env.wasi_env,
-                                            &serde_json::to_string(&key).unwrap(),
-                                        );
-                                        handle_key.call(&[]).unwrap();
-                                    }
-                                }
-                            }
                         }
-                        drop(send_screen_instructions.send(ScreenInstruction::Render));
-                    }
-                    PluginInstruction::GlobalInput(input_bytes) => {
-                        // FIXME: Set up an event subscription system, and timed callbacks
-                        for (instance, plugin_env) in plugin_map.values() {
-                            let handler =
-                                instance.exports.get_function("handle_global_key").unwrap();
-                            for key in input_bytes.keys().flatten() {
-                                let key = cast_termion_key(key);
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&key).unwrap(),
-                                );
-                                handler.call(&[]).unwrap();
-                            }
-                        }
-
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),

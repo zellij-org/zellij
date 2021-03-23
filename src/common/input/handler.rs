@@ -10,8 +10,8 @@ use crate::screen::ScreenInstruction;
 use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
-use termion::input::TermReadEventsAndRaw;
-use zellij_tile::data::{Event, Help, InputMode, Key};
+use termion::input::{TermRead, TermReadEventsAndRaw};
+use zellij_tile::data::{Help, InputMode, Key};
 
 use super::keybinds::key_to_actions;
 
@@ -61,19 +61,15 @@ impl InputHandler {
             'input_loop: loop {
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
-                // FIXME: Kill me someday (soon)
-                drop(
-                    self.send_plugin_instructions
-                        .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
-                );
                 for key_result in stdin_buffer.events_and_raw() {
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
                                 let key = cast_termion_key(key);
+                                // FIXME: This is a bit of a hack to get resizing to work!
                                 drop(
-                                    self.send_plugin_instructions
-                                        .send(PluginInstruction::Update(Event::KeyPress(key))),
+                                    self.send_screen_instructions
+                                        .send(ScreenInstruction::Render),
                                 );
                                 // FIXME this explicit break is needed because the current test
                                 // framework relies on it to not create dead threads that loop
@@ -325,6 +321,10 @@ pub fn input_loop(
         send_app_instructions,
     )
     .handle_input();
+}
+
+pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
+    input_bytes.keys().flatten().map(cast_termion_key).collect()
 }
 
 // FIXME: This is an absolutely cursed function that should be destroyed as soon

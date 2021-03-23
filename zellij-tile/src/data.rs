@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum_macros::{EnumDiscriminants, EnumIter, ToString};
+use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
@@ -24,7 +24,7 @@ pub enum Key {
 }
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString, Serialize, Deserialize)]
-#[strum_discriminants(derive(Hash, Serialize, Deserialize))]
+#[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 pub enum Event {
     ModeUpdate(Help), // FIXME: Rename the `Help` struct
