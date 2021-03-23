@@ -30,9 +30,9 @@ pub enum PluginInputType {
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(Sender<u32>, PathBuf, Vec<NaughtyEventType>),
-    Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Input(PluginInputType, Vec<u8>),         // plugin id, input bytes
-    GlobalInput(Vec<u8>),                    // input bytes
+    Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
+    Input(PluginInputType, Vec<u8>),           // plugin id, input bytes
+    GlobalInput(Vec<u8>),                      // input bytes
     Unload(u32),
     UpdateTabs(Vec<TabInfo>), // num tabs, active tab
     Quit,

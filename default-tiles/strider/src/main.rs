@@ -12,7 +12,7 @@ impl ZellijTile for State {
         refresh_directory(self);
     }
 
-    fn draw(&mut self, rows: usize, cols: usize) {
+    fn render(&mut self, rows: usize, cols: usize) {
         for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();

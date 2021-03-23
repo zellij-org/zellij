@@ -236,7 +236,7 @@ impl ZellijTile for State {
         set_max_height(1);
     }
 
-    fn draw(&mut self, _rows: usize, cols: usize) {
+    fn render(&mut self, _rows: usize, cols: usize) {
         let help = get_help();
         let line_prefix = prefix(&help);
         let key_path = key_path(&help);

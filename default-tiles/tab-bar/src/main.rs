@@ -44,7 +44,7 @@ impl ZellijTile for State {
         self.new_name = String::new();
     }
 
-    fn draw(&mut self, _rows: usize, cols: usize) {
+    fn render(&mut self, _rows: usize, cols: usize) {
         if self.tabs.is_empty() {
             return;
         }

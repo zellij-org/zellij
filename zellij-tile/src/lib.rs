@@ -7,7 +7,8 @@ use data::*;
 #[allow(unused_variables)]
 pub trait ZellijTile {
     fn load(&mut self) {}
-    fn draw(&mut self, rows: usize, cols: usize) {}
+    fn render(&mut self, rows: usize, cols: usize) {}
+    // FIXME: Everything below this line should be purged
     fn handle_key(&mut self, key: Key) {}
     fn handle_global_key(&mut self, key: Key) {}
     fn update_tabs(&mut self) {}
@@ -28,9 +29,9 @@ macro_rules! register_tile {
         }
 
         #[no_mangle]
-        pub fn draw(rows: i32, cols: i32) {
+        pub fn render(rows: i32, cols: i32) {
             STATE.with(|state| {
-                state.borrow_mut().draw(rows as usize, cols as usize);
+                state.borrow_mut().render(rows as usize, cols as usize);
             });
         }
 

@@ -522,12 +522,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         pid_tx.send(plugin_id).unwrap();
                         plugin_id += 1;
                     }
-                    PluginInstruction::Draw(buf_tx, pid, rows, cols) => {
+                    PluginInstruction::Render(buf_tx, pid, rows, cols) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
-                        let draw = instance.exports.get_function("draw").unwrap();
+                        let render = instance.exports.get_function("render").unwrap();
 
-                        draw.call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                        render
+                            .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
                             .unwrap();
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();

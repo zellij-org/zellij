@@ -278,7 +278,7 @@ use crate::wasm_vm::PluginInstruction;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginContext {
     Load,
-    Draw,
+    Render,
     Input,
     GlobalInput,
     Unload,
@@ -290,7 +290,7 @@ impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
-            PluginInstruction::Draw(..) => PluginContext::Draw,
+            PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Input(..) => PluginContext::Input,
             PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
             PluginInstruction::Unload(_) => PluginContext::Unload,
