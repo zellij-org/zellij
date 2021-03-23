@@ -18,7 +18,6 @@ use std::{collections::HashMap, fs};
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
 use input::handler::InputMode;
-use ipmpsc::{Receiver as IpcReceiver, Sender as IpcSender, SharedRingBuffer};
 use serde::{Deserialize, Serialize};
 use termion::input::TermRead;
 use wasm_vm::PluginEnv;
@@ -34,13 +33,10 @@ use input::handler::input_loop;
 use os_input_output::{ClientOsApi, ServerOsApi, ServerOsApiInstruction};
 use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
-use serde::{Deserialize, Serialize};
-use setup::install;
-use utils::consts::ZELLIJ_IPC_PIPE;
-use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
-use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, InputMode, ModeInfo};
+use utils::consts::ZELLIJ_ROOT_PLUGIN_DIR;
+use wasm_vm::{
+    wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
+};
 
 pub const IPC_BUFFER_SIZE: u32 = 8192;
 
@@ -139,34 +135,6 @@ thread_local!(
     /// stack in the form of an [`ErrorContext`].
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
-#[derive(Clone)]
-pub struct IpcSenderWithContext {
-    err_ctx: ErrorContext,
-    sender: IpcSender,
-}
-
-impl IpcSenderWithContext {
-    pub fn new(buffer: SharedRingBuffer) -> Self {
-        Self {
-            err_ctx: ErrorContext::new(),
-            sender: IpcSender::new(buffer),
-        }
-    }
-
-    // This is expensive. Use this only if a buffer is not available.
-    // Otherwise clone the buffer and use `new()`
-    pub fn to_server() -> Self {
-        Self::new(SharedRingBuffer::open(ZELLIJ_IPC_PIPE).unwrap())
-    }
-
-    pub fn update(&mut self, ctx: ErrorContext) {
-        self.err_ctx = ctx;
-    }
-
-    pub fn send<T: Serialize>(&mut self, msg: T) -> ipmpsc::Result<()> {
-        self.sender.send(&(msg, self.err_ctx))
-    }
-}
 
 task_local! {
     /// A key to some task local storage that holds a representation of the task's call
@@ -207,7 +175,7 @@ pub fn start(
     opts: CliArgs,
     server_os_input: Box<dyn ServerOsApi>,
 ) {
-    let ipc_thread = start_server(server_os_input.clone(), opts.clone());
+    let ipc_thread = start_server(server_os_input, opts.clone());
 
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
@@ -237,12 +205,7 @@ pub fn start(
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    let (client_buffer_path, client_buffer) =
-        SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
-    let mut send_server_instructions = os_input.get_server_sender().unwrap();
-    send_server_instructions
-        .send(ServerInstruction::NewClient(client_buffer_path))
-        .unwrap();
+    os_input.notify_server();
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -571,10 +534,9 @@ pub fn start(
     let router_thread = thread::Builder::new()
         .name("router".to_string())
         .spawn({
-            let recv_client_instructions = IpcReceiver::new(client_buffer);
+            let os_input = os_input.clone();
             move || loop {
-                let (instruction, err_ctx): (ClientInstruction, ErrorContext) =
-                    recv_client_instructions.recv().unwrap();
+                let (instruction, err_ctx) = os_input.client_recv();
                 send_app_instructions.update(err_ctx);
                 match instruction {
                     ClientInstruction::Exit => break,
@@ -596,13 +558,13 @@ pub fn start(
 
         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
         send_screen_instructions.update(err_ctx);
-        send_server_instructions.update(err_ctx);
+        os_input.update_senders(err_ctx);
         match app_instruction {
             AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
             AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => break,
             AppInstruction::Error(backtrace) => {
-                let _ = send_server_instructions.send(ServerInstruction::Exit);
+                let _ = os_input.send_to_server(ServerInstruction::Exit);
                 let _ = send_screen_instructions.send(ScreenInstruction::Exit);
                 let _ = send_plugin_instructions.send(PluginInstruction::Exit);
                 let _ = screen_thread.join();
@@ -625,20 +587,16 @@ pub fn start(
                 send_plugin_instructions.send(instruction).unwrap();
             }
             AppInstruction::ToPty(instruction) => {
-                let _ = send_server_instructions
-                    .send(ServerInstruction::ToPty(instruction))
-                    .unwrap();
+                let _ = os_input.send_to_server(ServerInstruction::ToPty(instruction));
             }
             AppInstruction::OsApi(instruction) => {
-                let _ = send_server_instructions
-                    .send(ServerInstruction::OsApi(instruction))
-                    .unwrap();
+                let _ = os_input.send_to_server(ServerInstruction::OsApi(instruction));
             }
             AppInstruction::DoneClosingPane => command_is_executing.done_closing_pane(),
         }
     }
 
-    let _ = send_server_instructions.send(ServerInstruction::Exit);
+    let _ = os_input.send_to_server(ServerInstruction::Exit);
     let _ = send_screen_instructions.send(ScreenInstruction::Exit);
     let _ = send_plugin_instructions.send(PluginInstruction::Exit);
     screen_thread.join().unwrap();

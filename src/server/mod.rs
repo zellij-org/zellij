@@ -1,19 +1,17 @@
 use crate::cli::CliArgs;
 use crate::common::{
-    ChannelWithContext, ClientInstruction, IpcSenderWithContext, SenderType, SenderWithContext,
-    ServerInstruction,
+    ChannelWithContext, ClientInstruction, SenderType, SenderWithContext, ServerInstruction,
 };
 use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext, ServerContext};
 use crate::os_input_output::{ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
-use ipmpsc::SharedRingBuffer;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
+pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
     let mut send_pty_instructions = SenderWithContext::new(
@@ -36,14 +34,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
     let default_layout = None;
     let maybe_layout = opts.layout.or(default_layout);
 
-    let send_server_instructions = os_input.get_server_sender();
-
-    let mut pty_bus = PtyBus::new(
-        receive_pty_instructions,
-        os_input.clone(),
-        send_server_instructions,
-        opts.debug,
-    );
+    let mut pty_bus = PtyBus::new(receive_pty_instructions, os_input.clone(), opts.debug);
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -56,55 +47,43 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
             match event {
                 PtyInstruction::SpawnTerminal(file_to_open) => {
                     let pid = pty_bus.spawn_terminal(file_to_open);
-                    pty_bus
-                        .send_server_instructions
-                        .send(ServerInstruction::ToScreen(ScreenInstruction::NewPane(
-                            PaneId::Terminal(pid),
-                        )))
-                        .unwrap();
+                    pty_bus.os_input.send_to_server(ServerInstruction::ToScreen(
+                        ScreenInstruction::NewPane(PaneId::Terminal(pid)),
+                    ));
                 }
                 PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                     let pid = pty_bus.spawn_terminal(file_to_open);
-                    pty_bus
-                        .send_server_instructions
-                        .send(ServerInstruction::ToScreen(
-                            ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
-                        ))
-                        .unwrap();
+                    pty_bus.os_input.send_to_server(ServerInstruction::ToScreen(
+                        ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
+                    ));
                 }
                 PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                     let pid = pty_bus.spawn_terminal(file_to_open);
-                    pty_bus
-                        .send_server_instructions
-                        .send(ServerInstruction::ToScreen(
-                            ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
-                        ))
-                        .unwrap();
+                    pty_bus.os_input.send_to_server(ServerInstruction::ToScreen(
+                        ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
+                    ));
                 }
                 PtyInstruction::NewTab => {
                     if let Some(layout) = maybe_layout.clone() {
                         pty_bus.spawn_terminals_for_layout(layout);
                     } else {
                         let pid = pty_bus.spawn_terminal(None);
-                        pty_bus
-                            .send_server_instructions
-                            .send(ServerInstruction::ToScreen(ScreenInstruction::NewTab(pid)))
-                            .unwrap();
+                        pty_bus.os_input.send_to_server(ServerInstruction::ToScreen(
+                            ScreenInstruction::NewTab(pid),
+                        ));
                     }
                 }
                 PtyInstruction::ClosePane(id) => {
                     pty_bus.close_pane(id);
                     pty_bus
-                        .send_server_instructions
-                        .send(ServerInstruction::DoneClosingPane)
-                        .unwrap();
+                        .os_input
+                        .send_to_server(ServerInstruction::DoneClosingPane);
                 }
                 PtyInstruction::CloseTab(ids) => {
                     pty_bus.close_tab(ids);
                     pty_bus
-                        .send_server_instructions
-                        .send(ServerInstruction::DoneClosingPane)
-                        .unwrap();
+                        .os_input
+                        .send_to_server(ServerInstruction::DoneClosingPane);
                 }
                 PtyInstruction::Exit => {
                     break;
@@ -142,19 +121,12 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
     thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
-            let recv_server_instructions = os_input.get_server_receiver();
-            // Fixme: We cannot use uninitialised sender, therefore this Vec.
-            // For now, We make sure that the first message is `NewClient` so there are no out of bound panics.
-            let mut send_client_instructions: Vec<IpcSenderWithContext> = Vec::with_capacity(1);
             move || loop {
-                let (instruction, mut err_ctx): (ServerInstruction, ErrorContext) =
-                    recv_server_instructions.recv().unwrap();
+                let (instruction, mut err_ctx) = os_input.server_recv();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 send_pty_instructions.update(err_ctx);
                 send_os_instructions.update(err_ctx);
-                if send_client_instructions.len() == 1 {
-                    send_client_instructions[0].update(err_ctx);
-                }
+                os_input.update_senders(err_ctx);
 
                 match instruction {
                     ServerInstruction::OpenFile(file_name) => {
@@ -174,43 +146,35 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
                             .unwrap();
                     }
                     ServerInstruction::MoveFocus => {
-                        send_client_instructions[0]
-                            .send(ClientInstruction::ToScreen(ScreenInstruction::MoveFocus))
-                            .unwrap();
+                        os_input.send_to_client(ClientInstruction::ToScreen(
+                            ScreenInstruction::MoveFocus,
+                        ));
                     }
                     ServerInstruction::NewClient(buffer_path) => {
                         send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
-                        send_client_instructions.push(IpcSenderWithContext::new(
-                            SharedRingBuffer::open(&buffer_path).unwrap(),
-                        ));
+                        os_input.add_client_sender(buffer_path);
                     }
                     ServerInstruction::ToPty(instr) => {
                         send_pty_instructions.send(instr).unwrap();
                     }
                     ServerInstruction::ToScreen(instr) => {
-                        send_client_instructions[0]
-                            .send(ClientInstruction::ToScreen(instr))
-                            .unwrap();
+                        os_input.send_to_client(ClientInstruction::ToScreen(instr));
                     }
                     ServerInstruction::OsApi(instr) => {
                         send_os_instructions.send(instr).unwrap();
                     }
                     ServerInstruction::DoneClosingPane => {
-                        send_client_instructions[0]
-                            .send(ClientInstruction::DoneClosingPane)
-                            .unwrap();
+                        os_input.send_to_client(ClientInstruction::DoneClosingPane);
                     }
                     ServerInstruction::ClosePluginPane(pid) => {
-                        send_client_instructions[0]
-                            .send(ClientInstruction::ClosePluginPane(pid))
-                            .unwrap();
+                        os_input.send_to_client(ClientInstruction::ClosePluginPane(pid));
                     }
                     ServerInstruction::Exit => {
                         let _ = send_pty_instructions.send(PtyInstruction::Exit);
                         let _ = send_os_instructions.send(ServerOsApiInstruction::Exit);
                         let _ = pty_thread.join();
                         let _ = os_thread.join();
-                        let _ = send_client_instructions[0].send(ClientInstruction::Exit);
+                        let _ = os_input.send_to_client(ClientInstruction::Exit);
                         break;
                     }
                 }
