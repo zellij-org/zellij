@@ -16,7 +16,7 @@ use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 use crate::utils::shared::default_palette;
 use zellij_tile::data::Palette;
 
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(100);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
 #[derive(Clone)]
 pub enum IoEvent {
