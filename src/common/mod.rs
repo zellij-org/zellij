@@ -26,7 +26,6 @@ use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
-use crate::common::utils::logging::debug_log_to_file;
 use crate::layout::Layout;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};

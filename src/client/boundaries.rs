@@ -57,7 +57,7 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => write!(f, "{}", self.color.unwrap().paint(self.boundary_type)),
+                Some(_) => write!(f, "{}", self.color.unwrap().paint(self.boundary_type)),
                 None => write!(f, "{}", self.boundary_type),
             },
         }

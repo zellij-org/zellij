@@ -179,9 +179,6 @@ pub trait Pane {
     fn invisible_borders(&self) -> bool {
         false
     }
-    fn colored_borders(&self) -> bool {
-        false
-    }
 }
 
 impl Tab {
