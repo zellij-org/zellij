@@ -35,13 +35,12 @@ pub enum Event {
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
-    /// In `Normal` mode, input is always written to the terminal, except for one special input that
-    /// triggers the switch to [`InputMode::Command`] mode.
+    /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
+    /// to other modes
     Normal,
-    /// In `Command` mode, input is bound to actions (more precisely, sequences of actions).
-    /// `Command` mode gives access to the other modes non-`InputMode::Normal` modes.
-    /// etc.
-    Command,
+    /// In `Locked` mode, input is always written to the terminal and all shortcuts are disabled
+    /// except the one leading back to normal mode
+    Locked,
     /// `Resize` mode allows resizing the different existing panes.
     Resize,
     /// `Pane` mode allows creating and closing panes, as well as moving between them.
