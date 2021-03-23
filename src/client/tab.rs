@@ -6,7 +6,10 @@ use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::wasm_vm::{PluginInputType, PluginInstruction};
-use crate::{boundaries::Boundaries, panes::PluginPane};
+use crate::{
+    boundaries::{colors, Boundaries},
+    panes::PluginPane,
+};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
@@ -647,15 +650,16 @@ impl Tab {
             self.full_screen_ws.rows as u16,
         );
         let hide_cursor = "\u{1b}[?25l";
-        //let input_mode = self.get_state(&self.send_app_instructions);
         stdout
             .write_all(&hide_cursor.as_bytes())
             .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
-                    true => boundaries.add_rect(terminal.as_ref(), true, self.input_mode),
-                    false => boundaries.add_rect(terminal.as_ref(), false, self.input_mode),
+                    true => {
+                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
+                    }
+                    false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
                 }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {

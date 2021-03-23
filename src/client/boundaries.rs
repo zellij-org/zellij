@@ -31,22 +31,24 @@ pub type BoundaryType = &'static str; // easy way to refer to boundary_type abov
 pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
-    should_be_colored: bool,
-    color: Colour,
+    color: Option<Colour>,
 }
 
 impl BoundarySymbol {
-    pub fn new(boundary_type: BoundaryType, should_be_colored: bool) -> Self {
+    pub fn new(boundary_type: BoundaryType) -> Self {
         BoundarySymbol {
             boundary_type,
             invisible: false,
-            should_be_colored,
-            color: colors::GRAY,
+            color: Some(colors::GRAY),
         }
     }
     pub fn invisible(mut self) -> Self {
         self.invisible = true;
         self
+    }
+    pub fn color(&mut self, color: Option<Colour>) -> Self {
+        self.color = color;
+        *self
     }
 }
 
@@ -54,9 +56,9 @@ impl Display for BoundarySymbol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self.invisible {
             true => write!(f, " "),
-            false => match self.should_be_colored {
-                true => write!(f, "{}", self.color.paint(self.boundary_type)),
-                false => write!(f, "{}", self.boundary_type),
+            false => match self.color {
+                Some(color) => write!(f, "{}", self.color.unwrap().paint(self.boundary_type)),
+                None => write!(f, "{}", self.boundary_type),
             },
         }
     }
@@ -68,20 +70,15 @@ fn combine_symbols(
     input_mode: InputMode,
 ) -> Option<BoundarySymbol> {
     let invisible = current_symbol.invisible || next_symbol.invisible;
-    let should_be_colored = current_symbol.should_be_colored || next_symbol.should_be_colored;
+    let should_be_colored = current_symbol.color.is_some() || next_symbol.color.is_some();
     let current_symbol = current_symbol.boundary_type;
     let next_symbol = next_symbol.boundary_type;
     let color = match should_be_colored {
         true => match input_mode {
-            InputMode::Normal => colors::GREEN,
-            InputMode::Locked => colors::GREEN,
-            InputMode::Pane => colors::WHITE,
-            InputMode::RenameTab => colors::WHITE,
-            InputMode::Resize => colors::WHITE,
-            InputMode::Scroll => colors::WHITE,
-            InputMode::Tab => colors::WHITE,
+            InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
+            _ => Some(colors::WHITE),
         },
-        false => colors::WHITE,
+        false => None,
     };
     match (current_symbol, next_symbol) {
         (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => {
@@ -90,8 +87,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL) => {
@@ -100,8 +96,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL) => {
@@ -110,8 +105,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::TOP_LEFT) => {
@@ -120,8 +114,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_RIGHT) => {
@@ -130,8 +123,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::BOTTOM_LEFT) => {
@@ -140,8 +132,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_LEFT) => {
@@ -150,8 +141,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::VERTICAL_RIGHT) => {
@@ -160,8 +150,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
@@ -170,8 +159,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::HORIZONTAL_UP) => {
@@ -180,8 +168,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_RIGHT, boundary_type::CROSS) => {
@@ -190,8 +177,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL) => {
@@ -200,8 +186,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL) => {
@@ -210,8 +195,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::TOP_LEFT) => {
@@ -220,8 +204,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_RIGHT) => {
@@ -230,8 +213,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::BOTTOM_LEFT) => {
@@ -240,8 +222,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL_LEFT) => {
@@ -250,8 +231,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::VERTICAL_RIGHT) => {
@@ -260,8 +240,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_DOWN) => {
@@ -270,8 +249,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::HORIZONTAL_UP) => {
@@ -280,8 +258,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL, boundary_type::CROSS) => {
@@ -290,8 +267,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL) => {
@@ -300,8 +276,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::TOP_LEFT) => {
@@ -310,8 +285,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_RIGHT) => {
@@ -320,8 +294,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::BOTTOM_LEFT) => {
@@ -330,8 +303,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_LEFT) => {
@@ -340,8 +312,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::VERTICAL_RIGHT) => {
@@ -350,8 +321,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::HORIZONTAL_DOWN) => {
@@ -360,8 +330,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::HORIZONTAL_UP) => {
@@ -370,8 +339,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL, boundary_type::CROSS) => {
@@ -380,8 +348,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::TOP_LEFT) => {
@@ -390,8 +357,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::BOTTOM_RIGHT) => {
@@ -400,8 +366,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::BOTTOM_LEFT) => {
@@ -410,8 +375,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::VERTICAL_LEFT) => {
@@ -420,8 +384,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::VERTICAL_RIGHT) => {
@@ -430,8 +393,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_DOWN) => {
@@ -440,8 +402,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::HORIZONTAL_UP) => {
@@ -450,8 +411,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::TOP_LEFT, boundary_type::CROSS) => {
@@ -460,8 +420,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_RIGHT) => {
@@ -470,8 +429,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::BOTTOM_LEFT) => {
@@ -480,8 +438,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_LEFT) => {
@@ -490,8 +447,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::VERTICAL_RIGHT) => {
@@ -500,8 +456,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
@@ -510,8 +465,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::HORIZONTAL_UP) => {
@@ -520,8 +474,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_RIGHT, boundary_type::CROSS) => {
@@ -530,8 +483,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::BOTTOM_LEFT) => {
@@ -540,8 +492,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_LEFT) => {
@@ -550,8 +501,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::VERTICAL_RIGHT) => {
@@ -560,8 +510,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_DOWN) => {
@@ -570,8 +519,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::HORIZONTAL_UP) => {
@@ -580,8 +528,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::BOTTOM_LEFT, boundary_type::CROSS) => {
@@ -590,8 +537,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_LEFT) => {
@@ -600,8 +546,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::VERTICAL_RIGHT) => {
@@ -610,8 +555,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_DOWN) => {
@@ -620,8 +564,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::HORIZONTAL_UP) => {
@@ -630,8 +573,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_LEFT, boundary_type::CROSS) => {
@@ -640,8 +582,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::VERTICAL_RIGHT) => {
@@ -650,8 +591,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_DOWN) => {
@@ -660,8 +600,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::HORIZONTAL_UP) => {
@@ -670,8 +609,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::VERTICAL_RIGHT, boundary_type::CROSS) => {
@@ -680,8 +618,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_DOWN) => {
@@ -690,8 +627,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::HORIZONTAL_UP) => {
@@ -700,8 +636,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL_DOWN, boundary_type::CROSS) => {
@@ -710,8 +645,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL_UP, boundary_type::HORIZONTAL_UP) => {
@@ -720,8 +654,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::HORIZONTAL_UP, boundary_type::CROSS) => {
@@ -730,8 +663,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (boundary_type::CROSS, boundary_type::CROSS) => {
@@ -740,8 +672,7 @@ fn combine_symbols(
             Some(BoundarySymbol {
                 boundary_type,
                 invisible,
-                should_be_colored,
-                color,
+                color: color,
             })
         }
         (_, _) => None,
@@ -838,7 +769,7 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, should_be_colored: bool, input_mode: InputMode) {
+    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, color: Option<Colour>) {
         if rect.x() > 0 {
             let boundary_x_coords = rect.x() - 1;
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
@@ -846,11 +777,11 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let mut symbol_to_add = if row == first_row_coordinates && row != 0 {
-                    BoundarySymbol::new(boundary_type::TOP_LEFT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
                 } else if row == last_row_coordinates - 1 && row != self.rows - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
                 } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
@@ -872,11 +803,11 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let mut symbol_to_add = if col == first_col_coordinates && col != 0 {
-                    BoundarySymbol::new(boundary_type::TOP_LEFT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
                 } else if col == last_col_coordinates - 1 && col != self.columns - 1 {
-                    BoundarySymbol::new(boundary_type::TOP_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else {
-                    BoundarySymbol::new(boundary_type::HORIZONTAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
@@ -899,11 +830,11 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let mut symbol_to_add = if row == first_row_coordinates && row != 0 {
-                    BoundarySymbol::new(boundary_type::TOP_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else if row == last_row_coordinates - 1 && row != self.rows - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
@@ -925,11 +856,11 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let mut symbol_to_add = if col == first_col_coordinates && col != 0 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
                 } else if col == last_col_coordinates - 1 && col != self.columns - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT, should_be_colored)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
-                    BoundarySymbol::new(boundary_type::HORIZONTAL, should_be_colored)
+                    BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
                 };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();

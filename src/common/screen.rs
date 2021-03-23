@@ -312,7 +312,8 @@ impl Screen {
     }
     pub fn change_input_mode(&mut self, input_mode: InputMode) {
         self.input_mode = input_mode;
-        self.get_active_tab_mut().unwrap().input_mode = self.input_mode;
-        self.render();
+        for tab in self.tabs.values_mut() {
+            tab.input_mode = self.input_mode;
+        }
     }
 }
