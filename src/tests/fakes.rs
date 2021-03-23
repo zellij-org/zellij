@@ -1,19 +1,20 @@
 use crate::panes::PositionAndSize;
-use ipmpsc::{Receiver as IpcReceiver, Result as IpcResult, SharedRingBuffer};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::common::{IpcSenderWithContext, IPC_BUFFER_SIZE};
+use crate::common::{
+    ChannelWithContext, ClientInstruction, SenderType, SenderWithContext, ServerInstruction,
+};
+use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
-use crate::tests::utils::commands::{QUIT, SLEEP};
-
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(500);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -74,7 +75,10 @@ pub struct FakeInputOutput {
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
     started_reading_from_pty: Arc<AtomicBool>,
-    server_buffer: SharedRingBuffer,
+    client_sender: SenderWithContext<ClientInstruction>,
+    client_receiver: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
+    server_sender: SenderWithContext<ServerInstruction>,
+    server_receiver: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
 }
 
 impl FakeInputOutput {
@@ -82,7 +86,14 @@ impl FakeInputOutput {
         let mut win_sizes = HashMap::new();
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
-        let (_, server_buffer) = SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
+        let (client_sender, client_receiver): ChannelWithContext<ClientInstruction> =
+            mpsc::channel();
+        let client_sender =
+            SenderWithContext::new(ErrorContext::new(), SenderType::Sender(client_sender));
+        let (server_sender, server_receiver): ChannelWithContext<ServerInstruction> =
+            mpsc::channel();
+        let server_sender =
+            SenderWithContext::new(ErrorContext::new(), SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
 
         FakeInputOutput {
@@ -96,7 +107,10 @@ impl FakeInputOutput {
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
             started_reading_from_pty: Arc::new(AtomicBool::new(false)),
-            server_buffer,
+            server_receiver: Arc::new(Mutex::new(server_receiver)),
+            server_sender,
+            client_receiver: Arc::new(Mutex::new(client_receiver)),
+            client_sender,
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -164,8 +178,18 @@ impl ClientOsApi for FakeInputOutput {
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
     }
-    fn get_server_sender(&self) -> IpcResult<IpcSenderWithContext> {
-        Ok(IpcSenderWithContext::new(self.server_buffer.clone()))
+    fn send_to_server(&mut self, msg: ServerInstruction) {
+        self.server_sender.send(msg).unwrap();
+    }
+    fn update_senders(&mut self, new_ctx: ErrorContext) {
+        self.server_sender.update(new_ctx);
+        self.client_sender.update(new_ctx);
+    }
+    fn notify_server(&mut self) {
+        ClientOsApi::send_to_server(self, ServerInstruction::NewClient("zellij".into()));
+    }
+    fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
+        self.client_receiver.lock().unwrap().recv().unwrap()
     }
 }
 
@@ -227,10 +251,18 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn get_server_receiver(&self) -> IpcReceiver {
-        IpcReceiver::new(self.server_buffer.clone())
+    fn send_to_server(&mut self, msg: ServerInstruction) {
+        self.server_sender.send(msg).unwrap();
     }
-    fn get_server_sender(&self) -> IpcSenderWithContext {
-        IpcSenderWithContext::new(self.server_buffer.clone())
+    fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
+        self.server_receiver.lock().unwrap().recv().unwrap()
+    }
+    fn send_to_client(&mut self, msg: ClientInstruction) {
+        self.client_sender.send(msg).unwrap();
+    }
+    fn add_client_sender(&mut self, _buffer_path: String) {}
+    fn update_senders(&mut self, new_ctx: ErrorContext) {
+        self.server_sender.update(new_ctx);
+        self.client_sender.update(new_ctx);
     }
 }
