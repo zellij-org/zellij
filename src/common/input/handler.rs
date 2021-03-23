@@ -224,38 +224,57 @@ impl InputHandler {
                 self.command_is_executing.wait_until_pane_is_closed();
             }
             Action::NewTab => {
-                self.command_is_executing.opening_new_pane();
+                self.command_is_executing.updating_tabs();
                 self.send_app_instructions
                     .send(AppInstruction::ToPty(PtyInstruction::NewTab))
                     .unwrap();
-                self.command_is_executing.wait_until_new_pane_is_opened();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToNextTab => {
+                self.command_is_executing.updating_tabs();
                 self.send_screen_instructions
                     .send(ScreenInstruction::SwitchTabNext)
                     .unwrap();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToPreviousTab => {
+                self.command_is_executing.updating_tabs();
                 self.send_screen_instructions
                     .send(ScreenInstruction::SwitchTabPrev)
                     .unwrap();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::CloseTab => {
-                self.command_is_executing.closing_pane();
+                self.command_is_executing.updating_tabs();
                 self.send_screen_instructions
                     .send(ScreenInstruction::CloseTab)
                     .unwrap();
-                self.command_is_executing.wait_until_pane_is_closed();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToTab(i) => {
+                self.command_is_executing.updating_tabs();
                 self.send_screen_instructions
                     .send(ScreenInstruction::GoToTab(i))
                     .unwrap();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::TabNameInput(c) => {
                 self.send_screen_instructions
                     .send(ScreenInstruction::UpdateTabName(c))
                     .unwrap();
+            }
+            Action::SaveTabName => {
+                self.command_is_executing.updating_tabs();
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Input(
+                        PluginInputType::Event(EventType::Tab),
+                        vec![b'\n'],
+                    ))
+                    .unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::UpdateTabName(vec![b'\n']))
+                    .unwrap();
+                self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::NoOp => {}
         }
