@@ -386,22 +386,31 @@ pub fn start(
                         }
                         ScreenInstruction::NewTab(pane_id) => {
                             screen.new_tab(pane_id);
-                            command_is_executing.done_opening_new_pane();
+                            command_is_executing.done_updating_tabs();
                         }
-                        ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
-                        ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
+                        ScreenInstruction::SwitchTabNext => {
+                            screen.switch_tab_next();
+                            command_is_executing.done_updating_tabs();
+                        }
+                        ScreenInstruction::SwitchTabPrev => {
+                            screen.switch_tab_prev();
+                            command_is_executing.done_updating_tabs();
+                        }
                         ScreenInstruction::CloseTab => {
                             screen.close_tab();
+                            command_is_executing.done_updating_tabs();
                         }
                         ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::GoToTab(tab_index) => {
-                            screen.go_to_tab(tab_index as usize)
+                            screen.go_to_tab(tab_index as usize);
+                            command_is_executing.done_updating_tabs();
                         }
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
+                            command_is_executing.done_updating_tabs();
                         }
                         ScreenInstruction::Exit => {
                             break;
