@@ -171,6 +171,9 @@ impl ClientOsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
+        if self.stdin_commands.lock().unwrap().len() == 1 {
+            std::thread::sleep_ms(100);
+        }
         self.stdin_commands
             .lock()
             .unwrap()
