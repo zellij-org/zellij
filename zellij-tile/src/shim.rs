@@ -45,7 +45,9 @@ pub fn get_tabs() -> Vec<TabInfo> {
     deserialize_from_stdin().unwrap_or_default()
 }
 
-fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
+#[doc(hidden)]
+// FIXME: Make this just return T and do a .unwrap() at the end; also naming?
+pub fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
     serde_json::from_str(&json).ok()

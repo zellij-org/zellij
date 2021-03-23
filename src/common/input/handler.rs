@@ -11,7 +11,7 @@ use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
 use termion::input::TermReadEventsAndRaw;
-use zellij_tile::data::{Help, InputMode};
+use zellij_tile::data::{Event, Help, InputMode, Key};
 
 use super::keybinds::key_to_actions;
 
@@ -61,6 +61,7 @@ impl InputHandler {
             'input_loop: loop {
                 //@@@ I think this should actually just iterate over stdin directly
                 let stdin_buffer = self.os_input.read_from_stdin();
+                // FIXME: Kill me someday (soon)
                 drop(
                     self.send_plugin_instructions
                         .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
@@ -69,6 +70,11 @@ impl InputHandler {
                     match key_result {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
+                                let key = cast_termion_key(key);
+                                drop(
+                                    self.send_plugin_instructions
+                                        .send(PluginInstruction::Update(Event::KeyPress(key))),
+                                );
                                 // FIXME this explicit break is needed because the current test
                                 // framework relies on it to not create dead threads that loop
                                 // and eat up CPUs. Do not remove until the test framework has
@@ -319,4 +325,32 @@ pub fn input_loop(
         send_app_instructions,
     )
     .handle_input();
+}
+
+// FIXME: This is an absolutely cursed function that should be destroyed as soon
+// as an alternative that doesn't touch zellij-tile can be developed...
+fn cast_termion_key(event: termion::event::Key) -> Key {
+    match event {
+        termion::event::Key::Backspace => Key::Backspace,
+        termion::event::Key::Left => Key::Left,
+        termion::event::Key::Right => Key::Right,
+        termion::event::Key::Up => Key::Up,
+        termion::event::Key::Down => Key::Down,
+        termion::event::Key::Home => Key::Home,
+        termion::event::Key::End => Key::End,
+        termion::event::Key::PageUp => Key::PageUp,
+        termion::event::Key::PageDown => Key::PageDown,
+        termion::event::Key::BackTab => Key::BackTab,
+        termion::event::Key::Delete => Key::Delete,
+        termion::event::Key::Insert => Key::Insert,
+        termion::event::Key::F(n) => Key::F(n),
+        termion::event::Key::Char(c) => Key::Char(c),
+        termion::event::Key::Alt(c) => Key::Alt(c),
+        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
+        termion::event::Key::Null => Key::Null,
+        termion::event::Key::Esc => Key::Esc,
+        _ => {
+            unimplemented!("Encountered an unknown key!")
+        }
+    }
 }

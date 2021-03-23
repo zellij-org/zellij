@@ -5,7 +5,6 @@ use super::actions::{Action, Direction};
 use std::collections::HashMap;
 
 use strum::IntoEnumIterator;
-use termion::event::Key;
 use zellij_tile::data::*;
 
 type Keybinds = HashMap<InputMode, ModeKeybinds>;

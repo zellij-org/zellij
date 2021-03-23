@@ -40,7 +40,7 @@ use wasm_vm::{
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::InputMode;
+use zellij_tile::data::{InputMode, Key};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -456,6 +456,33 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .collect();
 
             move || loop {
+                // FIXME: This 100% *must* be destroyed before this makes in into main!!!!!!!!!!!
+                fn cast_termion_key(event: termion::event::Key) -> Key {
+                    match event {
+                        termion::event::Key::Backspace => Key::Backspace,
+                        termion::event::Key::Left => Key::Left,
+                        termion::event::Key::Right => Key::Right,
+                        termion::event::Key::Up => Key::Up,
+                        termion::event::Key::Down => Key::Down,
+                        termion::event::Key::Home => Key::Home,
+                        termion::event::Key::End => Key::End,
+                        termion::event::Key::PageUp => Key::PageUp,
+                        termion::event::Key::PageDown => Key::PageDown,
+                        termion::event::Key::BackTab => Key::BackTab,
+                        termion::event::Key::Delete => Key::Delete,
+                        termion::event::Key::Insert => Key::Insert,
+                        termion::event::Key::F(n) => Key::F(n),
+                        termion::event::Key::Char(c) => Key::Char(c),
+                        termion::event::Key::Alt(c) => Key::Alt(c),
+                        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
+                        termion::event::Key::Null => Key::Null,
+                        termion::event::Key::Esc => Key::Esc,
+                        _ => {
+                            unimplemented!("Encountered an unknown key!")
+                        }
+                    }
+                }
+
                 let (event, mut err_ctx) = receive_plugin_instructions
                     .recv()
                     .expect("failed to receive event on channel");
@@ -522,6 +549,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         pid_tx.send(plugin_id).unwrap();
                         plugin_id += 1;
                     }
+                    PluginInstruction::Update(event) => {
+                        for (instance, plugin_env) in plugin_map.values() {
+                            let update = instance.exports.get_function("update").unwrap();
+
+                            wasi_write_string(
+                                &plugin_env.wasi_env,
+                                &serde_json::to_string(&event).unwrap(),
+                            );
+                            update.call(&[]).unwrap();
+                        }
+                    }
                     PluginInstruction::Render(buf_tx, pid, rows, cols) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
@@ -555,6 +593,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 let handle_key =
                                     instance.exports.get_function("handle_key").unwrap();
                                 for key in input_bytes.keys().flatten() {
+                                    let key = cast_termion_key(key);
                                     wasi_write_string(
                                         &plugin_env.wasi_env,
                                         &serde_json::to_string(&key).unwrap(),
@@ -572,6 +611,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                         .get_function(handler_map.get(&event).unwrap())
                                         .unwrap();
                                     for key in input_bytes.keys().flatten() {
+                                        let key = cast_termion_key(key);
                                         wasi_write_string(
                                             &plugin_env.wasi_env,
                                             &serde_json::to_string(&key).unwrap(),
@@ -589,6 +629,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let handler =
                                 instance.exports.get_function("handle_global_key").unwrap();
                             for key in input_bytes.keys().flatten() {
+                                let key = cast_termion_key(key);
                                 wasi_write_string(
                                     &plugin_env.wasi_env,
                                     &serde_json::to_string(&key).unwrap(),

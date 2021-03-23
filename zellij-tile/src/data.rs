@@ -23,7 +23,7 @@ pub enum Key {
     Esc,
 }
 
-#[derive(Debug, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 pub enum Event {

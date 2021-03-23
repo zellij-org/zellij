@@ -7,6 +7,7 @@ use data::*;
 #[allow(unused_variables)]
 pub trait ZellijTile {
     fn load(&mut self) {}
+    fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
     // FIXME: Everything below this line should be purged
     fn handle_key(&mut self, key: Key) {}
@@ -25,6 +26,15 @@ macro_rules! register_tile {
         fn main() {
             STATE.with(|state| {
                 state.borrow_mut().load();
+            });
+        }
+
+        #[no_mangle]
+        pub fn update() {
+            STATE.with(|state| {
+                state
+                    .borrow_mut()
+                    .update($crate::shim::deserialize_from_stdin().unwrap());
             });
         }
 

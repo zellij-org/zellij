@@ -9,7 +9,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_tile::data::{EventType, TabInfo};
+use zellij_tile::data::{Event, EventType, TabInfo};
 
 use super::{
     input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
@@ -30,6 +30,7 @@ pub enum PluginInputType {
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(Sender<u32>, PathBuf, Vec<NaughtyEventType>),
+    Update(Event),
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Input(PluginInputType, Vec<u8>),           // plugin id, input bytes
     GlobalInput(Vec<u8>),                      // input bytes
