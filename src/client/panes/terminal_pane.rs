@@ -188,7 +188,14 @@ impl Pane for TerminalPane {
         self.max_height
     }
     fn render(&mut self) -> Option<String> {
-        if self.should_render || cfg!(test) {
+        // FIXME:
+        // the below conditional is commented out because it causes several bugs:
+        // 1. When panes are resized or tabs are switched the previous contents of the screen stick
+        //    around
+        // 2. When there are wide characters in a pane, since we don't yet handle them properly,
+        //    the spill over to the pane to the right
+        // if self.should_render || cfg!(test) {
+        if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
