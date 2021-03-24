@@ -57,7 +57,7 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(_) => write!(f, "{}", self.color.unwrap().paint(self.boundary_type)),
+                Some(color) => write!(f, "{}", color.paint(self.boundary_type)),
                 None => write!(f, "{}", self.boundary_type),
             },
         }
@@ -67,7 +67,7 @@ impl Display for BoundarySymbol {
 fn combine_symbols(
     current_symbol: BoundarySymbol,
     next_symbol: BoundarySymbol,
-    input_mode: InputMode,
+    input_mode: Option<InputMode>,
 ) -> Option<BoundarySymbol> {
     let invisible = current_symbol.invisible || next_symbol.invisible;
     let should_be_colored = current_symbol.color.is_some() || next_symbol.color.is_some();
@@ -75,7 +75,7 @@ fn combine_symbols(
     let next_symbol = next_symbol.boundary_type;
     let color = match should_be_colored {
         true => match input_mode {
-            InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
+            Some(InputMode::Normal) | Some(InputMode::Locked) => Some(colors::GREEN),
             _ => Some(colors::WHITE),
         },
         false => None,
@@ -682,7 +682,7 @@ fn combine_symbols(
 fn find_next_symbol(
     first_symbol: BoundarySymbol,
     second_symbol: BoundarySymbol,
-    input_mode: InputMode,
+    input_mode: Option<InputMode>,
 ) -> Option<BoundarySymbol> {
     if let Some(symbol) = combine_symbols(first_symbol, second_symbol, input_mode) {
         Some(symbol)
@@ -769,7 +769,12 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, color: Option<Colour>) {
+    pub fn add_rect(
+        &mut self,
+        rect: &dyn Pane,
+        input_mode: Option<InputMode>,
+        color: Option<Colour>,
+    ) {
         if rect.x() > 0 {
             let boundary_x_coords = rect.x() - 1;
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
