@@ -78,7 +78,7 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
-    /// The [`OsApi`] this [`Screen`] uses.
+    /// The [`ClientOsApi`] this [`Screen`] uses.
     os_api: Box<dyn ClientOsApi>,
     tabname_buf: String,
 }
