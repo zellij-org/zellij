@@ -6,9 +6,9 @@ mod server;
 use client::{boundaries, layout, panes, tab};
 use common::{
     command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
-    ServerInstruction,
 };
 use directories_next::ProjectDirs;
+use server::ServerInstruction;
 
 use structopt::StructOpt;
 
