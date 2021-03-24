@@ -67,19 +67,14 @@ impl Display for BoundarySymbol {
 fn combine_symbols(
     current_symbol: BoundarySymbol,
     next_symbol: BoundarySymbol,
-    input_mode: Option<InputMode>,
 ) -> Option<BoundarySymbol> {
     let invisible = current_symbol.invisible || next_symbol.invisible;
-    let should_be_colored = current_symbol.color.is_some() || next_symbol.color.is_some();
+    let color = match (current_symbol.color.is_some(), next_symbol.color.is_some()) {
+        (true, _) => current_symbol.color,
+        _ => next_symbol.color,
+    };
     let current_symbol = current_symbol.boundary_type;
     let next_symbol = next_symbol.boundary_type;
-    let color = match should_be_colored {
-        true => match input_mode {
-            Some(InputMode::Normal) | Some(InputMode::Locked) => Some(colors::GREEN),
-            _ => Some(colors::WHITE),
-        },
-        false => None,
-    };
     match (current_symbol, next_symbol) {
         (boundary_type::TOP_RIGHT, boundary_type::TOP_RIGHT) => {
             // (┐, ┐) => Some(┐)
@@ -682,12 +677,11 @@ fn combine_symbols(
 fn find_next_symbol(
     first_symbol: BoundarySymbol,
     second_symbol: BoundarySymbol,
-    input_mode: Option<InputMode>,
 ) -> Option<BoundarySymbol> {
-    if let Some(symbol) = combine_symbols(first_symbol, second_symbol, input_mode) {
+    if let Some(symbol) = combine_symbols(first_symbol, second_symbol) {
         Some(symbol)
     } else {
-        combine_symbols(second_symbol, first_symbol, input_mode)
+        combine_symbols(second_symbol, first_symbol)
     }
 }
 
@@ -769,12 +763,14 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(
-        &mut self,
-        rect: &dyn Pane,
-        input_mode: Option<InputMode>,
-        color: Option<Colour>,
-    ) {
+    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, color: Option<Colour>) {
+        let color = match color.is_some() {
+            true => match input_mode {
+                InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
+                _ => Some(colors::WHITE),
+            },
+            false => None,
+        };
         if rect.x() > 0 {
             let boundary_x_coords = rect.x() - 1;
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
@@ -794,9 +790,7 @@ impl Boundaries {
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| {
-                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
-                    })
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -820,9 +814,7 @@ impl Boundaries {
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| {
-                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
-                    })
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -847,9 +839,7 @@ impl Boundaries {
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| {
-                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
-                    })
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
@@ -873,9 +863,7 @@ impl Boundaries {
                 let next_symbol = self
                     .boundary_characters
                     .remove(&coordinates)
-                    .and_then(|current_symbol| {
-                        find_next_symbol(current_symbol, symbol_to_add, input_mode)
-                    })
+                    .and_then(|current_symbol| find_next_symbol(current_symbol, symbol_to_add))
                     .unwrap_or(symbol_to_add);
                 self.boundary_characters.insert(coordinates, next_symbol);
             }

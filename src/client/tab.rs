@@ -68,6 +68,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+    pub input_mode: InputMode,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -192,6 +193,7 @@ impl Tab {
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
+        input_mode: InputMode,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -221,6 +223,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
+            input_mode,
         }
     }
 
@@ -300,7 +303,7 @@ impl Tab {
                 .unwrap();
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
-        self.render(None);
+        self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
         self.close_down_to_max_terminals();
@@ -401,7 +404,7 @@ impl Tab {
                 }
             }
             self.active_terminal = Some(pid);
-            self.render(None);
+            self.render();
         }
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
@@ -460,7 +463,7 @@ impl Tab {
                 }
 
                 self.active_terminal = Some(pid);
-                self.render(None);
+                self.render();
             }
         }
     }
@@ -520,7 +523,7 @@ impl Tab {
                 }
 
                 self.active_terminal = Some(pid);
-                self.render(None);
+                self.render();
             }
         }
     }
@@ -624,14 +627,14 @@ impl Tab {
                     active_terminal.rows() as u16,
                 );
             }
-            self.render(None);
+            self.render();
             self.toggle_fullscreen_is_active();
         }
     }
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
-    pub fn render(&mut self, input_mode: Option<InputMode>) {
+    pub fn render(&mut self) {
         if self.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
@@ -649,8 +652,10 @@ impl Tab {
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
-                    true => boundaries.add_rect(terminal.as_ref(), input_mode, Some(colors::GREEN)),
-                    false => boundaries.add_rect(terminal.as_ref(), input_mode, None),
+                    true => {
+                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
+                    }
+                    false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
                 }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
@@ -1739,7 +1744,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(*first_terminal);
         }
-        self.render(None);
+        self.render();
     }
     pub fn move_focus_left(&mut self) {
         if !self.has_selectable_panes() {
@@ -1769,7 +1774,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render(None);
+        self.render();
     }
     pub fn move_focus_down(&mut self) {
         if !self.has_selectable_panes() {
@@ -1799,7 +1804,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render(None);
+        self.render();
     }
     pub fn move_focus_up(&mut self) {
         if !self.has_selectable_panes() {
@@ -1829,7 +1834,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render(None);
+        self.render();
     }
     pub fn move_focus_right(&mut self) {
         if !self.has_selectable_panes() {
@@ -1859,7 +1864,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render(None);
+        self.render();
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
@@ -2066,7 +2071,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.scroll_up(1);
-            self.render(None);
+            self.render();
         }
     }
     pub fn scroll_active_terminal_down(&mut self) {
@@ -2076,7 +2081,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.scroll_down(1);
-            self.render(None);
+            self.render();
         }
     }
     pub fn clear_active_terminal_scroll(&mut self) {

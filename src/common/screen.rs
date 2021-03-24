@@ -119,6 +119,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
+            self.input_mode,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -217,10 +218,9 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let input_mode = self.input_mode;
         if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_pane().is_some() {
-                active_tab.render(Some(input_mode));
+                active_tab.render();
             } else {
                 self.close_tab();
             }
@@ -264,6 +264,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             None,
+            self.input_mode,
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -310,5 +311,8 @@ impl Screen {
     }
     pub fn change_input_mode(&mut self, input_mode: InputMode) {
         self.input_mode = input_mode;
+        for tab in self.tabs.values_mut() {
+            tab.input_mode = self.input_mode;
+        }
     }
 }
