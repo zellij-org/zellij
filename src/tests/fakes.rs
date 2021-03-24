@@ -7,11 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::common::{
-    ChannelWithContext, ClientInstruction, SenderType, SenderWithContext, ServerInstruction,
-};
+use crate::common::{ChannelWithContext, ClientInstruction, SenderType, SenderWithContext};
 use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
+use crate::server::ServerInstruction;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
@@ -254,8 +253,8 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn send_to_server(&mut self, msg: ServerInstruction) {
-        self.server_sender.send(msg).unwrap();
+    fn server_exit(&mut self) {
+        self.server_sender.send(ServerInstruction::Exit).unwrap();
     }
     fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
         self.server_receiver.lock().unwrap().recv().unwrap()

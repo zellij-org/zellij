@@ -381,6 +381,7 @@ pub enum ServerContext {
     OsApi,
     DoneClosingPane,
     ClosePluginPane,
+    ClientExit,
     Exit,
 }
 
@@ -397,6 +398,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::OsApi(_) => ServerContext::OsApi,
             ServerInstruction::DoneClosingPane => ServerContext::DoneClosingPane,
             ServerInstruction::ClosePluginPane(_) => ServerContext::ClosePluginPane,
+            ServerInstruction::ClientExit => ServerContext::ClientExit,
             ServerInstruction::Exit => ServerContext::Exit,
         }
     }

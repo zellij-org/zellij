@@ -26,7 +26,7 @@ use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
 use crate::layout::Layout;
-use crate::server::start_server;
+use crate::server::{start_server, ServerInstruction};
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
@@ -38,21 +38,7 @@ use wasm_vm::{
     wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
 };
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ServerInstruction {
-    OpenFile(PathBuf),
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
-    NewClient(String),
-    ToPty(PtyInstruction),
-    ToScreen(ScreenInstruction),
-    OsApi(ServerOsApiInstruction),
-    DoneClosingPane,
-    ClosePluginPane(u32),
-    Exit,
-}
-
+/// Instructions sent from server to client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientInstruction {
     ToScreen(ScreenInstruction),
@@ -134,13 +120,7 @@ thread_local!(
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
 
-task_local! {
-    /// A key to some task local storage that holds a representation of the task's call
-    /// stack in the form of an [`ErrorContext`].
-    static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
-}
-
-/// Instructions related to the entire application.
+/// Instructions related to the client-side application.
 #[derive(Clone)]
 pub enum AppInstruction {
     Exit,
@@ -557,7 +537,7 @@ pub fn start(
             AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => break,
             AppInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ServerInstruction::Exit);
+                let _ = os_input.send_to_server(ServerInstruction::ClientExit);
                 let _ = send_screen_instructions.send(ScreenInstruction::Exit);
                 let _ = send_plugin_instructions.send(PluginInstruction::Exit);
                 let _ = screen_thread.join();
@@ -589,7 +569,7 @@ pub fn start(
         }
     }
 
-    let _ = os_input.send_to_server(ServerInstruction::Exit);
+    let _ = os_input.send_to_server(ServerInstruction::ClientExit);
     let _ = send_screen_instructions.send(ScreenInstruction::Exit);
     let _ = send_plugin_instructions.send(PluginInstruction::Exit);
     screen_thread.join().unwrap();

@@ -16,9 +16,10 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
-use crate::common::{ClientInstruction, ServerInstruction};
+use crate::common::ClientInstruction;
 use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
+use crate::server::ServerInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
 
 const IPC_BUFFER_SIZE: u32 = 8192;
@@ -221,8 +222,8 @@ pub trait ServerOsApi: Send + Sync {
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
-    /// Sends a message to the server.
-    fn send_to_server(&mut self, msg: ServerInstruction);
+    /// Sends an `Exit` message to the server router thread.
+    fn server_exit(&mut self);
     /// Receives a message on server-side IPC channel
     fn server_recv(&self) -> (ServerInstruction, ErrorContext);
     /// Sends a message to client
@@ -258,8 +259,8 @@ impl ServerOsApi for ServerOsInputOutput {
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
-    fn send_to_server(&mut self, msg: ServerInstruction) {
-        self.server_sender.send(msg).unwrap();
+    fn server_exit(&mut self) {
+        self.server_sender.send(ServerInstruction::Exit).unwrap();
     }
     fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
         self.server_receiver.lock().unwrap().recv().unwrap()
