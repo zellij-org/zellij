@@ -290,6 +290,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
+                    InputMode::Normal,
                 );
                 loop {
                     let (event, mut err_ctx) = screen
@@ -423,6 +424,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         }
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
+                        }
+                        ScreenInstruction::ChangeInputMode(input_mode) => {
+                            screen.change_input_mode(input_mode);
                         }
                         ScreenInstruction::Quit => {
                             break;

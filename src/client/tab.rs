@@ -1,12 +1,15 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{AppInstruction, SenderWithContext};
+use crate::common::{input::handler::InputMode, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::wasm_vm::{PluginInputType, PluginInstruction};
-use crate::{boundaries::Boundaries, panes::PluginPane};
+use crate::{
+    boundaries::{colors, Boundaries},
+    panes::PluginPane,
+};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
@@ -65,6 +68,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+    pub input_mode: InputMode,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -189,6 +193,7 @@ impl Tab {
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
+        input_mode: InputMode,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -218,6 +223,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
+            input_mode,
         }
     }
 
@@ -645,7 +651,12 @@ impl Tab {
             .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
-                boundaries.add_rect(terminal.as_ref());
+                match self.active_terminal.unwrap() == terminal.pid() {
+                    true => {
+                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
+                    }
+                    false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
+                }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output

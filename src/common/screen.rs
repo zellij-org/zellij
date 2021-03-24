@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use super::{AppInstruction, SenderWithContext};
+use super::{input::handler::InputMode, AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -48,6 +48,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
+    ChangeInputMode(InputMode),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -72,6 +73,7 @@ pub struct Screen {
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
     tabname_buf: String,
+    input_mode: InputMode,
 }
 
 impl Screen {
@@ -84,6 +86,7 @@ impl Screen {
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
+        input_mode: InputMode,
     ) -> Self {
         Screen {
             receiver: receive_screen_instructions,
@@ -96,6 +99,7 @@ impl Screen {
             tabs: BTreeMap::new(),
             os_api,
             tabname_buf: String::new(),
+            input_mode,
         }
     }
 
@@ -115,6 +119,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
+            self.input_mode,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -259,6 +264,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             None,
+            self.input_mode,
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -301,6 +307,12 @@ impl Screen {
             c => {
                 self.tabname_buf.push_str(c);
             }
+        }
+    }
+    pub fn change_input_mode(&mut self, input_mode: InputMode) {
+        self.input_mode = input_mode;
+        for tab in self.tabs.values_mut() {
+            tab.input_mode = self.input_mode;
         }
     }
 }

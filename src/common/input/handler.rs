@@ -134,6 +134,9 @@ impl InputHandler {
                     input_mode: self.mode,
                 });
                 self.send_screen_instructions
+                    .send(ScreenInstruction::ChangeInputMode(self.mode))
+                    .unwrap();
+                self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
             }
