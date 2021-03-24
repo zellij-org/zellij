@@ -170,7 +170,7 @@ impl ClientOsApi for FakeInputOutput {
             }
         }
         if self.stdin_commands.lock().unwrap().len() == 1 {
-            std::thread::sleep_ms(100);
+            std::thread::sleep(Duration::from_millis(100));
         }
         self.stdin_commands
             .lock()

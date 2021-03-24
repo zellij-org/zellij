@@ -16,10 +16,12 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
-use crate::common::{ClientInstruction, ServerInstruction, IPC_BUFFER_SIZE};
+use crate::common::{ClientInstruction, ServerInstruction};
 use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
+
+const IPC_BUFFER_SIZE: u32 = 8192;
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -157,6 +159,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
     (pid_primary, pid_secondary)
 }
 
+/// Sends messages on an [ipmpsc](ipmpsc) channel, along with an [`ErrorContext`].
 #[derive(Clone)]
 struct IpcSenderWithContext<T: Serialize> {
     err_ctx: ErrorContext,
@@ -165,6 +168,7 @@ struct IpcSenderWithContext<T: Serialize> {
 }
 
 impl<T: Serialize> IpcSenderWithContext<T> {
+    /// Returns a sender to the given [SharedRingBuffer](ipmpsc::SharedRingBuffer).
     fn new(buffer: SharedRingBuffer) -> Self {
         Self {
             err_ctx: ErrorContext::new(),
@@ -173,10 +177,17 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         }
     }
 
+    /// Updates this [`IpcSenderWithContext`]'s [`ErrorContext`]. This is the way one adds
+    /// a call to the error context.
+    ///
+    /// Updating [`ErrorContext`]s works in this way so that these contexts are only ever
+    /// allocated on the stack (which is thread-specific), and not on the heap.
     fn update(&mut self, ctx: ErrorContext) {
         self.err_ctx = ctx;
     }
 
+    /// Sends an event, along with the current [`ErrorContext`], on this
+    /// [`IpcSenderWithContext`]'s channel.
     fn send(&mut self, msg: T) -> ipmpsc::Result<()> {
         self.sender.send(&(msg, self.err_ctx))
     }
@@ -208,7 +219,7 @@ pub trait ServerOsApi: Send + Sync {
     // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
     // called `pid` and of type `pid_t`, and not `fd`)
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
-    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
+    /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     /// Sends a message to the server.
     fn send_to_server(&mut self, msg: ServerInstruction);
@@ -301,8 +312,8 @@ pub enum ServerOsApiInstruction {
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     server_sender: IpcSenderWithContext<ServerInstruction>,
-    client_buffer_path: String,
-    client_receiver: Arc<Mutex<IpcReceiver>>,
+    // This is used by router thread only hence lock resolves immediately.
+    client_receiver: Option<Arc<Mutex<IpcReceiver>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -320,15 +331,16 @@ pub trait ClientOsApi: Send + Sync {
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns the raw contents of standard input.
     fn read_from_stdin(&self) -> Vec<u8>;
-    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
+    /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
     fn send_to_server(&mut self, msg: ServerInstruction);
     /// Update ErrorContext of senders
     fn update_senders(&mut self, new_ctx: ErrorContext);
     /// Receives a message on client-side IPC channel
+    // This should be called from the client-side router thread only.
     fn client_recv(&self) -> (ClientInstruction, ErrorContext);
-    /// Notify server of new client
+    /// Setup the client IpcChannel and notify server of new client
     fn notify_server(&mut self);
 }
 
@@ -366,12 +378,21 @@ impl ClientOsApi for ClientOsInputOutput {
         self.server_sender.update(new_ctx);
     }
     fn notify_server(&mut self) {
-        self.send_to_server(ServerInstruction::NewClient(
-            self.client_buffer_path.clone(),
-        ));
+        let (client_buffer_path, client_buffer) =
+            SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
+        self.client_receiver = Some(Arc::new(Mutex::new(IpcReceiver::new(
+            client_buffer.clone(),
+        ))));
+        self.send_to_server(ServerInstruction::NewClient(client_buffer_path));
     }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
-        self.client_receiver.lock().unwrap().recv().unwrap()
+        self.client_receiver
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .recv()
+            .unwrap()
     }
 }
 
@@ -386,13 +407,9 @@ pub fn get_client_os_input() -> ClientOsInputOutput {
     let orig_termios = Arc::new(Mutex::new(current_termios));
     let server_buffer = SharedRingBuffer::open(ZELLIJ_IPC_PIPE).unwrap();
     let server_sender = IpcSenderWithContext::new(server_buffer);
-    let (client_buffer_path, client_buffer) =
-        SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
-    let client_receiver = Arc::new(Mutex::new(IpcReceiver::new(client_buffer.clone())));
     ClientOsInputOutput {
         orig_termios,
         server_sender,
-        client_buffer_path,
-        client_receiver,
+        client_receiver: None,
     }
 }

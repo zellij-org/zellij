@@ -38,8 +38,6 @@ use wasm_vm::{
     wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
 };
 
-pub const IPC_BUFFER_SIZE: u32 = 8192;
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     OpenFile(PathBuf),
@@ -168,7 +166,7 @@ impl From<ClientInstruction> for AppInstruction {
     }
 }
 
-/// Start Zellij with the specified [`OsApi`] and command-line arguments.
+/// Start Zellij with the specified [`ClientOsApi`], [`ServerOsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
 pub fn start(
     mut os_input: Box<dyn ClientOsApi>,
