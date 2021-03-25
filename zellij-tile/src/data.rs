@@ -27,7 +27,7 @@ pub enum Key {
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 pub enum Event {
-    ModeUpdate(Help), // FIXME: Rename the `Help` struct
+    ModeUpdate(ModeInfo),
     TabUpdate(TabInfo),
     KeyPress(Key),
 }
@@ -62,7 +62,7 @@ impl Default for InputMode {
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Help {
+pub struct ModeInfo {
     pub mode: InputMode,
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>

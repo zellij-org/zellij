@@ -97,7 +97,7 @@ fn select_pane_shortcut(is_first_shortcut: bool) -> LinePart {
     }
 }
 
-fn full_shortcut_list(help: &Help) -> LinePart {
+fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => locked_interface_indication(),
@@ -116,7 +116,7 @@ fn full_shortcut_list(help: &Help) -> LinePart {
     }
 }
 
-fn shortened_shortcut_list(help: &Help) -> LinePart {
+fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => locked_interface_indication(),
@@ -135,7 +135,7 @@ fn shortened_shortcut_list(help: &Help) -> LinePart {
     }
 }
 
-fn best_effort_shortcut_list(help: &Help, max_len: usize) -> LinePart {
+fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => {
@@ -169,7 +169,7 @@ fn best_effort_shortcut_list(help: &Help, max_len: usize) -> LinePart {
     }
 }
 
-pub fn keybinds(help: &Help, max_width: usize) -> LinePart {
+pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
     let full_shortcut_list = full_shortcut_list(help);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;

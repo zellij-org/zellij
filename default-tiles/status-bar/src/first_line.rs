@@ -287,7 +287,7 @@ pub fn superkey() -> LinePart {
     }
 }
 
-pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
+pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
     match &help.mode {
         InputMode::Locked => key_indicators(
             max_len,

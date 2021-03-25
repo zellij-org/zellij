@@ -11,7 +11,7 @@ use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{Help, InputMode, Key};
+use zellij_tile::data::{InputMode, Key, ModeInfo};
 
 use super::keybinds::key_to_actions;
 
@@ -273,7 +273,7 @@ impl InputHandler {
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_help(mode: InputMode) -> Help {
+pub fn get_help(mode: InputMode) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}
@@ -302,7 +302,7 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
-    Help { mode, keybinds }
+    ModeInfo { mode, keybinds }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts

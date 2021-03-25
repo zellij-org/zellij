@@ -36,7 +36,7 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(selectable) };
 }
 
-pub fn get_help() -> Help {
+pub fn get_help() -> ModeInfo {
     unsafe { host_get_help() };
     deserialize_from_stdin().unwrap_or_default()
 }
