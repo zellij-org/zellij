@@ -15,6 +15,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
+use xrdb::Colors;
+use colors_transform::{Rgb, Color};
+use ansi_term::Colour::RGB;
 
 use crate::panes::PaneId;
 use directories_next::ProjectDirs;
@@ -146,6 +149,64 @@ pub enum AppInstruction {
     SetState(AppState),
     Exit,
     Error(String),
+}
+
+pub mod colors {
+    use ansi_term::Colour::{self, Fixed};
+    pub const WHITE: Colour = Fixed(255);
+    pub const GREEN: Colour = Fixed(154);
+    pub const GRAY: Colour = Fixed(238);
+}
+
+#[derive(Clone, Copy)]
+pub struct Palette {
+    pub black: ansi_term::Color,
+    pub red: ansi_term::Color,
+    pub green: ansi_term::Color,
+    pub yellow: ansi_term::Color,
+    pub blue: ansi_term::Color,
+    pub magenta: ansi_term::Color,
+    pub cyan: ansi_term::Color,
+    pub white: ansi_term::Color,
+}
+
+impl Palette {
+    pub fn new() -> Self {
+       let palette = match Colors::new("xresources") {
+           Some(colors) => {
+            let colors: Vec<ansi_term::Color> = colors.colors.iter().map(|c| {
+                let c = c.clone();
+                let imm_str = &c.unwrap();
+                let hex_str: &str = &imm_str;
+                let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
+                RGB(rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
+            }).collect();
+            Self {
+                black: colors[0],
+                red: colors[1],
+                green: colors[2],
+                yellow: colors[3],
+                blue: colors[4],
+                magenta: colors[5],
+                cyan: colors[6],
+                white: colors[7]
+            }
+           },
+           None => {
+               Self {
+                black: colors::GRAY,
+                red: colors::GRAY,
+                green: colors::GREEN,
+                yellow: colors::GRAY,
+                blue: colors::GRAY,
+                magenta: colors::GRAY,
+                cyan: colors::GRAY,
+                white: colors::WHITE
+               }
+           }
+       };
+       palette
+    }
 }
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
@@ -280,7 +341,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
-
+            let colors = Palette::new();
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
@@ -291,6 +352,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     os_input,
                     max_panes,
                     InputMode::Normal,
+                    colors
                 );
                 loop {
                     let (event, mut err_ctx) = screen

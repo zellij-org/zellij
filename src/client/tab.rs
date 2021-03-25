@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{input::handler::InputMode, AppInstruction, SenderWithContext};
+use crate::common::{AppInstruction, Palette, SenderWithContext, input::handler::InputMode};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -69,6 +69,7 @@ pub struct Tab {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
     pub input_mode: InputMode,
+    pub colors: Palette
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -194,6 +195,7 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         input_mode: InputMode,
+        colors: Palette
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -224,6 +226,7 @@ impl Tab {
             send_plugin_instructions,
             expansion_boundary: None,
             input_mode,
+            colors
         }
     }
 
@@ -653,7 +656,7 @@ impl Tab {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
                     true => {
-                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
+                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(self.colors))
                     }
                     false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
                 }

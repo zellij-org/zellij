@@ -1,4 +1,4 @@
-use crate::{common::input::handler::InputMode, tab::Pane};
+use crate::{common::{Palette, input::handler::InputMode}, tab::Pane};
 use ansi_term::Colour;
 use std::collections::HashMap;
 
@@ -763,11 +763,11 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, color: Option<Colour>) {
-        let color = match color.is_some() {
+    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, palette: Option<Palette>) {
+        let color = match palette.is_some() {
             true => match input_mode {
-                InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
-                _ => Some(colors::WHITE),
+                InputMode::Normal | InputMode::Locked => Some(palette.unwrap().green),
+                _ => Some(palette.unwrap().white),
             },
             false => None,
         };

@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use super::{input::handler::InputMode, AppInstruction, SenderWithContext};
+use super::{AppInstruction, Palette, SenderWithContext, input::handler::InputMode};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -74,6 +74,7 @@ pub struct Screen {
     os_api: Box<dyn OsApi>,
     tabname_buf: String,
     input_mode: InputMode,
+    colors: Palette
 }
 
 impl Screen {
@@ -87,6 +88,7 @@ impl Screen {
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
         input_mode: InputMode,
+        colors: Palette
     ) -> Self {
         Screen {
             receiver: receive_screen_instructions,
@@ -100,6 +102,7 @@ impl Screen {
             os_api,
             tabname_buf: String::new(),
             input_mode,
+            colors
         }
     }
 
@@ -120,6 +123,7 @@ impl Screen {
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.input_mode,
+            self.colors
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -265,6 +269,7 @@ impl Screen {
             self.max_panes,
             None,
             self.input_mode,
+            self.colors
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
