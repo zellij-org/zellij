@@ -51,8 +51,13 @@ impl ZellijTile for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
-        self.mode = BarMode::Normal;
-        self.new_name = String::new();
+        subscribe(&[EventType::TabUpdate]);
+    }
+
+    fn update(&mut self, event: Event) {
+        if let Event::TabUpdate(tabs) = event {
+            self.tabs = tabs;
+        }
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
@@ -82,10 +87,6 @@ impl ZellijTile for State {
             s = format!("{}{}", s, bar_part.part);
         }
         println!("{}\u{1b}[48;5;238m\u{1b}[0K", s);
-    }
-
-    fn update_tabs(&mut self) {
-        self.tabs = get_tabs();
     }
 
     fn handle_tab_rename_keypress(&mut self, key: Key) {

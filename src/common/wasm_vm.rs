@@ -6,7 +6,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_tile::data::{Event, EventType, TabInfo};
+use zellij_tile::data::{Event, EventType};
 
 use super::{
     pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
@@ -29,7 +29,6 @@ pub enum PluginInstruction {
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Input(PluginInputType, Vec<u8>), // plugin id, input bytes
     Unload(u32),
-    UpdateTabs(Vec<TabInfo>), // num tabs, active tab
     Quit,
 }
 

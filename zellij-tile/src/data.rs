@@ -28,7 +28,7 @@ pub enum Key {
 #[strum_discriminants(name(EventType))]
 pub enum Event {
     ModeUpdate(ModeInfo),
-    TabUpdate(TabInfo),
+    TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
 }
 

@@ -524,7 +524,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let subs = plugin_env.subscriptions.lock().unwrap();
                             // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                             let event_type = EventType::from_str(&event.to_string()).unwrap();
-                            if pid.is_none() || pid == Some(i) && subs.contains(&event_type) {
+                            if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
                                 let update = instance.exports.get_function("update").unwrap();
                                 wasi_write_string(
                                     &plugin_env.wasi_env,
@@ -545,20 +545,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             .unwrap();
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
-                    }
-                    PluginInstruction::UpdateTabs(mut tabs) => {
-                        for (instance, plugin_env) in plugin_map.values() {
-                            if !plugin_env.events.contains(&NaughtyEventType::Tab) {
-                                continue;
-                            }
-                            let handler = instance.exports.get_function("update_tabs").unwrap();
-                            tabs.sort_by(|a, b| a.position.cmp(&b.position));
-                            wasi_write_string(
-                                &plugin_env.wasi_env,
-                                &serde_json::to_string(&tabs).unwrap(),
-                            );
-                            handler.call(&[]).unwrap();
-                        }
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(input_type, input_bytes) => {

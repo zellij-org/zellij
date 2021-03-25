@@ -36,10 +36,6 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(selectable) };
 }
 
-pub fn get_tabs() -> Vec<TabInfo> {
-    deserialize_from_stdin().unwrap_or_default()
-}
-
 #[doc(hidden)]
 // FIXME: Make this just return T and do a .unwrap() at the end; also naming?
 pub fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {

@@ -13,7 +13,7 @@ use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
-use zellij_tile::data::{InputMode, TabInfo};
+use zellij_tile::data::{Event, InputMode, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -282,7 +282,7 @@ impl Screen {
             });
         }
         self.send_plugin_instructions
-            .send(PluginInstruction::UpdateTabs(tab_data))
+            .send(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
             .unwrap();
     }
 

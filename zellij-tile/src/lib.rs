@@ -10,7 +10,6 @@ pub trait ZellijTile {
     fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
     // FIXME: Everything below this line should be purged
-    fn update_tabs(&mut self) {}
     fn handle_tab_rename_keypress(&mut self, key: Key) {}
 }
 
@@ -41,13 +40,6 @@ macro_rules! register_tile {
             STATE.with(|state| {
                 state.borrow_mut().render(rows as usize, cols as usize);
             });
-        }
-
-        #[no_mangle]
-        pub fn update_tabs() {
-            STATE.with(|state| {
-                state.borrow_mut().update_tabs();
-            })
         }
 
         #[no_mangle]
