@@ -1,6 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+use crate::boundaries::colors;
 use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
@@ -14,7 +15,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::Event;
+use zellij_tile::data::{Event, InputMode};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -65,6 +66,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+    pub input_mode: InputMode,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -181,6 +183,7 @@ impl Tab {
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
+        input_mode: InputMode,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -210,6 +213,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
+            input_mode,
         }
     }
 
@@ -636,7 +640,12 @@ impl Tab {
             .expect("cannot write to stdout");
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
-                boundaries.add_rect(terminal.as_ref());
+                match self.active_terminal.unwrap() == terminal.pid() {
+                    true => {
+                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
+                    }
+                    false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
+                }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output

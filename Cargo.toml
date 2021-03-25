@@ -13,6 +13,7 @@ publish = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ansi_term = "0.12.1"
 backtrace = "0.3.55"
 bincode = "1.3.1"
 directories-next = "2.0"

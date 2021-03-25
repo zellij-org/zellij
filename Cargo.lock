@@ -2244,6 +2244,7 @@ dependencies = [
 name = "zellij"
 version = "0.2.1"
 dependencies = [
+ "ansi_term 0.12.1",
  "async-std",
  "backtrace",
  "bincode",
