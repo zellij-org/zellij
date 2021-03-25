@@ -9,10 +9,10 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
-use std::{cell::RefCell, sync::mpsc::TrySendError};
 use std::{collections::HashMap, fs};
 use std::{
     collections::HashSet,
@@ -49,25 +49,6 @@ pub enum ApiCommand {
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
-}
-// FIXME: It would be good to add some more things to this over time
-#[derive(Debug, Clone, Default)]
-pub struct AppState {
-    pub input_mode: InputMode,
-}
-
-// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
-// from self instead of being explicitly passed here
-pub fn update_state(
-    app_tx: &SenderWithContext<AppInstruction>,
-    update_fn: impl FnOnce(AppState) -> AppState,
-) {
-    let (state_tx, state_rx) = mpsc::channel();
-
-    drop(app_tx.send(AppInstruction::GetState(state_tx)));
-    let state = state_rx.recv().unwrap();
-
-    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
@@ -112,19 +93,6 @@ impl<T: Clone> SenderWithContext<T> {
         }
     }
 
-    /// Attempts to send an event on this sender's channel, terminating instead of blocking
-    /// if the event could not be sent (buffer full or connection closed).
-    ///
-    /// This can only be called on [`SyncSender`](SenderType::SyncSender)s, and will
-    /// panic if called on an asynchronous [`Sender`](SenderType::Sender).
-    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
-        if let SenderType::SyncSender(ref s) = self.sender {
-            s.try_send((event, self.err_ctx))
-        } else {
-            panic!("try_send can only be called on SyncSenders!")
-        }
-    }
-
     /// Updates this [`SenderWithContext`]'s [`ErrorContext`]. This is the way one adds
     /// a call to the error context.
     ///
@@ -147,8 +115,6 @@ thread_local!(
 /// Instructions related to the entire application.
 #[derive(Clone)]
 pub enum AppInstruction {
-    GetState(mpsc::Sender<AppState>),
-    SetState(AppState),
     Exit,
     Error(String),
 }
@@ -162,7 +128,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
         .unwrap();
-    let mut app_state = AppState::default();
 
     let command_is_executing = CommandIsExecuting::new();
 
@@ -715,8 +680,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         send_screen_instructions.update(err_ctx);
         send_pty_instructions.update(err_ctx);
         match app_instruction {
-            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
-            AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => {
                 break;
             }

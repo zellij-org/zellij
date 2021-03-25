@@ -36,11 +36,6 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(selectable) };
 }
 
-pub fn get_help() -> ModeInfo {
-    unsafe { host_get_help() };
-    deserialize_from_stdin().unwrap_or_default()
-}
-
 pub fn get_tabs() -> Vec<TabInfo> {
     deserialize_from_stdin().unwrap_or_default()
 }
@@ -61,5 +56,4 @@ extern "C" {
     fn host_set_max_height(max_height: i32);
     fn host_set_selectable(selectable: i32);
     fn host_set_invisible_borders(invisible_borders: i32);
-    fn host_get_help();
 }

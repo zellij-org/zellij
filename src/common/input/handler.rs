@@ -2,7 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
-use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
+use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
@@ -11,7 +11,7 @@ use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{InputMode, Key, ModeInfo};
+use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
 use super::keybinds::key_to_actions;
 
@@ -128,11 +128,14 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                update_state(&self.send_app_instructions, |_| AppState {
-                    input_mode: self.mode,
-                });
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Update(
+                        None,
+                        Event::ModeUpdate(get_mode_info(mode)),
+                    ))
+                    .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeInputMode(self.mode))
+                    .send(ScreenInstruction::ChangeInputMode(mode))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -273,7 +276,7 @@ impl InputHandler {
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_help(mode: InputMode) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}

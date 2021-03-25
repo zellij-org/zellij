@@ -2,18 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     path::PathBuf,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
+    sync::{mpsc::Sender, Arc, Mutex},
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, TabInfo};
 
 use super::{
-    input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
-    PaneId, SenderWithContext,
+    pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
 };
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
@@ -59,7 +55,6 @@ pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
             "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
-            "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
         }
     }
 }
@@ -115,21 +110,6 @@ fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
             invisible_borders,
         ))
         .unwrap()
-}
-
-fn host_get_help(plugin_env: &PluginEnv) {
-    let (state_tx, state_rx) = channel();
-    // FIXME: If I changed the application so that threads were sent the termination
-    // signal and joined one at a time, there would be an order to shutdown, so I
-    // could get rid of this .is_ok() check and the .try_send()
-    if plugin_env
-        .send_app_instructions
-        .try_send(AppInstruction::GetState(state_tx))
-        .is_ok()
-    {
-        let help = get_help(state_rx.recv().unwrap().input_mode);
-        wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
-    }
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

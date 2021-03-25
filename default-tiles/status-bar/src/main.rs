@@ -23,7 +23,9 @@ static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
 
 #[derive(Default)]
-struct State {}
+struct State {
+    mode_info: ModeInfo,
+}
 
 register_tile!(State);
 
@@ -44,15 +46,21 @@ impl ZellijTile for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(2);
+        subscribe(&[EventType::ModeUpdate]);
+    }
+
+    fn update(&mut self, event: Event) {
+        if let Event::ModeUpdate(mode_info) = event {
+            self.mode_info = mode_info;
+        }
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let help = get_help();
         let superkey = superkey();
-        let ctrl_keys = ctrl_keys(&help, cols - superkey.len);
+        let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = keybinds(&help, cols);
+        let second_line = keybinds(&self.mode_info, cols);
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [48;5;16m is black background, [0K is so that it fills the rest of the line
