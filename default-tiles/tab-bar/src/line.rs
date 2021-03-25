@@ -130,7 +130,7 @@ fn add_next_tabs_msg(
 }
 
 fn tab_line_prefix() -> LinePart {
-    let prefix_text = format!(" Zellij ");
+    let prefix_text = " Zellij ".to_string();
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
     LinePart {
