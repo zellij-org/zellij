@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     path::PathBuf,
@@ -12,22 +11,11 @@ use super::{
     pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
 };
 
-#[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
-pub enum NaughtyEventType {
-    Tab,
-}
-
-#[derive(Clone, Debug)]
-pub enum PluginInputType {
-    Event(NaughtyEventType),
-}
-
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Sender<u32>, PathBuf, Vec<NaughtyEventType>),
+    Load(Sender<u32>, PathBuf),
     Update(Option<u32>, Event), // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Input(PluginInputType, Vec<u8>), // plugin id, input bytes
     Unload(u32),
     Quit,
 }
@@ -40,7 +28,6 @@ pub struct PluginEnv {
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
-    pub events: Vec<NaughtyEventType>, // FIXME: Murder this very soon (should not survive into main)
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------

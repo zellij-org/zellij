@@ -3,9 +3,7 @@ use std::{io, path::Path};
 
 use crate::data::*;
 
-pub fn get_key() -> Key {
-    deserialize_from_stdin().unwrap()
-}
+// Subscription Handling
 
 pub fn subscribe(event_types: &[EventType]) {
     println!("{}", serde_json::to_string(event_types).unwrap());
@@ -17,31 +15,34 @@ pub fn unsubscribe(event_types: &[EventType]) {
     unsafe { host_unsubscribe() };
 }
 
-pub fn open_file(path: &Path) {
-    println!("{}", path.to_string_lossy());
-    unsafe { host_open_file() };
-}
+// Plugin Settings
 
 pub fn set_max_height(max_height: i32) {
     unsafe { host_set_max_height(max_height) };
 }
 
 pub fn set_invisible_borders(invisible_borders: bool) {
-    let invisible_borders = if invisible_borders { 1 } else { 0 };
-    unsafe { host_set_invisible_borders(invisible_borders) };
+    unsafe { host_set_invisible_borders(if invisible_borders { 1 } else { 0 }) };
 }
 
 pub fn set_selectable(selectable: bool) {
-    let selectable = if selectable { 1 } else { 0 };
-    unsafe { host_set_selectable(selectable) };
+    unsafe { host_set_selectable(if selectable { 1 } else { 0 }) };
 }
 
+// Host Functions
+
+pub fn open_file(path: &Path) {
+    println!("{}", path.to_string_lossy());
+    unsafe { host_open_file() };
+}
+
+// Internal Functions
+
 #[doc(hidden)]
-// FIXME: Make this just return T and do a .unwrap() at the end; also naming?
-pub fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
+pub fn object_from_stdin<T: DeserializeOwned>() -> T {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
-    serde_json::from_str(&json).ok()
+    serde_json::from_str(&json).unwrap()
 }
 
 #[link(wasm_import_module = "zellij")]

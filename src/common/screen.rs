@@ -74,7 +74,6 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
-    tabname_buf: String,
     input_mode: InputMode,
 }
 
@@ -100,7 +99,6 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
-            tabname_buf: String::new(),
             input_mode,
         }
     }
@@ -288,25 +286,20 @@ impl Screen {
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>) {
         let s = str::from_utf8(&buf).unwrap();
+        let active_tab = self.get_active_tab_mut().unwrap();
         match s {
             "\0" => {
-                self.tabname_buf = String::new();
-            }
-            "\n" => {
-                let new_name = self.tabname_buf.clone();
-                let active_tab = self.get_active_tab_mut().unwrap();
-                active_tab.name = new_name;
-                self.update_tabs();
-                self.render();
+                active_tab.name = String::new();
             }
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
-                self.tabname_buf.pop();
+                active_tab.name.pop();
             }
             c => {
-                self.tabname_buf.push_str(c);
+                active_tab.name.push_str(c);
             }
         }
+        self.update_tabs();
     }
     pub fn change_input_mode(&mut self, input_mode: InputMode) {
         self.input_mode = input_mode;

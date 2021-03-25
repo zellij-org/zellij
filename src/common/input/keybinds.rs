@@ -226,10 +226,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> ModeKeybinds {
             defaults.insert(Key::Up, vec![Action::ScrollUp]);
         }
         InputMode::RenameTab => {
-            defaults.insert(
-                Key::Char('\n'),
-                vec![Action::SaveTabName, Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],

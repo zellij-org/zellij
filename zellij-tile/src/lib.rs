@@ -9,8 +9,6 @@ pub trait ZellijTile {
     fn load(&mut self) {}
     fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
-    // FIXME: Everything below this line should be purged
-    fn handle_tab_rename_keypress(&mut self, key: Key) {}
 }
 
 #[macro_export]
@@ -29,9 +27,7 @@ macro_rules! register_tile {
         #[no_mangle]
         pub fn update() {
             STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .update($crate::shim::deserialize_from_stdin().unwrap());
+                state.borrow_mut().update($crate::shim::object_from_stdin());
             });
         }
 
@@ -40,15 +36,6 @@ macro_rules! register_tile {
             STATE.with(|state| {
                 state.borrow_mut().render(rows as usize, cols as usize);
             });
-        }
-
-        #[no_mangle]
-        pub fn handle_tab_rename_keypress() {
-            STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .handle_tab_rename_keypress($crate::shim::get_key());
-            })
         }
     };
 }

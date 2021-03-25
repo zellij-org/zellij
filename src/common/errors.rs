@@ -282,7 +282,6 @@ pub enum PluginContext {
     Load,
     Update,
     Render,
-    Input,
     Unload,
     Quit,
 }
@@ -293,7 +292,6 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Render(..) => PluginContext::Render,
-            PluginInstruction::Input(..) => PluginContext::Input,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
         }

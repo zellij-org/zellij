@@ -12,23 +12,10 @@ pub struct LinePart {
     len: usize,
 }
 
-#[derive(PartialEq)]
-enum BarMode {
-    Normal,
-    Rename,
-}
-
-impl Default for BarMode {
-    fn default() -> Self {
-        BarMode::Normal
-    }
-}
-
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
-    mode: BarMode,
-    new_name: String,
+    mode: InputMode,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -51,12 +38,14 @@ impl ZellijTile for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
-        subscribe(&[EventType::TabUpdate]);
+        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
     }
 
     fn update(&mut self, event: Event) {
-        if let Event::TabUpdate(tabs) = event {
-            self.tabs = tabs;
+        match event {
+            Event::ModeUpdate(mode_info) => self.mode = mode_info.mode,
+            Event::TabUpdate(tabs) => self.tabs = tabs,
+            _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
     }
 
@@ -68,11 +57,9 @@ impl ZellijTile for State {
         let mut active_tab_index = 0;
         for t in self.tabs.iter_mut() {
             let mut tabname = t.name.clone();
-            if t.active && self.mode == BarMode::Rename {
-                if self.new_name.is_empty() {
+            if t.active && self.mode == InputMode::RenameTab {
+                if tabname.is_empty() {
                     tabname = String::from("Enter name...");
-                } else {
-                    tabname = self.new_name.clone();
                 }
                 active_tab_index = t.position;
             } else if t.active {
@@ -87,20 +74,5 @@ impl ZellijTile for State {
             s = format!("{}{}", s, bar_part.part);
         }
         println!("{}\u{1b}[48;5;238m\u{1b}[0K", s);
-    }
-
-    fn handle_tab_rename_keypress(&mut self, key: Key) {
-        self.mode = BarMode::Rename;
-        match key {
-            Key::Char('\n') | Key::Esc => {
-                self.mode = BarMode::Normal;
-                self.new_name.clear();
-            }
-            Key::Char(c) => self.new_name = format!("{}{}", self.new_name, c),
-            Key::Backspace | Key::Delete => {
-                self.new_name.pop();
-            }
-            _ => {}
-        }
     }
 }

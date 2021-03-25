@@ -7,7 +7,7 @@ use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::wasm_vm::{NaughtyEventType, PluginInputType, PluginInstruction};
+use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
@@ -66,11 +66,6 @@ impl InputHandler {
                         Ok((event, raw_bytes)) => match event {
                             termion::event::Event::Key(key) => {
                                 let key = cast_termion_key(key);
-                                // FIXME: This is a bit of a hack to get resizing to work!
-                                drop(
-                                    self.send_screen_instructions
-                                        .send(ScreenInstruction::Render),
-                                );
                                 // FIXME this explicit break is needed because the current test
                                 // framework relies on it to not create dead threads that loop
                                 // and eat up CPUs. Do not remove until the test framework has
@@ -237,25 +232,8 @@ impl InputHandler {
                     .unwrap();
             }
             Action::TabNameInput(c) => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Event(NaughtyEventType::Tab),
-                        c.clone(),
-                    ))
-                    .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::UpdateTabName(c))
-                    .unwrap();
-            }
-            Action::SaveTabName => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Event(NaughtyEventType::Tab),
-                        vec![b'\n'],
-                    ))
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabName(vec![b'\n']))
                     .unwrap();
             }
             Action::NoOp => {}

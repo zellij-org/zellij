@@ -10,7 +10,7 @@ pub mod utils;
 pub mod wasm_vm;
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::{collections::HashMap, fs};
@@ -32,16 +32,12 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
-use termion::input::TermRead;
-use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
+use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::PluginEnv;
-use wasm_vm::{
-    wasi_stdout, wasi_write_string, zellij_imports, NaughtyEventType, PluginInputType,
-    PluginInstruction,
-};
+use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, InputMode, Key};
+use zellij_tile::data::{EventType, InputMode};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -352,8 +348,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .get_active_tab_mut()
                                 .unwrap()
                                 .set_pane_selectable(id, selectable);
-                            // FIXME: Is this needed?
-                            screen.render();
                         }
                         ScreenInstruction::SetMaxHeight(id, max_height) => {
                             screen
@@ -417,42 +411,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
-            let handler_map: HashMap<NaughtyEventType, String> = [(
-                NaughtyEventType::Tab,
-                "handle_tab_rename_keypress".to_string(),
-            )]
-            .iter()
-            .cloned()
-            .collect();
-
             move || loop {
-                // FIXME: This 100% *must* be destroyed before this makes in into main!!!!!!!!!!!
-                fn cast_termion_key(event: termion::event::Key) -> Key {
-                    match event {
-                        termion::event::Key::Backspace => Key::Backspace,
-                        termion::event::Key::Left => Key::Left,
-                        termion::event::Key::Right => Key::Right,
-                        termion::event::Key::Up => Key::Up,
-                        termion::event::Key::Down => Key::Down,
-                        termion::event::Key::Home => Key::Home,
-                        termion::event::Key::End => Key::End,
-                        termion::event::Key::PageUp => Key::PageUp,
-                        termion::event::Key::PageDown => Key::PageDown,
-                        termion::event::Key::BackTab => Key::BackTab,
-                        termion::event::Key::Delete => Key::Delete,
-                        termion::event::Key::Insert => Key::Insert,
-                        termion::event::Key::F(n) => Key::F(n),
-                        termion::event::Key::Char(c) => Key::Char(c),
-                        termion::event::Key::Alt(c) => Key::Alt(c),
-                        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
-                        termion::event::Key::Null => Key::Null,
-                        termion::event::Key::Esc => Key::Esc,
-                        _ => {
-                            unimplemented!("Encountered an unknown key!")
-                        }
-                    }
-                }
-
                 let (event, mut err_ctx) = receive_plugin_instructions
                     .recv()
                     .expect("failed to receive event on channel");
@@ -461,18 +420,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 send_pty_instructions.update(err_ctx);
                 send_app_instructions.update(err_ctx);
                 match event {
-                    PluginInstruction::Load(pid_tx, path, events) => {
+                    PluginInstruction::Load(pid_tx, path) => {
                         let project_dirs =
                             ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
                         let plugin_dir = project_dirs.data_dir().join("plugins/");
-                        // FIXME: This really shouldn't need to exist anymore, let's get rid of it!
-                        let root_plugin_dir = Path::new(ZELLIJ_ROOT_PLUGIN_DIR);
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
-                            .or_else(|_| {
-                                fs::read(&root_plugin_dir.join(&path).with_extension("wasm"))
-                            })
                             .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
 
                         // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
@@ -504,7 +458,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_app_instructions: send_app_instructions.clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
-                            events,
                         };
 
                         let zellij = zellij_imports(&store, &plugin_env);
@@ -545,29 +498,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             .unwrap();
 
                         buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
-                    }
-                    // FIXME: Deduplicate this with the callback below!
-                    PluginInstruction::Input(input_type, input_bytes) => {
-                        let PluginInputType::Event(event) = input_type;
-                        for (instance, plugin_env) in plugin_map.values() {
-                            if !plugin_env.events.contains(&event) {
-                                continue;
-                            }
-                            let handle_key = instance
-                                .exports
-                                .get_function(handler_map.get(&event).unwrap())
-                                .unwrap();
-                            for key in input_bytes.keys().flatten() {
-                                let key = cast_termion_key(key);
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&key).unwrap(),
-                                );
-                                handle_key.call(&[]).unwrap();
-                            }
-                        }
-
-                        drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,
