@@ -23,7 +23,6 @@ pub enum NaughtyEventType {
 
 #[derive(Clone, Debug)]
 pub enum PluginInputType {
-    Normal(u32),
     Event(NaughtyEventType),
 }
 

@@ -593,25 +593,25 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     }
                     // FIXME: Deduplicate this with the callback below!
                     PluginInstruction::Input(input_type, input_bytes) => {
-                        if let PluginInputType::Event(event) = input_type {
-                            for (instance, plugin_env) in plugin_map.values() {
-                                if !plugin_env.events.contains(&event) {
-                                    continue;
-                                }
-                                let handle_key = instance
-                                    .exports
-                                    .get_function(handler_map.get(&event).unwrap())
-                                    .unwrap();
-                                for key in input_bytes.keys().flatten() {
-                                    let key = cast_termion_key(key);
-                                    wasi_write_string(
-                                        &plugin_env.wasi_env,
-                                        &serde_json::to_string(&key).unwrap(),
-                                    );
-                                    handle_key.call(&[]).unwrap();
-                                }
+                        let PluginInputType::Event(event) = input_type;
+                        for (instance, plugin_env) in plugin_map.values() {
+                            if !plugin_env.events.contains(&event) {
+                                continue;
+                            }
+                            let handle_key = instance
+                                .exports
+                                .get_function(handler_map.get(&event).unwrap())
+                                .unwrap();
+                            for key in input_bytes.keys().flatten() {
+                                let key = cast_termion_key(key);
+                                wasi_write_string(
+                                    &plugin_env.wasi_env,
+                                    &serde_json::to_string(&key).unwrap(),
+                                );
+                                handle_key.call(&[]).unwrap();
                             }
                         }
+
                         drop(send_screen_instructions.send(ScreenInstruction::Render));
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
