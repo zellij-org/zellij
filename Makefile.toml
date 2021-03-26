@@ -1,0 +1,27 @@
+# Global Settings
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+SKIP_TEST = false
+
+# Patching the default flows to skip testing of wasm32-wasi targets
+[tasks.pre-test]
+condition = { env = { "CARGO_MAKE_CRATE_TARGET_TRIPLE" = "wasm32-wasi" } }
+env = { "SKIP_TEST" = true }
+
+[tasks.test]
+condition = { env_false = ["SKIP_TEST"] }
+dependencies = ["pre-test"]
+
+[tasks.post-test]
+env = { "SKIP_TEST" = false }
+
+# Running Zellij
+
+# Change the build to always use the assets, but not delete them by default
+# Instead, just run with a patched layout file that points to a local plugin copy
+
+# Have a publish flow that triggers wasm-opt and updates the assets
+
+# Have an install flow that deletes the zellij data directory (using a rust script)
+
+# Add a clippy flow that uses the nightly options
