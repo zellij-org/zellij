@@ -60,28 +60,30 @@ impl Config {
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
                 Ok(Config::from_yaml(&yaml_config)?)
             }
-            Err(_) => Ok(Config::default()),
+            Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }
     }
 
-    /// Deserializes the config from an optional path, or a platform specific path,
+    /// Deserializes the config from a default platform specific path,
     /// merges the default configuration - options take precedence.
-    fn from_option_or_default(option: Option<PathBuf>) -> ConfigResult {
-        if let Some(config_path) = option {
-            Ok(Config::new(&config_path)?)
-        } else {
-            let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-            let mut config_path: PathBuf = project_dirs.config_dir().to_owned();
-            config_path.push("config.yaml");
-            Ok(Config::new(&config_path)?)
+    fn from_default_path() -> ConfigResult {
+        let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+        let mut config_path: PathBuf = project_dirs.config_dir().to_owned();
+        config_path.push("config.yaml");
+
+        match Config::new(&config_path) {
+            Ok(config) => Ok(config),
+            Err(ConfigError::IoPath(_,_)) => Ok(Config::default()),
+            Err(e) => Err(e),
         }
     }
 
+    /// Entry point of the configuration
     pub fn from_cli_config(cli_config: Option<ConfigCli>) -> ConfigResult {
         match cli_config {
             Some(ConfigCli::Config { clean, .. }) if clean => Ok(Config::default()),
-            Some(ConfigCli::Config { path, .. }) => Ok(Config::from_option_or_default(path)?),
-            None => Ok(Config::default()),
+            Some(ConfigCli::Config { path, .. }) if path.is_some()=> Ok(Config::new(&path.unwrap())?),
+            Some(_) | None => Ok(Config::from_default_path()?),
         }
     }
 }
