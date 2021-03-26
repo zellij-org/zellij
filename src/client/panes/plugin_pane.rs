@@ -120,7 +120,7 @@ impl Pane for PluginPane {
             let (buf_tx, buf_rx) = channel();
 
             self.send_plugin_instructions
-                .send(PluginInstruction::Draw(
+                .send(PluginInstruction::Render(
                     buf_tx,
                     self.pid,
                     self.rows(),

@@ -27,18 +27,17 @@ serde_yaml = "0.8"
 signal-hook = "0.1.10"
 strip-ansi-escapes = "0.1.0"
 structopt = "0.3"
-# termion = { git = "https://gitlab.com/TheLostLambda/termion.git", version = "1.6.0", features = ["serde"] }
-termion = { package = "termion_temporary_zellij_fork" , version = "1.6.0", features = ["serde"]}
+termion = "1.5.0"
 termios = "0.3"
 unicode-truncate = "0.2.0"
 unicode-width = "0.1.8"
 vte = "0.8.0"
 strum = "0.20.0"
-strum_macros = "0.20.0"
 lazy_static = "1.4.0"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 interprocess = "1.0.1"
+zellij-tile = { path = "zellij-tile/", version = "0.5.0" }
 
 [dependencies.async-std]
 version = "1.3.0"
