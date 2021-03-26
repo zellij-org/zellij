@@ -189,7 +189,7 @@ impl ClientOsApi for FakeInputOutput {
         self.server_sender.update(new_ctx);
         self.client_sender.update(new_ctx);
     }
-    fn notify_server(&mut self) {
+    fn connect_to_server(&mut self) {
         ClientOsApi::send_to_server(self, ServerInstruction::NewClient("zellij".into()));
     }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {

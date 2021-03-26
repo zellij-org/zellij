@@ -10,7 +10,7 @@ pub mod utils;
 pub mod wasm_vm;
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::{collections::HashMap, fs};
@@ -183,7 +183,7 @@ pub fn start(
     let mut send_app_instructions =
         SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
 
-    os_input.notify_server();
+    os_input.connect_to_server();
 
     #[cfg(not(test))]
     std::panic::set_hook({

@@ -342,7 +342,7 @@ pub trait ClientOsApi: Send + Sync {
     // This should be called from the client-side router thread only.
     fn client_recv(&self) -> (ClientInstruction, ErrorContext);
     /// Setup the client IpcChannel and notify server of new client
-    fn notify_server(&mut self);
+    fn connect_to_server(&mut self);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -378,7 +378,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn update_senders(&mut self, new_ctx: ErrorContext) {
         self.server_sender.update(new_ctx);
     }
-    fn notify_server(&mut self) {
+    fn connect_to_server(&mut self) {
         let (client_buffer_path, client_buffer) =
             SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
         self.client_receiver = Some(Arc::new(Mutex::new(IpcReceiver::new(
