@@ -43,7 +43,7 @@ An example file can be found under `example/config.yaml`.
 Zellij will look for a file `/zellij/config.yaml` in the default configuration location of your os.
 
 To pass a config file directly to zellij run it either with:
-`cargo run -- --config [FILE]` or `zellij --config [FILE]`.
+`cargo run -- config [FILE]` or `zellij config [FILE]`.
 
 The structure is as follows:
 ```
