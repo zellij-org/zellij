@@ -58,6 +58,6 @@ impl FsEntry {
     }
 
     pub fn is_hidden_file(&self) -> bool {
-        self.name().chars().nth(0).unwrap() == '.'.into()
+        self.name().starts_with('.')
     }
 }

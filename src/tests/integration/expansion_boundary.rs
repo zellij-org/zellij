@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    PANE_MODE, QUIT, RESIZE_DOWN_IN_RESIZE_MODE, RESIZE_MODE, SPAWN_TERMINAL_IN_PANE_MODE,
+    PANE_MODE, QUIT, RESIZE_DOWN_IN_RESIZE_MODE, RESIZE_MODE, SLEEP, SPAWN_TERMINAL_IN_PANE_MODE,
     TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
@@ -23,7 +23,12 @@ pub fn new_panes_are_open_inside_expansion_border() {
         y: 0,
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&PANE_MODE, &SPAWN_TERMINAL_IN_PANE_MODE, &QUIT]);
+    fake_input_output.add_terminal_input(&[
+        &PANE_MODE,
+        &SPAWN_TERMINAL_IN_PANE_MODE,
+        &SLEEP,
+        &QUIT,
+    ]);
     let mut opts = CliArgs::default();
     opts.layout = Some(PathBuf::from(
         "src/tests/fixtures/layouts/expansion-boundary-in-the-middle.yaml",
@@ -55,6 +60,7 @@ pub fn resize_pane_inside_expansion_border() {
         &SPAWN_TERMINAL_IN_PANE_MODE,
         &RESIZE_MODE,
         &RESIZE_DOWN_IN_RESIZE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     let mut opts = CliArgs::default();
@@ -87,6 +93,7 @@ pub fn toggling_fullcsreen_in_expansion_border_expands_only_until_border() {
         &PANE_MODE,
         &SPAWN_TERMINAL_IN_PANE_MODE,
         &TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
+        &SLEEP,
         &QUIT,
     ]);
     let mut opts = CliArgs::default();

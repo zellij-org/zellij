@@ -2,11 +2,10 @@
 use std::collections::HashMap;
 
 use super::actions::{Action, Direction};
-use super::handler::InputMode;
 
 use serde::Deserialize;
 use strum::IntoEnumIterator;
-use termion::event::Key;
+use zellij_tile::data::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
@@ -275,10 +274,7 @@ impl Keybinds {
                 defaults.insert(Key::Up, vec![Action::ScrollUp]);
             }
             InputMode::RenameTab => {
-                defaults.insert(
-                    Key::Char('\n'),
-                    vec![Action::SaveTabName, Action::SwitchToMode(InputMode::Tab)],
-                );
+                defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]);
                 defaults.insert(
                     Key::Ctrl('g'),
                     vec![Action::SwitchToMode(InputMode::Normal)],

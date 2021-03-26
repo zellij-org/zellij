@@ -3,16 +3,51 @@ mod state;
 use colored::*;
 use state::{FsEntry, State};
 use std::{cmp::min, fs::read_dir};
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 register_tile!(State);
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         refresh_directory(self);
+        subscribe(&[EventType::KeyPress]);
     }
 
-    fn draw(&mut self, rows: usize, cols: usize) {
+    fn update(&mut self, event: Event) {
+        if let Event::KeyPress(key) = event {
+            match key {
+                Key::Up | Key::Char('k') => {
+                    *self.selected_mut() = self.selected().saturating_sub(1);
+                }
+                Key::Down | Key::Char('j') => {
+                    let next = self.selected().saturating_add(1);
+                    *self.selected_mut() = min(self.files.len() - 1, next);
+                }
+                Key::Right | Key::Char('\n') | Key::Char('l') => {
+                    match self.files[self.selected()].clone() {
+                        FsEntry::Dir(p, _) => {
+                            self.path = p;
+                            refresh_directory(self);
+                        }
+                        FsEntry::File(p, _) => open_file(&p),
+                    }
+                }
+                Key::Left | Key::Char('h') => {
+                    self.path.pop();
+                    refresh_directory(self);
+                }
+
+                Key::Char('.') => {
+                    self.toggle_hidden_files();
+                    refresh_directory(self);
+                }
+
+                _ => (),
+            };
+        }
+    }
+
+    fn render(&mut self, rows: usize, cols: usize) {
         for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
@@ -37,38 +72,6 @@ impl ZellijTile for State {
                 println!();
             }
         }
-    }
-
-    fn handle_key(&mut self, key: Key) {
-        match key {
-            Key::Up | Key::Char('k') => {
-                *self.selected_mut() = self.selected().saturating_sub(1);
-            }
-            Key::Down | Key::Char('j') => {
-                let next = self.selected().saturating_add(1);
-                *self.selected_mut() = min(self.files.len() - 1, next);
-            }
-            Key::Right | Key::Char('\n') | Key::Char('l') => {
-                match self.files[self.selected()].clone() {
-                    FsEntry::Dir(p, _) => {
-                        self.path = p;
-                        refresh_directory(self);
-                    }
-                    FsEntry::File(p, _) => open_file(&p),
-                }
-            }
-            Key::Left | Key::Char('h') => {
-                self.path.pop();
-                refresh_directory(self);
-            }
-
-            Key::Char('.') => {
-                self.toggle_hidden_files();
-                refresh_directory(self);
-            }
-
-            _ => (),
-        };
     }
 }
 

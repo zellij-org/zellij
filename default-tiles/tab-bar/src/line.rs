@@ -57,7 +57,7 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     let more_text = if tab_count_to_the_left < 10000 {
         format!(" ← +{} ", tab_count_to_the_left)
     } else {
-        format!(" ← +many ")
+        " ← +many ".to_string()
     };
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
@@ -84,7 +84,7 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
     let more_text = if tab_count_to_the_right < 10000 {
         format!(" +{} → ", tab_count_to_the_right)
     } else {
-        format!(" +many → ")
+        " +many → ".to_string()
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
     let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
@@ -130,7 +130,7 @@ fn add_next_tabs_msg(
 }
 
 fn tab_line_prefix() -> LinePart {
-    let prefix_text = format!(" Zellij ");
+    let prefix_text = " Zellij ".to_string();
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
     LinePart {

@@ -3,17 +3,16 @@
 use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::common::input::config::Config;
-use crate::common::{update_state, AppInstruction, AppState, SenderWithContext, OPENCALLS};
+use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
-use crate::wasm_vm::{EventType, PluginInputType, PluginInstruction};
+use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
-use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
-use termion::input::TermReadEventsAndRaw;
+use termion::input::{TermRead, TermReadEventsAndRaw};
+use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -64,27 +63,22 @@ impl InputHandler {
         'input_loop: loop {
             //@@@ I think this should actually just iterate over stdin directly
             let stdin_buffer = self.os_input.read_from_stdin();
-            drop(
-                self.send_plugin_instructions
-                    .send(PluginInstruction::GlobalInput(stdin_buffer.clone())),
-            );
             for key_result in stdin_buffer.events_and_raw() {
                 match key_result {
                     Ok((event, raw_bytes)) => match event {
                         termion::event::Event::Key(key) => {
+                            let key = cast_termion_key(key);
                             // FIXME this explicit break is needed because the current test
                             // framework relies on it to not create dead threads that loop
                             // and eat up CPUs. Do not remove until the test framework has
                             // been revised. Sorry about this (@categorille)
-                            if {
-                                let mut should_break = false;
-                                for action in
-                                    Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                                {
-                                    should_break |= self.dispatch_action(action);
-                                }
-                                should_break
-                            } {
+                            let mut should_break = false;
+                            for action in
+                                Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                            {
+                                should_break |= self.dispatch_action(action);
+                            }
+                            if should_break {
                                 break 'input_loop;
                             }
                         }
@@ -127,9 +121,15 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                update_state(&self.send_app_instructions, |_| AppState {
-                    input_mode: self.mode,
-                });
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Update(
+                        None,
+                        Event::ModeUpdate(get_mode_info(mode)),
+                    ))
+                    .unwrap();
+                self.send_screen_instructions
+                    .send(ScreenInstruction::ChangeInputMode(mode))
+                    .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
                     .unwrap();
@@ -230,25 +230,8 @@ impl InputHandler {
                     .unwrap();
             }
             Action::TabNameInput(c) => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Event(EventType::Tab),
-                        c.clone(),
-                    ))
-                    .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::UpdateTabName(c))
-                    .unwrap();
-            }
-            Action::SaveTabName => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Event(EventType::Tab),
-                        vec![b'\n'],
-                    ))
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabName(vec![b'\n']))
                     .unwrap();
             }
             Action::NoOp => {}
@@ -266,52 +249,10 @@ impl InputHandler {
     }
 }
 
-/// Describes the different input modes, which change the way that keystrokes will be interpreted.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
-pub enum InputMode {
-    /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
-    /// to other modes
-    #[serde(alias = "normal")]
-    Normal,
-    /// In `Locked` mode, input is always written to the terminal and all shortcuts are disabled
-    /// except the one leading back to normal mode
-    #[serde(alias = "locked")]
-    Locked,
-    /// `Resize` mode allows resizing the different existing panes.
-    #[serde(alias = "resize")]
-    Resize,
-    /// `Pane` mode allows creating and closing panes, as well as moving between them.
-    #[serde(alias = "pane")]
-    Pane,
-    /// `Tab` mode allows creating and closing tabs, as well as moving between them.
-    #[serde(alias = "tab")]
-    Tab,
-    /// `Scroll` mode allows scrolling up and down within a pane.
-    #[serde(alias = "scroll")]
-    Scroll,
-    #[serde(alias = "renametab")]
-    RenameTab,
-}
-
-/// Represents the contents of the help message that is printed in the status bar,
-/// which indicates the current [`InputMode`] and what the keybinds for that mode
-/// are. Related to the default `status-bar` plugin.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Help {
-    pub mode: InputMode,
-    pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
-}
-
-impl Default for InputMode {
-    fn default() -> InputMode {
-        InputMode::Normal
-    }
-}
-
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_help(mode: InputMode) -> Help {
+pub fn get_mode_info(mode: InputMode) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}
@@ -340,7 +281,7 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
-    Help { mode, keybinds }
+    ModeInfo { mode, keybinds }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts
@@ -364,4 +305,36 @@ pub fn input_loop(
         send_app_instructions,
     )
     .handle_input();
+}
+
+pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
+    input_bytes.keys().flatten().map(cast_termion_key).collect()
+}
+
+// FIXME: This is an absolutely cursed function that should be destroyed as soon
+// as an alternative that doesn't touch zellij-tile can be developed...
+fn cast_termion_key(event: termion::event::Key) -> Key {
+    match event {
+        termion::event::Key::Backspace => Key::Backspace,
+        termion::event::Key::Left => Key::Left,
+        termion::event::Key::Right => Key::Right,
+        termion::event::Key::Up => Key::Up,
+        termion::event::Key::Down => Key::Down,
+        termion::event::Key::Home => Key::Home,
+        termion::event::Key::End => Key::End,
+        termion::event::Key::PageUp => Key::PageUp,
+        termion::event::Key::PageDown => Key::PageDown,
+        termion::event::Key::BackTab => Key::BackTab,
+        termion::event::Key::Delete => Key::Delete,
+        termion::event::Key::Insert => Key::Insert,
+        termion::event::Key::F(n) => Key::F(n),
+        termion::event::Key::Char(c) => Key::Char(c),
+        termion::event::Key::Alt(c) => Key::Alt(c),
+        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
+        termion::event::Key::Null => Key::Null,
+        termion::event::Key::Esc => Key::Esc,
+        _ => {
+            unimplemented!("Encountered an unknown key!")
+        }
+    }
 }

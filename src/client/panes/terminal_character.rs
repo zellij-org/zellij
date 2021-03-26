@@ -23,7 +23,7 @@ pub enum AnsiCode {
     On,
     Reset,
     NamedColor(NamedColor),
-    RGBCode((u8, u8, u8)),
+    RgbCode((u8, u8, u8)),
     ColorIndex(u8),
 }
 
@@ -336,7 +336,7 @@ impl CharacterStyles {
             [36, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
             [37, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
             [38, 2, ..] => {
-                let ansi_code = AnsiCode::RGBCode((
+                let ansi_code = AnsiCode::RgbCode((
                     *ansi_params.get(2).unwrap() as u8,
                     *ansi_params.get(3).unwrap() as u8,
                     *ansi_params.get(4).unwrap() as u8,
@@ -364,7 +364,7 @@ impl CharacterStyles {
             [46, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
             [47, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
             [48, 2, ..] => {
-                let ansi_code = AnsiCode::RGBCode((
+                let ansi_code = AnsiCode::RgbCode((
                     *ansi_params.get(2).unwrap() as u8,
                     *ansi_params.get(3).unwrap() as u8,
                     *ansi_params.get(4).unwrap() as u8,
@@ -416,7 +416,7 @@ impl Display for CharacterStyles {
         }
         if let Some(ansi_code) = self.foreground {
             match ansi_code {
-                AnsiCode::RGBCode((r, g, b)) => {
+                AnsiCode::RgbCode((r, g, b)) => {
                     write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
@@ -433,7 +433,7 @@ impl Display for CharacterStyles {
         };
         if let Some(ansi_code) = self.background {
             match ansi_code {
-                AnsiCode::RGBCode((r, g, b)) => {
+                AnsiCode::RgbCode((r, g, b)) => {
                     write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {

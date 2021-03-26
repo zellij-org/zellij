@@ -1,8 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::handler;
-//use super::macros;
 use serde::{Deserialize, Serialize};
+use zellij_tile::data::InputMode;
 
 /// The four directions (left, right, up, down).
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -21,7 +20,7 @@ pub enum Action {
     /// Write to the terminal.
     Write(Vec<u8>),
     /// Switch to the specified input mode.
-    SwitchToMode(handler::InputMode),
+    SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
     Resize(Direction),
     /// Switch focus to next pane in specified direction.
@@ -51,5 +50,4 @@ pub enum Action {
     CloseTab,
     GoToTab(u32),
     TabNameInput(Vec<u8>),
-    SaveTabName,
 }

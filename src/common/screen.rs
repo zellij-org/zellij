@@ -9,9 +9,11 @@ use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::tab::{Tab, TabData};
+use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
+
+use zellij_tile::data::{Event, InputMode, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -48,6 +50,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
+    ChangeInputMode(InputMode),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -71,7 +74,7 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
-    tabname_buf: String,
+    input_mode: InputMode,
 }
 
 impl Screen {
@@ -84,6 +87,7 @@ impl Screen {
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
+        input_mode: InputMode,
     ) -> Self {
         Screen {
             receiver: receive_screen_instructions,
@@ -95,7 +99,7 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
-            tabname_buf: String::new(),
+            input_mode,
         }
     }
 
@@ -115,6 +119,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
+            self.input_mode,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -169,15 +174,12 @@ impl Screen {
     pub fn go_to_tab(&mut self, mut tab_index: usize) {
         tab_index -= 1;
         let active_tab = self.get_active_tab().unwrap();
-        match self.tabs.values().find(|t| t.position == tab_index) {
-            Some(t) => {
-                if t.index != active_tab.index {
-                    self.active_tab_index = Some(t.index);
-                    self.update_tabs();
-                    self.render();
-                }
+        if let Some(t) = self.tabs.values().find(|t| t.position == tab_index) {
+            if t.index != active_tab.index {
+                self.active_tab_index = Some(t.index);
+                self.update_tabs();
+                self.render();
             }
-            None => {}
         }
     }
 
@@ -259,6 +261,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             None,
+            self.input_mode,
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -270,33 +273,38 @@ impl Screen {
         let mut tab_data = vec![];
         let active_tab_index = self.active_tab_index.unwrap();
         for tab in self.tabs.values() {
-            tab_data.push(TabData {
+            tab_data.push(TabInfo {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,
             });
         }
         self.send_plugin_instructions
-            .send(PluginInstruction::UpdateTabs(tab_data))
+            .send(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
             .unwrap();
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>) {
         let s = str::from_utf8(&buf).unwrap();
+        let active_tab = self.get_active_tab_mut().unwrap();
         match s {
             "\0" => {
-                self.tabname_buf = String::new();
+                active_tab.name = String::new();
             }
-            "\n" => {
-                let new_name = self.tabname_buf.clone();
-                let active_tab = self.get_active_tab_mut().unwrap();
-                active_tab.name = new_name;
-                self.update_tabs();
-                self.render();
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                active_tab.name.pop();
             }
             c => {
-                self.tabname_buf.push_str(c);
+                active_tab.name.push_str(c);
             }
+        }
+        self.update_tabs();
+    }
+    pub fn change_input_mode(&mut self, input_mode: InputMode) {
+        self.input_mode = input_mode;
+        for tab in self.tabs.values_mut() {
+            tab.input_mode = self.input_mode;
         }
     }
 }

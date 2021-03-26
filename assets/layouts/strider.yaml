@@ -2,6 +2,10 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    split_size:
+      Fixed: 1
+    plugin: tab-bar
+  - direction: Vertical
     parts:
       - direction: Horizontal
         split_size:
@@ -11,5 +15,5 @@ parts:
         expansion_boundary: true
   - direction: Vertical
     split_size:
-      Fixed: 1
+      Fixed: 2
     plugin: status-bar

@@ -82,15 +82,10 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
-            // FIXME: We need to handle more signals here!
-            #[allow(clippy::single_match)]
-            match signal {
-                signal_hook::SIGINT => {
-                    child.kill().unwrap();
-                    child.wait().unwrap();
-                    break 'handle_exit;
-                }
-                _ => {}
+            if signal == signal_hook::SIGINT {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                break 'handle_exit;
             }
         }
     }
