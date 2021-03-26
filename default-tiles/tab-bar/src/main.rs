@@ -60,6 +60,7 @@ impl ZellijTile for State {
     }
 
     fn draw(&mut self, _rows: usize, cols: usize) {
+        let help = get_help();
         if self.tabs.is_empty() {
             return;
         }
@@ -77,7 +78,7 @@ impl ZellijTile for State {
             } else if t.active {
                 active_tab_index = t.position;
             }
-            let tab = tab_style(tabname, t.active, t.position);
+            let tab = tab_style(tabname, t.active, t.position, help.palette);
             all_tabs.push(tab);
         }
         let tab_line = tab_line(all_tabs, active_tab_index, cols);
@@ -85,7 +86,7 @@ impl ZellijTile for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        println!("{}\u{1b}[48;5;238m\u{1b}[0K", s);
+        println!("{}\u{1b}[{};{};{}m\u{1b}[0K", s, help.palette.bg.0, help.palette.bg.1, help.palette.bg.2);
     }
 
     fn update_tabs(&mut self) {

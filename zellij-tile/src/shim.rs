@@ -28,6 +28,7 @@ pub enum Key {
 pub struct Help {
     pub mode: InputMode,
     pub keybinds: Vec<(String, String)>,
+    pub palette: Palette
 }
 
 // TODO: use same struct from main crate?
@@ -51,6 +52,20 @@ pub struct TabData {
     pub active: bool,
 }
 
+#[derive(Default, Debug, Copy, Clone, Deserialize, Serialize)]
+pub struct Palette {
+    pub fg: (u8, u8, u8),
+    pub bg: (u8, u8, u8),
+    pub black: (u8, u8, u8),
+    pub red: (u8, u8, u8),
+    pub green: (u8, u8, u8),
+    pub yellow: (u8, u8, u8),
+    pub blue: (u8, u8, u8),
+    pub magenta: (u8, u8, u8),
+    pub cyan: (u8, u8, u8),
+    pub white: (u8, u8, u8),
+}
+
 impl Default for InputMode {
     fn default() -> InputMode {
         InputMode::Normal
@@ -58,6 +73,9 @@ impl Default for InputMode {
 }
 
 pub fn get_key() -> Key {
+    deserialize_from_stdin().unwrap()
+}
+pub fn get_palette() -> Palette {
     deserialize_from_stdin().unwrap()
 }
 

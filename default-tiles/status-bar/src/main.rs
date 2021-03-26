@@ -48,15 +48,15 @@ impl ZellijTile for State {
 
     fn draw(&mut self, _rows: usize, cols: usize) {
         let help = get_help();
-        let superkey = superkey();
+        let superkey = superkey(help.palette);
         let ctrl_keys = ctrl_keys(&help, cols - superkey.len);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = keybinds(&help, cols);
+        let second_line = keybinds(&help, cols, help.palette);
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [48;5;16m is black background, [0K is so that it fills the rest of the line
-        println!("{}\u{1b}[48;5;238m\u{1b}[0K", first_line);
-        println!("{}\u{1b}[48;5;16m\u{1b}[0K", second_line);
+        println!("{}\u{1b}[{};{};{}m\u{1b}[0K", first_line, help.palette.bg.0, help.palette.bg.1, help.palette.bg.2);
+        println!("{}\u{1b}[{};{};{}m\u{1b}[0K", second_line, help.palette.bg.0, help.palette.bg.1, help.palette.bg.2);
     }
 }

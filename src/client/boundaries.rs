@@ -1,5 +1,5 @@
-use crate::{common::{Palette, input::handler::InputMode}, tab::Pane};
-use ansi_term::Colour;
+use crate::{common::{input::handler::Palette, colors, input::handler::InputMode}, tab::Pane};
+use ansi_term::Colour::RGB;
 use std::collections::HashMap;
 
 use std::fmt::{Display, Error, Formatter};
@@ -18,20 +18,13 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
-pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
-    pub const GREEN: Colour = Fixed(154);
-    pub const GRAY: Colour = Fixed(238);
-}
-
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
 #[derive(Clone, Copy, Debug)]
 pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
-    color: Option<Colour>,
+    color: Option<(u8, u8, u8)>,
 }
 
 impl BoundarySymbol {
@@ -46,7 +39,7 @@ impl BoundarySymbol {
         self.invisible = true;
         self
     }
-    pub fn color(&mut self, color: Option<Colour>) -> Self {
+    pub fn color(&mut self, color: Option<(u8, u8, u8)>) -> Self {
         self.color = color;
         *self
     }
@@ -57,7 +50,7 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => write!(f, "{}", color.paint(self.boundary_type)),
+                Some(color) => write!(f, "{}", RGB(color.0, color.1, color.2).paint(self.boundary_type)),
                 None => write!(f, "{}", self.boundary_type),
             },
         }

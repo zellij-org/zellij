@@ -9,6 +9,9 @@ use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::wasm_vm::{EventType, PluginInputType, PluginInstruction};
 use crate::CommandIsExecuting;
+use xrdb::Colors;
+use colors_transform::{Rgb, Color};
+use crate::common::utils::logging::debug_log_to_file;
 
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
@@ -299,6 +302,7 @@ pub enum InputMode {
 pub struct Help {
     pub mode: InputMode,
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
+    pub palette: Palette
 }
 
 impl Default for InputMode {
@@ -307,11 +311,89 @@ impl Default for InputMode {
     }
 }
 
+pub mod colors {
+    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
+    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
+    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
+    pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
+    pub const RED: (u8, u8, u8) = (135, 0, 0);
+    pub const BLACK: (u8, u8, u8) = (0, 0, 0);
+}
+
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
+pub struct Palette {
+    pub fg: (u8, u8, u8),
+    pub bg: (u8, u8, u8),
+    pub black: (u8, u8, u8),
+    pub red: (u8, u8, u8),
+    pub green: (u8, u8, u8),
+    pub yellow: (u8, u8, u8),
+    pub blue: (u8, u8, u8),
+    pub magenta: (u8, u8, u8),
+    pub cyan: (u8, u8, u8),
+    pub white: (u8, u8, u8),
+}
+
+impl Palette {
+    pub fn new() -> Self {
+       let palette = match Colors::new("xresources") {
+           Some(colors) => {
+            let fg = colors.fg.unwrap();
+            let fg_imm = &fg;
+            let fg_hex: &str = &fg_imm;
+            let fg = Rgb::from_hex_str(fg_hex).unwrap().as_tuple();
+            let fg = (fg.0 as u8, fg.1 as u8, fg.2 as u8);
+            let bg = colors.bg.unwrap();
+            let bg_imm = &bg;
+            let bg_hex: &str = &bg_imm;
+            let bg = Rgb::from_hex_str(bg_hex).unwrap().as_tuple();
+            let bg = (bg.0 as u8, bg.1 as u8, bg.2 as u8);
+            let colors: Vec<(u8, u8, u8)> = colors.colors.iter().map(|c| {
+                let c = c.clone();
+                let imm_str = &c.unwrap();
+                let hex_str: &str = &imm_str;
+                let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
+                (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
+            }).collect();
+            Self {
+                fg,
+                bg,
+                black: colors[0],
+                red: colors[1],
+                green: colors[2],
+                yellow: colors[3],
+                blue: colors[4],
+                magenta: colors[5],
+                cyan: colors[6],
+                white: colors[7]
+            }
+           },
+           None => {
+               Self {
+                fg: colors::BRIGHT_GRAY,
+                bg: colors::BLACK,
+                black: colors::BLACK,
+                red: colors::RED,
+                green: colors::GREEN,
+                yellow: colors::GRAY,
+                blue: colors::GRAY,
+                magenta: colors::GRAY,
+                cyan: colors::GRAY,
+                white: colors::WHITE
+               }
+           }
+       };
+       palette
+    }
+}
+
+
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
 pub fn get_help(mode: InputMode) -> Help {
     let mut keybinds: Vec<(String, String)> = vec![];
+    let mut palette = Palette::new();
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {
@@ -339,7 +421,7 @@ pub fn get_help(mode: InputMode) -> Help {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
-    Help { mode, keybinds }
+    Help { mode, keybinds, palette }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts

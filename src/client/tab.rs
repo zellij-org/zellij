@@ -1,13 +1,13 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{AppInstruction, Palette, SenderWithContext, input::handler::InputMode};
+use crate::common::{AppInstruction, SenderWithContext, input::handler::{Palette, InputMode}};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{
-    boundaries::{colors, Boundaries},
+    boundaries::Boundaries,
     panes::PluginPane,
 };
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};

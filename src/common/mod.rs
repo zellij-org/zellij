@@ -30,13 +30,14 @@ use wasmer_wasi::{Pipe, WasiState};
 
 use crate::cli::CliArgs;
 use crate::layout::Layout;
+use crate::common::input::handler::Palette;
 use command_is_executing::CommandIsExecuting;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
 use input::handler::input_loop;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
-use utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR};
+use utils::{consts::{ZELLIJ_IPC_PIPE, ZELLIJ_ROOT_PLUGIN_DIR}, logging::debug_log_to_file};
 use wasm_vm::{
     wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
 };
@@ -152,62 +153,11 @@ pub enum AppInstruction {
 }
 
 pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
-    pub const GREEN: Colour = Fixed(154);
-    pub const GRAY: Colour = Fixed(238);
+    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
+    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
+    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
 }
 
-#[derive(Clone, Copy)]
-pub struct Palette {
-    pub black: ansi_term::Color,
-    pub red: ansi_term::Color,
-    pub green: ansi_term::Color,
-    pub yellow: ansi_term::Color,
-    pub blue: ansi_term::Color,
-    pub magenta: ansi_term::Color,
-    pub cyan: ansi_term::Color,
-    pub white: ansi_term::Color,
-}
-
-impl Palette {
-    pub fn new() -> Self {
-       let palette = match Colors::new("xresources") {
-           Some(colors) => {
-            let colors: Vec<ansi_term::Color> = colors.colors.iter().map(|c| {
-                let c = c.clone();
-                let imm_str = &c.unwrap();
-                let hex_str: &str = &imm_str;
-                let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
-                RGB(rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
-            }).collect();
-            Self {
-                black: colors[0],
-                red: colors[1],
-                green: colors[2],
-                yellow: colors[3],
-                blue: colors[4],
-                magenta: colors[5],
-                cyan: colors[6],
-                white: colors[7]
-            }
-           },
-           None => {
-               Self {
-                black: colors::GRAY,
-                red: colors::GRAY,
-                green: colors::GREEN,
-                yellow: colors::GRAY,
-                blue: colors::GRAY,
-                magenta: colors::GRAY,
-                cyan: colors::GRAY,
-                white: colors::WHITE
-               }
-           }
-       };
-       palette
-    }
-}
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
@@ -342,6 +292,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
             let colors = Palette::new();
+            // debug_log_to_file(format!("{:?}", colors));
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
