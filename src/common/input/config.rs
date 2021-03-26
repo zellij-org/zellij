@@ -73,7 +73,7 @@ impl Config {
 
         match Config::new(&config_path) {
             Ok(config) => Ok(config),
-            Err(ConfigError::IoPath(_,_)) => Ok(Config::default()),
+            Err(ConfigError::IoPath(_, _)) => Ok(Config::default()),
             Err(e) => Err(e),
         }
     }
@@ -82,7 +82,9 @@ impl Config {
     pub fn from_cli_config(cli_config: Option<ConfigCli>) -> ConfigResult {
         match cli_config {
             Some(ConfigCli::Config { clean, .. }) if clean => Ok(Config::default()),
-            Some(ConfigCli::Config { path, .. }) if path.is_some()=> Ok(Config::new(&path.unwrap())?),
+            Some(ConfigCli::Config { path, .. }) if path.is_some() => {
+                Ok(Config::new(&path.unwrap())?)
+            }
             Some(_) | None => Ok(Config::from_default_path()?),
         }
     }
@@ -130,7 +132,10 @@ mod config_test {
     #[test]
     fn clean_option_equals_default_config() {
         let no_file = PathBuf::from(r"../fixtures/config/config.yamlll");
-        let cli_config = ConfigCli::Config { path: Some(no_file) ,clean: true};
+        let cli_config = ConfigCli::Config {
+            path: Some(no_file),
+            clean: true,
+        };
         let config = Config::from_cli_config(Some(cli_config)).unwrap();
         let default = Config::default();
         assert_eq!(config, default);
