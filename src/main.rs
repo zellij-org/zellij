@@ -62,6 +62,7 @@ pub fn main() {
     } else if let Some(file_to_open) = opts.open_file {
         get_client_os_input().send_to_server(ServerInstruction::OpenFile(file_to_open));
     } else {
+        // Mind the order: server_os_input should be created before client_os_input
         let server_os_input = get_server_os_input();
         let os_input = get_client_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
