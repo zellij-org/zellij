@@ -83,7 +83,11 @@ fn unselected_mode_shortcut(letter: char, text: &str) -> LinePart {
         .on(BRIGHT_GRAY)
         .bold()
         .paint(">");
-    let styled_text = Style::new().fg(BLACK).on(BRIGHT_GRAY).bold().paint(text);
+    let styled_text = Style::new()
+        .fg(BLACK)
+        .on(BRIGHT_GRAY)
+        .bold()
+        .paint(format!("{} ", text));
     let suffix_separator = Style::new().fg(BRIGHT_GRAY).on(GRAY).paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[
@@ -109,7 +113,11 @@ fn selected_mode_shortcut(letter: char, text: &str) -> LinePart {
         .bold()
         .paint(letter.to_string());
     let char_right_separator = Style::new().bold().fg(BLACK).on(GREEN).bold().paint(">");
-    let styled_text = Style::new().fg(BLACK).on(GREEN).bold().paint(text);
+    let styled_text = Style::new()
+        .fg(BLACK)
+        .on(GREEN)
+        .bold()
+        .paint(format!("{} ", text));
     let suffix_separator = Style::new().fg(GREEN).on(GRAY).paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[
@@ -127,7 +135,11 @@ fn selected_mode_shortcut(letter: char, text: &str) -> LinePart {
 
 fn disabled_mode_shortcut(text: &str) -> LinePart {
     let prefix_separator = Style::new().fg(GRAY).on(BRIGHT_GRAY).paint(ARROW_SEPARATOR);
-    let styled_text = Style::new().fg(GRAY).on(BRIGHT_GRAY).dimmed().paint(text);
+    let styled_text = Style::new()
+        .fg(GRAY)
+        .on(BRIGHT_GRAY)
+        .dimmed()
+        .paint(format!("{} ", text));
     let suffix_separator = Style::new().fg(BRIGHT_GRAY).on(GRAY).paint(ARROW_SEPARATOR);
     LinePart {
         part: format!("{}{}{}", prefix_separator, styled_text, suffix_separator),
@@ -136,7 +148,7 @@ fn disabled_mode_shortcut(text: &str) -> LinePart {
 }
 
 fn selected_mode_shortcut_single_letter(letter: char) -> LinePart {
-    let char_shortcut_text = letter.to_string();
+    let char_shortcut_text = format!(" {} ", letter);
     let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
     let prefix_separator = Style::new().fg(GRAY).on(GREEN).paint(ARROW_SEPARATOR);
     let char_shortcut = Style::new()
@@ -153,7 +165,7 @@ fn selected_mode_shortcut_single_letter(letter: char) -> LinePart {
 }
 
 fn unselected_mode_shortcut_single_letter(letter: char) -> LinePart {
-    let char_shortcut_text = letter.to_string();
+    let char_shortcut_text = format!(" {} ", letter);
     let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
     let prefix_separator = Style::new().fg(GRAY).on(BRIGHT_GRAY).paint(ARROW_SEPARATOR);
     let char_shortcut = Style::new()

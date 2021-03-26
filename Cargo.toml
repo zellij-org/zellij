@@ -27,7 +27,6 @@ serde_yaml = "0.8"
 signal-hook = "0.1.10"
 strip-ansi-escapes = "0.1.0"
 structopt = "0.3"
-# termion = { git = "https://gitlab.com/TheLostLambda/termion.git", version = "1.6.0", features = ["serde"] }
 termion = "1.5.0"
 termios = "0.3"
 unicode-truncate = "0.2.0"
