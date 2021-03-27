@@ -1,6 +1,6 @@
 // use colored::*;
 use ansi_term::{ANSIStrings, Color::RGB, Style};
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 use crate::colors::{BLACK, GREEN, ORANGE, WHITE};
 use crate::{LinePart, MORE_MSG};
@@ -158,18 +158,18 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
     }
 }
 
-fn full_shortcut_list(help: &Help, palette: Palette) -> LinePart {
+fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
-        InputMode::Locked => locked_interface_indication(palette),
+        InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();
             for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = full_length_shortcut(i == 0, &letter, &description, palette);
+                let shortcut = full_length_shortcut(i == 0, &letter, &description, help.palette);
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0, palette);
+            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
             line_part.len += select_pane_shortcut.len;
             line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
             line_part
@@ -177,18 +177,18 @@ fn full_shortcut_list(help: &Help, palette: Palette) -> LinePart {
     }
 }
 
-fn shortened_shortcut_list(help: &Help, palette: Palette) -> LinePart {
+fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
-        InputMode::Locked => locked_interface_indication(palette),
+        InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();
             for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = first_word_shortcut(i == 0, &letter, &description, palette);
+                let shortcut = first_word_shortcut(i == 0, &letter, &description, help.palette);
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0, palette);
+            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
             line_part.len += select_pane_shortcut.len;
             line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
             line_part
@@ -196,11 +196,11 @@ fn shortened_shortcut_list(help: &Help, palette: Palette) -> LinePart {
     }
 }
 
-fn best_effort_shortcut_list(help: &Help, max_len: usize, palette: Palette) -> LinePart {
+fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => {
-            let line_part = locked_interface_indication(palette);
+            let line_part = locked_interface_indication(help.palette);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -210,7 +210,7 @@ fn best_effort_shortcut_list(help: &Help, max_len: usize, palette: Palette) -> L
         _ => {
             let mut line_part = LinePart::default();
             for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = first_word_shortcut(i == 0, &letter, &description, palette);
+                let shortcut = first_word_shortcut(i == 0, &letter, &description, help.palette);
                 if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
                     // TODO: better
                     line_part.part = format!("{}{}", line_part.part, MORE_MSG);
@@ -220,7 +220,7 @@ fn best_effort_shortcut_list(help: &Help, max_len: usize, palette: Palette) -> L
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.len() == 0, palette);
+            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
             if line_part.len + select_pane_shortcut.len <= max_len {
                 line_part.len += select_pane_shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
@@ -230,14 +230,14 @@ fn best_effort_shortcut_list(help: &Help, max_len: usize, palette: Palette) -> L
     }
 }
 
-pub fn keybinds(help: &Help, max_width: usize, palette: Palette) -> LinePart {
-    let full_shortcut_list = full_shortcut_list(help, palette);
+pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
+    let full_shortcut_list = full_shortcut_list(help);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help, palette);
+    let shortened_shortcut_list = shortened_shortcut_list(help);
     if shortened_shortcut_list.len <= max_width {
         return shortened_shortcut_list;
     }
-    return best_effort_shortcut_list(help, max_width, palette);
+    best_effort_shortcut_list(help, max_width)
 }

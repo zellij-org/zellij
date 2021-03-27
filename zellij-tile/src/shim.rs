@@ -1,123 +1,56 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::{io, path::Path};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Key {
-    Backspace,
-    Left,
-    Right,
-    Up,
-    Down,
-    Home,
-    End,
-    PageUp,
-    PageDown,
-    BackTab,
-    Delete,
-    Insert,
-    F(u8),
-    Char(char),
-    Alt(char),
-    Ctrl(char),
-    Null,
-    Esc,
+use crate::data::*;
+
+// Subscription Handling
+
+pub fn subscribe(event_types: &[EventType]) {
+    println!("{}", serde_json::to_string(event_types).unwrap());
+    unsafe { host_subscribe() };
 }
 
-// TODO: use same struct from main crate?
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Help {
-    pub mode: InputMode,
-    pub keybinds: Vec<(String, String)>,
-    pub palette: Palette
+pub fn unsubscribe(event_types: &[EventType]) {
+    println!("{}", serde_json::to_string(event_types).unwrap());
+    unsafe { host_unsubscribe() };
 }
 
-// TODO: use same struct from main crate?
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum InputMode {
-    Normal,
-    Locked,
-    Resize,
-    Pane,
-    Tab,
-    RenameTab,
-    Scroll,
-    Exiting,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TabData {
-    /* subset of fields to publish to plugins */
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
-}
-
-#[derive(Default, Debug, Copy, Clone, Deserialize, Serialize)]
-pub struct Palette {
-    pub fg: (u8, u8, u8),
-    pub bg: (u8, u8, u8),
-    pub black: (u8, u8, u8),
-    pub red: (u8, u8, u8),
-    pub green: (u8, u8, u8),
-    pub yellow: (u8, u8, u8),
-    pub blue: (u8, u8, u8),
-    pub magenta: (u8, u8, u8),
-    pub cyan: (u8, u8, u8),
-    pub white: (u8, u8, u8),
-}
-
-impl Default for InputMode {
-    fn default() -> InputMode {
-        InputMode::Normal
-    }
-}
-
-pub fn get_key() -> Key {
-    deserialize_from_stdin().unwrap()
-}
-pub fn get_palette() -> Palette {
-    deserialize_from_stdin().unwrap()
-}
-
-pub fn open_file(path: &Path) {
-    println!("{}", path.to_string_lossy());
-    unsafe { host_open_file() };
-}
+// Plugin Settings
 
 pub fn set_max_height(max_height: i32) {
     unsafe { host_set_max_height(max_height) };
 }
 
 pub fn set_invisible_borders(invisible_borders: bool) {
-    let invisible_borders = if invisible_borders { 1 } else { 0 };
-    unsafe { host_set_invisible_borders(invisible_borders) };
+    unsafe { host_set_invisible_borders(if invisible_borders { 1 } else { 0 }) };
 }
 
 pub fn set_selectable(selectable: bool) {
-    let selectable = if selectable { 1 } else { 0 };
-    unsafe { host_set_selectable(selectable) };
+    unsafe { host_set_selectable(if selectable { 1 } else { 0 }) };
 }
 
-pub fn get_help() -> Help {
-    unsafe { host_get_help() };
-    deserialize_from_stdin().unwrap_or_default()
+// Host Functions
+
+pub fn open_file(path: &Path) {
+    println!("{}", path.to_string_lossy());
+    unsafe { host_open_file() };
 }
 
-pub fn get_tabs() -> Vec<TabData> {
-    deserialize_from_stdin().unwrap_or_default()
-}
+// Internal Functions
 
-fn deserialize_from_stdin<T: DeserializeOwned>() -> Option<T> {
+#[doc(hidden)]
+pub fn object_from_stdin<T: DeserializeOwned>() -> T {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
-    serde_json::from_str(&json).ok()
+    serde_json::from_str(&json).unwrap()
 }
 
 #[link(wasm_import_module = "zellij")]
 extern "C" {
+    fn host_subscribe();
+    fn host_unsubscribe();
     fn host_open_file();
     fn host_set_max_height(max_height: i32);
     fn host_set_selectable(selectable: i32);
     fn host_set_invisible_borders(invisible_borders: i32);
-    fn host_get_help();
 }

@@ -1,5 +1,5 @@
 use ansi_term::{ANSIStrings, Color::RGB, Style};
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 use crate::colors::{BLACK, BRIGHT_GRAY, GRAY, GREEN, RED, WHITE};
 use crate::{LinePart, ARROW_SEPARATOR};
@@ -73,19 +73,19 @@ fn unselected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LineP
         .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .bold()
-        .paint(format!(" <"));
+        .paint(" <");
     let char_shortcut = Style::new()
         .bold()
         .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .bold()
-        .paint(format!("{}", letter));
+        .paint(letter.to_string());
     let char_right_separator = Style::new()
         .bold()
         .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .bold()
-        .paint(format!(">"));
+        .paint(">");
     let styled_text = Style::new()
         .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
@@ -96,17 +96,15 @@ fn unselected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LineP
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[
-                prefix_separator,
-                char_left_separator,
-                char_shortcut,
-                char_right_separator,
-                styled_text,
-                suffix_separator
-            ])
-        ),
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_left_separator,
+            char_shortcut,
+            char_right_separator,
+            styled_text,
+            suffix_separator,
+        ])
+        .to_string(),
         len: text.chars().count() + 6, // 2 for the arrows, 3 for the char separators, 1 for the character
     }
 }
@@ -144,17 +142,15 @@ fn selected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LinePar
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[
-                prefix_separator,
-                char_left_separator,
-                char_shortcut,
-                char_right_separator,
-                styled_text,
-                suffix_separator
-            ])
-        ),
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_left_separator,
+            char_shortcut,
+            char_right_separator,
+            styled_text,
+            suffix_separator,
+        ])
+        .to_string(),
         len: text.chars().count() + 6, // 2 for the arrows, 3 for the char separators, 1 for the character
     }
 }
@@ -197,10 +193,7 @@ fn selected_mode_shortcut_single_letter(letter: char, palette: Palette) -> LineP
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator])
-        ),
+        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
         len,
     }
 }
@@ -223,10 +216,7 @@ fn unselected_mode_shortcut_single_letter(letter: char, palette: Palette) -> Lin
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator])
-        ),
+        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
         len,
     }
 }
@@ -256,11 +246,13 @@ fn shortened_ctrl_key(key: &CtrlKeyShortcut, palette: Palette) -> LinePart {
     };
     match key.mode {
         CtrlKeyMode::Unselected => {
-            unselected_mode_shortcut(letter_shortcut, &format!("{}", shortened_text), palette)
+            unselected_mode_shortcut(letter_shortcut, &shortened_text, palette)
         }
-        CtrlKeyMode::Selected => {
-            selected_mode_shortcut(letter_shortcut, &format!("{}", shortened_text), palette)
-        }
+        CtrlKeyMode::Selected => selected_mode_shortcut(letter_shortcut, &shortened_text, palette),
+        CtrlKeyMode::Disabled => disabled_mode_shortcut(
+            &format!(" <{}>{}", letter_shortcut, shortened_text),
+            palette,
+        ),
         CtrlKeyMode::Disabled => disabled_mode_shortcut(
             &format!(" <{}>{}", letter_shortcut, shortened_text),
             palette,
@@ -317,16 +309,16 @@ pub fn superkey(palette: Palette) -> LinePart {
         .bold()
         .paint(prefix_text);
     LinePart {
-        part: format!("{}", prefix),
+        part: prefix.to_string(),
         len: prefix_text.chars().count(),
     }
 }
 
-pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
+pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
     match &help.mode {
         InputMode::Locked => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Tab),
@@ -338,7 +330,7 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
         ),
         InputMode::Resize => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
@@ -350,7 +342,7 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
         ),
         InputMode::Pane => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
@@ -362,7 +354,7 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
         ),
         InputMode::Tab | InputMode::RenameTab => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Tab),
@@ -374,7 +366,7 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
         ),
         InputMode::Scroll => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
@@ -384,9 +376,9 @@ pub fn ctrl_keys(help: &Help, max_len: usize) -> LinePart {
             ],
             help.palette,
         ),
-        InputMode::Normal | _ => key_indicators(
+        InputMode::Normal => key_indicators(
             max_len,
-            &vec![
+            &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),

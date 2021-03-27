@@ -1,7 +1,7 @@
 mod line;
 mod tab;
 
-use zellij_tile::*;
+use zellij_tile::prelude::*;
 
 use crate::line::tab_line;
 use crate::tab::tab_style;
@@ -12,25 +12,10 @@ pub struct LinePart {
     len: usize,
 }
 
-#[derive(PartialEq)]
-enum BarMode {
-    Normal,
-    Rename,
-}
-
-impl Default for BarMode {
-    fn default() -> Self {
-        BarMode::Normal
-    }
-}
-
 #[derive(Default)]
 struct State {
-    active_tab_index: usize,
-    num_tabs: usize,
-    tabs: Vec<TabData>,
-    mode: BarMode,
-    new_name: String,
+    tabs: Vec<TabInfo>,
+    mode_info: ModeInfo,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -49,18 +34,22 @@ pub mod colors {
 register_tile!(State);
 
 impl ZellijTile for State {
-    fn init(&mut self) {
+    fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(1);
-        self.active_tab_index = 0;
-        self.num_tabs = 0;
-        self.mode = BarMode::Normal;
-        self.new_name = String::new();
+        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
     }
 
-    fn draw(&mut self, _rows: usize, cols: usize) {
-        let help = get_help();
+    fn update(&mut self, event: Event) {
+        match event {
+            Event::ModeUpdate(mode_info) => self.mode_info.mode = mode_info.mode,
+            Event::TabUpdate(tabs) => self.tabs = tabs,
+            _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
+        }
+    }
+
+    fn render(&mut self, _rows: usize, cols: usize) {
         if self.tabs.is_empty() {
             return;
         }
@@ -68,17 +57,15 @@ impl ZellijTile for State {
         let mut active_tab_index = 0;
         for t in self.tabs.iter_mut() {
             let mut tabname = t.name.clone();
-            if t.active && self.mode == BarMode::Rename {
-                if self.new_name.is_empty() {
+            if t.active && self.mode_info.mode == InputMode::RenameTab {
+                if tabname.is_empty() {
                     tabname = String::from("Enter name...");
-                } else {
-                    tabname = self.new_name.clone();
                 }
                 active_tab_index = t.position;
             } else if t.active {
                 active_tab_index = t.position;
             }
-            let tab = tab_style(tabname, t.active, t.position, help.palette);
+            let tab = tab_style(tabname, t.active, t.position, self.mode_info.palette);
             all_tabs.push(tab);
         }
         let tab_line = tab_line(all_tabs, active_tab_index, cols);
@@ -86,25 +73,12 @@ impl ZellijTile for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        println!("{}\u{1b}[{};{};{}m\u{1b}[0K", s, help.palette.bg.0, help.palette.bg.1, help.palette.bg.2);
-    }
-
-    fn update_tabs(&mut self) {
-        self.tabs = get_tabs();
-    }
-
-    fn handle_tab_rename_keypress(&mut self, key: Key) {
-        self.mode = BarMode::Rename;
-        match key {
-            Key::Char('\n') | Key::Esc => {
-                self.mode = BarMode::Normal;
-                self.new_name.clear();
-            }
-            Key::Char(c) => self.new_name = format!("{}{}", self.new_name, c),
-            Key::Backspace | Key::Delete => {
-                self.new_name.pop();
-            }
-            _ => {}
-        }
+        println!(
+            "{}\u{1b}[{};{};{}m\u{1b}[0K",
+            s,
+            self.mode_info.palette.bg.0,
+            self.mode_info.palette.bg.1,
+            self.mode_info.palette.bg.2
+        );
     }
 }

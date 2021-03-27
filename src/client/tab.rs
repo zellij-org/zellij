@@ -1,23 +1,20 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{AppInstruction, SenderWithContext, input::handler::{Palette, InputMode}};
+use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
-use crate::wasm_vm::{PluginInputType, PluginInstruction};
-use crate::{
-    boundaries::Boundaries,
-    panes::PluginPane,
-};
+use crate::wasm_vm::PluginInstruction;
+use crate::{boundaries::Boundaries, panes::PluginPane};
 use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
-use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
+use zellij_tile::data::{colors, Event, InputMode, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -69,15 +66,7 @@ pub struct Tab {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
     pub input_mode: InputMode,
-    pub colors: Palette
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TabData {
-    /* subset of fields to publish to plugins */
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
+    pub colors: Palette,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -195,7 +184,7 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         input_mode: InputMode,
-        colors: Palette
+        colors: Palette,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -226,7 +215,7 @@ impl Tab {
             send_plugin_instructions,
             expansion_boundary: None,
             input_mode,
-            colors
+            colors,
         }
     }
 
@@ -271,11 +260,7 @@ impl Tab {
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.send_plugin_instructions
-                    .send(PluginInstruction::Load(
-                        pid_tx,
-                        plugin.clone(),
-                        layout.events.clone(),
-                    ))
+                    .send(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let new_plugin = PluginPane::new(
@@ -314,7 +299,6 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         if !self.has_panes() {
-            // FIXME: This could use a second look
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
                 self.os_api.set_terminal_size_using_fd(
@@ -365,7 +349,6 @@ impl Tab {
             if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns()
                 && terminal_to_split.rows() > terminal_to_split.min_height() * 2
             {
-                // FIXME: This could use a second look
                 if let PaneId::Terminal(term_pid) = pid {
                     let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
                     let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
@@ -386,7 +369,6 @@ impl Tab {
                     self.active_terminal = Some(pid);
                 }
             } else if terminal_to_split.columns() > terminal_to_split.min_width() * 2 {
-                // FIXME: This could use a second look
                 if let PaneId::Terminal(term_pid) = pid {
                     let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
                     let new_terminal = TerminalPane::new(term_pid, right_winsize);
@@ -416,7 +398,6 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         if !self.has_panes() {
-            // FIXME: This could use a second look
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
                 self.os_api.set_terminal_size_using_fd(
@@ -427,47 +408,44 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
-        } else {
-            // FIXME: This could use a second look
-            if let PaneId::Terminal(term_pid) = pid {
-                // TODO: check minimum size of active terminal
-                let active_pane_id = &self.get_active_pane_id().unwrap();
-                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-                if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
-                    self.send_pty_instructions
-                        .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                        .unwrap();
-                    return;
-                }
-                let terminal_ws = PositionAndSize {
-                    x: active_pane.x(),
-                    y: active_pane.y(),
-                    rows: active_pane.rows(),
-                    columns: active_pane.columns(),
-                };
-                let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-
-                active_pane.change_pos_and_size(&top_winsize);
-
-                let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    bottom_winsize.columns as u16,
-                    bottom_winsize.rows as u16,
-                );
-                self.panes.insert(pid, Box::new(new_terminal));
-
-                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                    self.os_api.set_terminal_size_using_fd(
-                        *active_terminal_pid,
-                        top_winsize.columns as u16,
-                        top_winsize.rows as u16,
-                    );
-                }
-
-                self.active_terminal = Some(pid);
-                self.render();
+        } else if let PaneId::Terminal(term_pid) = pid {
+            // TODO: check minimum size of active terminal
+            let active_pane_id = &self.get_active_pane_id().unwrap();
+            let active_pane = self.panes.get_mut(active_pane_id).unwrap();
+            if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
+                self.send_pty_instructions
+                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                    .unwrap();
+                return;
             }
+            let terminal_ws = PositionAndSize {
+                x: active_pane.x(),
+                y: active_pane.y(),
+                rows: active_pane.rows(),
+                columns: active_pane.columns(),
+            };
+            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+
+            active_pane.change_pos_and_size(&top_winsize);
+
+            let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
+            self.os_api.set_terminal_size_using_fd(
+                new_terminal.pid,
+                bottom_winsize.columns as u16,
+                bottom_winsize.rows as u16,
+            );
+            self.panes.insert(pid, Box::new(new_terminal));
+
+            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                self.os_api.set_terminal_size_using_fd(
+                    *active_terminal_pid,
+                    top_winsize.columns as u16,
+                    top_winsize.rows as u16,
+                );
+            }
+
+            self.active_terminal = Some(pid);
+            self.render();
         }
     }
     pub fn vertical_split(&mut self, pid: PaneId) {
@@ -476,7 +454,6 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         if !self.has_panes() {
-            // FIXME: This could use a second look
             if let PaneId::Terminal(term_pid) = pid {
                 let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
                 self.os_api.set_terminal_size_using_fd(
@@ -487,47 +464,44 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
             }
-        } else {
-            // FIXME: This could use a second look
-            if let PaneId::Terminal(term_pid) = pid {
-                // TODO: check minimum size of active terminal
-                let active_pane_id = &self.get_active_pane_id().unwrap();
-                let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-                if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
-                    self.send_pty_instructions
-                        .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                        .unwrap();
-                    return;
-                }
-                let terminal_ws = PositionAndSize {
-                    x: active_pane.x(),
-                    y: active_pane.y(),
-                    rows: active_pane.rows(),
-                    columns: active_pane.columns(),
-                };
-                let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
-
-                active_pane.change_pos_and_size(&left_winsize);
-
-                let new_terminal = TerminalPane::new(term_pid, right_winsize);
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    right_winsize.columns as u16,
-                    right_winsize.rows as u16,
-                );
-                self.panes.insert(pid, Box::new(new_terminal));
-
-                if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                    self.os_api.set_terminal_size_using_fd(
-                        *active_terminal_pid,
-                        left_winsize.columns as u16,
-                        left_winsize.rows as u16,
-                    );
-                }
-
-                self.active_terminal = Some(pid);
-                self.render();
+        } else if let PaneId::Terminal(term_pid) = pid {
+            // TODO: check minimum size of active terminal
+            let active_pane_id = &self.get_active_pane_id().unwrap();
+            let active_pane = self.panes.get_mut(active_pane_id).unwrap();
+            if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
+                self.send_pty_instructions
+                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                    .unwrap();
+                return;
             }
+            let terminal_ws = PositionAndSize {
+                x: active_pane.x(),
+                y: active_pane.y(),
+                rows: active_pane.rows(),
+                columns: active_pane.columns(),
+            };
+            let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
+
+            active_pane.change_pos_and_size(&left_winsize);
+
+            let new_terminal = TerminalPane::new(term_pid, right_winsize);
+            self.os_api.set_terminal_size_using_fd(
+                new_terminal.pid,
+                right_winsize.columns as u16,
+                right_winsize.rows as u16,
+            );
+            self.panes.insert(pid, Box::new(new_terminal));
+
+            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
+                self.os_api.set_terminal_size_using_fd(
+                    *active_terminal_pid,
+                    left_winsize.columns as u16,
+                    left_winsize.rows as u16,
+                );
+            }
+
+            self.active_terminal = Some(pid);
+            self.render();
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
@@ -571,12 +545,11 @@ impl Tab {
                     .expect("failed to drain terminal");
             }
             Some(PaneId::Plugin(pid)) => {
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Normal(pid),
-                        input_bytes,
-                    ))
-                    .unwrap();
+                for key in parse_keys(&input_bytes) {
+                    self.send_plugin_instructions
+                        .send(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
+                        .unwrap()
+                }
             }
             _ => {}
         }
@@ -1694,6 +1667,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
         }
+        self.render();
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1705,6 +1679,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, count);
             }
         }
+        self.render();
     }
     pub fn resize_down(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1716,6 +1691,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_down(&active_pane_id, count);
             }
         }
+        self.render();
     }
     pub fn resize_up(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1727,6 +1703,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_up(&active_pane_id, count);
             }
         }
+        self.render();
     }
     pub fn move_focus(&mut self) {
         if !self.has_selectable_panes() {

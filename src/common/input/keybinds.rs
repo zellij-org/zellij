@@ -1,12 +1,11 @@
 //! Mapping of inputs to sequences of actions.
 
 use super::actions::{Action, Direction};
-use super::handler::InputMode;
 
 use std::collections::HashMap;
 
 use strum::IntoEnumIterator;
-use termion::event::Key;
+use zellij_tile::data::*;
 
 type Keybinds = HashMap<InputMode, ModeKeybinds>;
 type ModeKeybinds = HashMap<Key, Vec<Action>>;
@@ -17,14 +16,14 @@ pub fn get_default_keybinds() -> Result<Keybinds, String> {
     let mut defaults = Keybinds::new();
 
     for mode in InputMode::iter() {
-        defaults.insert(mode, get_defaults_for_mode(&mode)?);
+        defaults.insert(mode, get_defaults_for_mode(&mode));
     }
 
     Ok(defaults)
 }
 
 /// Returns the default keybinds for a givent [`InputMode`].
-fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
+fn get_defaults_for_mode(mode: &InputMode) -> ModeKeybinds {
     let mut defaults = ModeKeybinds::new();
 
     match *mode {
@@ -227,10 +226,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
             defaults.insert(Key::Up, vec![Action::ScrollUp]);
         }
         InputMode::RenameTab => {
-            defaults.insert(
-                Key::Char('\n'),
-                vec![Action::SaveTabName, Action::SwitchToMode(InputMode::Tab)],
-            );
+            defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]);
             defaults.insert(
                 Key::Ctrl('g'),
                 vec![Action::SwitchToMode(InputMode::Normal)],
@@ -245,7 +241,7 @@ fn get_defaults_for_mode(mode: &InputMode) -> Result<ModeKeybinds, String> {
         }
     }
 
-    Ok(defaults)
+    defaults
 }
 
 /// Converts a [`Key`] terminal event to a sequence of [`Action`]s according to the current

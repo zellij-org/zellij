@@ -133,7 +133,7 @@ pub enum ContextType {
     Plugin(PluginContext),
     /// An app-related call.
     App(AppContext),
-    IPCServer,
+    IpcServer,
     StdinHandler,
     AsyncTask,
     /// An empty, placeholder call. This should be thought of as representing no call at all.
@@ -152,7 +152,7 @@ impl Display for ContextType {
 
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
             ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
-            ContextType::IPCServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
+            ContextType::IpcServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
             ContextType::StdinHandler => {
                 write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
             }
@@ -164,6 +164,7 @@ impl Display for ContextType {
     }
 }
 
+// FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
@@ -202,6 +203,7 @@ pub enum ScreenContext {
     ChangeInputMode,
 }
 
+// FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
@@ -278,24 +280,20 @@ use crate::wasm_vm::PluginInstruction;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginContext {
     Load,
-    Draw,
-    Input,
-    GlobalInput,
+    Update,
+    Render,
     Unload,
     Quit,
-    Tabs,
 }
 
 impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
-            PluginInstruction::Draw(..) => PluginContext::Draw,
-            PluginInstruction::Input(..) => PluginContext::Input,
-            PluginInstruction::GlobalInput(_) => PluginContext::GlobalInput,
+            PluginInstruction::Update(..) => PluginContext::Update,
+            PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(_) => PluginContext::Unload,
             PluginInstruction::Quit => PluginContext::Quit,
-            PluginInstruction::UpdateTabs(..) => PluginContext::Tabs,
         }
     }
 }
@@ -303,8 +301,6 @@ impl From<&PluginInstruction> for PluginContext {
 /// Stack call representations corresponding to the different types of [`AppInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppContext {
-    GetState,
-    SetState,
     Exit,
     Error,
 }
@@ -312,8 +308,6 @@ pub enum AppContext {
 impl From<&AppInstruction> for AppContext {
     fn from(app_instruction: &AppInstruction) -> Self {
         match *app_instruction {
-            AppInstruction::GetState(_) => AppContext::GetState,
-            AppInstruction::SetState(_) => AppContext::SetState,
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
         }

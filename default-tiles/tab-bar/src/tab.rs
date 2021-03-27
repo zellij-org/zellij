@@ -1,7 +1,7 @@
 use crate::colors::{BLACK, BRIGHT_GRAY, GRAY, GREEN};
 use crate::{LinePart, ARROW_SEPARATOR};
 use ansi_term::{ANSIStrings, Color::RGB, Style};
-use zellij_tile::Palette;
+use zellij_tile::data::Palette;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = Style::new()
