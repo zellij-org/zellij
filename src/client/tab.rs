@@ -2,8 +2,8 @@
 //! as well as how they should be resized
 
 use crate::boundaries::colors;
-use crate::client::pane_resizer::PaneResizer;
-use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
+use crate::client::AppInstruction;
+use crate::common::{input::handler::parse_keys, SenderWithContext};
 use crate::layout::Layout;
 use crate::os_input_output::{ClientOsApi, ServerOsApiInstruction};
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};

@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use super::{AppInstruction, SenderWithContext};
+use crate::client::AppInstruction;
+use crate::common::SenderWithContext;
 use crate::os_input_output::ClientOsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteBytes};

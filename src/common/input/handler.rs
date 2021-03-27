@@ -1,9 +1,9 @@
 //! Main input logic.
 
 use super::actions::Action;
-use super::keybinds::Keybinds;
-use crate::common::input::config::Config;
-use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
+use super::keybinds::get_default_keybinds;
+use crate::client::AppInstruction;
+use crate::common::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::pty_bus::PtyInstruction;

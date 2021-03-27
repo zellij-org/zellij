@@ -1,5 +1,6 @@
 use crate::cli::CliArgs;
-use crate::common::{ChannelWithContext, ClientInstruction, SenderType, SenderWithContext};
+use crate::client::ClientInstruction;
+use crate::common::{ChannelWithContext, SenderType, SenderWithContext};
 use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext, ServerContext};
 use crate::os_input_output::{ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;

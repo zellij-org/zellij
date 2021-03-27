@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
-use crate::common::ClientInstruction;
+use crate::client::ClientInstruction;
 use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
