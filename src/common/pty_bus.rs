@@ -10,13 +10,14 @@ use ::vte;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
+use super::{SenderWithContext, OPENCALLS};
 use crate::layout::Layout;
 use crate::os_input_output::ServerOsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     errors::{ContextType, ErrorContext},
     panes::PaneId,
+    screen::ScreenInstruction,
     server::ServerInstruction,
 };
 

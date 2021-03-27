@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::common::{ChannelWithContext, ClientInstruction, SenderType, SenderWithContext};
+use crate::client::ClientInstruction;
+use crate::common::{ChannelWithContext, SenderType, SenderWithContext};
 use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::server::ServerInstruction;

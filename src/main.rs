@@ -3,18 +3,16 @@ mod client;
 mod common;
 mod server;
 
-use client::{boundaries, layout, panes, tab};
-use common::{
-    command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
-};
+use client::{boundaries, layout, panes, start_client, tab};
+use common::{command_is_executing, errors, os_input_output, pty_bus, screen, utils, wasm_vm};
 use directories_next::ProjectDirs;
-use server::ServerInstruction;
+use server::{start_server, ServerInstruction};
 
 use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi};
+use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi, ServerOsApi};
 use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
@@ -82,4 +80,16 @@ pub fn main() {
         atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
         start(Box::new(os_input), opts, Box::new(server_os_input));
     }
+}
+
+/// Start Zellij with the specified [`ClientOsApi`], [`ServerOsApi`] and command-line arguments.
+// FIXME this should definitely be modularized and split into different functions.
+pub fn start(
+    client_os_input: Box<dyn ClientOsApi>,
+    opts: CliArgs,
+    server_os_input: Box<dyn ServerOsApi>,
+) {
+    let ipc_thread = start_server(server_os_input, opts.clone());
+    start_client(client_os_input, opts);
+    drop(ipc_thread.join());
 }
