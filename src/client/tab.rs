@@ -1,7 +1,9 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
+use crate::common::{
+    colors, input::handler::parse_keys, AppInstruction, Palette, SenderWithContext,
+};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
@@ -14,7 +16,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::{colors, Event, InputMode, Palette};
+use zellij_tile::data::{Event, InputMode};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;

@@ -2305,6 +2305,7 @@ dependencies = [
  "walkdir",
  "wasmer",
  "wasmer-wasi",
+ "xrdb",
  "zellij-tile",
 ]
 
@@ -2312,10 +2313,8 @@ dependencies = [
 name = "zellij-tile"
 version = "0.5.0"
 dependencies = [
- "colors-transform",
  "serde",
  "serde_json",
  "strum",
  "strum_macros",
- "xrdb",
 ]

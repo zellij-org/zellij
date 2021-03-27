@@ -2,7 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
-use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
+use crate::common::{AppInstruction, Palette, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
@@ -11,7 +11,7 @@ use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{Event, InputMode, Key, ModeInfo, Palette};
+use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
 use super::keybinds::key_to_actions;
 
