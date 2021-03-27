@@ -263,19 +263,6 @@ impl InputHandler {
                     .send(ScreenInstruction::UpdateTabName(c))
                     .unwrap();
             }
-            Action::SaveTabName => {
-                self.command_is_executing.updating_tabs();
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Input(
-                        PluginInputType::Event(EventType::Tab),
-                        vec![b'\n'],
-                    ))
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabName(vec![b'\n']))
-                    .unwrap();
-                self.command_is_executing.wait_until_tabs_are_updated();
-            }
             Action::NoOp => {}
         }
 
