@@ -9,34 +9,34 @@ pub mod setup;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::io::Write;
-use std::path::Path;
+use std::cell::RefCell;
 use std::sync::mpsc;
 use std::thread;
 use std::{collections::HashMap, fs};
-
-use crate::panes::PaneId;
-use directories_next::ProjectDirs;
-use input::handler::InputMode;
-use serde::{Deserialize, Serialize};
-use termion::input::TermRead;
-use wasm_vm::PluginEnv;
-use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-use wasmer_wasi::{Pipe, WasiState};
+use std::{
+    collections::HashSet,
+    io::Write,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use crate::cli::CliArgs;
 use crate::layout::Layout;
+use crate::panes::PaneId;
 use crate::server::{start_server, ServerInstruction};
 use command_is_executing::CommandIsExecuting;
+use directories_next::ProjectDirs;
 use errors::{AppContext, ContextType, ErrorContext, PluginContext, ScreenContext};
 use input::handler::input_loop;
 use os_input_output::{ClientOsApi, ServerOsApi, ServerOsApiInstruction};
 use pty_bus::PtyInstruction;
 use screen::{Screen, ScreenInstruction};
-use utils::consts::ZELLIJ_ROOT_PLUGIN_DIR;
-use wasm_vm::{
-    wasi_stdout, wasi_write_string, zellij_imports, EventType, PluginInputType, PluginInstruction,
-};
+use serde::{Deserialize, Serialize};
+use wasm_vm::PluginEnv;
+use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
+use wasmer_wasi::{Pipe, WasiState};
+use zellij_tile::data::{EventType, InputMode};
 
 /// Instructions sent from server to client
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -46,26 +46,6 @@ pub enum ClientInstruction {
     Error(String),
     DoneClosingPane,
     Exit,
-}
-
-// FIXME: It would be good to add some more things to this over time
-#[derive(Debug, Clone, Default)]
-pub struct AppState {
-    pub input_mode: InputMode,
-}
-
-// FIXME: Make this a method on the big `Communication` struct, so that app_tx can be extracted
-// from self instead of being explicitly passed here
-pub fn update_state(
-    app_tx: &SenderWithContext<AppInstruction>,
-    update_fn: impl FnOnce(AppState) -> AppState,
-) {
-    let (state_tx, state_rx) = mpsc::channel();
-
-    drop(app_tx.send(AppInstruction::GetState(state_tx)));
-    let state = state_rx.recv().unwrap();
-
-    drop(app_tx.send(AppInstruction::SetState(update_fn(state))))
 }
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
@@ -390,6 +370,9 @@ pub fn start(
                             screen.update_active_tab_name(c);
                             command_is_executing.done_updating_tabs();
                         }
+                        ScreenInstruction::ChangeInputMode(input_mode) => {
+                            screen.change_input_mode(input_mode);
+                        }
                         ScreenInstruction::Exit => {
                             break;
                         }
@@ -547,8 +530,6 @@ pub fn start(
         send_screen_instructions.update(err_ctx);
         os_input.update_senders(err_ctx);
         match app_instruction {
-            AppInstruction::GetState(state_tx) => drop(state_tx.send(app_state.clone())),
-            AppInstruction::SetState(state) => app_state = state,
             AppInstruction::Exit => break,
             AppInstruction::Error(backtrace) => {
                 let _ = os_input.send_to_server(ServerInstruction::ClientExit);
