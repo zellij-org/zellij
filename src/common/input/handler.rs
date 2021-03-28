@@ -2,7 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
-use crate::common::{AppInstruction, Palette, SenderWithContext, OPENCALLS};
+use crate::common::{load_palette, AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::pty_bus::PtyInstruction;
@@ -256,7 +256,7 @@ impl InputHandler {
 // TODO this should probably be automatically generated in some way
 pub fn get_mode_info(mode: InputMode) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
-    let mut palette = Palette::new();
+    let mut palette = load_palette();
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {

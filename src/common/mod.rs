@@ -39,7 +39,7 @@ use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction}
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use xrdb::Colors;
-use zellij_tile::data::{EventType, InputMode};
+use zellij_tile::data::{EventType, InputMode, Palette};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -126,73 +126,57 @@ pub mod colors {
     pub const BLACK: (u8, u8, u8) = (0, 0, 0);
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Palette {
-    pub fg: (u8, u8, u8),
-    pub bg: (u8, u8, u8),
-    pub black: (u8, u8, u8),
-    pub red: (u8, u8, u8),
-    pub green: (u8, u8, u8),
-    pub yellow: (u8, u8, u8),
-    pub blue: (u8, u8, u8),
-    pub magenta: (u8, u8, u8),
-    pub cyan: (u8, u8, u8),
-    pub white: (u8, u8, u8),
-}
-
-impl Palette {
-    pub fn new() -> Self {
-        let palette = match Colors::new("xresources") {
-            Some(colors) => {
-                let fg = colors.fg.unwrap();
-                let fg_imm = &fg;
-                let fg_hex: &str = &fg_imm;
-                let fg = Rgb::from_hex_str(fg_hex).unwrap().as_tuple();
-                let fg = (fg.0 as u8, fg.1 as u8, fg.2 as u8);
-                let bg = colors.bg.unwrap();
-                let bg_imm = &bg;
-                let bg_hex: &str = &bg_imm;
-                let bg = Rgb::from_hex_str(bg_hex).unwrap().as_tuple();
-                let bg = (bg.0 as u8, bg.1 as u8, bg.2 as u8);
-                let colors: Vec<(u8, u8, u8)> = colors
-                    .colors
-                    .iter()
-                    .map(|c| {
-                        let c = c.clone();
-                        let imm_str = &c.unwrap();
-                        let hex_str: &str = &imm_str;
-                        let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
-                        (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
-                    })
-                    .collect();
-                Self {
-                    fg,
-                    bg,
-                    black: colors[0],
-                    red: colors[1],
-                    green: colors[2],
-                    yellow: colors[3],
-                    blue: colors[4],
-                    magenta: colors[5],
-                    cyan: colors[6],
-                    white: colors[7],
-                }
+pub fn load_palette() -> Palette {
+    let palette = match Colors::new("xresources") {
+        Some(colors) => {
+            let fg = colors.fg.unwrap();
+            let fg_imm = &fg;
+            let fg_hex: &str = &fg_imm;
+            let fg = Rgb::from_hex_str(fg_hex).unwrap().as_tuple();
+            let fg = (fg.0 as u8, fg.1 as u8, fg.2 as u8);
+            let bg = colors.bg.unwrap();
+            let bg_imm = &bg;
+            let bg_hex: &str = &bg_imm;
+            let bg = Rgb::from_hex_str(bg_hex).unwrap().as_tuple();
+            let bg = (bg.0 as u8, bg.1 as u8, bg.2 as u8);
+            let colors: Vec<(u8, u8, u8)> = colors
+                .colors
+                .iter()
+                .map(|c| {
+                    let c = c.clone();
+                    let imm_str = &c.unwrap();
+                    let hex_str: &str = &imm_str;
+                    let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
+                    (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
+                })
+                .collect();
+            Palette {
+                fg,
+                bg,
+                black: colors[0],
+                red: colors[1],
+                green: colors[2],
+                yellow: colors[3],
+                blue: colors[4],
+                magenta: colors[5],
+                cyan: colors[6],
+                white: colors[7],
             }
-            None => Self {
-                fg: colors::BRIGHT_GRAY,
-                bg: colors::BLACK,
-                black: colors::BLACK,
-                red: colors::RED,
-                green: colors::GREEN,
-                yellow: colors::GRAY,
-                blue: colors::GRAY,
-                magenta: colors::GRAY,
-                cyan: colors::GRAY,
-                white: colors::WHITE,
-            },
-        };
-        palette
-    }
+        }
+        None => Palette {
+            fg: colors::BRIGHT_GRAY,
+            bg: colors::BLACK,
+            black: colors::BLACK,
+            red: colors::RED,
+            green: colors::GREEN,
+            yellow: colors::GRAY,
+            blue: colors::GRAY,
+            magenta: colors::GRAY,
+            cyan: colors::GRAY,
+            white: colors::WHITE,
+        },
+    };
+    palette
 }
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
@@ -326,7 +310,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
-            let colors = Palette::new();
+            let colors = load_palette();
             // debug_log_to_file(format!("{:?}", colors));
             move || {
                 let mut screen = Screen::new(

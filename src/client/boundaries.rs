@@ -1,8 +1,8 @@
-use crate::common::{colors, Palette};
+use crate::common::colors;
 use crate::tab::Pane;
 use ansi_term::Colour::RGB;
 use std::collections::HashMap;
-use zellij_tile::data::InputMode;
+use zellij_tile::data::{InputMode, Palette};
 
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {
