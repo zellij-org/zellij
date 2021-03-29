@@ -183,7 +183,7 @@ impl ClientOsApi for FakeInputOutput {
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
     }
-    fn send_to_server(&mut self, msg: ServerInstruction) {
+    fn send_to_server(&self, msg: ServerInstruction) {
         self.server_sender.send(msg).unwrap();
     }
     fn update_senders(&mut self, new_ctx: ErrorContext) {

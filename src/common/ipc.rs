@@ -24,7 +24,7 @@ pub enum ClientType {
 
 // Types of messages sent from the client to the server
 #[derive(Serialize, Deserialize)]
-pub enum ClientToServerMsg {
+pub enum _ClientToServerMsg {
     // List which sessions are available
     ListSessions,
     // Create a new session

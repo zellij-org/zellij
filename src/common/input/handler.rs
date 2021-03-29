@@ -8,6 +8,7 @@ use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
+use crate::server::ServerInstruction;
 use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
@@ -56,6 +57,7 @@ impl InputHandler {
         err_ctx.add_call(ContextType::StdinHandler);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
+        self.os_input.update_senders(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
             'input_loop: loop {
                 //@@@ I think this should actually just iterate over stdin directly
@@ -225,9 +227,8 @@ impl InputHandler {
                     None => PtyInstruction::SpawnTerminal(None),
                 };
                 self.command_is_executing.opening_new_pane();
-                self.send_app_instructions
-                    .send(AppInstruction::ToPty(pty_instr))
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::ToPty(pty_instr));
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
             Action::CloseFocus => {
@@ -239,9 +240,8 @@ impl InputHandler {
             }
             Action::NewTab => {
                 self.command_is_executing.updating_tabs();
-                self.send_app_instructions
-                    .send(AppInstruction::ToPty(PtyInstruction::NewTab))
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::NewTab));
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToNextTab => {

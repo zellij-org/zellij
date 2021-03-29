@@ -25,7 +25,7 @@ use crate::common::{
     command_is_executing::CommandIsExecuting,
     errors::{AppContext, ContextType, PluginContext, ScreenContext},
     input::handler::input_loop,
-    os_input_output::{ClientOsApi, ServerOsApiInstruction},
+    os_input_output::ClientOsApi,
     pty_bus::PtyInstruction,
     screen::{Screen, ScreenInstruction},
     wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginEnv, PluginInstruction},
@@ -50,22 +50,15 @@ pub enum AppInstruction {
     Exit,
     Error(String),
     ToPty(PtyInstruction),
-    ToScreen(ScreenInstruction),
-    ToPlugin(PluginInstruction),
-    OsApi(ServerOsApiInstruction),
     DoneClosingPane,
 }
 
 impl From<ClientInstruction> for AppInstruction {
     fn from(item: ClientInstruction) -> Self {
         match item {
-            ClientInstruction::ToScreen(s) => AppInstruction::ToScreen(s),
             ClientInstruction::Error(e) => AppInstruction::Error(e),
-            ClientInstruction::ClosePluginPane(p) => {
-                AppInstruction::ToPlugin(PluginInstruction::Unload(p))
-            }
             ClientInstruction::DoneClosingPane => AppInstruction::DoneClosingPane,
-            ClientInstruction::Exit => AppInstruction::Exit,
+            _ => panic!("Unsupported AppInstruction"),
         }
     }
 }
@@ -137,6 +130,10 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
                     screen.send_app_instructions.update(err_ctx);
+                    screen.os_api.update_senders(err_ctx);
+                    if let Some(t) = screen.get_active_tab_mut() {
+                        t.os_api.update_senders(err_ctx);
+                    }
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
                             screen
@@ -407,12 +404,22 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
     let router_thread = thread::Builder::new()
         .name("router".to_string())
         .spawn({
+            let mut send_screen_instructions = send_screen_instructions.clone();
+            let mut send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
             move || loop {
                 let (instruction, err_ctx) = os_input.client_recv();
                 send_app_instructions.update(err_ctx);
+                send_screen_instructions.update(err_ctx);
+                send_plugin_instructions.update(err_ctx);
                 match instruction {
                     ClientInstruction::Exit => break,
+                    ClientInstruction::ClosePluginPane(p) => {
+                        send_plugin_instructions
+                            .send(PluginInstruction::Unload(p))
+                            .unwrap();
+                    }
+                    ClientInstruction::ToScreen(s) => send_screen_instructions.send(s).unwrap(),
                     _ => {
                         send_app_instructions
                             .send(AppInstruction::from(instruction))
@@ -449,17 +456,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
                     .unwrap();
                 std::process::exit(1);
             }
-            AppInstruction::ToScreen(instruction) => {
-                send_screen_instructions.send(instruction).unwrap();
-            }
-            AppInstruction::ToPlugin(instruction) => {
-                send_plugin_instructions.send(instruction).unwrap();
-            }
             AppInstruction::ToPty(instruction) => {
-                let _ = os_input.send_to_server(ServerInstruction::ToPty(instruction));
-            }
-            AppInstruction::OsApi(instruction) => {
-                let _ = os_input.send_to_server(ServerInstruction::OsApi(instruction));
+                os_input.send_to_server(ServerInstruction::ToPty(instruction));
             }
             AppInstruction::DoneClosingPane => command_is_executing.done_closing_pane(),
         }

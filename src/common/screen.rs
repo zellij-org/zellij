@@ -11,7 +11,8 @@ use crate::client::AppInstruction;
 use crate::common::SenderWithContext;
 use crate::os_input_output::ClientOsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteBytes};
+use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
@@ -80,7 +81,7 @@ pub struct Screen {
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     /// The [`ClientOsApi`] this [`Screen`] uses.
-    os_api: Box<dyn ClientOsApi>,
+    pub os_api: Box<dyn ClientOsApi>,
     input_mode: InputMode,
 }
 
@@ -210,9 +211,8 @@ impl Screen {
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
-        let _ = self
-            .send_app_instructions
-            .send(AppInstruction::ToPty(PtyInstruction::CloseTab(pane_ids)));
+        self.os_api
+            .send_to_server(ServerInstruction::ToPty(PtyInstruction::CloseTab(pane_ids)));
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.send_app_instructions

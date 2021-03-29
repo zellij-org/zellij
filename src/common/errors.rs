@@ -350,11 +350,8 @@ impl From<&PluginInstruction> for PluginContext {
 pub enum AppContext {
     Exit,
     Error,
-    ToPty,
-    ToPlugin,
-    ToScreen,
     DoneClosingPane,
-    OsApi,
+    ToPty,
 }
 
 impl From<&AppInstruction> for AppContext {
@@ -362,11 +359,8 @@ impl From<&AppInstruction> for AppContext {
         match *app_instruction {
             AppInstruction::Exit => AppContext::Exit,
             AppInstruction::Error(_) => AppContext::Error,
-            AppInstruction::ToPty(_) => AppContext::ToPty,
-            AppInstruction::OsApi(_) => AppContext::OsApi,
-            AppInstruction::ToPlugin(_) => AppContext::ToPlugin,
-            AppInstruction::ToScreen(_) => AppContext::ToScreen,
             AppInstruction::DoneClosingPane => AppContext::DoneClosingPane,
+            AppInstruction::ToPty(_) => AppContext::ToPty,
         }
     }
 }
