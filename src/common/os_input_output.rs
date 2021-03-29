@@ -189,7 +189,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 
     /// Sends an event, along with the current [`ErrorContext`], on this
     /// [`IpcSenderWithContext`]'s channel.
-    fn send(&mut self, msg: T) -> ipmpsc::Result<()> {
+    fn send(&self, msg: T) -> ipmpsc::Result<()> {
         self.sender.send(&(msg, self.err_ctx))
     }
 }
@@ -335,7 +335,7 @@ pub trait ClientOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
-    fn send_to_server(&mut self, msg: ServerInstruction);
+    fn send_to_server(&self, msg: ServerInstruction);
     /// Update ErrorContext of senders
     fn update_senders(&mut self, new_ctx: ErrorContext);
     /// Receives a message on client-side IPC channel
@@ -372,7 +372,7 @@ impl ClientOsApi for ClientOsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn send_to_server(&mut self, msg: ServerInstruction) {
+    fn send_to_server(&self, msg: ServerInstruction) {
         self.server_sender.send(msg).unwrap();
     }
     fn update_senders(&mut self, new_ctx: ErrorContext) {

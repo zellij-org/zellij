@@ -165,11 +165,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
         .name("server_router".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let mut send_os_instructions = send_os_instructions.clone();
+            let mut send_pty_instructions = send_pty_instructions.clone();
             move || loop {
                 let (instruction, err_ctx) = os_input.server_recv();
                 send_server_instructions.update(err_ctx);
+                send_pty_instructions.update(err_ctx);
+                send_os_instructions.update(err_ctx);
                 match instruction {
                     ServerInstruction::Exit => break,
+                    ServerInstruction::ToPty(instruction) => {
+                        send_pty_instructions.send(instruction).unwrap();
+                    }
+                    ServerInstruction::OsApi(instruction) => {
+                        send_os_instructions.send(instruction).unwrap();
+                    }
                     _ => {
                         send_server_instructions.send(instruction).unwrap();
                     }
@@ -213,14 +223,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                         send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
                         os_input.add_client_sender(buffer_path);
                     }
-                    ServerInstruction::ToPty(instr) => {
-                        send_pty_instructions.send(instr).unwrap();
-                    }
                     ServerInstruction::ToScreen(instr) => {
                         os_input.send_to_client(ClientInstruction::ToScreen(instr));
-                    }
-                    ServerInstruction::OsApi(instr) => {
-                        send_os_instructions.send(instr).unwrap();
                     }
                     ServerInstruction::DoneClosingPane => {
                         os_input.send_to_client(ClientInstruction::DoneClosingPane);
