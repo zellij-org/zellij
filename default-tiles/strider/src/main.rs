@@ -25,7 +25,7 @@ impl ZellijTile for State {
                 let mut path = entry.as_line(cols).normal();
 
                 if !self.path.clone().into_os_string().is_empty() && i == 0 {
-                    println!("{}", FsEntry::from(self.path.clone()).as_line(cols).bold());
+                    println!("{}", FsEntry::Header(self.path.clone(), 0).as_line(cols).bold());
                 };
 
                 if let FsEntry::Dir(..) = entry {
@@ -59,6 +59,7 @@ impl ZellijTile for State {
                         refresh_directory(self);
                     }
                     FsEntry::File(p, _) => open_file(&p),
+                    FsEntry::Header(_, _) => { },
                 }
             }
             Key::Left | Key::Char('h') => {
