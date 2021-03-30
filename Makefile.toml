@@ -15,6 +15,37 @@ dependencies = ["pre-test"]
 [tasks.post-test]
 env = { "SKIP_TEST" = false }
 
+[tasks.run]
+workspace = false
+dependencies = ["build"]
+run_task = { name = ["patch-layouts", "run-zellij"] }
+
+## Need to walk the layout YAML and patch the plugin fields!
+[tasks.patch-layouts]
+script_runner = "@rust"
+script = '''
+//! ```cargo
+//! [dependencies]
+//! yaml-rust = "0.4"
+//! ```
+use std::{fs, env, error::Error, path::Path};
+use yaml_rust::{YamlLoader, YamlEmitter};
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let root = env::var("CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY")?;
+    let layout_path = Path::new(&root).join("assets/layouts");
+    for layout in fs::read_dir(layout_path)? {
+        let yaml = fs::read_to_string(layout?.path())?;
+        let yaml = YamlLoader::load_from_str(&yaml)?[0];
+    }
+    Ok(())
+}
+'''
+
+[tasks.run-zellij]
+
+
+
 # Running Zellij
 
 # Change the build to always use the assets, but not delete them by default
