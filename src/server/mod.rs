@@ -1,4 +1,3 @@
-use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
 use crate::common::{ChannelWithContext, SenderType, SenderWithContext};
 use crate::errors::{ContextType, ErrorContext, OsContext, PtyContext, ServerContext};
@@ -6,10 +5,13 @@ use crate::os_input_output::{ServerOsApi, ServerOsApiInstruction};
 use crate::panes::PaneId;
 use crate::pty_bus::{PtyBus, PtyInstruction};
 use crate::screen::ScreenInstruction;
+use crate::{cli::CliArgs, common::pty_bus::VteEvent};
 use serde::{Deserialize, Serialize};
+use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
+use zellij_tile::prelude::InputMode;
 
 /// Instructions related to server-side application including the
 /// ones sent by client to server
@@ -27,6 +29,147 @@ pub enum ServerInstruction {
     ClosePluginPane(u32),
     ClientExit,
     Exit,
+}
+impl ServerInstruction {
+    // ToPty
+    pub fn spawn_terminal(path: Option<PathBuf>) -> Self {
+        Self::ToPty(PtyInstruction::SpawnTerminal(path))
+    }
+    pub fn spawn_terminal_vertically(path: Option<PathBuf>) -> Self {
+        Self::ToPty(PtyInstruction::SpawnTerminalVertically(path))
+    }
+    pub fn spawn_terminal_horizontally(path: Option<PathBuf>) -> Self {
+        Self::ToPty(PtyInstruction::SpawnTerminalHorizontally(path))
+    }
+    pub fn pty_new_tab() -> Self {
+        Self::ToPty(PtyInstruction::NewTab)
+    }
+    pub fn pty_close_pane(id: PaneId) -> Self {
+        Self::ToPty(PtyInstruction::ClosePane(id))
+    }
+    pub fn pty_close_tab(ids: Vec<PaneId>) -> Self {
+        Self::ToPty(PtyInstruction::CloseTab(ids))
+    }
+    pub fn pty_exit() -> Self {
+        Self::ToPty(PtyInstruction::Exit)
+    }
+
+    // ToScreen
+    pub fn render() -> Self {
+        Self::ToScreen(ScreenInstruction::Render)
+    }
+    pub fn new_pane(id: PaneId) -> Self {
+        Self::ToScreen(ScreenInstruction::NewPane(id))
+    }
+    pub fn horizontal_split(id: PaneId) -> Self {
+        Self::ToScreen(ScreenInstruction::HorizontalSplit(id))
+    }
+    pub fn vertical_split(id: PaneId) -> Self {
+        Self::ToScreen(ScreenInstruction::VerticalSplit(id))
+    }
+    pub fn write_character(chars: Vec<u8>) -> Self {
+        Self::ToScreen(ScreenInstruction::WriteCharacter(chars))
+    }
+    pub fn resize_left() -> Self {
+        Self::ToScreen(ScreenInstruction::ResizeLeft)
+    }
+    pub fn resize_right() -> Self {
+        Self::ToScreen(ScreenInstruction::ResizeRight)
+    }
+    pub fn resize_down() -> Self {
+        Self::ToScreen(ScreenInstruction::ResizeDown)
+    }
+    pub fn resize_up() -> Self {
+        Self::ToScreen(ScreenInstruction::ResizeUp)
+    }
+    pub fn move_focus() -> Self {
+        Self::ToScreen(ScreenInstruction::MoveFocus)
+    }
+    pub fn move_focus_left() -> Self {
+        Self::ToScreen(ScreenInstruction::MoveFocusLeft)
+    }
+    pub fn move_focus_right() -> Self {
+        Self::ToScreen(ScreenInstruction::MoveFocusRight)
+    }
+    pub fn move_focus_down() -> Self {
+        Self::ToScreen(ScreenInstruction::MoveFocusDown)
+    }
+    pub fn move_focus_up() -> Self {
+        Self::ToScreen(ScreenInstruction::MoveFocusUp)
+    }
+    pub fn screen_exit() -> Self {
+        Self::ToScreen(ScreenInstruction::Exit)
+    }
+    pub fn scroll_up() -> Self {
+        Self::ToScreen(ScreenInstruction::ScrollUp)
+    }
+    pub fn scroll_down() -> Self {
+        Self::ToScreen(ScreenInstruction::ScrollDown)
+    }
+    pub fn clear_scroll() -> Self {
+        Self::ToScreen(ScreenInstruction::ClearScroll)
+    }
+    pub fn close_focused_pane() -> Self {
+        Self::ToScreen(ScreenInstruction::CloseFocusedPane)
+    }
+    pub fn toggle_active_terminal_fullscreen() -> Self {
+        Self::ToScreen(ScreenInstruction::ToggleActiveTerminalFullscreen)
+    }
+    pub fn set_selectable(pane_id: PaneId, value: bool) -> Self {
+        Self::ToScreen(ScreenInstruction::SetSelectable(pane_id, value))
+    }
+    pub fn set_max_height(pane_id: PaneId, max_height: usize) -> Self {
+        Self::ToScreen(ScreenInstruction::SetMaxHeight(pane_id, max_height))
+    }
+    pub fn set_invisible_borders(pane_id: PaneId, value: bool) -> Self {
+        Self::ToScreen(ScreenInstruction::SetInvisibleBorders(pane_id, value))
+    }
+    pub fn screen_close_pane(pane_id: PaneId) -> Self {
+        Self::ToScreen(ScreenInstruction::ClosePane(pane_id))
+    }
+    pub fn apply_layout(layout: (PathBuf, Vec<RawFd>)) -> Self {
+        Self::ToScreen(ScreenInstruction::ApplyLayout(layout))
+    }
+    pub fn screen_new_tab(fd: RawFd) -> Self {
+        Self::ToScreen(ScreenInstruction::NewTab(fd))
+    }
+    pub fn switch_tab_prev() -> Self {
+        Self::ToScreen(ScreenInstruction::SwitchTabPrev)
+    }
+    pub fn switch_tab_next() -> Self {
+        Self::ToScreen(ScreenInstruction::SwitchTabPrev)
+    }
+    pub fn screen_close_tab() -> Self {
+        Self::ToScreen(ScreenInstruction::CloseTab)
+    }
+    pub fn go_to_tab(tab_id: u32) -> Self {
+        Self::ToScreen(ScreenInstruction::GoToTab(tab_id))
+    }
+    pub fn update_tab_name(tab_ids: Vec<u8>) -> Self {
+        Self::ToScreen(ScreenInstruction::UpdateTabName(tab_ids))
+    }
+    pub fn change_input_mode(input_mode: InputMode) -> Self {
+        Self::ToScreen(ScreenInstruction::ChangeInputMode(input_mode))
+    }
+    pub fn pty(fd: RawFd, event: VteEvent) -> Self {
+        Self::ToScreen(ScreenInstruction::Pty(fd, event))
+    }
+
+    // OsApi
+    pub fn set_terminal_size_using_fd(fd: RawFd, cols: u16, rows: u16) -> Self {
+        Self::OsApi(ServerOsApiInstruction::SetTerminalSizeUsingFd(
+            fd, cols, rows,
+        ))
+    }
+    pub fn write_to_tty_stdin(fd: RawFd, buf: Vec<u8>) -> Self {
+        Self::OsApi(ServerOsApiInstruction::WriteToTtyStdin(fd, buf))
+    }
+    pub fn tc_drain(fd: RawFd) -> Self {
+        Self::OsApi(ServerOsApiInstruction::TcDrain(fd))
+    }
+    pub fn os_exit() -> Self {
+        Self::OsApi(ServerOsApiInstruction::Exit)
+    }
 }
 
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
@@ -80,27 +223,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                     let pid = pty_bus.spawn_terminal(file_to_open);
                     pty_bus
                         .send_server_instructions
-                        .send(ServerInstruction::ToScreen(ScreenInstruction::NewPane(
-                            PaneId::Terminal(pid),
-                        )))
+                        .send(ServerInstruction::new_pane(PaneId::Terminal(pid)))
                         .unwrap();
                 }
                 PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                     let pid = pty_bus.spawn_terminal(file_to_open);
                     pty_bus
                         .send_server_instructions
-                        .send(ServerInstruction::ToScreen(
-                            ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)),
-                        ))
+                        .send(ServerInstruction::vertical_split(PaneId::Terminal(pid)))
                         .unwrap();
                 }
                 PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                     let pid = pty_bus.spawn_terminal(file_to_open);
                     pty_bus
                         .send_server_instructions
-                        .send(ServerInstruction::ToScreen(
-                            ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)),
-                        ))
+                        .send(ServerInstruction::horizontal_split(PaneId::Terminal(pid)))
                         .unwrap();
                 }
                 PtyInstruction::NewTab => {
@@ -110,7 +247,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                         let pid = pty_bus.spawn_terminal(None);
                         pty_bus
                             .send_server_instructions
-                            .send(ServerInstruction::ToScreen(ScreenInstruction::NewTab(pid)))
+                            .send(ServerInstruction::screen_new_tab(pid))
                             .unwrap();
                     }
                 }
