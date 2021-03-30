@@ -200,7 +200,7 @@ impl Screen {
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
         self.os_api
-            .send_to_server(ServerInstruction::ToPty(PtyInstruction::CloseTab(pane_ids)));
+            .send_to_server(ServerInstruction::pty_close_tab(pane_ids));
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.send_app_instructions

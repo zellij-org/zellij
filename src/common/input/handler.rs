@@ -227,7 +227,7 @@ impl InputHandler {
             Action::NewTab => {
                 self.command_is_executing.updating_tabs();
                 self.os_input
-                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::NewTab));
+                    .send_to_server(ServerInstruction::pty_new_tab());
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToNextTab => {

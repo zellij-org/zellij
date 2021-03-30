@@ -330,8 +330,8 @@ impl Tab {
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
             self.os_api
-                .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(
-                    PaneId::Terminal(*unused_pid),
+                .send_to_server(ServerInstruction::pty_close_pane(PaneId::Terminal(
+                    *unused_pid,
                 )));
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
@@ -380,7 +380,7 @@ impl Tab {
             );
             if terminal_id_to_split.is_none() {
                 self.os_api
-                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(pid))); // we can't open this pane, close the pty
+                    .send_to_server(ServerInstruction::pty_close_pane(pid)); // we can't open this pane, close the pty
                 return; // likely no terminal large enough to split
             }
             let terminal_id_to_split = terminal_id_to_split.unwrap();
@@ -469,7 +469,7 @@ impl Tab {
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
                 self.os_api
-                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(pid))); // we can't open this pane, close the pty
+                    .send_to_server(ServerInstruction::pty_close_pane(pid)); // we can't open this pane, close the pty
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -530,7 +530,7 @@ impl Tab {
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
                 self.os_api
-                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(pid))); // we can't open this pane, close the pty
+                    .send_to_server(ServerInstruction::pty_close_pane(pid)); // we can't open this pane, close the pty
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -2139,7 +2139,7 @@ impl Tab {
             let terminals = self.get_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.os_api
-                    .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(pid)));
+                    .send_to_server(ServerInstruction::pty_close_pane(pid));
                 self.close_pane_without_rerender(pid);
             }
         }
@@ -2250,9 +2250,7 @@ impl Tab {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             self.close_pane(active_pane_id);
             self.os_api
-                .send_to_server(ServerInstruction::ToPty(PtyInstruction::ClosePane(
-                    active_pane_id,
-                )));
+                .send_to_server(ServerInstruction::pty_close_pane(active_pane_id));
         }
     }
     pub fn scroll_active_terminal_up(&mut self) {
