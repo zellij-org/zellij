@@ -13,7 +13,7 @@ use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
-use zellij_tile::data::{Event, InputMode, Palette, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
-    ChangeInputMode(InputMode),
+    ChangeMode(ModeInfo),
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -74,6 +74,7 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
+    mode_info: ModeInfo,
     input_mode: InputMode,
     colors: Palette,
 }
@@ -88,6 +89,7 @@ impl Screen {
         full_screen_ws: &PositionAndSize,
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
+        mode_info: ModeInfo,
         input_mode: InputMode,
         colors: Palette,
     ) -> Self {
@@ -101,6 +103,7 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             os_api,
+            mode_info,
             input_mode,
             colors,
         }
@@ -122,6 +125,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
+            self.mode_info.clone(),
             self.input_mode,
             self.colors,
         );
@@ -265,6 +269,7 @@ impl Screen {
             self.send_app_instructions.clone(),
             self.max_panes,
             None,
+            self.mode_info.clone(),
             self.input_mode,
             self.colors,
         );
@@ -306,10 +311,10 @@ impl Screen {
         }
         self.update_tabs();
     }
-    pub fn change_input_mode(&mut self, input_mode: InputMode) {
-        self.input_mode = input_mode;
+    pub fn change_mode(&mut self, mode_info: ModeInfo) {
+        self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
-            tab.input_mode = self.input_mode;
+            tab.mode_info = self.mode_info.clone();
         }
     }
 }

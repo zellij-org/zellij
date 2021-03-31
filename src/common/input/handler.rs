@@ -130,7 +130,7 @@ impl InputHandler {
                     ))
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeInputMode(mode))
+                    .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
