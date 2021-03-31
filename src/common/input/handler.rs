@@ -256,7 +256,7 @@ impl InputHandler {
 // TODO this should probably be automatically generated in some way
 pub fn get_mode_info(mode: InputMode) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
-    let mut palette = load_palette();
+    let palette = load_palette();
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {

@@ -58,7 +58,16 @@ impl Default for InputMode {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
+pub mod colors {
+    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
+    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
+    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
+    pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
+    pub const RED: (u8, u8, u8) = (135, 0, 0);
+    pub const BLACK: (u8, u8, u8) = (0, 0, 0);
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Palette {
     pub fg: (u8, u8, u8),
     pub bg: (u8, u8, u8),
@@ -70,6 +79,23 @@ pub struct Palette {
     pub magenta: (u8, u8, u8),
     pub cyan: (u8, u8, u8),
     pub white: (u8, u8, u8),
+}
+
+impl Default for Palette {
+    fn default() -> Palette {
+        Palette {
+            fg: colors::BRIGHT_GRAY,
+            bg: colors::BLACK,
+            black: colors::BLACK,
+            red: colors::RED,
+            green: colors::GREEN,
+            yellow: colors::GRAY,
+            blue: colors::GRAY,
+            magenta: colors::GRAY,
+            cyan: colors::GRAY,
+            white: colors::WHITE,
+        }
+    }
 }
 
 /// Represents the contents of the help message that is printed in the status bar,
