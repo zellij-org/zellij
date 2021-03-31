@@ -26,3 +26,4 @@ Once the organization reaches 10 members, a reasonable and achievable process mu
 * Denis Maximov <denis_maxim0v@protonmail.com>
 * Kunal Mohan <kunalmohan99@gmail.com>
 * Henil Dedania <dedaniahenil@gmail.com>
+* Roee Shapira <ro33.sha@gmail.com>
