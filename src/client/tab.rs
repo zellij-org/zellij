@@ -15,7 +15,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::{Event, InputMode};
+use zellij_tile::data::{Event, ModeInfo};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -66,7 +66,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
-    pub input_mode: InputMode,
+    pub mode_info: ModeInfo,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -183,7 +183,7 @@ impl Tab {
         send_app_instructions: SenderWithContext<AppInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
-        input_mode: InputMode,
+        mode_info: ModeInfo,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -213,7 +213,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
-            input_mode,
+            mode_info,
         }
     }
 
@@ -267,6 +267,13 @@ impl Tab {
                     self.send_plugin_instructions.clone(),
                 );
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+                // Send an initial mode update to the newly loaded plugin only!
+                self.send_plugin_instructions
+                    .send(PluginInstruction::Update(
+                        Some(pid),
+                        Event::ModeUpdate(self.mode_info.clone()),
+                    ))
+                    .unwrap();
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
@@ -626,10 +633,12 @@ impl Tab {
         for (kind, terminal) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&terminal.pid()) {
                 match self.active_terminal.unwrap() == terminal.pid() {
-                    true => {
-                        boundaries.add_rect(terminal.as_ref(), self.input_mode, Some(colors::GREEN))
-                    }
-                    false => boundaries.add_rect(terminal.as_ref(), self.input_mode, None),
+                    true => boundaries.add_rect(
+                        terminal.as_ref(),
+                        self.mode_info.mode,
+                        Some(colors::GREEN),
+                    ),
+                    false => boundaries.add_rect(terminal.as_ref(), self.mode_info.mode, None),
                 }
                 if let Some(vte_output) = terminal.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {

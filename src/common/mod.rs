@@ -37,7 +37,7 @@ use wasm_vm::PluginEnv;
 use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, InputMode};
+use zellij_tile::data::{EventType, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -256,7 +256,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    InputMode::Normal,
+                    ModeInfo::default(),
                 );
                 loop {
                     let (event, mut err_ctx) = screen
@@ -389,8 +389,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
                         }
-                        ScreenInstruction::ChangeInputMode(input_mode) => {
-                            screen.change_input_mode(input_mode);
+                        ScreenInstruction::ChangeMode(mode_info) => {
+                            screen.change_mode(mode_info);
                         }
                         ScreenInstruction::Quit => {
                             break;
