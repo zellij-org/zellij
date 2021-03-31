@@ -81,7 +81,8 @@ impl InputHandler {
                             }
                             termion::event::Event::Mouse(_)
                             | termion::event::Event::Unsupported(_) => {
-                                unimplemented!("Mouse and unsupported events aren't supported!");
+                                // Mouse and unsupported events aren't implemented yet,
+                                // use a NoOp untill then.
                             }
                         },
                         Err(err) => panic!("Encountered read error: {:?}", err),
