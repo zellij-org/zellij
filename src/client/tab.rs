@@ -1,16 +1,17 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::client::pane_resizer::PaneResizer;
 use crate::boundaries::colors;
+use crate::client::pane_resizer::PaneResizer;
 use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
+use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::utils::shared::adjust_to_size;
-use crate::os_input_output::OsApi;
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
     cmp::Reverse,
@@ -18,7 +19,6 @@ use std::{
 };
 use std::{io::Write, sync::mpsc::channel};
 use zellij_tile::data::{Event, ModeInfo};
-use serde::{Deserialize, Serialize};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -674,11 +674,9 @@ impl Tab {
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 match self.active_terminal.unwrap() == pane.pid() {
-                    true => boundaries.add_rect(
-                        pane.as_ref(),
-                        self.mode_info.mode,
-                        Some(colors::GREEN),
-                    ),
+                    true => {
+                        boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(colors::GREEN))
+                    }
                     false => boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None),
                 }
                 if let Some(vte_output) = pane.render() {
