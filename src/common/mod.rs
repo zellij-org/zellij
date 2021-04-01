@@ -424,6 +424,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
                         }
+                        ScreenInstruction::TerminalResize => {
+                            screen.resize_to_screen();
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -600,6 +603,20 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,
                 }
+            }
+        })
+        .unwrap();
+
+    let signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            move || {
+                os_input.receive_sigwinch(Box::new(move || {
+                    let _ = send_screen_instructions
+                        .send(ScreenInstruction::TerminalResize);
+                }));
             }
         })
         .unwrap();

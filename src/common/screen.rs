@@ -48,6 +48,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
+    TerminalResize,
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -209,6 +210,15 @@ impl Screen {
             }
             self.update_tabs();
         }
+    }
+
+    pub fn resize_to_screen(&mut self) {
+        let new_screen_size = self.os_api.get_terminal_size_using_fd(0);
+        self.full_screen_ws = new_screen_size;
+        for (_, tab) in self.tabs.iter_mut() {
+            tab.resize_whole_tab(new_screen_size);
+        }
+        self.render();
     }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].

@@ -1,6 +1,6 @@
 use crate::tests::tty_inputs::{
-    COL_10, COL_121, COL_14, COL_15, COL_19, COL_20, COL_24, COL_25, COL_29, COL_30, COL_34,
-    COL_39, COL_4, COL_40, COL_47, COL_50, COL_60, COL_70, COL_8, COL_9, COL_90, COL_96,
+    COL_10, COL_121, COL_141, COL_14, COL_15, COL_19, COL_20, COL_24, COL_25, COL_29, COL_30, COL_34,
+    COL_39, COL_4, COL_40, COL_47, COL_50, COL_60, COL_70, COL_8, COL_9, COL_90, COL_80, COL_96,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -69,9 +69,11 @@ pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     let col_50_bytes = Bytes::new().content_from_str(&COL_50);
     let col_60_bytes = Bytes::new().content_from_str(&COL_60);
     let col_70_bytes = Bytes::new().content_from_str(&COL_70);
+    let col_80_bytes = Bytes::new().content_from_str(&COL_80);
     let col_90_bytes = Bytes::new().content_from_str(&COL_90);
     let col_96_bytes = Bytes::new().content_from_str(&COL_96);
     let col_121_bytes = Bytes::new().content_from_str(&COL_121);
+    let col_141_bytes = Bytes::new().content_from_str(&COL_141);
     possible_inputs.insert(4, col_4_bytes);
     possible_inputs.insert(8, col_8_bytes);
     possible_inputs.insert(9, col_9_bytes);
@@ -91,8 +93,10 @@ pub fn get_possible_tty_inputs() -> HashMap<u16, Bytes> {
     possible_inputs.insert(50, col_50_bytes);
     possible_inputs.insert(60, col_60_bytes);
     possible_inputs.insert(70, col_70_bytes);
+    possible_inputs.insert(80, col_80_bytes);
     possible_inputs.insert(90, col_90_bytes);
     possible_inputs.insert(96, col_96_bytes);
     possible_inputs.insert(121, col_121_bytes);
+    possible_inputs.insert(141, col_141_bytes);
     possible_inputs
 }

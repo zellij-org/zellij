@@ -1,13 +1,15 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+use crate::utils::logging::debug_log_to_file;
+
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::wasm_vm::{PluginInputType, PluginInstruction};
 use crate::{boundaries::Boundaries, panes::PluginPane};
-use crate::{os_input_output::OsApi, utils::shared::pad_to_size};
+use crate::{os_input_output::OsApi, utils::shared::adjust_to_size};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::{
@@ -15,6 +17,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
+use crate::client::pane_resizer::PaneResizer;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -65,6 +68,7 @@ pub struct Tab {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     expansion_boundary: Option<PositionAndSize>,
+    should_clear_display_before_rendering: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -105,6 +109,10 @@ pub trait Pane {
     fn reduce_width_right(&mut self, count: usize);
     fn reduce_width_left(&mut self, count: usize);
     fn increase_width_left(&mut self, count: usize);
+    fn push_down(&mut self, count: usize);
+    fn push_right(&mut self, count: usize);
+    fn pull_left(&mut self, count: usize);
+    fn pull_up(&mut self, count: usize);
     fn scroll_up(&mut self, count: usize);
     fn scroll_down(&mut self, count: usize);
     fn clear_scroll(&mut self);
@@ -158,6 +166,24 @@ pub trait Pane {
             columns: self.columns(),
             rows: self.rows(),
         }
+    }
+    fn can_increase_height_by(&self, increase_by: usize) -> bool {
+        self
+            .max_height()
+            .map(|max_height| self.rows() + increase_by <= max_height)
+            .unwrap_or(true)
+    }
+    fn can_increase_width_by(&self, increase_by: usize) -> bool {
+        self
+            .max_width()
+            .map(|max_width| self.columns() + increase_by <= max_width)
+            .unwrap_or(true)
+    }
+    fn can_reduce_height_by(&self, reduce_by: usize) -> bool {
+        self.rows() > reduce_by && self.rows() - reduce_by >= self.min_height()
+    }
+    fn can_reduce_width_by(&self, reduce_by: usize) -> bool {
+        self.columns() > reduce_by && self.columns() - reduce_by >= self.min_width()
     }
     fn min_width(&self) -> usize {
         MIN_TERMINAL_WIDTH
@@ -218,6 +244,7 @@ impl Tab {
             send_pty_instructions,
             send_plugin_instructions,
             expansion_boundary: None,
+            should_clear_display_before_rendering: false,
         }
     }
 
@@ -643,21 +670,28 @@ impl Tab {
         stdout
             .write_all(&hide_cursor.as_bytes())
             .expect("cannot write to stdout");
-        for (kind, terminal) in self.panes.iter_mut() {
-            if !self.panes_to_hide.contains(&terminal.pid()) {
-                boundaries.add_rect(terminal.as_ref());
-                if let Some(vte_output) = terminal.render() {
+        if self.should_clear_display_before_rendering {
+            let clear_display = "\u{1b}[2J";
+            stdout
+                .write_all(&clear_display.as_bytes())
+                .expect("cannot write to stdout");
+            self.should_clear_display_before_rendering = false;
+        }
+        for (kind, pane) in self.panes.iter_mut() {
+            if !self.panes_to_hide.contains(&pane.pid()) {
+                boundaries.add_rect(pane.as_ref());
+                if let Some(vte_output) = pane.render() {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output
                     } else {
-                        pad_to_size(&vte_output, terminal.rows(), terminal.columns())
+                        adjust_to_size(&vte_output, pane.rows(), pane.columns())
                     };
                     // FIXME: Use Termion for cursor and style clearing?
                     write!(
                         stdout,
                         "\u{1b}[{};{}H\u{1b}[m{}",
-                        terminal.y() + 1,
-                        terminal.x() + 1,
+                        pane.y() + 1,
+                        pane.x() + 1,
                         vte_output
                     )
                     .expect("cannot write to stdout");
@@ -1670,16 +1704,24 @@ impl Tab {
             false
         }
     }
-    pub fn resize_right(&mut self) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 10;
-        if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_right(&active_pane_id, count) {
-                self.increase_pane_and_surroundings_right(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
-                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
-            }
+    pub fn resize_whole_tab(&mut self, new_screen_size: PositionAndSize) {
+        if self.fullscreen_is_active {
+            // this is not ideal but until we get rid of expansion_boundary, it's a necessity
+            self.toggle_active_pane_fullscreen();
         }
+        match PaneResizer::new(&mut self.panes, &mut self.os_api).resize(self.full_screen_ws, new_screen_size) {
+            Some((column_difference, row_difference)) => {
+                self.should_clear_display_before_rendering = true;
+                self.expansion_boundary.as_mut().map(|expansion_boundary| {
+                    // TODO: this is not always accurate
+                    expansion_boundary.columns = (expansion_boundary.columns as isize + column_difference) as usize;
+                    expansion_boundary.rows = (expansion_boundary.rows as isize + row_difference) as usize;
+                });
+                self.full_screen_ws.columns = (self.full_screen_ws.columns as isize + column_difference) as usize;
+                self.full_screen_ws.rows = (self.full_screen_ws.rows as isize + row_difference) as usize;
+            },
+            None => {}
+        };
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1689,6 +1731,17 @@ impl Tab {
                 self.increase_pane_and_surroundings_left(&active_pane_id, count);
             } else if self.can_reduce_pane_and_surroundings_left(&active_pane_id, count) {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+            }
+        }
+    }
+    pub fn resize_right(&mut self) {
+        // TODO: find out by how much we actually reduced and only reduce by that much
+        let count = 10;
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if self.can_increase_pane_and_surroundings_right(&active_pane_id, count) {
+                self.increase_pane_and_surroundings_right(&active_pane_id, count);
+            } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
+                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
         }
     }

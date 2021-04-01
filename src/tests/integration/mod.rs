@@ -13,3 +13,4 @@ pub mod resize_right;
 pub mod resize_up;
 pub mod tabs;
 pub mod toggle_fullscreen;
+pub mod terminal_window_resize;

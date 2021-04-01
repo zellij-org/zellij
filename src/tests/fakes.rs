@@ -3,14 +3,13 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Condvar};
 use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
-use crate::tests::utils::commands::SLEEP;
+use crate::tests::utils::commands::{SLEEP, QUIT};
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 
@@ -72,7 +71,8 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
-    started_reading_from_pty: Arc<AtomicBool>,
+    should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
+    sigwinch_event: Option<PositionAndSize>,
 }
 
 impl FakeInputOutput {
@@ -91,7 +91,8 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
-            started_reading_from_pty: Arc::new(AtomicBool::new(false)),
+            should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
+            sigwinch_event: None,
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -108,10 +109,20 @@ impl FakeInputOutput {
     pub fn add_terminal(&mut self, fd: RawFd) {
         self.stdin_writes.lock().unwrap().insert(fd, vec![]);
     }
+    pub fn add_sigwinch_event(&mut self, new_position_and_size: PositionAndSize) {
+        self.sigwinch_event = Some(new_position_and_size);
+    }
 }
 
 impl OsApi for FakeInputOutput {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
+        if let Some(new_position_and_size) = self.sigwinch_event {
+            let (lock, _cvar) = &*self.should_trigger_sigwinch;
+            let should_trigger_sigwinch = lock.lock().unwrap();
+            if *should_trigger_sigwinch && pid == 0 {
+                return new_position_and_size;
+            }
+        }
         let win_sizes = self.win_sizes.lock().unwrap();
         let winsize = win_sizes.get(&pid).unwrap();
         *winsize
@@ -159,7 +170,6 @@ impl OsApi for FakeInputOutput {
                 if bytes_read > bytes.read_position {
                     bytes.set_read_position(bytes_read);
                 }
-                self.started_reading_from_pty.store(true, Ordering::Release);
                 return Ok(bytes_read);
             }
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
@@ -199,6 +209,12 @@ impl OsApi for FakeInputOutput {
             .unwrap_or(vec![]);
         if command == SLEEP {
             std::thread::sleep(std::time::Duration::from_millis(200));
+        } else if command == QUIT && self.sigwinch_event.is_some() {
+            let (lock, cvar) = &*self.should_trigger_sigwinch;
+            let mut should_trigger_sigwinch = lock.lock().unwrap();
+            *should_trigger_sigwinch = true;
+            cvar.notify_one();
+            ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS); // give some time for the app to resize before quitting
         }
         command
     }
@@ -208,5 +224,15 @@ impl OsApi for FakeInputOutput {
     fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
+    }
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+         if self.sigwinch_event.is_some() {
+             let (lock, cvar) = &*self.should_trigger_sigwinch;
+             let mut should_trigger_sigwinch = lock.lock().unwrap();
+             while !*should_trigger_sigwinch {
+                 should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+             }
+             cb();
+         }
     }
 }

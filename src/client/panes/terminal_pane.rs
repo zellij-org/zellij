@@ -188,7 +188,7 @@ impl Pane for TerminalPane {
         self.max_height
     }
     fn render(&mut self) -> Option<String> {
-        if self.should_render || cfg!(test) {
+        if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
@@ -274,6 +274,18 @@ impl Pane for TerminalPane {
     fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.columns += count;
         self.reflow_lines();
+    }
+    fn push_down(&mut self, count: usize) {
+        self.position_and_size.y += count;
+    }
+    fn push_right(&mut self, count: usize) {
+        self.position_and_size.x += count;
+    }
+    fn pull_left(&mut self, count: usize) {
+        self.position_and_size.x -= count;
+    }
+    fn pull_up(&mut self, count: usize) {
+        self.position_and_size.y -= count;
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
