@@ -3,13 +3,13 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 
-use crate::tests::utils::commands::{SLEEP, QUIT};
+use crate::tests::utils::commands::{QUIT, SLEEP};
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
 
@@ -226,13 +226,13 @@ impl OsApi for FakeInputOutput {
         Ok(())
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
-         if self.sigwinch_event.is_some() {
-             let (lock, cvar) = &*self.should_trigger_sigwinch;
-             let mut should_trigger_sigwinch = lock.lock().unwrap();
-             while !*should_trigger_sigwinch {
-                 should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
-             }
-             cb();
-         }
+        if self.sigwinch_event.is_some() {
+            let (lock, cvar) = &*self.should_trigger_sigwinch;
+            let mut should_trigger_sigwinch = lock.lock().unwrap();
+            while !*should_trigger_sigwinch {
+                should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+            }
+            cb();
+        }
     }
 }

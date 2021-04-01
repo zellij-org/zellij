@@ -3,6 +3,7 @@
 
 use crate::utils::logging::debug_log_to_file;
 
+use crate::client::pane_resizer::PaneResizer;
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
@@ -17,7 +18,6 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use crate::client::pane_resizer::PaneResizer;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -168,14 +168,12 @@ pub trait Pane {
         }
     }
     fn can_increase_height_by(&self, increase_by: usize) -> bool {
-        self
-            .max_height()
+        self.max_height()
             .map(|max_height| self.rows() + increase_by <= max_height)
             .unwrap_or(true)
     }
     fn can_increase_width_by(&self, increase_by: usize) -> bool {
-        self
-            .max_width()
+        self.max_width()
             .map(|max_width| self.columns() + increase_by <= max_width)
             .unwrap_or(true)
     }
@@ -1709,17 +1707,23 @@ impl Tab {
             // this is not ideal but until we get rid of expansion_boundary, it's a necessity
             self.toggle_active_pane_fullscreen();
         }
-        match PaneResizer::new(&mut self.panes, &mut self.os_api).resize(self.full_screen_ws, new_screen_size) {
+        match PaneResizer::new(&mut self.panes, &mut self.os_api)
+            .resize(self.full_screen_ws, new_screen_size)
+        {
             Some((column_difference, row_difference)) => {
                 self.should_clear_display_before_rendering = true;
                 self.expansion_boundary.as_mut().map(|expansion_boundary| {
                     // TODO: this is not always accurate
-                    expansion_boundary.columns = (expansion_boundary.columns as isize + column_difference) as usize;
-                    expansion_boundary.rows = (expansion_boundary.rows as isize + row_difference) as usize;
+                    expansion_boundary.columns =
+                        (expansion_boundary.columns as isize + column_difference) as usize;
+                    expansion_boundary.rows =
+                        (expansion_boundary.rows as isize + row_difference) as usize;
                 });
-                self.full_screen_ws.columns = (self.full_screen_ws.columns as isize + column_difference) as usize;
-                self.full_screen_ws.rows = (self.full_screen_ws.rows as isize + row_difference) as usize;
-            },
+                self.full_screen_ws.columns =
+                    (self.full_screen_ws.columns as isize + column_difference) as usize;
+                self.full_screen_ws.rows =
+                    (self.full_screen_ws.rows as isize + row_difference) as usize;
+            }
             None => {}
         };
     }

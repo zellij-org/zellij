@@ -614,8 +614,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_screen_instructions = send_screen_instructions.clone();
             move || {
                 os_input.receive_sigwinch(Box::new(move || {
-                    let _ = send_screen_instructions
-                        .send(ScreenInstruction::TerminalResize);
+                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
                 }));
             }
         })
