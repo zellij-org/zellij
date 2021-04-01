@@ -42,7 +42,7 @@ pub fn handle_panic(
             msg,
             location.file(),
             location.line(),
-            backtrace
+            backtrace,
         ),
         (Some(location), None) => format!(
             "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
@@ -200,6 +200,7 @@ pub enum ScreenContext {
     CloseTab,
     GoToTab,
     UpdateTabName,
+    TerminalResize,
     ChangeMode,
 }
 
@@ -241,6 +242,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
+            ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
         }
     }

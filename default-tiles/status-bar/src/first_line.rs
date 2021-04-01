@@ -99,7 +99,7 @@ fn unselected_mode_shortcut(letter: char, text: &str) -> LinePart {
             suffix_separator,
         ])
         .to_string(),
-        len: text.chars().count() + 6, // 2 for the arrows, 3 for the char separators, 1 for the character
+        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
     }
 }
 
@@ -129,7 +129,7 @@ fn selected_mode_shortcut(letter: char, text: &str) -> LinePart {
             suffix_separator,
         ])
         .to_string(),
-        len: text.chars().count() + 6, // 2 for the arrows, 3 for the char separators, 1 for the character
+        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
     }
 }
 
