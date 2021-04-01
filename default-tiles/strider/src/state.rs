@@ -32,7 +32,7 @@ impl State {
 pub enum FsEntry {
     Dir(PathBuf, usize),
     File(PathBuf, u64),
-    Header(PathBuf, usize),
+    Header(PathBuf),
 }
 
 impl FsEntry {
@@ -40,7 +40,7 @@ impl FsEntry {
         let path = match self {
             FsEntry::Dir(p, _) => p,
             FsEntry::File(p, _) => p,
-            FsEntry::Header(p, _) => p,
+            FsEntry::Header(p) => p,
         };
         path.file_name().unwrap().to_string_lossy().into_owned()
     }
@@ -49,7 +49,7 @@ impl FsEntry {
         let info = match self {
             FsEntry::Dir(_, s) => s.to_string(),
             FsEntry::File(_, s) => pb::convert(*s as f64),
-            FsEntry::Header(_, _) => "./".to_string(),
+            FsEntry::Header(_) => ".".to_string(),
         };
         let space = width - info.len();
         let name = self.name();
