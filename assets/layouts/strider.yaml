@@ -5,8 +5,6 @@ parts:
     split_size:
       Fixed: 1
     plugin: tab-bar
-    events:
-      - Tab
   - direction: Vertical
     parts:
       - direction: Horizontal

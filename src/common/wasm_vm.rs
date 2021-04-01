@@ -1,36 +1,22 @@
-use crate::tab::TabData;
-use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     path::PathBuf,
-    sync::mpsc::{channel, Sender},
+    sync::{mpsc::Sender, Arc, Mutex},
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
+use zellij_tile::data::{Event, EventType};
 
 use super::{
-    input::handler::get_help, pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction,
-    PaneId, SenderWithContext,
+    pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
 };
-
-#[derive(Clone, Debug, PartialEq, Hash, Eq, Serialize, Deserialize)]
-pub enum EventType {
-    Tab,
-}
-
-#[derive(Clone, Debug)]
-pub enum PluginInputType {
-    Normal(u32),
-    Event(EventType),
-}
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Sender<u32>, PathBuf, Vec<EventType>),
-    Draw(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Input(PluginInputType, Vec<u8>),         // plugin id, input bytes
-    GlobalInput(Vec<u8>),                    // input bytes
+    Load(Sender<u32>, PathBuf),
+    Update(Option<u32>, Event), // Focused plugin / broadcast, event data
+    Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
-    UpdateTabs(Vec<TabData>), // num tabs, active tab
     Quit,
 }
 
@@ -41,7 +27,7 @@ pub struct PluginEnv {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
-    pub events: Vec<EventType>,
+    pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
@@ -49,16 +35,28 @@ pub struct PluginEnv {
 pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
     imports! {
         "zellij" => {
+            "host_subscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_subscribe),
+            "host_unsubscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_unsubscribe),
             "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
             "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
             "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
             "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
-            "host_get_help" => Function::new_native_with_env(store, plugin_env.clone(), host_get_help),
         }
     }
 }
 
-// FIXME: Bundle up all of the channels! Pair that with WasiEnv?
+fn host_subscribe(plugin_env: &PluginEnv) {
+    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let new: HashSet<EventType> = serde_json::from_str(&wasi_stdout(&plugin_env.wasi_env)).unwrap();
+    subscriptions.extend(new);
+}
+
+fn host_unsubscribe(plugin_env: &PluginEnv) {
+    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let old: HashSet<EventType> = serde_json::from_str(&wasi_stdout(&plugin_env.wasi_env)).unwrap();
+    subscriptions.retain(|k| !old.contains(k));
+}
+
 fn host_open_file(plugin_env: &PluginEnv) {
     let path = PathBuf::from(wasi_stdout(&plugin_env.wasi_env).lines().next().unwrap());
     plugin_env
@@ -67,7 +65,6 @@ fn host_open_file(plugin_env: &PluginEnv) {
         .unwrap();
 }
 
-// FIXME: Think about these naming conventions – should everything be prefixed by 'host'?
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     let selectable = selectable != 0;
     plugin_env
@@ -99,21 +96,6 @@ fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
             invisible_borders,
         ))
         .unwrap()
-}
-
-fn host_get_help(plugin_env: &PluginEnv) {
-    let (state_tx, state_rx) = channel();
-    // FIXME: If I changed the application so that threads were sent the termination
-    // signal and joined one at a time, there would be an order to shutdown, so I
-    // could get rid of this .is_ok() check and the .try_send()
-    if plugin_env
-        .send_app_instructions
-        .try_send(AppInstruction::GetState(state_tx))
-        .is_ok()
-    {
-        let help = get_help(state_rx.recv().unwrap().input_mode);
-        wasi_write_string(&plugin_env.wasi_env, &serde_json::to_string(&help).unwrap());
-    }
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
