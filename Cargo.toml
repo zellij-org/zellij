@@ -44,10 +44,7 @@ features = ["unstable"]
 insta = "1.6.0"
 
 [build-dependencies]
-directories-next = "2.0"
 structopt = "0.3"
-walkdir = "2"
-toml = "0.5.8"
 
 [workspace]
 members = [

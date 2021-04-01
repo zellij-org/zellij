@@ -15,12 +15,15 @@ dependencies = ["pre-test"]
 [tasks.post-test]
 env = { "SKIP_TEST" = false }
 
+# Running Zellij using patched layouts
 [tasks.run]
 workspace = false
-dependencies = ["build"]
-run_task = { name = ["patch-layouts", "run-zellij"] }
+dependencies = ["build-workspace", "patch-layouts"]
+run_task = "launch"
 
-## Need to walk the layout YAML and patch the plugin fields!
+[tasks.build-workspace]
+run_task = { name = "build", fork = true }
+
 [tasks.patch-layouts]
 script_runner = "@rust"
 script = '''
@@ -28,28 +31,54 @@ script = '''
 //! [dependencies]
 //! yaml-rust = "0.4"
 //! ```
-use std::{fs, env, error::Error, path::Path};
-use yaml_rust::{YamlLoader, YamlEmitter};
+use std::{env, error::Error, fs, path::Path};
+use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let root = env::var("CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY")?;
     let layout_path = Path::new(&root).join("assets/layouts");
     for layout in fs::read_dir(layout_path)? {
-        let yaml = fs::read_to_string(layout?.path())?;
-        let yaml = YamlLoader::load_from_str(&yaml)?[0];
+        let layout = layout?.path();
+        let yaml = fs::read_to_string(&layout)?;
+        let yaml = YamlLoader::load_from_str(&yaml)?.remove(0);
+        let yaml = patch_plugins(&root, yaml);
+        let new_layout = Path::new(&root)
+            .join("target")
+            .join(layout.file_name().unwrap());
+        let mut new_yaml = String::new();
+        let mut emitter = YamlEmitter::new(&mut new_yaml);
+        emitter.dump(&yaml)?;
+        fs::write(new_layout, new_yaml)?;
     }
     Ok(())
 }
+
+fn patch_plugins(root: &str, part: Yaml) -> Yaml {
+    let mut map = part.into_hash().unwrap();
+    if let Some(plugin) = map.get_mut(&Yaml::from_str("plugin")) {
+        let new_plugin = Path::new(root)
+            .join("target/wasm32-wasi/debug")
+            .join(plugin.as_str().unwrap());
+        *plugin = Yaml::String(new_plugin.to_string_lossy().into_owned());
+    }
+    if let Some(parts) = map.get_mut(&Yaml::from_str("parts")) {
+        let new_parts = parts
+            .clone()
+            .into_iter()
+            .map(|p| patch_plugins(root, p))
+            .collect();
+        *parts = Yaml::Array(new_parts);
+    }
+    Yaml::Hash(map)
+}
 '''
 
-[tasks.run-zellij]
+[tasks.launch]
+command = "cargo"
+args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/default.yaml"]
 
 
-
-# Running Zellij
-
-# Change the build to always use the assets, but not delete them by default
-# Instead, just run with a patched layout file that points to a local plugin copy
+# Running Zellij (need to add a run-release option and multi-layout support!)
 
 # Have a publish flow that triggers wasm-opt and updates the assets
 
