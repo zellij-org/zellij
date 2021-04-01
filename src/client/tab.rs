@@ -1,8 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::utils::logging::debug_log_to_file;
-
 use crate::client::pane_resizer::PaneResizer;
 use crate::common::{AppInstruction, SenderWithContext};
 use crate::layout::Layout;

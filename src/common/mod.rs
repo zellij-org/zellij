@@ -607,7 +607,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
-    let signal_thread = thread::Builder::new()
+    let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
