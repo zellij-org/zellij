@@ -18,7 +18,7 @@ use crate::{
     errors::{ContextType, ErrorContext},
     panes::PaneId,
     screen::ScreenInstruction,
-    server::ServerInstruction,
+    wasm_vm::PluginInstruction,
 };
 
 pub struct ReadFromPid {
@@ -82,35 +82,35 @@ pub enum VteEvent {
 
 struct VteEventSender {
     id: RawFd,
-    send_server_instructions: SenderWithContext<ServerInstruction>,
+    send_screen_instructions: SenderWithContext<ScreenInstruction>,
 }
 
 impl VteEventSender {
-    pub fn new(id: RawFd, send_server_instructions: SenderWithContext<ServerInstruction>) -> Self {
+    pub fn new(id: RawFd, send_screen_instructions: SenderWithContext<ScreenInstruction>) -> Self {
         VteEventSender {
             id,
-            send_server_instructions,
+            send_screen_instructions,
         }
     }
 }
 
 impl vte::Perform for VteEventSender {
     fn print(&mut self, c: char) {
-        self.send_server_instructions
-            .send(ServerInstruction::pty(self.id, VteEvent::Print(c)))
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Print(c)))
             .unwrap();
     }
     fn execute(&mut self, byte: u8) {
-        self.send_server_instructions
-            .send(ServerInstruction::pty(self.id, VteEvent::Execute(byte)))
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Execute(byte)))
             .unwrap();
     }
 
     fn hook(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
-        self.send_server_instructions
-            .send(ServerInstruction::pty(
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::Hook(params, intermediates, ignore, c),
             ))
@@ -118,21 +118,21 @@ impl vte::Perform for VteEventSender {
     }
 
     fn put(&mut self, byte: u8) {
-        self.send_server_instructions
-            .send(ServerInstruction::pty(self.id, VteEvent::Put(byte)))
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Put(byte)))
             .unwrap();
     }
 
     fn unhook(&mut self) {
-        self.send_server_instructions
-            .send(ServerInstruction::pty(self.id, VteEvent::Unhook))
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(self.id, VteEvent::Unhook))
             .unwrap();
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params = params.iter().map(|p| p.to_vec()).collect();
-        self.send_server_instructions
-            .send(ServerInstruction::pty(
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::OscDispatch(params, bell_terminated),
             ))
@@ -142,8 +142,8 @@ impl vte::Perform for VteEventSender {
     fn csi_dispatch(&mut self, params: &[i64], intermediates: &[u8], ignore: bool, c: char) {
         let params = params.iter().copied().collect();
         let intermediates = intermediates.iter().copied().collect();
-        self.send_server_instructions
-            .send(ServerInstruction::pty(
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::CsiDispatch(params, intermediates, ignore, c),
             ))
@@ -152,8 +152,8 @@ impl vte::Perform for VteEventSender {
 
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
         let intermediates = intermediates.iter().copied().collect();
-        self.send_server_instructions
-            .send(ServerInstruction::pty(
+        self.send_screen_instructions
+            .send(ScreenInstruction::Pty(
                 self.id,
                 VteEvent::EscDispatch(intermediates, ignore, byte),
             ))
@@ -176,7 +176,8 @@ pub enum PtyInstruction {
 pub struct PtyBus {
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
-    pub send_server_instructions: SenderWithContext<ServerInstruction>,
+    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
     os_input: Box<dyn ServerOsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
@@ -185,16 +186,16 @@ pub struct PtyBus {
 fn stream_terminal_bytes(
     pid: RawFd,
     os_input: Box<dyn ServerOsApi>,
-    mut send_server_instructions: SenderWithContext<ServerInstruction>,
+    mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
     debug: bool,
 ) -> JoinHandle<()> {
     let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
-            send_server_instructions.update(err_ctx);
+            send_screen_instructions.update(err_ctx);
             let mut vte_parser = vte::Parser::new();
-            let mut vte_event_sender = VteEventSender::new(pid, send_server_instructions.clone());
+            let mut vte_event_sender = VteEventSender::new(pid, send_screen_instructions.clone());
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input.clone());
 
             let mut last_byte_receive_time: Option<Instant> = None;
@@ -220,8 +221,8 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                send_server_instructions
-                                    .send(ServerInstruction::render())
+                                send_screen_instructions
+                                    .send(ScreenInstruction::Render)
                                     .unwrap();
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
@@ -236,23 +237,23 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        send_server_instructions
-                            .send(ServerInstruction::render())
+                        send_screen_instructions
+                            .send(ScreenInstruction::Render)
                             .unwrap();
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            send_server_instructions
-                .send(ServerInstruction::render())
+            send_screen_instructions
+                .send(ScreenInstruction::Render)
                 .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
-            send_server_instructions
-                .send(ServerInstruction::screen_close_pane(PaneId::Terminal(pid)))
+            send_screen_instructions
+                .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
         }
     })
@@ -262,14 +263,16 @@ impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
         os_input: Box<dyn ServerOsApi>,
-        send_server_instructions: SenderWithContext<ServerInstruction>,
+        send_screen_instructions: SenderWithContext<ScreenInstruction>,
+        send_plugin_instructions: SenderWithContext<PluginInstruction>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
-            send_server_instructions,
+            send_screen_instructions,
+            send_plugin_instructions,
             debug_to_file,
             task_handles: HashMap::new(),
         }
@@ -280,7 +283,7 @@ impl PtyBus {
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.os_input.clone(),
-            self.send_server_instructions.clone(),
+            self.send_screen_instructions.clone(),
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
@@ -296,17 +299,17 @@ impl PtyBus {
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        self.send_server_instructions
-            .send(ServerInstruction::apply_layout((
+        self.send_screen_instructions
+            .send(ScreenInstruction::ApplyLayout(
                 layout_path,
                 new_pane_pids.clone(),
-            )))
+            ))
             .unwrap();
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
                 id,
                 self.os_input.clone(),
-                self.send_server_instructions.clone(),
+                self.send_screen_instructions.clone(),
                 self.debug_to_file,
             );
             self.task_handles.insert(id, task_handle);
@@ -323,8 +326,8 @@ impl PtyBus {
                 });
             }
             PaneId::Plugin(pid) => self
-                .send_server_instructions
-                .send(ServerInstruction::ClosePluginPane(pid))
+                .send_plugin_instructions
+                .send(PluginInstruction::Unload(pid))
                 .unwrap(),
         }
     }

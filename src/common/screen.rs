@@ -7,9 +7,8 @@ use std::path::PathBuf;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use crate::client::AppInstruction;
 use crate::common::SenderWithContext;
-use crate::os_input_output::ClientOsApi;
+use crate::os_input_output::ServerOsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::server::ServerInstruction;
@@ -49,7 +48,7 @@ pub enum ScreenInstruction {
     SetMaxHeight(PaneId, usize),
     SetInvisibleBorders(PaneId, bool),
     ClosePane(PaneId),
-    ApplyLayout((PathBuf, Vec<RawFd>)),
+    ApplyLayout(PathBuf, Vec<RawFd>),
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
@@ -71,14 +70,16 @@ pub struct Screen {
     tabs: BTreeMap<usize, Tab>,
     /// A [`PluginInstruction`] and [`ErrorContext`] sender.
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    /// An [`AppInstruction`] and [`ErrorContext`] sender.
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
+    /// An [`PtyInstruction`] and [`ErrorContext`] sender.
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    /// An [`ServerInstruction`] and [`ErrorContext`] sender.
+    pub send_server_instructions: SenderWithContext<ServerInstruction>,
     /// The full size of this [`Screen`].
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     /// The [`ClientOsApi`] this [`Screen`] uses.
-    pub os_api: Box<dyn ClientOsApi>,
+    os_api: Box<dyn ServerOsApi>,
     input_mode: InputMode,
 }
 
@@ -89,9 +90,10 @@ impl Screen {
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_server_instructions: SenderWithContext<ServerInstruction>,
         full_screen_ws: &PositionAndSize,
-        os_api: Box<dyn ClientOsApi>,
+        os_api: Box<dyn ServerOsApi>,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
     ) -> Self {
@@ -99,7 +101,8 @@ impl Screen {
             receiver: receive_screen_instructions,
             max_panes,
             send_plugin_instructions,
-            send_app_instructions,
+            send_pty_instructions,
+            send_server_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab_index: None,
             tabs: BTreeMap::new(),
@@ -120,7 +123,8 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_plugin_instructions.clone(),
-            self.send_app_instructions.clone(),
+            self.send_pty_instructions.clone(),
+            self.send_server_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.mode_info.clone(),
@@ -199,12 +203,13 @@ impl Screen {
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
-        self.os_api
-            .send_to_server(ServerInstruction::pty_close_tab(pane_ids));
+        self.send_pty_instructions
+            .send(PtyInstruction::CloseTab(pane_ids))
+            .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.send_app_instructions
-                .send(AppInstruction::Exit)
+            self.send_server_instructions
+                .send(ServerInstruction::ClientShouldExit)
                 .unwrap();
         } else {
             for t in self.tabs.values_mut() {
@@ -269,7 +274,8 @@ impl Screen {
             &self.full_screen_ws,
             self.os_api.clone(),
             self.send_plugin_instructions.clone(),
-            self.send_app_instructions.clone(),
+            self.send_pty_instructions.clone(),
+            self.send_server_instructions.clone(),
             self.max_panes,
             None,
             self.mode_info.clone(),

@@ -6,7 +6,7 @@ use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd;
 use nix::unistd::{ForkResult, Pid};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::env;
 use std::io;
 use std::io::prelude::*;
@@ -22,7 +22,7 @@ use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
 use crate::utils::consts::ZELLIJ_IPC_PIPE;
 
-const IPC_BUFFER_SIZE: u32 = 8192;
+const IPC_BUFFER_SIZE: u32 = 8388608;
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -300,15 +300,6 @@ pub fn get_server_os_input() -> ServerOsInputOutput {
     }
 }
 
-/// OS Instructions sent to the Server by clients
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ServerOsApiInstruction {
-    SetTerminalSizeUsingFd(RawFd, u16, u16),
-    WriteToTtyStdin(RawFd, Vec<u8>),
-    TcDrain(RawFd),
-    Exit,
-}
-
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
@@ -342,7 +333,7 @@ pub trait ClientOsApi: Send + Sync {
     // This should be called from the client-side router thread only.
     fn client_recv(&self) -> (ClientInstruction, ErrorContext);
     /// Setup the client IpcChannel and notify server of new client
-    fn connect_to_server(&mut self);
+    fn connect_to_server(&mut self, full_screen_ws: PositionAndSize);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -378,13 +369,16 @@ impl ClientOsApi for ClientOsInputOutput {
     fn update_senders(&mut self, new_ctx: ErrorContext) {
         self.server_sender.update(new_ctx);
     }
-    fn connect_to_server(&mut self) {
+    fn connect_to_server(&mut self, full_screen_ws: PositionAndSize) {
         let (client_buffer_path, client_buffer) =
             SharedRingBuffer::create_temp(IPC_BUFFER_SIZE).unwrap();
         self.client_receiver = Some(Arc::new(Mutex::new(IpcReceiver::new(
             client_buffer.clone(),
         ))));
-        self.send_to_server(ServerInstruction::NewClient(client_buffer_path));
+        self.send_to_server(ServerInstruction::NewClient(
+            client_buffer_path,
+            full_screen_ws,
+        ));
     }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
         self.client_receiver
