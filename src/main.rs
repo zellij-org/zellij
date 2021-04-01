@@ -89,7 +89,7 @@ pub fn start(
     opts: CliArgs,
     server_os_input: Box<dyn ServerOsApi>,
 ) {
-    let ipc_thread = start_server(server_os_input, opts.clone());
-    start_client(client_os_input, opts);
+    let ipc_thread = start_server(server_os_input, opts);
+    start_client(client_os_input);
     drop(ipc_thread.join());
 }

@@ -2,14 +2,12 @@
 
 use super::actions::Action;
 use super::keybinds::get_default_keybinds;
-use crate::client::AppInstruction;
+use crate::client::ClientInstruction;
 use crate::common::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::pty_bus::PtyInstruction;
-use crate::screen::ScreenInstruction;
 use crate::server::ServerInstruction;
-use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
@@ -22,10 +20,7 @@ struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn ClientOsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    send_app_instructions: SenderWithContext<AppInstruction>,
-    should_exit: bool,
+    send_client_instructions: SenderWithContext<ClientInstruction>,
 }
 
 impl InputHandler {
@@ -33,20 +28,14 @@ impl InputHandler {
     fn new(
         os_input: Box<dyn ClientOsApi>,
         command_is_executing: CommandIsExecuting,
-        config: Config,
-        send_screen_instructions: SenderWithContext<ScreenInstruction>,
-        send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
+        send_client_instructions: SenderWithContext<ClientInstruction>,
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
             os_input,
             config,
             command_is_executing,
-            send_screen_instructions,
-            send_plugin_instructions,
-            send_app_instructions,
-            should_exit: false,
+            send_client_instructions,
         }
     }
 
@@ -55,8 +44,7 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        self.send_app_instructions.update(err_ctx);
-        self.send_screen_instructions.update(err_ctx);
+        self.send_client_instructions.update(err_ctx);
         self.os_input.update_senders(err_ctx);
         if let Ok(keybinds) = get_default_keybinds() {
             'input_loop: loop {
@@ -122,12 +110,10 @@ impl InputHandler {
 
         match action {
             Action::Write(val) => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ClearScroll)
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::WriteCharacter(val))
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::clear_scroll());
+                self.os_input
+                    .send_to_server(ServerInstruction::write_character(val));
             }
             Action::Quit => {
                 self.exit();
@@ -135,64 +121,42 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Update(
+                self.os_input
+                    .send_to_server(ServerInstruction::PluginUpdate(
                         None,
-                        Event::ModeUpdate(get_mode_info(mode, self.os_input.load_palette())),
-                    ))
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeMode(get_mode_info(
-                        mode,
-                        self.os_input.load_palette(),
-                    )))
-                    .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::Render)
-                    .unwrap();
+                        Event::ModeUpdate(get_mode_info(mode)),
+                    ));
+                self.os_input
+                    .send_to_server(ServerInstruction::change_input_mode(mode));
+                self.os_input.send_to_server(ServerInstruction::render());
             }
             Action::Resize(direction) => {
                 let screen_instr = match direction {
-                    super::actions::Direction::Left => ScreenInstruction::ResizeLeft,
-                    super::actions::Direction::Right => ScreenInstruction::ResizeRight,
-                    super::actions::Direction::Up => ScreenInstruction::ResizeUp,
-                    super::actions::Direction::Down => ScreenInstruction::ResizeDown,
+                    super::actions::Direction::Left => ServerInstruction::resize_left(),
+                    super::actions::Direction::Right => ServerInstruction::resize_right(),
+                    super::actions::Direction::Up => ServerInstruction::resize_up(),
+                    super::actions::Direction::Down => ServerInstruction::resize_down(),
                 };
-                self.send_screen_instructions.send(screen_instr).unwrap();
+                self.os_input.send_to_server(screen_instr);
             }
-            Action::SwitchFocus => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchFocus)
-                    .unwrap();
-            }
-            Action::FocusNextPane => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::FocusNextPane)
-                    .unwrap();
-            }
-            Action::FocusPreviousPane => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::FocusPreviousPane)
-                    .unwrap();
+            Action::SwitchFocus(_) => {
+                self.os_input.send_to_server(ServerInstruction::MoveFocus);
             }
             Action::MoveFocus(direction) => {
                 let screen_instr = match direction {
-                    super::actions::Direction::Left => ScreenInstruction::MoveFocusLeft,
-                    super::actions::Direction::Right => ScreenInstruction::MoveFocusRight,
-                    super::actions::Direction::Up => ScreenInstruction::MoveFocusUp,
-                    super::actions::Direction::Down => ScreenInstruction::MoveFocusDown,
+                    super::actions::Direction::Left => ServerInstruction::move_focus_left(),
+                    super::actions::Direction::Right => ServerInstruction::move_focus_right(),
+                    super::actions::Direction::Up => ServerInstruction::move_focus_up(),
+                    super::actions::Direction::Down => ServerInstruction::move_focus_down(),
                 };
-                self.send_screen_instructions.send(screen_instr).unwrap();
+                self.os_input.send_to_server(screen_instr);
             }
             Action::ScrollUp => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ScrollUp)
-                    .unwrap();
+                self.os_input.send_to_server(ServerInstruction::scroll_up());
             }
             Action::ScrollDown => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ScrollDown)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::scroll_down());
             }
             Action::PageScrollUp => {
                 self.send_screen_instructions
@@ -205,9 +169,8 @@ impl InputHandler {
                     .unwrap();
             }
             Action::ToggleFocusFullscreen => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::toggle_active_terminal_fullscreen());
             }
             Action::NewPane(direction) => {
                 let pty_instr = match direction {
@@ -233,9 +196,8 @@ impl InputHandler {
             }
             Action::CloseFocus => {
                 self.command_is_executing.closing_pane();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::CloseFocusedPane)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::close_focused_pane());
                 self.command_is_executing.wait_until_pane_is_closed();
             }
             Action::NewTab => {
@@ -246,16 +208,14 @@ impl InputHandler {
             }
             Action::GoToNextTab => {
                 self.command_is_executing.updating_tabs();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchTabNext)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::switch_tab_next());
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToPreviousTab => {
                 self.command_is_executing.updating_tabs();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchTabPrev)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::switch_tab_prev());
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::ToggleActiveSyncPanes => {
@@ -265,22 +225,19 @@ impl InputHandler {
             }
             Action::CloseTab => {
                 self.command_is_executing.updating_tabs();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::CloseTab)
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::screen_close_tab());
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::GoToTab(i) => {
                 self.command_is_executing.updating_tabs();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::GoToTab(i))
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::go_to_tab(i));
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
             Action::TabNameInput(c) => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabName(c))
-                    .unwrap();
+                self.os_input
+                    .send_to_server(ServerInstruction::update_tab_name(c));
             }
             Action::NoOp => {}
         }
@@ -291,8 +248,8 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting Zellij).
     fn exit(&mut self) {
-        self.send_app_instructions
-            .send(AppInstruction::Exit)
+        self.send_client_instructions
+            .send(ClientInstruction::Exit)
             .unwrap();
     }
 }
@@ -343,19 +300,10 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
 pub fn input_loop(
     os_input: Box<dyn ClientOsApi>,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    send_app_instructions: SenderWithContext<AppInstruction>,
+    send_client_instructions: SenderWithContext<ClientInstruction>,
 ) {
-    let _handler = InputHandler::new(
-        os_input,
-        command_is_executing,
-        config,
-        send_screen_instructions,
-        send_plugin_instructions,
-        send_app_instructions,
-    )
-    .handle_input();
+    let _handler =
+        InputHandler::new(os_input, command_is_executing, send_client_instructions).handle_input();
 }
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {

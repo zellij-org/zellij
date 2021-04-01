@@ -1,8 +1,8 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{os_input_output::ServerOsApiInstruction, ServerInstruction, OPENCALLS};
-use crate::client::AppInstruction;
+use super::{ServerInstruction, OPENCALLS};
+use crate::client::ClientInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use std::panic::PanicInfo;
 #[cfg(not(test))]
 pub fn handle_panic(
     info: &PanicInfo<'_>,
-    send_app_instructions: &SenderWithContext<AppInstruction>,
+    send_app_instructions: &SenderWithContext<ClientInstruction>,
 ) {
     use backtrace::Backtrace;
     use std::{process, thread};
@@ -68,9 +68,7 @@ pub fn handle_panic(
         println!("{}", backtrace);
         process::exit(1);
     } else {
-        send_app_instructions
-            .send(AppInstruction::Error(backtrace))
-            .unwrap();
+        let _ = send_app_instructions.send(ClientInstruction::Error(backtrace));
     }
 }
 
@@ -132,19 +130,17 @@ impl Display for ErrorContext {
 ///
 /// Complex variants store a variant of a related enum, whose variants can be built from
 /// the corresponding Zellij MSPC instruction enum variants ([`ScreenInstruction`],
-/// [`PtyInstruction`], [`AppInstruction`], etc).
+/// [`PtyInstruction`], [`ClientInstruction`], etc).
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContextType {
     /// A screen-related call.
     Screen(ScreenContext),
     /// A PTY-related call.
     Pty(PtyContext),
-    /// An OS-related call.
-    Os(OsContext),
     /// A plugin-related call.
     Plugin(PluginContext),
     /// An app-related call.
-    App(AppContext),
+    Client(ClientContext),
     /// A server-related call.
     IPCServer(ServerContext),
     StdinHandler,
@@ -162,9 +158,8 @@ impl Display for ContextType {
         match *self {
             ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
             ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
-            ContextType::Os(c) => write!(f, "{}os_thread: {}{:?}", purple, green, c),
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
-            ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
+            ContextType::Client(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
             ContextType::IPCServer(c) => write!(f, "{}ipc_server: {}{:?}", purple, green, c),
             ContextType::StdinHandler => {
                 write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
@@ -257,7 +252,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
             ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
-            ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
+            ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
@@ -297,28 +292,6 @@ impl From<&PtyInstruction> for PtyContext {
     }
 }
 
-/// Stack call representations corresponding to the different types of [`ServerOsApiInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum OsContext {
-    SetTerminalSizeUsingFd,
-    WriteToTtyStdin,
-    TcDrain,
-    Exit,
-}
-
-impl From<&ServerOsApiInstruction> for OsContext {
-    fn from(os_instruction: &ServerOsApiInstruction) -> Self {
-        match *os_instruction {
-            ServerOsApiInstruction::SetTerminalSizeUsingFd(_, _, _) => {
-                OsContext::SetTerminalSizeUsingFd
-            }
-            ServerOsApiInstruction::WriteToTtyStdin(_, _) => OsContext::WriteToTtyStdin,
-            ServerOsApiInstruction::TcDrain(_) => OsContext::TcDrain,
-            ServerOsApiInstruction::Exit => OsContext::Exit,
-        }
-    }
-}
-
 // FIXME: This whole pattern *needs* a macro eventually, it's soul-crushing to write
 
 use crate::wasm_vm::PluginInstruction;
@@ -345,22 +318,26 @@ impl From<&PluginInstruction> for PluginContext {
     }
 }
 
-/// Stack call representations corresponding to the different types of [`AppInstruction`]s.
+/// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum AppContext {
+pub enum ClientContext {
     Exit,
     Error,
     DoneClosingPane,
-    ToPty,
+    DoneOpeningNewPane,
+    DoneUpdatingTabs,
+    Render,
 }
 
-impl From<&AppInstruction> for AppContext {
-    fn from(app_instruction: &AppInstruction) -> Self {
-        match *app_instruction {
-            AppInstruction::Exit => AppContext::Exit,
-            AppInstruction::Error(_) => AppContext::Error,
-            AppInstruction::DoneClosingPane => AppContext::DoneClosingPane,
-            AppInstruction::ToPty(_) => AppContext::ToPty,
+impl From<&ClientInstruction> for ClientContext {
+    fn from(client_instruction: &ClientInstruction) -> Self {
+        match *client_instruction {
+            ClientInstruction::Exit => ClientContext::Exit,
+            ClientInstruction::Error(_) => ClientContext::Error,
+            ClientInstruction::Render(_) => ClientContext::Render,
+            ClientInstruction::DoneClosingPane => ClientContext::DoneClosingPane,
+            ClientInstruction::DoneOpeningNewPane => ClientContext::DoneOpeningNewPane,
+            ClientInstruction::DoneUpdatingTabs => ClientContext::DoneUpdatingTabs,
         }
     }
 }
@@ -375,10 +352,13 @@ pub enum ServerContext {
     NewClient,
     ToPty,
     ToScreen,
-    OsApi,
+    Render,
+    PluginUpdate,
     DoneClosingPane,
-    ClosePluginPane,
+    DoneOpeningNewPane,
+    DoneUpdatingTabs,
     ClientExit,
+    ClientShouldExit,
     Exit,
 }
 
@@ -389,13 +369,16 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SplitHorizontally => ServerContext::SplitHorizontally,
             ServerInstruction::SplitVertically => ServerContext::SplitVertically,
             ServerInstruction::MoveFocus => ServerContext::MoveFocus,
-            ServerInstruction::NewClient(_) => ServerContext::NewClient,
+            ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::ToPty(_) => ServerContext::ToPty,
             ServerInstruction::ToScreen(_) => ServerContext::ToScreen,
-            ServerInstruction::OsApi(_) => ServerContext::OsApi,
+            ServerInstruction::PluginUpdate(..) => ServerContext::PluginUpdate,
+            ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::DoneClosingPane => ServerContext::DoneClosingPane,
-            ServerInstruction::ClosePluginPane(_) => ServerContext::ClosePluginPane,
+            ServerInstruction::DoneOpeningNewPane => ServerContext::DoneOpeningNewPane,
+            ServerInstruction::DoneUpdatingTabs => ServerContext::DoneUpdatingTabs,
             ServerInstruction::ClientExit => ServerContext::ClientExit,
+            ServerInstruction::ClientShouldExit => ServerContext::ClientShouldExit,
             ServerInstruction::Exit => ServerContext::Exit,
         }
     }

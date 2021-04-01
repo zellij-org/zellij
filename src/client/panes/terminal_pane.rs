@@ -20,7 +20,7 @@ pub enum PaneId {
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
