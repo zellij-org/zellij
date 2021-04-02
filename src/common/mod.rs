@@ -321,7 +321,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    ModeInfo::default(),
+                    ModeInfo {
+                        palette: colors,
+                        ..ModeInfo::default()
+                    },
                     InputMode::Normal,
                     colors,
                 );
