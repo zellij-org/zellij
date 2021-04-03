@@ -42,7 +42,7 @@ pub fn handle_panic(
             msg,
             location.file(),
             location.line(),
-            backtrace
+            backtrace,
         ),
         (Some(location), None) => format!(
             "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
@@ -200,7 +200,8 @@ pub enum ScreenContext {
     CloseTab,
     GoToTab,
     UpdateTabName,
-    ChangeInputMode,
+    TerminalResize,
+    ChangeMode,
 }
 
 // FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
@@ -241,7 +242,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
-            ScreenInstruction::ChangeInputMode(_) => ScreenContext::ChangeInputMode,
+            ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
+            ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
         }
     }
 }

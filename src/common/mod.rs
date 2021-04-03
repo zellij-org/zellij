@@ -38,7 +38,7 @@ use wasm_vm::PluginEnv;
 use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, InputMode};
+use zellij_tile::data::{EventType, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -264,7 +264,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    InputMode::Normal,
+                    ModeInfo::default(),
                 );
                 loop {
                     let (event, mut err_ctx) = screen
@@ -397,8 +397,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
                         }
-                        ScreenInstruction::ChangeInputMode(input_mode) => {
-                            screen.change_input_mode(input_mode);
+                        ScreenInstruction::TerminalResize => {
+                            screen.resize_to_screen();
+                        }
+                        ScreenInstruction::ChangeMode(mode_info) => {
+                            screen.change_mode(mode_info);
                         }
                         ScreenInstruction::Quit => {
                             break;
@@ -510,6 +513,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,
                 }
+            }
+        })
+        .unwrap();
+
+    let _signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            move || {
+                os_input.receive_sigwinch(Box::new(move || {
+                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
+                }));
             }
         })
         .unwrap();

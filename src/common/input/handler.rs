@@ -82,9 +82,11 @@ impl InputHandler {
                                 break 'input_loop;
                             }
                         }
-                        termion::event::Event::Mouse(_) | termion::event::Event::Unsupported(_) => {
-                            unimplemented!("Mouse and unsupported events aren't supported!");
-                        }
+                            termion::event::Event::Mouse(_)
+                            | termion::event::Event::Unsupported(_) => {
+                                // Mouse and unsupported events aren't implemented yet,
+                                // use a NoOp untill then.
+                            }
                     },
                     Err(err) => panic!("Encountered read error: {:?}", err),
                 }
@@ -128,7 +130,7 @@ impl InputHandler {
                     ))
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeInputMode(mode))
+                    .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
