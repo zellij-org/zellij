@@ -28,3 +28,4 @@ Once the organization reaches 10 members, a reasonable and achievable process mu
 * Henil Dedania <dedaniahenil@gmail.com>
 * Roee Shapira <ro33.sha@gmail.com>
 * Alex Kenji Berthold <aks.kenji@protonmail.com>
+* Kyle Sutherland-Cash <kyle.sutherlandcash@gmail.com>
