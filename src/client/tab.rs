@@ -2,22 +2,24 @@
 //! as well as how they should be resized
 
 use crate::boundaries::colors;
+use crate::client::pane_resizer::PaneResizer;
 use crate::common::{input::handler::parse_keys, SenderWithContext};
 use crate::layout::Layout;
 use crate::os_input_output::ServerOsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteEvent};
 use crate::server::ServerInstruction;
-use crate::utils::shared::pad_to_size;
+use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::channel;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
-use zellij_tile::data::{Event, InputMode};
+use zellij_tile::data::{Event, ModeInfo};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -729,9 +731,14 @@ impl Tab {
         );
         let hide_cursor = "\u{1b}[?25l";
         output.push_str(hide_cursor);
-        for (kind, terminal) in self.panes.iter_mut() {
-            if !self.panes_to_hide.contains(&terminal.pid()) {
-                match self.active_terminal.unwrap() == terminal.pid() {
+        if self.should_clear_display_before_rendering {
+            let clear_display = "\u{1b}[2J";
+            output.push_str(clear_display);
+            self.should_clear_display_before_rendering = false;
+        }
+        for (kind, pane) in self.panes.iter_mut() {
+            if !self.panes_to_hide.contains(&pane.pid()) {
+                match self.active_terminal.unwrap() == pane.pid() {
                     true => {
                         pane.set_active_at(Instant::now());
                         boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(self.colors))

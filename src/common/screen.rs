@@ -58,7 +58,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
-    TerminalResize,
+    TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
 }
 
@@ -83,7 +83,7 @@ pub struct Screen {
     active_tab_index: Option<usize>,
     /// The [`ClientOsApi`] this [`Screen`] uses.
     os_api: Box<dyn ServerOsApi>,
-    input_mode: InputMode,
+    mode_info: ModeInfo,
 }
 
 impl Screen {
@@ -233,8 +233,7 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self) {
-        let new_screen_size = self.os_api.get_terminal_size_using_fd(0);
+    pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
         self.full_screen_ws = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);

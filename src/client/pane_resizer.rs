@@ -1,4 +1,4 @@
-use crate::os_input_output::OsApi;
+use crate::os_input_output::ServerOsApi;
 use crate::panes::{PaneId, PositionAndSize};
 use crate::tab::Pane;
 use std::{
@@ -8,7 +8,7 @@ use std::{
 
 pub struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
-    os_api: &'a mut Box<dyn OsApi>,
+    os_api: &'a mut Box<dyn ServerOsApi>,
 }
 
 // TODO: currently there are some functions here duplicated with Tab
@@ -17,7 +17,7 @@ pub struct PaneResizer<'a> {
 impl<'a> PaneResizer<'a> {
     pub fn new(
         panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
-        os_api: &'a mut Box<dyn OsApi>,
+        os_api: &'a mut Box<dyn ServerOsApi>,
     ) -> Self {
         PaneResizer { panes, os_api }
     }

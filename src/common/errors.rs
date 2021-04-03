@@ -259,7 +259,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
-            ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
+            ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncPanes => ScreenContext::ToggleActiveSyncPanes,
         }

@@ -7,6 +7,7 @@ use nix::sys::wait::waitpid;
 use nix::unistd;
 use nix::unistd::{ForkResult, Pid};
 use serde::Serialize;
+use signal_hook::{consts::signal::*, iterator::Signals};
 use std::env;
 use std::io;
 use std::io::prelude::*;
@@ -334,6 +335,7 @@ pub trait ClientOsApi: Send + Sync {
     fn client_recv(&self) -> (ClientInstruction, ErrorContext);
     /// Setup the client IpcChannel and notify server of new client
     fn connect_to_server(&mut self, full_screen_ws: PositionAndSize);
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -388,6 +390,20 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .recv()
             .unwrap()
+    }
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+        for signal in signals.forever() {
+            match signal {
+                SIGWINCH => {
+                    cb();
+                }
+                SIGTERM | SIGINT | SIGQUIT => {
+                    break;
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 }
 

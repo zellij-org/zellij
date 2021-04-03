@@ -127,7 +127,7 @@ impl InputHandler {
                         Event::ModeUpdate(get_mode_info(mode)),
                     ));
                 self.os_input
-                    .send_to_server(ServerInstruction::change_input_mode(mode));
+                    .send_to_server(ServerInstruction::change_mode(get_mode_info(mode)));
                 self.os_input.send_to_server(ServerInstruction::render());
             }
             Action::Resize(direction) => {
