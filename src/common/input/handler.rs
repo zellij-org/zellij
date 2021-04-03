@@ -82,11 +82,10 @@ impl InputHandler {
                                 break 'input_loop;
                             }
                         }
-                            termion::event::Event::Mouse(_)
-                            | termion::event::Event::Unsupported(_) => {
-                                // Mouse and unsupported events aren't implemented yet,
-                                // use a NoOp untill then.
-                            }
+                        termion::event::Event::Mouse(_) | termion::event::Event::Unsupported(_) => {
+                            // Mouse and unsupported events aren't implemented yet,
+                            // use a NoOp untill then.
+                        }
                     },
                     Err(err) => panic!("Encountered read error: {:?}", err),
                 }
