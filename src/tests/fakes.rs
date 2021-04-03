@@ -3,8 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::client::ClientInstruction;
@@ -13,6 +12,7 @@ use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::server::ServerInstruction;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::{QUIT, SLEEP};
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
@@ -74,11 +74,12 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
-    started_reading_from_pty: Arc<AtomicBool>,
     client_sender: SenderWithContext<ClientInstruction>,
     client_receiver: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
     server_sender: SenderWithContext<ServerInstruction>,
     server_receiver: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
+    should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
+    sigwinch_event: Option<PositionAndSize>,
 }
 
 impl FakeInputOutput {
@@ -106,11 +107,12 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
-            started_reading_from_pty: Arc::new(AtomicBool::new(false)),
             server_receiver: Arc::new(Mutex::new(server_receiver)),
             server_sender,
             client_receiver: Arc::new(Mutex::new(client_receiver)),
             client_sender,
+            should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
+            sigwinch_event: None,
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -169,14 +171,24 @@ impl ClientOsApi for FakeInputOutput {
                 ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS - last_snapshot_time.elapsed());
             }
         }
-        if self.stdin_commands.lock().unwrap().len() == 1 {
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        self.stdin_commands
+        let command = self
+            .stdin_commands
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or(vec![])
+            .unwrap_or(vec![]);
+        if command == SLEEP {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        } else if command == QUIT && self.sigwinch_event.is_some() {
+            let (lock, cvar) = &*self.should_trigger_sigwinch;
+            let mut should_trigger_sigwinch = lock.lock().unwrap();
+            *should_trigger_sigwinch = true;
+            cvar.notify_one();
+            ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS); // give some time for the app to resize before quitting
+        } else if command == QUIT {
+            ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS);
+        }
+        command
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
@@ -196,6 +208,16 @@ impl ClientOsApi for FakeInputOutput {
     }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
         self.client_receiver.lock().unwrap().recv().unwrap()
+    }
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+        if self.sigwinch_event.is_some() {
+            let (lock, cvar) = &*self.should_trigger_sigwinch;
+            let mut should_trigger_sigwinch = lock.lock().unwrap();
+            while !*should_trigger_sigwinch {
+                should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+            }
+            cb();
+        }
     }
 }
 

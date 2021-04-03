@@ -69,6 +69,23 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
             move || input_loop(os_input, command_is_executing, send_client_instructions)
         });
 
+    let _signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            move || {
+                os_input.receive_sigwinch(Box::new({
+                    let os_api = os_input.clone();
+                    move || {
+                        os_api.send_to_server(ServerInstruction::terminal_resize(
+                            os_api.get_terminal_size_using_fd(0),
+                        ));
+                    }
+                }));
+            }
+        })
+        .unwrap();
+
     let router_thread = thread::Builder::new()
         .name("router".to_string())
         .spawn({

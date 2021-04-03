@@ -12,7 +12,7 @@ use std::{
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{Event, EventType, InputMode};
+use zellij_tile::data::{Event, EventType, ModeInfo};
 
 use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
@@ -168,11 +168,14 @@ impl ServerInstruction {
     pub fn update_tab_name(tab_ids: Vec<u8>) -> Self {
         Self::ToScreen(ScreenInstruction::UpdateTabName(tab_ids))
     }
-    pub fn change_input_mode(input_mode: InputMode) -> Self {
-        Self::ToScreen(ScreenInstruction::ChangeInputMode(input_mode))
+    pub fn change_mode(mode_info: ModeInfo) -> Self {
+        Self::ToScreen(ScreenInstruction::ChangeMode(mode_info))
     }
     pub fn pty(fd: RawFd, event: VteEvent) -> Self {
         Self::ToScreen(ScreenInstruction::Pty(fd, event))
+    }
+    pub fn terminal_resize(new_size: PositionAndSize) -> Self {
+        Self::ToScreen(ScreenInstruction::TerminalResize(new_size))
     }
 }
 
@@ -450,7 +453,7 @@ fn init_client(
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    InputMode::Normal,
+                    ModeInfo::default(),
                 );
                 loop {
                     let (event, mut err_ctx) = screen
@@ -625,8 +628,11 @@ fn init_client(
                                 .send(ServerInstruction::DoneUpdatingTabs)
                                 .unwrap();
                         }
-                        ScreenInstruction::ChangeInputMode(input_mode) => {
-                            screen.change_input_mode(input_mode);
+                        ScreenInstruction::ChangeMode(mode_info) => {
+                            screen.change_mode(mode_info);
+                        }
+                        ScreenInstruction::TerminalResize(new_size) => {
+                            screen.resize_to_screen(new_size);
                         }
                         ScreenInstruction::Exit => {
                             break;
