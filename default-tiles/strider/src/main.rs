@@ -23,7 +23,7 @@ impl ZellijTile for State {
                     let next = self.selected().saturating_add(1);
                     *self.selected_mut() = min(self.files.len() - 1, next);
                 }
-                Key::Right | Key::Char('\n') | Key::Char('l') => {
+                Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
                     match self.files[self.selected()].clone() {
                         FsEntry::Dir(p, _) => {
                             self.path = p;
