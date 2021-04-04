@@ -181,8 +181,10 @@ impl ClientOsApi for FakeInputOutput {
             std::thread::sleep(std::time::Duration::from_millis(200));
         } else if command == QUIT && self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            *should_trigger_sigwinch = true;
+            {
+                let mut should_trigger_sigwinch = lock.lock().unwrap();
+                *should_trigger_sigwinch = true;
+            }
             cvar.notify_one();
             ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS); // give some time for the app to resize before quitting
         } else if command == QUIT {
@@ -212,9 +214,11 @@ impl ClientOsApi for FakeInputOutput {
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         if self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            while !*should_trigger_sigwinch {
-                should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+            {
+                let mut should_trigger_sigwinch = lock.lock().unwrap();
+                while !*should_trigger_sigwinch {
+                    should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+                }
             }
             cb();
         }
