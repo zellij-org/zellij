@@ -34,6 +34,7 @@ pub struct CliArgs {
 #[derive(Debug, StructOpt)]
 pub enum ConfigCli {
     /// Path to the configuration yaml file
+    #[structopt(alias = "c")]
     Config {
         path: Option<PathBuf>,
         #[structopt(long)]

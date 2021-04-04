@@ -13,6 +13,9 @@ _zellij() {
                 cmd="zellij"
                 ;;
             
+            c)
+                cmd+="__c"
+                ;;
             config)
                 cmd+="__config"
                 ;;
@@ -26,7 +29,7 @@ _zellij() {
 
     case "${cmd}" in
         zellij)
-            opts=" -m -d -h -V -s -o -l  --move-focus --debug --help --version --split --open-file --max-panes --layout   config help"
+            opts=" -m -d -h -V -s -o -l  --move-focus --debug --help --version --split --open-file --max-panes --layout   config help  c c"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -69,6 +72,21 @@ _zellij() {
             return 0
             ;;
         
+        zellij__c)
+            opts=" -h -V  --clean --help --version  <path> "
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         zellij__config)
             opts=" -h -V  --clean --help --version  <path> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
