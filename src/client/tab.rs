@@ -2064,47 +2064,74 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
-        if let Some(terminal_to_close) = self.panes.get(&id) {
-            let terminal_to_close_width = terminal_to_close.columns();
-            let terminal_to_close_height = terminal_to_close.rows();
-            if let Some(terminals) = self.panes_to_the_left_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_width_right(&terminal_id, terminal_to_close_width + 1);
-                    // 1 for the border
+        if let Some(pane_to_close) = self.panes.get(&id) {
+            let pane_to_close_width = pane_to_close.columns();
+            let pane_to_close_height = pane_to_close.rows();
+            if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_width_by(pane_to_close_width + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_width_right(&pane_id, pane_to_close_width + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
                 }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
+            }
+            if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_width_by(pane_to_close_width + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_width_left(&pane_id, pane_to_close_width + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
                 }
-            } else if let Some(terminals) = self.panes_to_the_right_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_width_left(&terminal_id, terminal_to_close_width + 1);
-                    // 1 for the border
+            }
+            if let Some(panes) = self.panes_above_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_height_by(pane_to_close_height + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_height_down(&pane_id, pane_to_close_height + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
                 }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
+            }
+            if let Some(panes) = self.panes_below_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_height_by(pane_to_close_height + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_height_up(&pane_id, pane_to_close_height + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
                 }
-            } else if let Some(terminals) = self.panes_above_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_height_down(&terminal_id, terminal_to_close_height + 1);
-                    // 1 for the border
-                }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else if let Some(terminals) = self.panes_below_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_height_up(&terminal_id, terminal_to_close_height + 1);
-                    // 1 for the border
-                }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else {
             }
             self.panes.remove(&id);
-            if self.active_terminal.is_none() {
-                self.active_terminal = self.next_active_pane(self.get_pane_ids());
-            }
         }
     }
     pub fn close_focused_pane(&mut self) {
