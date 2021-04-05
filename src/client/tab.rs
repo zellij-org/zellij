@@ -2131,6 +2131,8 @@ impl Tab {
                     return;
                 }
             }
+            // if we reached here, this is either the last pane or there's some sort of
+            // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
             self.panes.remove(&id);
         }
     }
