@@ -1,5 +1,6 @@
-//! The way terminal iput is handled.
+//! The way terminal input is handled.
 
 pub mod actions;
+pub mod config;
 pub mod handler;
 pub mod keybinds;

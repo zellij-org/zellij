@@ -22,6 +22,7 @@ use std::{
 };
 
 use crate::cli::CliArgs;
+use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use command_is_executing::CommandIsExecuting;
@@ -123,6 +124,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
+        .unwrap();
+
+    let config = Config::from_cli_config(opts.config)
+        .map_err(|e| {
+            eprintln!("There was an error in the config file:\n{}", e);
+            std::process::exit(1);
+        })
         .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
@@ -590,9 +598,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
+            let config = config;
             move || {
                 input_loop(
                     os_input,
+                    config,
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,

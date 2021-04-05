@@ -1,7 +1,8 @@
 //! Main input logic.
 
 use super::actions::Action;
-use super::keybinds::get_default_keybinds;
+use super::keybinds::Keybinds;
+use crate::common::input::config::Config;
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
@@ -13,14 +14,13 @@ use crate::CommandIsExecuting;
 use termion::input::{TermRead, TermReadEventsAndRaw};
 use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
-use super::keybinds::key_to_actions;
-
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
 struct InputHandler {
     /// The current input mode
     mode: InputMode,
     os_input: Box<dyn OsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -33,6 +33,7 @@ impl InputHandler {
     fn new(
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
+        config: Config,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -41,6 +42,7 @@ impl InputHandler {
         InputHandler {
             mode: InputMode::Normal,
             os_input,
+            config,
             command_is_executing,
             send_screen_instructions,
             send_pty_instructions,
@@ -57,41 +59,37 @@ impl InputHandler {
         self.send_pty_instructions.update(err_ctx);
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
-        if let Ok(keybinds) = get_default_keybinds() {
-            'input_loop: loop {
-                //@@@ I think this should actually just iterate over stdin directly
-                let stdin_buffer = self.os_input.read_from_stdin();
-                for key_result in stdin_buffer.events_and_raw() {
-                    match key_result {
-                        Ok((event, raw_bytes)) => match event {
-                            termion::event::Event::Key(key) => {
-                                let key = cast_termion_key(key);
-                                // FIXME this explicit break is needed because the current test
-                                // framework relies on it to not create dead threads that loop
-                                // and eat up CPUs. Do not remove until the test framework has
-                                // been revised. Sorry about this (@categorille)
-                                let mut should_break = false;
-                                for action in key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                                {
-                                    should_break |= self.dispatch_action(action);
-                                }
-                                if should_break {
-                                    break 'input_loop;
-                                }
+        let keybinds = self.config.keybinds.clone();
+        'input_loop: loop {
+            //@@@ I think this should actually just iterate over stdin directly
+            let stdin_buffer = self.os_input.read_from_stdin();
+            for key_result in stdin_buffer.events_and_raw() {
+                match key_result {
+                    Ok((event, raw_bytes)) => match event {
+                        termion::event::Event::Key(key) => {
+                            let key = cast_termion_key(key);
+                            // FIXME this explicit break is needed because the current test
+                            // framework relies on it to not create dead threads that loop
+                            // and eat up CPUs. Do not remove until the test framework has
+                            // been revised. Sorry about this (@categorille)
+                            let mut should_break = false;
+                            for action in
+                                Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
+                            {
+                                should_break |= self.dispatch_action(action);
                             }
-                            termion::event::Event::Mouse(_)
-                            | termion::event::Event::Unsupported(_) => {
-                                // Mouse and unsupported events aren't implemented yet,
-                                // use a NoOp untill then.
+                            if should_break {
+                                break 'input_loop;
                             }
-                        },
-                        Err(err) => panic!("Encountered read error: {:?}", err),
-                    }
+                        }
+                        termion::event::Event::Mouse(_) | termion::event::Event::Unsupported(_) => {
+                            // Mouse and unsupported events aren't implemented yet,
+                            // use a NoOp untill then.
+                        }
+                    },
+                    Err(err) => panic!("Encountered read error: {:?}", err),
                 }
             }
-        } else {
-            //@@@ Error handling?
-            self.exit();
         }
     }
 
@@ -291,6 +289,7 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
 /// its [`InputHandler::handle_input()`] loop.
 pub fn input_loop(
     os_input: Box<dyn OsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
@@ -300,6 +299,7 @@ pub fn input_loop(
     let _handler = InputHandler::new(
         os_input,
         command_is_executing,
+        config,
         send_screen_instructions,
         send_pty_instructions,
         send_plugin_instructions,
