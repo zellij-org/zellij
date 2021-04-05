@@ -380,8 +380,7 @@ impl TerminalPane {
         self.mark_for_rerender();
     }
     fn add_newline(&mut self) {
-        let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-        pad_character.styles = self.pending_styles;
+        let pad_character = EMPTY_TERMINAL_CHARACTER;
         self.grid.add_canonical_line(pad_character);
         self.mark_for_rerender();
     }
@@ -497,8 +496,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 (params[0] as usize - 1, params[1] as usize - 1)
             };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid.move_cursor_to(col, row, pad_character);
         } else if c == 'A' {
             // move cursor up until edge of screen
@@ -507,8 +505,7 @@ impl vte::Perform for TerminalPane {
         } else if c == 'B' {
             // move cursor down until edge of screen
             let move_down_count = if params[0] == 0 { 1 } else { params[0] };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid
                 .move_cursor_down(move_down_count as usize, pad_character);
         } else if c == 'D' {
@@ -600,8 +597,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid
                 .delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
@@ -611,8 +607,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid
                 .add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'q' {
@@ -632,8 +627,7 @@ impl vte::Perform for TerminalPane {
                 // minus 1 because this is 1 indexed
                 params[0] as usize - 1
             };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid.move_cursor_to_line(line, pad_character);
         } else if c == 'P' {
             // erase characters
@@ -672,8 +666,7 @@ impl vte::Perform for TerminalPane {
             } else {
                 params[0] as usize
             };
-            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-            pad_character.styles = self.pending_styles;
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.grid
                 .delete_lines_in_scroll_region(count, pad_character);
             // TODO: since delete_lines_in_scroll_region also adds lines, is the below redundant?
