@@ -2076,6 +2076,9 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
+        if self.fullscreen_is_active {
+            self.toggle_active_pane_fullscreen();
+        }
         if let Some(pane_to_close) = self.panes.get(&id) {
             let pane_to_close_width = pane_to_close.columns();
             let pane_to_close_height = pane_to_close.rows();
