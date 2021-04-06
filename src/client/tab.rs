@@ -639,7 +639,11 @@ impl Tab {
                     return;
                 } else {
                     let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                    active_terminal.override_size_and_position(expand_to.x, expand_to.y, &expand_to);
+                    active_terminal.override_size_and_position(
+                        expand_to.x,
+                        expand_to.y,
+                        &expand_to,
+                    );
                 }
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
