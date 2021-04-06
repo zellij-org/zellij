@@ -23,7 +23,7 @@ impl CommandIsExecuting {
         let (lock, cvar) = &*self.closing_pane;
         let mut closing_pane = lock.lock().unwrap();
         *closing_pane = false;
-        cvar.notify_one();
+        cvar.notify_all();
     }
     pub fn opening_new_pane(&mut self) {
         let (lock, _cvar) = &*self.opening_new_pane;
@@ -34,7 +34,7 @@ impl CommandIsExecuting {
         let (lock, cvar) = &*self.opening_new_pane;
         let mut opening_new_pane = lock.lock().unwrap();
         *opening_new_pane = false;
-        cvar.notify_one();
+        cvar.notify_all();
     }
     pub fn wait_until_pane_is_closed(&self) {
         let (lock, cvar) = &*self.closing_pane;
