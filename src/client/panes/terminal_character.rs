@@ -407,22 +407,46 @@ impl CharacterStyles {
                 params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
             }
             [49, ..] => *self = self.background(Some(AnsiCode::Reset)),
-            [90, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack))),
+            [90, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+            }
             [91, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
-            [92, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen))),
-            [93, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow))),
+            [92, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+            }
+            [93, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+            }
             [94, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
-            [95, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta))),
+            [95, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+            }
             [96, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
-            [97, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite))),
-            [100, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack))),
+            [97, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+            }
+            [100, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+            }
             [101, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
-            [102, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen))),
-            [103, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow))),
-            [104, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
-            [105, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta))),
-            [106, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
-            [107, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite))),
+            [102, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+            }
+            [103, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+            }
+            [104, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue)))
+            }
+            [105, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+            }
+            [106, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan)))
+            }
+            [107, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+            }
             _ => {
                 // if this happens, it's a bug
                 let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
