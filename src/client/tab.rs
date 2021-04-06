@@ -561,6 +561,9 @@ impl Tab {
             None
         }
     }
+    pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
+        self.panes.contains_key(&PaneId::Terminal(pid))
+    }
     pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
         // if we don't have the terminal in self.terminals it's probably because
         // of a race condition where the terminal was created in pty_bus but has not
