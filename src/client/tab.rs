@@ -634,8 +634,17 @@ impl Tab {
                     }
                 });
                 self.panes_to_hide = pane_ids_to_hide.collect();
-                let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                active_terminal.override_size_and_position(expand_to.x, expand_to.y, &expand_to);
+                if self.panes_to_hide.is_empty() {
+                    // nothing to do, pane is already as fullscreen as it can be, let's bail
+                    return;
+                } else {
+                    let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
+                    active_terminal.override_size_and_position(
+                        expand_to.x,
+                        expand_to.y,
+                        &expand_to,
+                    );
+                }
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
             if let PaneId::Terminal(active_pid) = active_pane_id {
