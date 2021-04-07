@@ -91,6 +91,13 @@ impl Keybinds {
                     vec![Action::SwitchToMode(InputMode::Scroll)],
                 );
                 defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
+
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
             InputMode::Locked => {
                 defaults.insert(
@@ -133,6 +140,13 @@ impl Keybinds {
                 defaults.insert(Key::Down, vec![Action::Resize(Direction::Down)]);
                 defaults.insert(Key::Up, vec![Action::Resize(Direction::Up)]);
                 defaults.insert(Key::Right, vec![Action::Resize(Direction::Right)]);
+
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
             InputMode::Pane => {
                 defaults.insert(
@@ -173,7 +187,7 @@ impl Keybinds {
                 defaults.insert(Key::Up, vec![Action::MoveFocus(Direction::Up)]);
                 defaults.insert(Key::Right, vec![Action::MoveFocus(Direction::Right)]);
 
-                defaults.insert(Key::Char('p'), vec![Action::SwitchFocus(Direction::Right)]);
+                defaults.insert(Key::Char('p'), vec![Action::SwitchFocus]);
                 defaults.insert(Key::Char('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Char('d'), vec![Action::NewPane(Some(Direction::Down))]);
                 defaults.insert(
@@ -182,6 +196,14 @@ impl Keybinds {
                 );
                 defaults.insert(Key::Char('x'), vec![Action::CloseFocus]);
                 defaults.insert(Key::Char('f'), vec![Action::ToggleFocusFullscreen]);
+
+
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
             InputMode::Tab => {
                 defaults.insert(
@@ -240,6 +262,12 @@ impl Keybinds {
                 for i in '1'..='9' {
                     defaults.insert(Key::Char(i), vec![Action::GoToTab(i.to_digit(10).unwrap())]);
                 }
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
             InputMode::Scroll => {
                 defaults.insert(
@@ -272,6 +300,13 @@ impl Keybinds {
 
                 defaults.insert(Key::Down, vec![Action::ScrollDown]);
                 defaults.insert(Key::Up, vec![Action::ScrollUp]);
+
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
             InputMode::RenameTab => {
                 defaults.insert(Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]);
@@ -286,6 +321,13 @@ impl Keybinds {
                         Action::SwitchToMode(InputMode::Tab),
                     ],
                 );
+
+                defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
+                defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
+                defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
+                defaults.insert(Key::Alt('l'), vec![Action::MoveFocus(Direction::Right)]);
+                defaults.insert(Key::Alt('['), vec![Action::FocusPreviousPane]);
+                defaults.insert(Key::Alt(']'), vec![Action::FocusNextPane]);
             }
         }
         ModeKeybinds(defaults)

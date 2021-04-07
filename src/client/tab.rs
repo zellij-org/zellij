@@ -1809,6 +1809,62 @@ impl Tab {
         }
         self.render();
     }
+    pub fn focus_next_pane(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_pane_id = self.get_active_pane_id().unwrap();
+        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let first_pane = panes.get(0).unwrap();
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| *id == &active_pane_id) // TODO: better
+            .unwrap();
+        if let Some(next_pane) = panes.get(active_pane_position + 1) {
+            self.active_terminal = Some(*next_pane.0);
+        } else {
+            self.active_terminal = Some(*first_pane.0);
+        }
+        self.render();
+    }
+    pub fn focus_previous_pane(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_pane_id = self.get_active_pane_id().unwrap();
+        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let last_pane = panes.last().unwrap();
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| *id == &active_pane_id) // TODO: better
+            .unwrap();
+        if active_pane_position == 0 {
+            self.active_terminal = Some(*last_pane.0);
+        } else {
+            self.active_terminal = Some(*panes.get(active_pane_position - 1).unwrap().0);
+        }
+        self.render();
+    }
     pub fn move_focus_left(&mut self) {
         if !self.has_selectable_panes() {
             return;
