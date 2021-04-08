@@ -92,6 +92,7 @@ impl Keybinds {
                 );
                 defaults.insert(Key::Ctrl('q'), vec![Action::Quit]);
 
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
@@ -141,6 +142,7 @@ impl Keybinds {
                 defaults.insert(Key::Up, vec![Action::Resize(Direction::Up)]);
                 defaults.insert(Key::Right, vec![Action::Resize(Direction::Right)]);
 
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
@@ -198,6 +200,7 @@ impl Keybinds {
                 defaults.insert(Key::Char('f'), vec![Action::ToggleFocusFullscreen]);
 
 
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
@@ -262,6 +265,7 @@ impl Keybinds {
                 for i in '1'..='9' {
                     defaults.insert(Key::Char(i), vec![Action::GoToTab(i.to_digit(10).unwrap())]);
                 }
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
@@ -301,6 +305,7 @@ impl Keybinds {
                 defaults.insert(Key::Down, vec![Action::ScrollDown]);
                 defaults.insert(Key::Up, vec![Action::ScrollUp]);
 
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
@@ -322,6 +327,7 @@ impl Keybinds {
                     ],
                 );
 
+                defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);
                 defaults.insert(Key::Alt('k'), vec![Action::MoveFocus(Direction::Up)]);
