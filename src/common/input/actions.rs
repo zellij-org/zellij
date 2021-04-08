@@ -24,8 +24,10 @@ pub enum Action {
     /// Resize focus pane in specified direction.
     Resize(Direction),
     /// Switch focus to next pane in specified direction.
-    SwitchFocus(Direction),
+    FocusNextPane,
+    FocusPreviousPane,
     /// Move the focus pane in specified direction.
+    SwitchFocus,
     MoveFocus(Direction),
     /// Scroll up in focus pane.
     ScrollUp,

@@ -326,8 +326,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
                         }
-                        ScreenInstruction::MoveFocus => {
+                        ScreenInstruction::SwitchFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::FocusNextPane => {
+                            screen.get_active_tab_mut().unwrap().focus_next_pane();
+                        }
+                        ScreenInstruction::FocusPreviousPane => {
+                            screen.get_active_tab_mut().unwrap().focus_previous_pane();
                         }
                         ScreenInstruction::MoveFocusLeft => {
                             screen.get_active_tab_mut().unwrap().move_focus_left();
@@ -589,7 +595,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
+                                        .send(ScreenInstruction::FocusNextPane)
                                         .unwrap();
                                 }
                             }

@@ -26,6 +26,7 @@ struct InputHandler {
     send_pty_instructions: SenderWithContext<PtyInstruction>,
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
+    should_exit: bool,
 }
 
 impl InputHandler {
@@ -48,6 +49,7 @@ impl InputHandler {
             send_pty_instructions,
             send_plugin_instructions,
             send_app_instructions,
+            should_exit: false,
         }
     }
 
@@ -60,35 +62,42 @@ impl InputHandler {
         self.send_app_instructions.update(err_ctx);
         self.send_screen_instructions.update(err_ctx);
         let keybinds = self.config.keybinds.clone();
-        'input_loop: loop {
-            //@@@ I think this should actually just iterate over stdin directly
+        let alt_left_bracket = vec![27, 91];
+        loop {
+            if self.should_exit {
+                break;
+            }
             let stdin_buffer = self.os_input.read_from_stdin();
             for key_result in stdin_buffer.events_and_raw() {
                 match key_result {
                     Ok((event, raw_bytes)) => match event {
                         termion::event::Event::Key(key) => {
                             let key = cast_termion_key(key);
-                            // FIXME this explicit break is needed because the current test
-                            // framework relies on it to not create dead threads that loop
-                            // and eat up CPUs. Do not remove until the test framework has
-                            // been revised. Sorry about this (@categorille)
-                            let mut should_break = false;
-                            for action in
-                                Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                            {
-                                should_break |= self.dispatch_action(action);
-                            }
-                            if should_break {
-                                break 'input_loop;
+                            self.handle_key(&key, raw_bytes, &keybinds);
+                        }
+                        termion::event::Event::Unsupported(unsupported_key) => {
+                            // we have to do this because of a bug in termion
+                            // this should be a key event and not an unsupported event
+                            if unsupported_key == alt_left_bracket {
+                                let key = Key::Alt('[');
+                                self.handle_key(&key, raw_bytes, &keybinds);
                             }
                         }
-                        termion::event::Event::Mouse(_) | termion::event::Event::Unsupported(_) => {
-                            // Mouse and unsupported events aren't implemented yet,
+                        termion::event::Event::Mouse(_) => {
+                            // Mouse events aren't implemented yet,
                             // use a NoOp untill then.
                         }
                     },
                     Err(err) => panic!("Encountered read error: {:?}", err),
                 }
+            }
+        }
+    }
+    fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>, keybinds: &Keybinds) {
+        for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds) {
+            let should_exit = self.dispatch_action(action);
+            if should_exit {
+                self.should_exit = true;
             }
         }
     }
@@ -144,9 +153,19 @@ impl InputHandler {
                 };
                 self.send_screen_instructions.send(screen_instr).unwrap();
             }
-            Action::SwitchFocus(_) => {
+            Action::SwitchFocus => {
                 self.send_screen_instructions
-                    .send(ScreenInstruction::MoveFocus)
+                    .send(ScreenInstruction::SwitchFocus)
+                    .unwrap();
+            }
+            Action::FocusNextPane => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::FocusNextPane)
+                    .unwrap();
+            }
+            Action::FocusPreviousPane => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::FocusPreviousPane)
                     .unwrap();
             }
             Action::MoveFocus(direction) => {

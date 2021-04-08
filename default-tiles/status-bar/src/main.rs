@@ -63,8 +63,8 @@ impl ZellijTile for State {
         let second_line = keybinds(&self.mode_info, cols);
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
-        // [48;5;16m is black background, [0K is so that it fills the rest of the line
+        // [m is background reset, [0K is so that it clears the rest of the line
         println!("{}\u{1b}[48;5;238m\u{1b}[0K", first_line);
-        println!("{}\u{1b}[48;5;16m\u{1b}[0K", second_line);
+        println!("\u{1b}[m{}\u{1b}[0K", second_line);
     }
 }
