@@ -199,7 +199,6 @@ impl Keybinds {
                 defaults.insert(Key::Char('x'), vec![Action::CloseFocus]);
                 defaults.insert(Key::Char('f'), vec![Action::ToggleFocusFullscreen]);
 
-
                 defaults.insert(Key::Alt('n'), vec![Action::NewPane(None)]);
                 defaults.insert(Key::Alt('h'), vec![Action::MoveFocus(Direction::Left)]);
                 defaults.insert(Key::Alt('j'), vec![Action::MoveFocus(Direction::Down)]);

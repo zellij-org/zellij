@@ -94,9 +94,7 @@ impl InputHandler {
         }
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>, keybinds: &Keybinds) {
-        for action in
-            Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-        {
+        for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds) {
             let should_exit = self.dispatch_action(action);
             if should_exit {
                 self.should_exit = true;
