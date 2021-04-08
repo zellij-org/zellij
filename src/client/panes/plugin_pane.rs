@@ -173,6 +173,18 @@ impl Pane for PluginPane {
         self.position_and_size.columns += count;
         self.should_render = true;
     }
+    fn push_down(&mut self, count: usize) {
+        self.position_and_size.y += count;
+    }
+    fn push_right(&mut self, count: usize) {
+        self.position_and_size.x += count;
+    }
+    fn pull_left(&mut self, count: usize) {
+        self.position_and_size.x -= count;
+    }
+    fn pull_up(&mut self, count: usize) {
+        self.position_and_size.y -= count;
+    }
     fn scroll_up(&mut self, _count: usize) {
         unimplemented!()
     }

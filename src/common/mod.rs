@@ -39,7 +39,9 @@ use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction}
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use xrdb::Colors;
-use zellij_tile::data::{EventType, InputMode, ModeInfo, Palette};
+use zellij_tile::data::{EventType, InputMode, ModeInfo, Palette, Theme};
+
+use self::utils::logging::debug_log_to_file;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -126,6 +128,19 @@ pub mod colors {
     pub const BLACK: (u8, u8, u8) = (0, 0, 0);
 }
 
+pub fn detect_theme(bg: (u8, u8, u8)) -> Theme {
+    let (r, g, b) = bg;
+    // HSP, P stands for perceived brightness
+    let hsp: f64 = (0.299 * (r as f64 * r as f64)
+        + 0.587 * (g as f64 * g as f64)
+        + 0.114 * (b as f64 * b as f64))
+        .sqrt();
+    match hsp > 127.5 {
+        true => Theme::Light,
+        false => Theme::Dark,
+    }
+}
+
 pub fn load_palette() -> Palette {
     let palette = match Colors::new("xresources") {
         Some(colors) => {
@@ -150,7 +165,13 @@ pub fn load_palette() -> Palette {
                     (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
                 })
                 .collect();
+            let theme = detect_theme(bg);
+            debug_log_to_file(format!(
+                "{:?} {:?}, white: {:?}, black: {:?}, fg: {:?}",
+                theme, bg, colors[7], colors[0], fg
+            ));
             Palette {
+                theme,
                 fg,
                 bg,
                 black: colors[0],
@@ -164,6 +185,7 @@ pub fn load_palette() -> Palette {
             }
         }
         None => Palette {
+            theme: Theme::Dark,
             fg: colors::BRIGHT_GRAY,
             bg: colors::BLACK,
             black: colors::BLACK,
@@ -459,6 +481,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
                         }
+                        ScreenInstruction::TerminalResize => {
+                            screen.resize_to_screen();
+                        }
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
                         }
@@ -572,6 +597,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,
                 }
+            }
+        })
+        .unwrap();
+
+    let _signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            move || {
+                os_input.receive_sigwinch(Box::new(move || {
+                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
+                }));
             }
         })
         .unwrap();
