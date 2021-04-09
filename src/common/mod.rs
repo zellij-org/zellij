@@ -105,7 +105,7 @@ thread_local!(
 );
 
 task_local! {
-    /// A key to some thread local storage (TLS) that holds a representation of the task's call
+    /// A key to some task local storage that holds a representation of the task's call
     /// stack in the form of an [`ErrorContext`].
     static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
 }
