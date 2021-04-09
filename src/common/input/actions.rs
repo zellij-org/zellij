@@ -1,9 +1,10 @@
 //! Definition of the actions that can be bound to keys.
 
+use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -12,7 +13,7 @@ pub enum Direction {
 }
 
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -23,8 +24,10 @@ pub enum Action {
     /// Resize focus pane in specified direction.
     Resize(Direction),
     /// Switch focus to next pane in specified direction.
-    SwitchFocus(Direction),
+    FocusNextPane,
+    FocusPreviousPane,
     /// Move the focus pane in specified direction.
+    SwitchFocus,
     MoveFocus(Direction),
     /// Scroll up in focus pane.
     ScrollUp,

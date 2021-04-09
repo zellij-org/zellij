@@ -1,5 +1,5 @@
-use crate::common::colors;
 use crate::tab::Pane;
+use crate::utils::shared::colors;
 use ansi_term::Colour::RGB;
 use std::collections::HashMap;
 use zellij_tile::data::{InputMode, Palette};
@@ -18,6 +18,13 @@ pub mod boundary_type {
     pub const HORIZONTAL_UP: &str = "┴";
     pub const CROSS: &str = "┼";
 }
+
+// pub mod colors {
+//     use ansi_term::Colour::{self, Fixed};
+//     pub const GREEN: Colour = Fixed(154);
+//     pub const GRAY: Colour = Fixed(238);
+//     pub const ORANGE: Colour = Fixed(166);
+// }
 
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 

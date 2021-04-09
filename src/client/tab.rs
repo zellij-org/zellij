@@ -17,7 +17,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, colors};
+use zellij_tile::data::{colors, Event, InputMode, ModeInfo, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -71,7 +71,7 @@ pub struct Tab {
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
-    pub colors: Palette
+    pub colors: Palette,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -568,6 +568,9 @@ impl Tab {
             None
         }
     }
+    pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
+        self.panes.contains_key(&PaneId::Terminal(pid))
+    }
     pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
         // if we don't have the terminal in self.terminals it's probably because
         // of a race condition where the terminal was created in pty_bus but has not
@@ -638,8 +641,17 @@ impl Tab {
                     }
                 });
                 self.panes_to_hide = pane_ids_to_hide.collect();
-                let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                active_terminal.override_size_and_position(expand_to.x, expand_to.y, &expand_to);
+                if self.panes_to_hide.is_empty() {
+                    // nothing to do, pane is already as fullscreen as it can be, let's bail
+                    return;
+                } else {
+                    let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
+                    active_terminal.override_size_and_position(
+                        expand_to.x,
+                        expand_to.y,
+                        &expand_to,
+                    );
+                }
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
             if let PaneId::Terminal(active_pid) = active_pane_id {
@@ -1804,6 +1816,62 @@ impl Tab {
         }
         self.render();
     }
+    pub fn focus_next_pane(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_pane_id = self.get_active_pane_id().unwrap();
+        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let first_pane = panes.get(0).unwrap();
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| *id == &active_pane_id) // TODO: better
+            .unwrap();
+        if let Some(next_pane) = panes.get(active_pane_position + 1) {
+            self.active_terminal = Some(*next_pane.0);
+        } else {
+            self.active_terminal = Some(*first_pane.0);
+        }
+        self.render();
+    }
+    pub fn focus_previous_pane(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_pane_id = self.get_active_pane_id().unwrap();
+        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let last_pane = panes.last().unwrap();
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| *id == &active_pane_id) // TODO: better
+            .unwrap();
+        if active_pane_position == 0 {
+            self.active_terminal = Some(*last_pane.0);
+        } else {
+            self.active_terminal = Some(*panes.get(active_pane_position - 1).unwrap().0);
+        }
+        self.render();
+    }
     pub fn move_focus_left(&mut self) {
         if !self.has_selectable_panes() {
             return;
@@ -2071,47 +2139,79 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
-        if let Some(terminal_to_close) = self.panes.get(&id) {
-            let terminal_to_close_width = terminal_to_close.columns();
-            let terminal_to_close_height = terminal_to_close.rows();
-            if let Some(terminals) = self.panes_to_the_left_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_width_right(&terminal_id, terminal_to_close_width + 1);
-                    // 1 for the border
+        if self.fullscreen_is_active {
+            self.toggle_active_pane_fullscreen();
+        }
+        if let Some(pane_to_close) = self.panes.get(&id) {
+            let pane_to_close_width = pane_to_close.columns();
+            let pane_to_close_height = pane_to_close.rows();
+            if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_width_by(pane_to_close_width + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_width_right(&pane_id, pane_to_close_width + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
                 }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else if let Some(terminals) = self.panes_to_the_right_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_width_left(&terminal_id, terminal_to_close_width + 1);
-                    // 1 for the border
-                }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else if let Some(terminals) = self.panes_above_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_height_down(&terminal_id, terminal_to_close_height + 1);
-                    // 1 for the border
-                }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else if let Some(terminals) = self.panes_below_between_aligning_borders(id) {
-                for terminal_id in terminals.iter() {
-                    self.increase_pane_height_up(&terminal_id, terminal_to_close_height + 1);
-                    // 1 for the border
-                }
-                if self.active_terminal == Some(id) {
-                    self.active_terminal = self.next_active_pane(terminals);
-                }
-            } else {
             }
+            if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_width_by(pane_to_close_width + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_width_left(&pane_id, pane_to_close_width + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
+                }
+            }
+            if let Some(panes) = self.panes_above_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_height_by(pane_to_close_height + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_height_down(&pane_id, pane_to_close_height + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
+                }
+            }
+            if let Some(panes) = self.panes_below_between_aligning_borders(id) {
+                if panes.iter().all(|p| {
+                    let pane = self.panes.get(p).unwrap();
+                    pane.can_increase_height_by(pane_to_close_height + 1)
+                }) {
+                    for pane_id in panes.iter() {
+                        self.increase_pane_height_up(&pane_id, pane_to_close_height + 1);
+                        // 1 for the border
+                    }
+                    self.panes.remove(&id);
+                    if self.active_terminal == Some(id) {
+                        self.active_terminal = self.next_active_pane(panes);
+                    }
+                    return;
+                }
+            }
+            // if we reached here, this is either the last pane or there's some sort of
+            // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
             self.panes.remove(&id);
-            if self.active_terminal.is_none() {
-                self.active_terminal = self.next_active_pane(self.get_pane_ids());
-            }
         }
     }
     pub fn close_focused_pane(&mut self) {

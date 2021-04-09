@@ -6,3 +6,10 @@ complete -c zellij -n "__fish_use_subcommand" -s m -l move-focus -d 'Send "move 
 complete -c zellij -n "__fish_use_subcommand" -s d -l debug
 complete -c zellij -n "__fish_use_subcommand" -s h -l help -d 'Prints help information'
 complete -c zellij -n "__fish_use_subcommand" -s V -l version -d 'Prints version information'
+complete -c zellij -n "__fish_use_subcommand" -f -a "config" -d 'Path to the configuration yaml file'
+complete -c zellij -n "__fish_use_subcommand" -f -a "help" -d 'Prints this message or the help of the given subcommand(s)'
+complete -c zellij -n "__fish_seen_subcommand_from config" -l clean -d 'Disables loading of configuration file at default location'
+complete -c zellij -n "__fish_seen_subcommand_from config" -s h -l help -d 'Prints help information'
+complete -c zellij -n "__fish_seen_subcommand_from config" -s V -l version -d 'Prints version information'
+complete -c zellij -n "__fish_seen_subcommand_from help" -s h -l help -d 'Prints help information'
+complete -c zellij -n "__fish_seen_subcommand_from help" -s V -l version -d 'Prints version information'

@@ -1,0 +1,26 @@
+---
+keybinds:
+    normal:
+        - action: [GoToTab: 1,]
+          key: [F: 1,]
+        - action: [GoToTab: 2,]
+          key: [F: 2,]
+        - action: [GoToTab: 3,]
+          key: [F: 3,]
+        - action: [GoToTab: 4,]
+          key: [F: 4,]
+        - action: [NewTab,]
+          key: [F: 5,]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: h,]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: l,]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: j,]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: k,]
+    pane:
+        - action: [ NewPane:, SwitchToMode: Normal,]
+          key: [Char: 'n',]
+        - action: [ NewPane: , ]
+          key: [Char: 'N',]

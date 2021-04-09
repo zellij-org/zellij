@@ -22,6 +22,7 @@ use std::{
 };
 
 use crate::cli::CliArgs;
+use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use colors_transform::{Color, Rgb};
@@ -33,7 +34,7 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
-use utils::consts::ZELLIJ_IPC_PIPE;
+use utils::{consts::ZELLIJ_IPC_PIPE, shared::load_palette};
 use wasm_vm::PluginEnv;
 use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
@@ -119,88 +120,6 @@ pub enum AppInstruction {
     Error(String),
 }
 
-pub mod colors {
-    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
-    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
-    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
-    pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
-    pub const RED: (u8, u8, u8) = (135, 0, 0);
-    pub const BLACK: (u8, u8, u8) = (0, 0, 0);
-}
-
-pub fn detect_theme(bg: (u8, u8, u8)) -> Theme {
-    let (r, g, b) = bg;
-    // HSP, P stands for perceived brightness
-    let hsp: f64 = (0.299 * (r as f64 * r as f64)
-        + 0.587 * (g as f64 * g as f64)
-        + 0.114 * (b as f64 * b as f64))
-        .sqrt();
-    match hsp > 127.5 {
-        true => Theme::Light,
-        false => Theme::Dark,
-    }
-}
-
-pub fn load_palette() -> Palette {
-    let palette = match Colors::new("xresources") {
-        Some(colors) => {
-            let fg = colors.fg.unwrap();
-            let fg_imm = &fg;
-            let fg_hex: &str = &fg_imm;
-            let fg = Rgb::from_hex_str(fg_hex).unwrap().as_tuple();
-            let fg = (fg.0 as u8, fg.1 as u8, fg.2 as u8);
-            let bg = colors.bg.unwrap();
-            let bg_imm = &bg;
-            let bg_hex: &str = &bg_imm;
-            let bg = Rgb::from_hex_str(bg_hex).unwrap().as_tuple();
-            let bg = (bg.0 as u8, bg.1 as u8, bg.2 as u8);
-            let colors: Vec<(u8, u8, u8)> = colors
-                .colors
-                .iter()
-                .map(|c| {
-                    let c = c.clone();
-                    let imm_str = &c.unwrap();
-                    let hex_str: &str = &imm_str;
-                    let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
-                    (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
-                })
-                .collect();
-            let theme = detect_theme(bg);
-            debug_log_to_file(format!(
-                "{:?} {:?}, white: {:?}, black: {:?}, fg: {:?}",
-                theme, bg, colors[7], colors[0], fg
-            ));
-            Palette {
-                theme,
-                fg,
-                bg,
-                black: colors[0],
-                red: colors[1],
-                green: colors[2],
-                yellow: colors[3],
-                blue: colors[4],
-                magenta: colors[5],
-                cyan: colors[6],
-                white: colors[7],
-            }
-        }
-        None => Palette {
-            theme: Theme::Dark,
-            fg: colors::BRIGHT_GRAY,
-            bg: colors::BLACK,
-            black: colors::BLACK,
-            red: colors::RED,
-            green: colors::GREEN,
-            yellow: colors::GRAY,
-            blue: colors::GRAY,
-            magenta: colors::GRAY,
-            cyan: colors::GRAY,
-            white: colors::WHITE,
-        },
-    };
-    palette
-}
-
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
@@ -209,6 +128,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
+        .unwrap();
+
+    let config = Config::from_cli_config(opts.config)
+        .map_err(|e| {
+            eprintln!("There was an error in the config file:\n{}", e);
+            std::process::exit(1);
+        })
         .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
@@ -360,10 +286,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     screen.send_pty_instructions.update(err_ctx);
                     match event {
                         ScreenInstruction::Pty(pid, vte_event) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .handle_pty_event(pid, vte_event);
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            if active_tab.has_terminal_pid(pid) {
+                                // it's most likely that this event is directed at the active tab
+                                // look there first
+                                active_tab.handle_pty_event(pid, vte_event);
+                            } else {
+                                // if this event wasn't directed at the active tab, start looking
+                                // in other tabs
+                                let all_tabs = screen.get_tabs_mut();
+                                for tab in all_tabs.values_mut() {
+                                    if tab.has_terminal_pid(pid) {
+                                        tab.handle_pty_event(pid, vte_event);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         ScreenInstruction::Render => {
                             screen.render();
@@ -398,8 +336,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
                         }
-                        ScreenInstruction::MoveFocus => {
+                        ScreenInstruction::SwitchFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::FocusNextPane => {
+                            screen.get_active_tab_mut().unwrap().focus_next_pane();
+                        }
+                        ScreenInstruction::FocusPreviousPane => {
+                            screen.get_active_tab_mut().unwrap().focus_previous_pane();
                         }
                         ScreenInstruction::MoveFocusLeft => {
                             screen.get_active_tab_mut().unwrap().move_focus_left();
@@ -661,7 +605,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
+                                        .send(ScreenInstruction::FocusNextPane)
                                         .unwrap();
                                 }
                             }
@@ -682,9 +626,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
+            let config = config;
             move || {
                 input_loop(
                     os_input,
+                    config,
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,
