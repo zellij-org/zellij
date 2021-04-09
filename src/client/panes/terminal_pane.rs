@@ -379,6 +379,13 @@ impl TerminalPane {
         self.grid.rotate_scroll_region_down(count);
         self.mark_for_rerender();
     }
+    fn reset_terminal_state(&mut self) {
+        let rows = self.get_rows();
+        let columns = self.get_columns();
+        self.grid = Grid::new(rows, columns);
+        self.alternative_grid = None;
+        self.cursor_key_mode = false;
+    }
     fn add_newline(&mut self) {
         let pad_character = EMPTY_TERMINAL_CHARACTER;
         self.grid.add_canonical_line(pad_character);
@@ -678,8 +685,14 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        if let (b'M', None) = (byte, intermediates.get(0)) {
-            self.grid.move_cursor_up_with_scrolling(1);
+        match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.grid.move_cursor_up_with_scrolling(1);
+            }
+            (b'c', None) => {
+                self.reset_terminal_state();
+            }
+            _ => {}
         }
     }
 }
