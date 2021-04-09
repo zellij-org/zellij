@@ -67,9 +67,9 @@ impl ZellijTile for State {
         println!(
             "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
             first_line,
-            self.mode_info.palette.fg.0,
-            self.mode_info.palette.fg.1,
-            self.mode_info.palette.fg.2
+            self.mode_info.palette.bg.0,
+            self.mode_info.palette.bg.1,
+            self.mode_info.palette.bg.2
         );
         println!("\u{1b}[m{}\u{1b}[0K", second_line);
     }

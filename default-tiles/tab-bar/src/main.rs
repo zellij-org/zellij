@@ -74,11 +74,11 @@ impl ZellijTile for State {
             s = format!("{}{}", s, bar_part.part);
         }
         println!(
-            "{}\u{1b}[{};{};{}m\u{1b}[0K",
+            "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
             s,
-            self.mode_info.palette.bg.0,
-            self.mode_info.palette.bg.1,
-            self.mode_info.palette.bg.2
+            self.mode_info.palette.fg.0,
+            self.mode_info.palette.fg.1,
+            self.mode_info.palette.fg.2
         );
     }
 }

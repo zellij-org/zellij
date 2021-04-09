@@ -63,51 +63,37 @@ impl CtrlKeyShortcut {
     }
 }
 
-fn get_bg(palette: Palette) -> (u8, u8, u8) {
-    match palette.theme {
-        Theme::Dark => palette.white,
-        Theme::Light => palette.fg,
-    }
-}
-
-fn get_fg(palette: Palette) -> (u8, u8, u8) {
-    match palette.theme {
-        Theme::Dark => palette.black,
-        Theme::Light => palette.bg,
-    }
-}
-
 fn unselected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LinePart {
     let prefix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     let char_left_separator = Style::new()
         .bold()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(" <");
     let char_shortcut = Style::new()
         .bold()
         .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(letter.to_string());
     let char_right_separator = Style::new()
         .bold()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(">");
     let styled_text = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(format!("{} ", text));
     let suffix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[
@@ -125,12 +111,11 @@ fn unselected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LineP
 
 fn selected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LinePart {
     let prefix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .paint(ARROW_SEPARATOR);
     let char_left_separator = Style::new()
-        .bold()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(format!(" <"));
@@ -141,19 +126,18 @@ fn selected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LinePar
         .bold()
         .paint(format!("{}", letter));
     let char_right_separator = Style::new()
-        .bold()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(format!(">"));
     let styled_text = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(format!("{} ", text));
     let suffix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(palette.green.0, palette.green.1, palette.green.2))
+        .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[
@@ -171,17 +155,17 @@ fn selected_mode_shortcut(letter: char, text: &str, palette: Palette) -> LinePar
 
 fn disabled_mode_shortcut(text: &str, palette: Palette) -> LinePart {
     let prefix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     let styled_text = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .dimmed()
         .paint(format!("{} ", text));
     let suffix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: format!("{}{}{}", prefix_separator, styled_text, suffix_separator),
@@ -193,7 +177,7 @@ fn selected_mode_shortcut_single_letter(letter: char, palette: Palette) -> LineP
     let char_shortcut_text = format!(" {} ", letter);
     let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
     let prefix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .paint(ARROW_SEPARATOR);
     let char_shortcut = Style::new()
@@ -203,8 +187,8 @@ fn selected_mode_shortcut_single_letter(letter: char, palette: Palette) -> LineP
         .bold()
         .paint(char_shortcut_text);
     let suffix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
@@ -216,18 +200,18 @@ fn unselected_mode_shortcut_single_letter(letter: char, palette: Palette) -> Lin
     let char_shortcut_text = format!(" {} ", letter);
     let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
     let prefix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     let char_shortcut = Style::new()
         .bold()
         .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(char_shortcut_text);
     let suffix_separator = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
@@ -318,8 +302,8 @@ fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut], palette: Palette) ->
 pub fn superkey(palette: Palette) -> LinePart {
     let prefix_text = " Ctrl + ";
     let prefix = Style::new()
-        .fg(RGB(get_fg(palette).0, get_fg(palette).1, get_fg(palette).2))
-        .on(RGB(get_bg(palette).0, get_bg(palette).1, get_bg(palette).2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(prefix_text);
     LinePart {
