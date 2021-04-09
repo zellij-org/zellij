@@ -3,6 +3,7 @@ use crate::panes::PositionAndSize;
 #[cfg(target_os = "macos")]
 use darwin_libproc;
 
+use byteorder::{BigEndian, ByteOrder};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -118,7 +119,7 @@ fn spawn_terminal(
     file_to_open: Option<PathBuf>,
     orig_termios: termios::Termios,
     working_dir: Option<PathBuf>,
-) -> (RawFd, RawFd) {
+) -> (RawFd, RawFd, RawFd) {
     // Choose the working directory to use
     let dir = match working_dir {
         Some(dir) => dir,
@@ -128,16 +129,28 @@ fn spawn_terminal(
         },
     };
 
-    let (pid_primary, pid_secondary): (RawFd, RawFd) = {
+    let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
+
+    let (pid_primary, pid_secondary, pid_tertiary): (RawFd, RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
-                let pid_secondary = match fork_pty_res.fork_result {
+                let (pid_secondary, pid_tertiary) = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
-                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
                         fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))
                             .expect("could not fcntl");
-                        child
+
+                        let mut buffer = [0; 4];
+                        unistd::close(child_fd).expect("couldn't close child_fd");
+                        match unistd::read(parent_fd, &mut buffer) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                panic!("Read operation failed: {:?}", e);
+                            }
+                        }
+                        unistd::close(parent_fd).expect("couldn't close parent_fd");
+                        let pid: u32 = u32::from_be_bytes(buffer);
+                        (child, pid)
                     }
                     ForkResult::Child => match file_to_open {
                         Some(file_to_open) => {
@@ -160,19 +173,31 @@ fn spawn_terminal(
                                 .current_dir(dir)
                                 .spawn()
                                 .expect("failed to spawn");
+
+                            let mut buff = [0; 4];
+                            BigEndian::write_u32(&mut buff, child.id() as u32);
+                            unistd::close(parent_fd).expect("couldn't close parent_fd");
+                            match unistd::write(child_fd, &buff) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    panic!("Read operation failed: {:?}", e);
+                                }
+                            }
+                            unistd::close(child_fd).expect("couldn't close child_fd");
+
                             handle_command_exit(child);
                             ::std::process::exit(0);
                         }
                     },
                 };
-                (pid_primary, pid_secondary.as_raw())
+                (pid_primary, pid_secondary.as_raw(), pid_tertiary as i32)
             }
             Err(e) => {
                 panic!("failed to fork {:?}", e);
             }
         }
     };
-    (pid_primary, pid_secondary)
+    (pid_primary, pid_secondary, pid_tertiary)
 }
 
 #[derive(Clone)]
@@ -198,7 +223,7 @@ pub trait OsApi: Send + Sync {
         &mut self,
         file_to_open: Option<PathBuf>,
         working_dir: Option<PathBuf>,
-    ) -> (RawFd, RawFd);
+    ) -> (RawFd, RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
@@ -239,7 +264,7 @@ impl OsApi for OsInputOutput {
         &mut self,
         file_to_open: Option<PathBuf>,
         working_dir: Option<PathBuf>,
-    ) -> (RawFd, RawFd) {
+    ) -> (RawFd, RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(file_to_open, orig_termios.clone(), working_dir)
     }

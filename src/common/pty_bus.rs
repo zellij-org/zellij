@@ -83,6 +83,7 @@ pub struct PtyBus {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
+    pub id_to_cwd_pid: HashMap<RawFd, RawFd>,
     pub active_pane: Option<PaneId>,
     os_input: Box<dyn OsApi>,
     debug_to_file: bool,
@@ -172,14 +173,20 @@ impl PtyBus {
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
+            id_to_cwd_pid: HashMap::new(),
             active_pane: None,
             debug_to_file,
             task_handles: HashMap::new(),
         }
     }
-    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open, None);
+    fn terminal_spawner(
+        &mut self,
+        file_to_open: Option<PathBuf>,
+        working_directory: Option<PathBuf>,
+    ) -> RawFd {
+        let (pid_primary, pid_secondary, pid_cwd): (RawFd, RawFd, RawFd) = self
+            .os_input
+            .spawn_terminal(file_to_open, working_directory);
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.send_screen_instructions.clone(),
@@ -188,16 +195,37 @@ impl PtyBus {
         );
         self.task_handles.insert(pid_primary, task_handle);
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
+        self.id_to_cwd_pid.insert(pid_primary, pid_cwd);
         self.active_pane = Some(PaneId::Terminal(pid_primary));
         pid_primary
+    }
+    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
+        // Get pid from the current active pane
+        let pid = match self.active_pane {
+            Some(active_pane) => match active_pane {
+                PaneId::Terminal(id) => Some(self.id_to_cwd_pid.get(&id).unwrap()),
+                PaneId::Plugin(pi) => Some(self.id_to_cwd_pid.get(&(pi as i32)).unwrap()),
+            },
+            None => None,
+        };
+
+        // Get the current working directory from our pid
+        let working_directory: Option<PathBuf> = match pid {
+            Some(pid) => self.os_input.get_cwd(*pid),
+            None => None,
+        };
+
+        self.terminal_spawner(file_to_open, working_directory)
     }
     pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+            let (pid_primary, pid_secondary, pid_cwd): (RawFd, RawFd, RawFd) =
                 self.os_input.spawn_terminal(None, None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
+            self.id_to_cwd_pid.insert(pid_primary, pid_cwd);
+            self.active_pane = Some(PaneId::Terminal(pid_primary));
             new_pane_pids.push(pid_primary);
         }
         self.send_screen_instructions

@@ -2220,6 +2220,7 @@ dependencies = [
  "async-std",
  "backtrace",
  "bincode",
+ "byteorder",
  "darwin-libproc",
  "directories-next",
  "futures",
