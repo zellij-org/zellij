@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{AppInstruction, OPENCALLS};
+use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 
@@ -72,6 +72,12 @@ pub fn handle_panic(
     }
 }
 
+pub fn get_current_ctx() -> ErrorContext {
+    ASYNCOPENCALLS
+        .try_with(|ctx| *ctx.borrow())
+        .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow()))
+}
+
 /// A representation of the call stack.
 #[derive(Clone, Copy)]
 pub struct ErrorContext {
@@ -95,7 +101,9 @@ impl ErrorContext {
                 break;
             }
         }
-        OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self);
+        ASYNCOPENCALLS
+            .try_with(|ctx| *ctx.borrow_mut() = *self)
+            .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self));
     }
 }
 
