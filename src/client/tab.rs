@@ -7,7 +7,7 @@ use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContex
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteEvent, VteBytes};
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
@@ -19,6 +19,8 @@ use std::{
 };
 use std::{io::Write, sync::mpsc::channel};
 use zellij_tile::data::{Event, ModeInfo};
+
+use crate::utils::logging::debug_log_to_file;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 const MIN_TERMINAL_HEIGHT: usize = 2;
@@ -92,6 +94,7 @@ pub trait Pane {
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize);
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize);
     fn handle_event(&mut self, event: VteEvent);
+    fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
 
@@ -574,6 +577,16 @@ impl Tab {
             terminal_output.handle_event(event);
         }
     }
+    pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+        // if we don't have the terminal in self.terminals it's probably because
+        // of a race condition where the terminal was created in pty_bus but has not
+        // yet been created in Screen. These events are currently not buffered, so
+        // if you're debugging seemingly randomly missing stdout data, this is
+        // the reason
+        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
+            terminal_output.handle_pty_bytes(bytes);
+        }
+    }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         match self.get_active_pane_id() {
             Some(PaneId::Terminal(active_terminal_id)) => {
@@ -662,6 +675,7 @@ impl Tab {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
     pub fn render(&mut self) {
+        // debug_log_to_file(format!("render"));
         if self.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting

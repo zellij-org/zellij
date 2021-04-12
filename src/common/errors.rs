@@ -211,6 +211,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
             ScreenInstruction::Pty(..) => ScreenContext::HandlePtyEvent,
+            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyEvent,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(_) => ScreenContext::NewPane,
             ScreenInstruction::HorizontalSplit(_) => ScreenContext::HorizontalSplit,

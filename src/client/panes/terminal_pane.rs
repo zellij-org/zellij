@@ -12,6 +12,7 @@ use crate::panes::terminal_character::{
 };
 use crate::utils::logging::debug_log_to_file;
 use crate::VteEvent;
+use crate::pty_bus::VteBytes;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -85,6 +86,12 @@ impl Pane for TerminalPane {
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
+    }
+    fn handle_pty_bytes(&mut self, bytes: VteBytes) {
+        let mut vte_parser = vte::Parser::new();
+        for byte in bytes.iter() {
+            vte_parser.advance(self, *byte);
+        }
     }
     fn handle_event(&mut self, event: VteEvent) {
         match event {
