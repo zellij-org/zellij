@@ -662,7 +662,6 @@ impl Tab {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
     pub fn render(&mut self) {
-        // debug_log_to_file(format!("render"));
         if self.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
