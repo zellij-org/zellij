@@ -21,7 +21,6 @@ use structopt::StructOpt;
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::os_input_output::get_os_input;
-use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,

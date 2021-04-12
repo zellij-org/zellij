@@ -168,7 +168,7 @@ impl Display for ContextType {
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
-    HandlePtyEvent,
+    HandlePtyBytes,
     Render,
     NewPane,
     HorizontalSplit,
@@ -210,8 +210,7 @@ pub enum ScreenContext {
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
-            ScreenInstruction::Pty(..) => ScreenContext::HandlePtyEvent,
-            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyEvent,
+            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(_) => ScreenContext::NewPane,
             ScreenInstruction::HorizontalSplit(_) => ScreenContext::HorizontalSplit,

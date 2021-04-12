@@ -8,7 +8,7 @@ use std::sync::mpsc::Receiver;
 use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteEvent, VteBytes};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
@@ -19,7 +19,6 @@ use zellij_tile::data::{Event, ModeInfo, TabInfo};
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
-    Pty(RawFd, VteEvent),
     Render,
     NewPane(PaneId),
     HorizontalSplit(PaneId),
