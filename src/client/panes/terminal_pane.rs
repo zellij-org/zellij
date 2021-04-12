@@ -3,15 +3,14 @@
 use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
-use ::vte::Perform;
 use std::fmt::Debug;
 
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::pty_bus::VteBytes;
 use crate::utils::logging::debug_log_to_file;
-use crate::VteEvent;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -86,34 +85,10 @@ impl Pane for TerminalPane {
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
     }
-    fn handle_event(&mut self, event: VteEvent) {
-        match event {
-            VteEvent::Print(c) => {
-                self.print(c);
-                self.mark_for_rerender();
-            }
-            VteEvent::Execute(byte) => {
-                self.execute(byte);
-            }
-            VteEvent::Hook(params, intermediates, ignore, c) => {
-                self.hook(&params, &intermediates, ignore, c);
-            }
-            VteEvent::Put(byte) => {
-                self.put(byte);
-            }
-            VteEvent::Unhook => {
-                self.unhook();
-            }
-            VteEvent::OscDispatch(params, bell_terminated) => {
-                let params: Vec<&[u8]> = params.iter().map(|p| &p[..]).collect();
-                self.osc_dispatch(&params[..], bell_terminated);
-            }
-            VteEvent::CsiDispatch(params, intermediates, ignore, c) => {
-                self.csi_dispatch(&params, &intermediates, ignore, c);
-            }
-            VteEvent::EscDispatch(intermediates, ignore, byte) => {
-                self.esc_dispatch(&intermediates, ignore, byte);
-            }
+    fn handle_pty_bytes(&mut self, bytes: VteBytes) {
+        let mut vte_parser = vte::Parser::new();
+        for byte in bytes.iter() {
+            vte_parser.advance(self, *byte);
         }
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {

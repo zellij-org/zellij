@@ -7,7 +7,7 @@ use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContex
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
@@ -91,7 +91,7 @@ pub trait Pane {
     fn reset_size_and_position_override(&mut self);
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize);
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize);
-    fn handle_event(&mut self, event: VteEvent);
+    fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
 
@@ -564,14 +564,14 @@ impl Tab {
     pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
         self.panes.contains_key(&PaneId::Terminal(pid))
     }
-    pub fn handle_pty_event(&mut self, pid: RawFd, event: VteEvent) {
+    pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         // if we don't have the terminal in self.terminals it's probably because
         // of a race condition where the terminal was created in pty_bus but has not
         // yet been created in Screen. These events are currently not buffered, so
         // if you're debugging seemingly randomly missing stdout data, this is
         // the reason
         if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
-            terminal_output.handle_event(event);
+            terminal_output.handle_pty_bytes(bytes);
         }
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {

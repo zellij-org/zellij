@@ -8,7 +8,7 @@ use std::sync::mpsc::Receiver;
 use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
@@ -18,7 +18,7 @@ use zellij_tile::data::{Event, ModeInfo, TabInfo};
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
-    Pty(RawFd, VteEvent),
+    PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId),
     HorizontalSplit(PaneId),

@@ -275,19 +275,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     screen.send_app_instructions.update(err_ctx);
                     screen.send_pty_instructions.update(err_ctx);
                     match event {
-                        ScreenInstruction::Pty(pid, vte_event) => {
+                        ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                             let active_tab = screen.get_active_tab_mut().unwrap();
                             if active_tab.has_terminal_pid(pid) {
                                 // it's most likely that this event is directed at the active tab
                                 // look there first
-                                active_tab.handle_pty_event(pid, vte_event);
+                                active_tab.handle_pty_bytes(pid, vte_bytes);
                             } else {
                                 // if this event wasn't directed at the active tab, start looking
                                 // in other tabs
                                 let all_tabs = screen.get_tabs_mut();
                                 for tab in all_tabs.values_mut() {
                                     if tab.has_terminal_pid(pid) {
-                                        tab.handle_pty_event(pid, vte_event);
+                                        tab.handle_pty_bytes(pid, vte_bytes);
                                         break;
                                     }
                                 }
