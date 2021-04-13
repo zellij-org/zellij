@@ -10,7 +10,7 @@ use std::sync::mpsc::Receiver;
 use crate::common::SenderWithContext;
 use crate::os_input_output::ServerOsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};

@@ -7,7 +7,7 @@ use crate::common::{input::handler::parse_keys, SenderWithContext};
 use crate::layout::Layout;
 use crate::os_input_output::ServerOsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::server::ServerInstruction;
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;

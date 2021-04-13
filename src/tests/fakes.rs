@@ -89,12 +89,10 @@ impl FakeInputOutput {
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         let (client_sender, client_receiver): ChannelWithContext<ClientInstruction> =
             mpsc::channel();
-        let client_sender =
-            SenderWithContext::new(ErrorContext::new(), SenderType::Sender(client_sender));
+        let client_sender = SenderWithContext::new(SenderType::Sender(client_sender));
         let (server_sender, server_receiver): ChannelWithContext<ServerInstruction> =
             mpsc::channel();
-        let server_sender =
-            SenderWithContext::new(ErrorContext::new(), SenderType::Sender(server_sender));
+        let server_sender = SenderWithContext::new(SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
 
         FakeInputOutput {
@@ -198,10 +196,7 @@ impl ClientOsApi for FakeInputOutput {
     fn send_to_server(&self, msg: ServerInstruction) {
         self.server_sender.send(msg).unwrap();
     }
-    fn update_senders(&mut self, new_ctx: ErrorContext) {
-        self.server_sender.update(new_ctx);
-        self.client_sender.update(new_ctx);
-    }
+    fn update_senders(&mut self, new_ctx: ErrorContext) {}
     fn connect_to_server(&mut self, full_screen_ws: PositionAndSize) {
         ClientOsApi::send_to_server(
             self,
@@ -293,8 +288,5 @@ impl ServerOsApi for FakeInputOutput {
         self.client_sender.send(msg).unwrap();
     }
     fn add_client_sender(&mut self, _buffer_path: String) {}
-    fn update_senders(&mut self, new_ctx: ErrorContext) {
-        self.server_sender.update(new_ctx);
-        self.client_sender.update(new_ctx);
-    }
+    fn update_senders(&mut self, new_ctx: ErrorContext) {}
 }

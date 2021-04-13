@@ -1,12 +1,14 @@
 //! Main input logic.
 
 use super::actions::Action;
-use super::keybinds::get_default_keybinds;
+use super::keybinds::Keybinds;
 use crate::client::ClientInstruction;
+use crate::common::input::config::Config;
 use crate::common::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::pty_bus::PtyInstruction;
+use crate::screen::ScreenInstruction;
 use crate::server::ServerInstruction;
 use crate::CommandIsExecuting;
 
@@ -19,8 +21,10 @@ struct InputHandler {
     /// The current input mode
     mode: InputMode,
     os_input: Box<dyn ClientOsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
+    should_exit: bool,
 }
 
 impl InputHandler {
@@ -28,6 +32,7 @@ impl InputHandler {
     fn new(
         os_input: Box<dyn ClientOsApi>,
         command_is_executing: CommandIsExecuting,
+        config: Config,
         send_client_instructions: SenderWithContext<ClientInstruction>,
     ) -> Self {
         InputHandler {
@@ -36,6 +41,7 @@ impl InputHandler {
             config,
             command_is_executing,
             send_client_instructions,
+            should_exit: false,
         }
     }
 
@@ -44,34 +50,26 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        self.send_client_instructions.update(err_ctx);
-        self.os_input.update_senders(err_ctx);
-        if let Ok(keybinds) = get_default_keybinds() {
-            'input_loop: loop {
-                //@@@ I think this should actually just iterate over stdin directly
-                let stdin_buffer = self.os_input.read_from_stdin();
-                for key_result in stdin_buffer.events_and_raw() {
-                    match key_result {
-                        Ok((event, raw_bytes)) => match event {
-                            termion::event::Event::Key(key) => {
-                                let key = cast_termion_key(key);
-                                // FIXME this explicit break is needed because the current test
-                                // framework relies on it to not create dead threads that loop
-                                // and eat up CPUs. Do not remove until the test framework has
-                                // been revised. Sorry about this (@categorille)
-                                let mut should_break = false;
-                                for action in key_to_actions(&key, raw_bytes, &self.mode, &keybinds)
-                                {
-                                    should_break |= self.dispatch_action(action);
-                                }
-                                if should_break {
-                                    break 'input_loop;
-                                }
-                            }
-                            termion::event::Event::Mouse(_)
-                            | termion::event::Event::Unsupported(_) => {
-                                // Mouse and unsupported events aren't implemented yet,
-                                // use a NoOp untill then.
+        let keybinds = self.config.keybinds.clone();
+        let alt_left_bracket = vec![27, 91];
+        loop {
+            if self.should_exit {
+                break;
+            }
+            let stdin_buffer = self.os_input.read_from_stdin();
+            for key_result in stdin_buffer.events_and_raw() {
+                match key_result {
+                    Ok((event, raw_bytes)) => match event {
+                        termion::event::Event::Key(key) => {
+                            let key = cast_termion_key(key);
+                            self.handle_key(&key, raw_bytes, &keybinds);
+                        }
+                        termion::event::Event::Unsupported(unsupported_key) => {
+                            // we have to do this because of a bug in termion
+                            // this should be a key event and not an unsupported event
+                            if unsupported_key == alt_left_bracket {
+                                let key = Key::Alt('[');
+                                self.handle_key(&key, raw_bytes, &keybinds);
                             }
                         }
                         termion::event::Event::Mouse(_) => {
@@ -138,8 +136,19 @@ impl InputHandler {
                 };
                 self.os_input.send_to_server(screen_instr);
             }
-            Action::SwitchFocus(_) => {
-                self.os_input.send_to_server(ServerInstruction::MoveFocus);
+            Action::SwitchFocus => {
+                self.os_input
+                    .send_to_server(ServerInstruction::ToScreen(ScreenInstruction::SwitchFocus));
+            }
+            Action::FocusNextPane => {
+                self.os_input.send_to_server(ServerInstruction::ToScreen(
+                    ScreenInstruction::FocusNextPane,
+                ));
+            }
+            Action::FocusPreviousPane => {
+                self.os_input.send_to_server(ServerInstruction::ToScreen(
+                    ScreenInstruction::FocusPreviousPane,
+                ));
             }
             Action::MoveFocus(direction) => {
                 let screen_instr = match direction {
@@ -277,11 +286,17 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
 /// its [`InputHandler::handle_input()`] loop.
 pub fn input_loop(
     os_input: Box<dyn ClientOsApi>,
+    config: Config,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
 ) {
-    let _handler =
-        InputHandler::new(os_input, command_is_executing, send_client_instructions).handle_input();
+    let _handler = InputHandler::new(
+        os_input,
+        command_is_executing,
+        config,
+        send_client_instructions,
+    )
+    .handle_input();
 }
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
