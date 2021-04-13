@@ -30,11 +30,15 @@ Zellij was initially called "Mosaic".
 
 ## How to use it?
 * Clone the project
-* In the project folder, run: `./build-all.sh && cargo run`
+* Install cargo-make with `cargo install --force cargo-make`
+* Make sure that the `~/.cargo/bin` directory is on your PATH
+* In the project folder, run: `cargo make run`
 
 (note that right now Zellij only supports linux and mac)
 
 The status bar on the bottom should guide you through the possible keyboard shortcuts in the app.
+
+For more build commands, take a look at [`Contributing.md`](CONTRIBUTING.md).
 
 # What is the current status of the project?
 
