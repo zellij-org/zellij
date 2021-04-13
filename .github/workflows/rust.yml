@@ -19,7 +19,7 @@ jobs:
     - name: Add WASM target
       run: rustup target add wasm32-wasi
     - name: Install cargo-make
-      run: cargo install --force cargo-make
+      run: cargo install --debug cargo-make
     - name: Build & Test
       run: cargo make
 
@@ -29,22 +29,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Add WASM target
-      run: rustup target add wasm32-wasi
     - name: Install cargo-make
-      run: cargo install --force cargo-make
+      run: cargo install --debug cargo-make
     - name: Check Format
       run: cargo make check-format
 
   clippy:
-    name: Check For Clippy Lints
+    name: Check Clippy Lints
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: Add WASM target
-      run: rustup target add wasm32-wasi
     - name: Install cargo-make
-      run: cargo install --force cargo-make
-    - name: Check Format
+      run: cargo install --debug cargo-make
+    - name: Check Lints
       run: cargo make clippy -D clippy::all
