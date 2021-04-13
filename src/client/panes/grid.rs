@@ -84,8 +84,7 @@ fn transfer_rows_down(
     if !next_lines.is_empty() {
         match max_src_width {
             Some(max_row_width) => {
-                let excess_rows =
-                    Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
+                let excess_rows = Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
                 source.extend(excess_rows);
             }
             None => {
