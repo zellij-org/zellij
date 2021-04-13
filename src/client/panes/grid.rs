@@ -29,11 +29,9 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
 fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate().rev() {
+        index_of_last_non_canonical_row = Some(i);
         if row.is_canonical {
-            index_of_last_non_canonical_row = Some(i);
             break;
-        } else {
-            index_of_last_non_canonical_row = Some(i);
         }
     }
     match index_of_last_non_canonical_row {
@@ -496,9 +494,7 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         // TODO: try to separate adding characters from moving the cursors in this function
-        if self.cursor.x < self.width {
-            self.insert_character_at_cursor_position(terminal_character);
-        } else {
+        if self.cursor.x >= self.width {
             // line wrap
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
@@ -519,8 +515,8 @@ impl Grid {
                     self.viewport.push(line_wrapped_row);
                 }
             }
-            self.insert_character_at_cursor_position(terminal_character);
         }
+        self.insert_character_at_cursor_position(terminal_character);
         self.move_cursor_forward_until_edge(1);
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {

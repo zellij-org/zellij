@@ -7,9 +7,6 @@ description = "Terminal workspace (WIP)"
 license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
 
-[features]
-publish = []
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -47,10 +44,7 @@ features = ["unstable"]
 insta = "1.6.0"
 
 [build-dependencies]
-directories-next = "2.0"
 structopt = "0.3"
-walkdir = "2"
-toml = "0.5.8"
 
 [workspace]
 members = [
@@ -58,6 +52,7 @@ members = [
     "default-tiles/status-bar",
     "default-tiles/strider",
     "default-tiles/tab-bar",
+    ".",
 ]
 
 [profile.release]

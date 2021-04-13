@@ -14,16 +14,30 @@ Before contributing please read our [Code of Conduct](CODE_OF_CONDUCT.md) which
 all contributors are expected to adhere to.
 
 ## Building
-To work around a [Cargo bug][https://github.com/rust-lang/cargo/issues/7004], you'll need to use the included `build-all.sh` script.
+To build Zellij, we're using cargo-make – you can install it by running `cargo install --force cargo-make`.
+
+Here are some of the commands currently supported by the build system:
 
 ```sh
-# An unoptimized debug build
-./build-all.sh
-# A fully optimized release build
-./build-all.sh --release
+# Format code, build, then run tests and clippy
+cargo make
+# You can also perform these actions individually
+cargo make format
+cargo make build
+cargo make test
+# Run Zellij (optionally with a non-default layout)
+cargo make run
+cargo make run strider
+# Run Clippy (potentially with additional options)
+cargo make clippy
+cargo make clippy -W clippy::pedantic
+# Install Zellij to some directory
+cargo make install /path/of/zellij/binary
+# Publish the zellij and zellij-tile crates
+cargo make publish
 ```
 
-The build script has an optional dependency on `binaryen --version` > 97, for it's command `wasm-opt`.
+To run `install` or `publish`, you'll need `binaryen --version` > 97, for it's command `wasm-opt`.
 
 ## Looking for something to work on?
 
