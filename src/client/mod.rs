@@ -9,12 +9,14 @@ use std::io::Write;
 use std::sync::mpsc;
 use std::thread;
 
+use crate::cli::CliArgs;
 use crate::common::{
     command_is_executing::CommandIsExecuting,
     errors::{ClientContext, ContextType},
+    input::config::Config,
     input::handler::input_loop,
     os_input_output::ClientOsApi,
-    SenderType, SenderWithContext, SyncChannelWithContext, OPENCALLS,
+    SenderType, SenderWithContext, SyncChannelWithContext,
 };
 use crate::server::ServerInstruction;
 
@@ -29,7 +31,7 @@ pub enum ClientInstruction {
     Exit,
 }
 
-pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
+pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
     let _ = os_input
@@ -37,17 +39,23 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
         .write(take_snapshot.as_bytes())
         .unwrap();
 
+    let config = Config::from_cli_config(opts.config)
+        .map_err(|e| {
+            eprintln!("There was an error in the config file:\n{}", e);
+            std::process::exit(1);
+        })
+        .unwrap();
+
     let mut command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.set_raw_mode(0);
-    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
     let (send_client_instructions, receive_client_instructions): SyncChannelWithContext<
         ClientInstruction,
     > = mpsc::sync_channel(500);
-    let mut send_client_instructions =
-        SenderWithContext::new(err_ctx, SenderType::SyncSender(send_client_instructions));
+    let send_client_instructions =
+        SenderWithContext::new(SenderType::SyncSender(send_client_instructions));
 
     os_input.connect_to_server(full_screen_ws);
 
@@ -66,7 +74,14 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
             let send_client_instructions = send_client_instructions.clone();
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
-            move || input_loop(os_input, command_is_executing, send_client_instructions)
+            move || {
+                input_loop(
+                    os_input,
+                    config,
+                    command_is_executing,
+                    send_client_instructions,
+                )
+            }
         });
 
     let _signal_thread = thread::Builder::new()
@@ -92,8 +107,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
             let os_input = os_input.clone();
             move || {
                 loop {
-                    let (instruction, err_ctx) = os_input.client_recv();
-                    send_client_instructions.update(err_ctx);
+                    let (instruction, _err_ctx) = os_input.client_recv();
                     if let ClientInstruction::Exit = instruction {
                         break;
                     }
@@ -122,7 +136,11 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>) {
                 let _ = os_input.send_to_server(ServerInstruction::ClientExit);
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-                let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
+                let restore_snapshot = "\u{1b}[?1049l";
+                let error = format!(
+                    "{}\n{}{}",
+                    goto_start_of_last_line, restore_snapshot, backtrace
+                );
                 let _ = os_input
                     .get_stdout_writer()
                     .write(error.as_bytes())

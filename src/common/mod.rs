@@ -11,7 +11,8 @@ pub mod wasm_vm;
 
 use crate::panes::PaneId;
 use crate::server::ServerInstruction;
-use errors::ErrorContext;
+use async_std::task_local;
+use errors::{get_current_ctx, ErrorContext};
 use std::cell::RefCell;
 use std::sync::mpsc;
 
@@ -43,8 +44,8 @@ pub struct SenderWithContext<T: Clone> {
 }
 
 impl<T: Clone> SenderWithContext<T> {
-    pub fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
-        Self { err_ctx, sender }
+    pub fn new(sender: SenderType<T>) -> Self {
+        Self { sender }
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this
@@ -66,3 +67,9 @@ thread_local!(
     /// stack in the form of an [`ErrorContext`].
     pub static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
+
+task_local! {
+    /// A key to some task local storage that holds a representation of the task's call
+    /// stack in the form of an [`ErrorContext`].
+    static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
+}

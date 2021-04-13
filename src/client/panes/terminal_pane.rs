@@ -1,7 +1,6 @@
 use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
-use ::vte::Perform;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::time::Instant;

@@ -16,14 +16,13 @@ use zellij_tile::data::{Event, EventType, ModeInfo};
 
 use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
-use crate::common::pty_bus::VteEvent;
 use crate::common::{
-    errors::{ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext, ServerContext},
+    errors::{ContextType, PluginContext, PtyContext, ScreenContext, ServerContext},
     os_input_output::ServerOsApi,
-    pty_bus::{PtyBus, PtyInstruction},
+    pty_bus::{PtyBus, PtyInstruction, VteBytes},
     screen::{Screen, ScreenInstruction},
     wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginEnv, PluginInstruction},
-    ChannelWithContext, SenderType, SenderWithContext, OPENCALLS,
+    ChannelWithContext, SenderType, SenderWithContext,
 };
 use crate::layout::Layout;
 use crate::panes::PaneId;
@@ -102,9 +101,6 @@ impl ServerInstruction {
     pub fn resize_up() -> Self {
         Self::ToScreen(ScreenInstruction::ResizeUp)
     }
-    pub fn move_focus() -> Self {
-        Self::ToScreen(ScreenInstruction::MoveFocus)
-    }
     pub fn move_focus_left() -> Self {
         Self::ToScreen(ScreenInstruction::MoveFocusLeft)
     }
@@ -171,8 +167,8 @@ impl ServerInstruction {
     pub fn change_mode(mode_info: ModeInfo) -> Self {
         Self::ToScreen(ScreenInstruction::ChangeMode(mode_info))
     }
-    pub fn pty(fd: RawFd, event: VteEvent) -> Self {
-        Self::ToScreen(ScreenInstruction::Pty(fd, event))
+    pub fn pty(fd: RawFd, bytes: VteBytes) -> Self {
+        Self::ToScreen(ScreenInstruction::PtyBytes(fd, bytes))
     }
     pub fn terminal_resize(new_size: PositionAndSize) -> Self {
         Self::ToScreen(ScreenInstruction::TerminalResize(new_size))
@@ -186,14 +182,6 @@ struct ClientMetaData {
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
-}
-
-impl ClientMetaData {
-    fn update(&mut self, err_ctx: ErrorContext) {
-        self.send_plugin_instructions.update(err_ctx);
-        self.send_screen_instructions.update(err_ctx);
-        self.send_pty_instructions.update(err_ctx);
-    }
 }
 
 impl Drop for ClientMetaData {
@@ -211,18 +199,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
     let (send_server_instructions, receive_server_instructions): ChannelWithContext<
         ServerInstruction,
     > = channel();
-    let send_server_instructions = SenderWithContext::new(
-        ErrorContext::new(),
-        SenderType::Sender(send_server_instructions),
-    );
+    let send_server_instructions =
+        SenderWithContext::new(SenderType::Sender(send_server_instructions));
     let router_thread = thread::Builder::new()
         .name("server_router".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let mut send_server_instructions = send_server_instructions.clone();
+            let send_server_instructions = send_server_instructions.clone();
             move || loop {
-                let (instruction, err_ctx) = os_input.server_recv();
-                send_server_instructions.update(err_ctx);
+                let (instruction, _err_ctx) = os_input.server_recv();
                 match instruction {
                     ServerInstruction::Exit => break,
                     _ => {
@@ -243,9 +228,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 os_input.update_senders(err_ctx);
-                if let Some(ref c) = client {
-                    clients.get_mut(c).unwrap().update(err_ctx);
-                }
                 match instruction {
                     ServerInstruction::OpenFile(file_name) => {
                         let path = PathBuf::from(file_name);
@@ -269,7 +251,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                     ServerInstruction::MoveFocus => {
                         clients[client.as_ref().unwrap()]
                             .send_screen_instructions
-                            .send(ScreenInstruction::MoveFocus)
+                            .send(ScreenInstruction::FocusNextPane)
                             .unwrap();
                     }
                     ServerInstruction::NewClient(buffer_path, full_screen_ws) => {
@@ -340,22 +322,20 @@ fn init_client(
     send_server_instructions: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> ClientMetaData {
-    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
     let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
         ScreenInstruction,
     > = channel();
     let send_screen_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
+        SenderWithContext::new(SenderType::Sender(send_screen_instructions));
 
     let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
         PluginInstruction,
     > = channel();
     let send_plugin_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
+        SenderWithContext::new(SenderType::Sender(send_plugin_instructions));
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         channel();
-    let send_pty_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
+    let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
 
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
@@ -461,15 +441,24 @@ fn init_client(
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
-                    screen.send_server_instructions.update(err_ctx);
-                    screen.send_pty_instructions.update(err_ctx);
-                    screen.send_plugin_instructions.update(err_ctx);
                     match event {
-                        ScreenInstruction::Pty(pid, vte_event) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .handle_pty_event(pid, vte_event);
+                        ScreenInstruction::PtyBytes(pid, vte_bytes) => {
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            if active_tab.has_terminal_pid(pid) {
+                                // it's most likely that this event is directed at the active tab
+                                // look there first
+                                active_tab.handle_pty_bytes(pid, vte_bytes);
+                            } else {
+                                // if this event wasn't directed at the active tab, start looking
+                                // in other tabs
+                                let all_tabs = screen.get_tabs_mut();
+                                for tab in all_tabs.values_mut() {
+                                    if tab.has_terminal_pid(pid) {
+                                        tab.handle_pty_bytes(pid, vte_bytes);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         ScreenInstruction::Render => {
                             screen.render();
@@ -513,8 +502,14 @@ fn init_client(
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
                         }
-                        ScreenInstruction::MoveFocus => {
+                        ScreenInstruction::SwitchFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::FocusNextPane => {
+                            screen.get_active_tab_mut().unwrap().focus_next_pane();
+                        }
+                        ScreenInstruction::FocusPreviousPane => {
+                            screen.get_active_tab_mut().unwrap().focus_previous_pane();
                         }
                         ScreenInstruction::MoveFocusLeft => {
                             screen.get_active_tab_mut().unwrap().move_focus_left();
@@ -646,8 +641,8 @@ fn init_client(
     let wasm_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let mut send_screen_instructions = send_screen_instructions.clone();
-            let mut send_pty_instructions = send_pty_instructions.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -657,8 +652,6 @@ fn init_client(
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                send_screen_instructions.update(err_ctx);
-                send_pty_instructions.update(err_ctx);
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
                         let project_dirs =

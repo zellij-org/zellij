@@ -13,7 +13,6 @@ use structopt::StructOpt;
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi, ServerOsApi};
-use crate::pty_bus::VteEvent;
 use crate::utils::{
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
@@ -89,7 +88,7 @@ pub fn start(
     opts: CliArgs,
     server_os_input: Box<dyn ServerOsApi>,
 ) {
-    let ipc_thread = start_server(server_os_input, opts);
-    start_client(client_os_input);
+    let ipc_thread = start_server(server_os_input, opts.clone());
+    start_client(client_os_input, opts);
     drop(ipc_thread.join());
 }
