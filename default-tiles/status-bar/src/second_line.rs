@@ -220,7 +220,6 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let locked_text_len = locked_text.chars().count();
     let locked_styled_text = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
         .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
         .bold()
         .paint(locked_text);

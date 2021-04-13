@@ -164,8 +164,8 @@ fn disabled_mode_shortcut(text: &str, palette: Palette) -> LinePart {
         .dimmed()
         .paint(format!("{} ", text));
     let suffix_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: format!("{}{}{}", prefix_separator, styled_text, suffix_separator),
@@ -187,7 +187,7 @@ fn selected_mode_shortcut_single_letter(letter: char, palette: Palette) -> LineP
         .bold()
         .paint(char_shortcut_text);
     let suffix_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
         .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
@@ -210,8 +210,8 @@ fn unselected_mode_shortcut_single_letter(letter: char, palette: Palette) -> Lin
         .bold()
         .paint(char_shortcut_text);
     let suffix_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
@@ -306,8 +306,13 @@ pub fn superkey(palette: Palette) -> LinePart {
         .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(prefix_text);
+
+        let suffix_separator = Style::new()
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .paint(ARROW_SEPARATOR);
     LinePart {
-        part: prefix.to_string(),
+        part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
         len: prefix_text.chars().count(),
     }
 }
