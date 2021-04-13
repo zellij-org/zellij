@@ -1,5 +1,3 @@
-#![allow(clippy::clippy::if_same_then_else)]
-
 use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
@@ -566,12 +564,6 @@ impl vte::Perform for TerminalPane {
             } else {
                 self.grid.clear_scroll_region();
             }
-        } else if c == 't' {
-            // TBD - title?
-        } else if c == 'n' {
-            // TBD - device status report
-        } else if c == 'c' {
-            // TBD - identify terminal
         } else if c == 'M' {
             // delete lines if currently inside scroll region
             let line_count_to_delete = if params[0] == 0 {

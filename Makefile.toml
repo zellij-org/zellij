@@ -3,6 +3,18 @@
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 SKIP_TEST = false
 
+# Add clippy to the default flow
+[tasks.dev-test-flow]
+dependencies = [
+  "format-flow",
+  "format-toml-conditioned-flow",
+  "pre-build",
+  "build",
+  "post-build",
+  "test-flow",
+  "clippy",
+]
+
 # Patching the default flows to skip testing of wasm32-wasi targets
 [tasks.pre-test]
 condition = { env = { "CARGO_MAKE_CRATE_TARGET_TRIPLE" = "wasm32-wasi" } }

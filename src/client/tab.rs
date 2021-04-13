@@ -205,6 +205,7 @@ pub trait Pane {
 
 impl Tab {
     // FIXME: Too many arguments here! Maybe bundle all of the senders for the whole program in a struct?
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         index: usize,
         position: usize,
@@ -1720,24 +1721,22 @@ impl Tab {
             // this is not ideal but until we get rid of expansion_boundary, it's a necessity
             self.toggle_active_pane_fullscreen();
         }
-        match PaneResizer::new(&mut self.panes, &mut self.os_api)
-            .resize(self.full_screen_ws, new_screen_size)
+        if let Some((column_difference, row_difference)) =
+            PaneResizer::new(&mut self.panes, &mut self.os_api)
+                .resize(self.full_screen_ws, new_screen_size)
         {
-            Some((column_difference, row_difference)) => {
-                self.should_clear_display_before_rendering = true;
-                self.expansion_boundary.as_mut().map(|expansion_boundary| {
-                    // TODO: this is not always accurate
-                    expansion_boundary.columns =
-                        (expansion_boundary.columns as isize + column_difference) as usize;
-                    expansion_boundary.rows =
-                        (expansion_boundary.rows as isize + row_difference) as usize;
-                });
-                self.full_screen_ws.columns =
-                    (self.full_screen_ws.columns as isize + column_difference) as usize;
-                self.full_screen_ws.rows =
-                    (self.full_screen_ws.rows as isize + row_difference) as usize;
-            }
-            None => {}
+            self.should_clear_display_before_rendering = true;
+            if let Some(expansion_boundary) = self.expansion_boundary.as_mut() {
+                // TODO: this is not always accurate
+                expansion_boundary.columns =
+                    (expansion_boundary.columns as isize + column_difference) as usize;
+                expansion_boundary.rows =
+                    (expansion_boundary.rows as isize + row_difference) as usize;
+            };
+            self.full_screen_ws.columns =
+                (self.full_screen_ws.columns as isize + column_difference) as usize;
+            self.full_screen_ws.rows =
+                (self.full_screen_ws.rows as isize + row_difference) as usize;
         };
     }
     pub fn resize_left(&mut self) {

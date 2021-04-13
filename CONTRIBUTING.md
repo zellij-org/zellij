@@ -19,7 +19,7 @@ To build Zellij, we're using cargo-make – you can install it by running `cargo
 Here are some of the commands currently supported by the build system:
 
 ```sh
-# Format code, build, then run tests
+# Format code, build, then run tests and clippy
 cargo make
 # You can also perform these actions individually
 cargo make format

@@ -47,8 +47,7 @@ pub fn _debug_log_to_file_pid_3(message: String, pid: RawFd) -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
-pub fn delete_log_file() -> io::Result<()> {
+pub fn _delete_log_file() -> io::Result<()> {
     if fs::metadata(ZELLIJ_TMP_LOG_FILE).is_ok() {
         fs::remove_file(ZELLIJ_TMP_LOG_FILE)
     } else {
@@ -56,8 +55,7 @@ pub fn delete_log_file() -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
-pub fn delete_log_dir() -> io::Result<()> {
+pub fn _delete_log_dir() -> io::Result<()> {
     if fs::metadata(ZELLIJ_TMP_LOG_DIR).is_ok() {
         fs::remove_dir_all(ZELLIJ_TMP_LOG_DIR)
     } else {
