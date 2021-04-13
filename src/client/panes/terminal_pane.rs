@@ -3,15 +3,14 @@
 use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
-use ::vte::Perform;
 use std::fmt::Debug;
 
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::pty_bus::VteBytes;
 use crate::utils::logging::debug_log_to_file;
-use crate::VteEvent;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -86,34 +85,10 @@ impl Pane for TerminalPane {
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
     }
-    fn handle_event(&mut self, event: VteEvent) {
-        match event {
-            VteEvent::Print(c) => {
-                self.print(c);
-                self.mark_for_rerender();
-            }
-            VteEvent::Execute(byte) => {
-                self.execute(byte);
-            }
-            VteEvent::Hook(params, intermediates, ignore, c) => {
-                self.hook(&params, &intermediates, ignore, c);
-            }
-            VteEvent::Put(byte) => {
-                self.put(byte);
-            }
-            VteEvent::Unhook => {
-                self.unhook();
-            }
-            VteEvent::OscDispatch(params, bell_terminated) => {
-                let params: Vec<&[u8]> = params.iter().map(|p| &p[..]).collect();
-                self.osc_dispatch(&params[..], bell_terminated);
-            }
-            VteEvent::CsiDispatch(params, intermediates, ignore, c) => {
-                self.csi_dispatch(&params, &intermediates, ignore, c);
-            }
-            VteEvent::EscDispatch(intermediates, ignore, byte) => {
-                self.esc_dispatch(&intermediates, ignore, byte);
-            }
+    fn handle_pty_bytes(&mut self, bytes: VteBytes) {
+        let mut vte_parser = vte::Parser::new();
+        for byte in bytes.iter() {
+            vte_parser.advance(self, *byte);
         }
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
@@ -378,6 +353,13 @@ impl TerminalPane {
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         self.grid.rotate_scroll_region_down(count);
         self.mark_for_rerender();
+    }
+    fn reset_terminal_state(&mut self) {
+        let rows = self.get_rows();
+        let columns = self.get_columns();
+        self.grid = Grid::new(rows, columns);
+        self.alternative_grid = None;
+        self.cursor_key_mode = false;
     }
     fn add_newline(&mut self) {
         let pad_character = EMPTY_TERMINAL_CHARACTER;
@@ -678,8 +660,14 @@ impl vte::Perform for TerminalPane {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        if let (b'M', None) = (byte, intermediates.get(0)) {
-            self.grid.move_cursor_up_with_scrolling(1);
+        match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.grid.move_cursor_up_with_scrolling(1);
+            }
+            (b'c', None) => {
+                self.reset_terminal_state();
+            }
+            _ => {}
         }
     }
 }
