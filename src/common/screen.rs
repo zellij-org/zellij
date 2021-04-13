@@ -8,7 +8,7 @@ use std::sync::mpsc::Receiver;
 use super::{AppInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteEvent};
+use crate::pty_bus::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
@@ -18,7 +18,7 @@ use zellij_tile::data::{Event, ModeInfo, TabInfo};
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
-    Pty(RawFd, VteEvent),
+    PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId),
     HorizontalSplit(PaneId),
@@ -28,7 +28,9 @@ pub enum ScreenInstruction {
     ResizeRight,
     ResizeDown,
     ResizeUp,
-    MoveFocus,
+    SwitchFocus,
+    FocusNextPane,
+    FocusPreviousPane,
     MoveFocusLeft,
     MoveFocusDown,
     MoveFocusUp,
@@ -50,6 +52,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
+    TerminalResize,
     ChangeMode(ModeInfo),
 }
 
@@ -211,6 +214,15 @@ impl Screen {
             }
             self.update_tabs();
         }
+    }
+
+    pub fn resize_to_screen(&mut self) {
+        let new_screen_size = self.os_api.get_terminal_size_using_fd(0);
+        self.full_screen_ws = new_screen_size;
+        for (_, tab) in self.tabs.iter_mut() {
+            tab.resize_whole_tab(new_screen_size);
+        }
+        self.render();
     }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].

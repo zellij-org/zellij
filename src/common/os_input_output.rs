@@ -13,6 +13,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
+use signal_hook::{consts::signal::*, iterator::Signals};
+
 use std::env;
 
 fn into_raw_mode(pid: RawFd) {
@@ -65,7 +67,7 @@ pub fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 /// process exits.
 fn handle_command_exit(mut child: Child) {
     // register the SIGINT signal (TODO handle more signals)
-    let signals = ::signal_hook::iterator::Signals::new(&[::signal_hook::SIGINT]).unwrap();
+    let mut signals = ::signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {
@@ -82,10 +84,15 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
-            if signal == signal_hook::SIGINT {
-                child.kill().unwrap();
-                child.wait().unwrap();
-                break 'handle_exit;
+            // FIXME: We need to handle more signals here!
+            #[allow(clippy::single_match)]
+            match signal {
+                SIGINT => {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    break 'handle_exit;
+                }
+                _ => {}
             }
         }
     }
@@ -188,6 +195,7 @@ pub trait OsApi: Send + Sync {
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn OsApi>;
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
 }
 
 impl OsApi for OsInputOutput {
@@ -234,9 +242,29 @@ impl OsApi for OsInputOutput {
         Box::new(stdout)
     }
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        kill(Pid::from_raw(pid), Some(Signal::SIGINT)).unwrap();
+        // TODO:
+        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
+        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
+        // that's why we're sending SIGKILL here
+        // A better solution would be to send SIGINT here and not wait for it, and then have
+        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
+        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
+    }
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+        for signal in signals.forever() {
+            match signal {
+                SIGWINCH => {
+                    cb();
+                }
+                SIGTERM | SIGINT | SIGQUIT => {
+                    break;
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 }
 

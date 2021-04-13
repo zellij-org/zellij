@@ -1,0 +1,25 @@
+---
+source: src/tests/integration/terminal_window_resize.rs
+expression: snapshot_before_quit
+
+---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line11-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line12-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line13-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line14-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line15-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line16-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line17-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line18-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+line19-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                               
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                          
+prompt $ █                                                                                                               

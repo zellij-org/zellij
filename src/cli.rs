@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug, Default)]
+#[derive(StructOpt, Default, Debug)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
     /// Send "split (direction h == horizontal / v == vertical)" to active zellij session
@@ -24,6 +24,21 @@ pub struct CliArgs {
     #[structopt(short, long)]
     pub layout: Option<PathBuf>,
 
+    #[structopt(subcommand)]
+    pub config: Option<ConfigCli>,
+
     #[structopt(short, long)]
     pub debug: bool,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum ConfigCli {
+    /// Path to the configuration yaml file
+    #[structopt(alias = "c")]
+    Config {
+        path: Option<PathBuf>,
+        #[structopt(long)]
+        /// Disables loading of configuration file at default location
+        clean: bool,
+    },
 }

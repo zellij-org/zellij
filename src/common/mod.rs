@@ -22,6 +22,7 @@ use std::{
 };
 
 use crate::cli::CliArgs;
+use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use command_is_executing::CommandIsExecuting;
@@ -123,6 +124,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
+        .unwrap();
+
+    let config = Config::from_cli_config(opts.config)
+        .map_err(|e| {
+            eprintln!("There was an error in the config file:\n{}", e);
+            std::process::exit(1);
+        })
         .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
@@ -267,11 +275,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     screen.send_app_instructions.update(err_ctx);
                     screen.send_pty_instructions.update(err_ctx);
                     match event {
-                        ScreenInstruction::Pty(pid, vte_event) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .handle_pty_event(pid, vte_event);
+                        ScreenInstruction::PtyBytes(pid, vte_bytes) => {
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            if active_tab.has_terminal_pid(pid) {
+                                // it's most likely that this event is directed at the active tab
+                                // look there first
+                                active_tab.handle_pty_bytes(pid, vte_bytes);
+                            } else {
+                                // if this event wasn't directed at the active tab, start looking
+                                // in other tabs
+                                let all_tabs = screen.get_tabs_mut();
+                                for tab in all_tabs.values_mut() {
+                                    if tab.has_terminal_pid(pid) {
+                                        tab.handle_pty_bytes(pid, vte_bytes);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         ScreenInstruction::Render => {
                             screen.render();
@@ -306,8 +326,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
                         }
-                        ScreenInstruction::MoveFocus => {
+                        ScreenInstruction::SwitchFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::FocusNextPane => {
+                            screen.get_active_tab_mut().unwrap().focus_next_pane();
+                        }
+                        ScreenInstruction::FocusPreviousPane => {
+                            screen.get_active_tab_mut().unwrap().focus_previous_pane();
                         }
                         ScreenInstruction::MoveFocusLeft => {
                             screen.get_active_tab_mut().unwrap().move_focus_left();
@@ -388,6 +414,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         }
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
+                        }
+                        ScreenInstruction::TerminalResize => {
+                            screen.resize_to_screen();
                         }
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
@@ -506,6 +535,19 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         })
         .unwrap();
 
+    let _signal_thread = thread::Builder::new()
+        .name("signal_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            move || {
+                os_input.receive_sigwinch(Box::new(move || {
+                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
+                }));
+            }
+        })
+        .unwrap();
+
     // TODO: currently we don't wait for this to quit
     // because otherwise the app will hang. Need to fix this so it both
     // listens to the ipc-bus and is able to quit cleanly
@@ -553,7 +595,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
+                                        .send(ScreenInstruction::FocusNextPane)
                                         .unwrap();
                                 }
                             }
@@ -574,9 +616,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let os_input = os_input.clone();
+            let config = config;
             move || {
                 input_loop(
                     os_input,
+                    config,
                     command_is_executing,
                     send_screen_instructions,
                     send_pty_instructions,

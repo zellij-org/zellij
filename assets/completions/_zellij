@@ -30,16 +30,93 @@ _zellij() {
 '--help[Prints help information]' \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
+":: :_zellij_commands" \
+"*::: :->zellij" \
 && ret=0
-    
+    case $state in
+    (zellij)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:zellij-command-$line[1]:"
+        case $line[1] in
+            (c)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(c)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(config)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
 }
 
 (( $+functions[_zellij_commands] )) ||
 _zellij_commands() {
     local commands; commands=(
-        
+        "config:Path to the configuration yaml file" \
+"help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'zellij commands' commands "$@"
+}
+(( $+functions[_c_commands] )) ||
+_c_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'c commands' commands "$@"
+}
+(( $+functions[_zellij__c_commands] )) ||
+_zellij__c_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij c commands' commands "$@"
+}
+(( $+functions[_zellij__config_commands] )) ||
+_zellij__config_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij config commands' commands "$@"
+}
+(( $+functions[_zellij__help_commands] )) ||
+_zellij__help_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij help commands' commands "$@"
 }
 
 _zellij "$@"

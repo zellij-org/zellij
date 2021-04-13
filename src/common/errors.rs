@@ -42,7 +42,7 @@ pub fn handle_panic(
             msg,
             location.file(),
             location.line(),
-            backtrace
+            backtrace,
         ),
         (Some(location), None) => format!(
             "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
@@ -168,7 +168,7 @@ impl Display for ContextType {
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
-    HandlePtyEvent,
+    HandlePtyBytes,
     Render,
     NewPane,
     HorizontalSplit,
@@ -178,7 +178,9 @@ pub enum ScreenContext {
     ResizeRight,
     ResizeDown,
     ResizeUp,
-    MoveFocus,
+    SwitchFocus,
+    FocusNextPane,
+    FocusPreviousPane,
     MoveFocusLeft,
     MoveFocusDown,
     MoveFocusUp,
@@ -200,6 +202,7 @@ pub enum ScreenContext {
     CloseTab,
     GoToTab,
     UpdateTabName,
+    TerminalResize,
     ChangeMode,
 }
 
@@ -207,7 +210,7 @@ pub enum ScreenContext {
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
-            ScreenInstruction::Pty(..) => ScreenContext::HandlePtyEvent,
+            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(_) => ScreenContext::NewPane,
             ScreenInstruction::HorizontalSplit(_) => ScreenContext::HorizontalSplit,
@@ -217,7 +220,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ResizeRight => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown => ScreenContext::ResizeDown,
             ScreenInstruction::ResizeUp => ScreenContext::ResizeUp,
-            ScreenInstruction::MoveFocus => ScreenContext::MoveFocus,
+            ScreenInstruction::SwitchFocus => ScreenContext::SwitchFocus,
+            ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
+            ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
             ScreenInstruction::MoveFocusLeft => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusDown => ScreenContext::MoveFocusDown,
             ScreenInstruction::MoveFocusUp => ScreenContext::MoveFocusUp,
@@ -241,6 +246,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
+            ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
         }
     }

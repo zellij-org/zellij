@@ -45,7 +45,6 @@ pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String> {
 }
 
 pub mod commands {
-    pub const COMMAND_TOGGLE: [u8; 1] = [7]; // ctrl-g
     pub const QUIT: [u8; 1] = [17]; // ctrl-q
     pub const ESC: [u8; 1] = [27];
 
