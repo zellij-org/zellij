@@ -73,15 +73,83 @@ fn patch_plugins(root: &str, part: Yaml) -> Yaml {
 }
 '''
 
+[tasks.pre-launch]
+script_runner = "@duckscript"
+script = '''
+if is_empty ${CARGO_MAKE_TASK_ARGS}
+    set_env CARGO_MAKE_TASK_ARGS default
+end
+'''
+
 [tasks.launch]
+dependencies = ["pre-launch"]
 command = "cargo"
-args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/default.yaml"]
+args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/${CARGO_MAKE_TASK_ARGS}.yaml"]
 
+# Simple clippy tweak
+[tasks.clippy]
+args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
-# Running Zellij (need to add a run-release option and multi-layout support!)
+# Release building and installing Zellij
+[tasks.install]
+workspace = false
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "clear-data-directory"]
+script_runner = "@duckscript"
+script = '''
+cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
+'''
 
-# Have a publish flow that triggers wasm-opt and updates the assets
+[tasks.build-tiles-release]
+env = { "CARGO_MAKE_WORKSPACE_SKIP_MEMBERS" = ["."] }
+run_task = { name = "build-release", fork = true }
 
-# Have an install flow that deletes the zellij data directory (using a rust script)
+[tasks.wasm-opt-tiles]
+script_runner = "@duckscript"
+script = '''
+tiles = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/wasm32-wasi/release/*.wasm
 
-# Add a clippy flow that uses the nightly options
+for tile in ${tiles}
+    tile_name = basename ${tile}
+    tile_out = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/${tile_name}
+    if is_path_newer ${tile} ${tile_out}
+        exec wasm-opt -O ${tile} -o ${tile_out}
+    end
+end
+'''
+
+# FIXME: Maybe this should be more generic? Or just blow away the whole directory?
+[tasks.clear-data-directory]
+script_runner = "@rust"
+script = '''
+//! ```cargo
+//! [dependencies]
+//! directories-next = "2.0"
+//! ```
+use directories_next::ProjectDirs;
+use std::fs;
+
+fn main() {
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    let data_dir = project_dirs.data_dir();
+    drop(fs::remove_file(data_dir.join("plugins/status-bar.wasm")));
+    drop(fs::remove_file(data_dir.join("plugins/tab-bar.wasm")));
+    drop(fs::remove_file(data_dir.join("plugins/strider.wasm")));
+    drop(fs::remove_file(data_dir.join("layouts/default.yaml")));
+    drop(fs::remove_file(data_dir.join("layouts/strider.yaml")));
+}
+'''
+
+# Publishing Zellij
+[tasks.publish]
+clear = true
+workspace = false
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "publish-zellij-tile", "publish-zellij"]
+
+[tasks.publish-zellij-tile]
+cwd = "zellij-tile"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij]
+command = "cargo"
+args = ["publish"]

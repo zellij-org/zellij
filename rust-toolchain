@@ -1,4 +1,4 @@
 [toolchain]
-channel = "stable"
-components = [ "rustfmt", "clippy", "rust-analysis"]
+channel = "nightly"
+components = ["rustfmt", "clippy", "rust-analysis"]
 targets = ["wasm32-wasi"]
