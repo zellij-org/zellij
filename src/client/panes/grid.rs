@@ -1,9 +1,11 @@
 use std::{
     cmp::Ordering,
+    collections::VecDeque,
     fmt::{self, Debug, Formatter},
 };
 
-static TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+const SCROLL_BACK: usize = 10_000;
 
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
@@ -26,7 +28,7 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     }
 }
 
-fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -43,7 +45,7 @@ fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
 }
 
 fn transfer_rows_down(
-    source: &mut Vec<Row>,
+    source: &mut VecDeque<Row>,
     destination: &mut Vec<Row>,
     count: usize,
     max_src_width: Option<usize>,
@@ -56,7 +58,7 @@ fn transfer_rows_down(
             break;
         }
         if next_lines.is_empty() {
-            match source.pop() {
+            match source.pop_back() {
                 Some(next_line) => {
                     let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(destination);
                     lines_added_to_destination -= top_non_canonical_rows_in_dst.len() as isize;
@@ -82,13 +84,13 @@ fn transfer_rows_down(
     if !next_lines.is_empty() {
         match max_src_width {
             Some(max_row_width) => {
-                let mut excess_rows =
+                let excess_rows =
                     Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
-                source.append(&mut excess_rows);
+                source.extend(excess_rows);
             }
             None => {
                 let excess_row = Row::from_rows(next_lines);
-                source.push(excess_row);
+                bounded_push(source, excess_row);
             }
         }
     }
@@ -96,7 +98,7 @@ fn transfer_rows_down(
 
 fn transfer_rows_up(
     source: &mut Vec<Row>,
-    destination: &mut Vec<Row>,
+    destination: &mut VecDeque<Row>,
     count: usize,
     max_src_width: Option<usize>,
     max_dst_width: Option<usize>,
@@ -122,7 +124,7 @@ fn transfer_rows_up(
                 break; // no more rows
             }
         }
-        destination.push(next_lines.remove(0));
+        bounded_push(destination, next_lines.remove(0));
     }
     if !next_lines.is_empty() {
         match max_src_width {
@@ -140,9 +142,16 @@ fn transfer_rows_up(
     }
 }
 
+fn bounded_push(vec: &mut VecDeque<Row>, value: Row) {
+    if vec.len() >= SCROLL_BACK {
+        vec.pop_front();
+    }
+    vec.push_back(value)
+}
+
 #[derive(Clone)]
 pub struct Grid {
-    lines_above: Vec<Row>,
+    lines_above: VecDeque<Row>,
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
     cursor: Cursor,
@@ -167,7 +176,7 @@ impl Debug for Grid {
 impl Grid {
     pub fn new(rows: usize, columns: usize) -> Self {
         Grid {
-            lines_above: vec![],
+            lines_above: VecDeque::with_capacity(SCROLL_BACK),
             viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             cursor: Cursor::new(0, 0),
@@ -235,7 +244,7 @@ impl Grid {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
-            let line_to_insert_at_viewport_top = self.lines_above.pop().unwrap();
+            let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
         }
     }
@@ -243,11 +252,11 @@ impl Grid {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
             if line_to_push_up.is_canonical {
-                self.lines_above.push(line_to_push_up);
+                bounded_push(&mut self.lines_above, line_to_push_up);
             } else {
-                let mut last_line_above = self.lines_above.pop().unwrap();
+                let mut last_line_above = self.lines_above.pop_back().unwrap();
                 last_line_above.append(&mut line_to_push_up.columns);
-                self.lines_above.push(last_line_above);
+                bounded_push(&mut self.lines_above, last_line_above);
             }
             let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
             self.viewport.push(line_to_insert_at_viewport_bottom);
@@ -263,7 +272,7 @@ impl Grid {
                     && viewport_canonical_lines.is_empty()
                     && !self.lines_above.is_empty()
                 {
-                    let mut first_line_above = self.lines_above.pop().unwrap();
+                    let mut first_line_above = self.lines_above.pop_back().unwrap();
                     first_line_above.append(&mut row.columns);
                     viewport_canonical_lines.push(first_line_above);
                     cursor_canonical_line_index += 1;

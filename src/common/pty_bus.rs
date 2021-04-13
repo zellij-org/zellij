@@ -43,7 +43,7 @@ impl Stream for ReadFromPid {
                     // indicates end of file
                     Poll::Ready(None)
                 } else {
-                    let res = Some(read_buffer[..=*res].to_vec());
+                    let res = Some(read_buffer[..*res].to_vec());
                     Poll::Ready(res)
                 }
             }
