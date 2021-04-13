@@ -8,11 +8,11 @@ use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use std::path::PathBuf;
 
-use super::{ScreenInstruction, SenderWithContext, OPENCALLS};
+use super::{ScreenInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
-    errors::{ContextType, ErrorContext},
+    errors::{get_current_ctx, ContextType, ErrorContext},
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
@@ -89,15 +89,14 @@ pub struct PtyBus {
 
 fn stream_terminal_bytes(
     pid: RawFd,
-    mut send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    send_screen_instructions: SenderWithContext<ScreenInstruction>,
     os_input: Box<dyn OsApi>,
     debug: bool,
 ) -> JoinHandle<()> {
-    let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+    let mut err_ctx = get_current_ctx();
     task::spawn({
         async move {
             err_ctx.add_call(ContextType::AsyncTask);
-            send_screen_instructions.update(err_ctx);
             let mut terminal_bytes = ReadFromPid::new(&pid, os_input);
 
             let mut last_byte_receive_time: Option<Instant> = None;
