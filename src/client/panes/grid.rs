@@ -515,6 +515,24 @@ impl Grid {
     }
     pub fn insert_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
         match self.viewport.get_mut(self.cursor.y) {
+            Some(row) => {
+                row.insert_character_at(terminal_character, self.cursor.x);
+                if row.len() > self.width {
+                    row.truncate(self.width);
+                }
+            }
+            None => {
+                // pad lines until cursor if they do not exist
+                for _ in self.viewport.len()..self.cursor.y {
+                    self.viewport.push(Row::new().canonical());
+                }
+                self.viewport
+                    .push(Row::new().with_character(terminal_character).canonical());
+            }
+        }
+    }
+    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
+        match self.viewport.get_mut(self.cursor.y) {
             Some(row) => row.add_character_at(terminal_character, self.cursor.x),
             None => {
                 // pad lines until cursor if they do not exist
@@ -550,7 +568,7 @@ impl Grid {
                 }
             }
         }
-        self.insert_character_at_cursor_position(terminal_character);
+        self.add_character_at_cursor_position(terminal_character);
         self.move_cursor_forward_until_edge(1);
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
@@ -1039,6 +1057,16 @@ impl vte::Perform for Grid {
             self.delete_lines_in_scroll_region(count, pad_character);
             // TODO: since delete_lines_in_scroll_region also adds lines, is the below redundant?
             self.add_empty_lines_in_scroll_region(count, pad_character);
+        } else if c == '@' {
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            for _ in 0..count {
+                // TODO: should this be styled?
+                self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);
+            }
         } else {
             let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
         }
@@ -1115,6 +1143,18 @@ impl Row {
                 // this is much more performant than remove/insert
                 self.columns.push(terminal_character);
                 self.columns.swap_remove(x);
+            }
+        }
+    }
+    pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
+        match self.columns.len().cmp(&x) {
+            Ordering::Equal => self.columns.push(terminal_character),
+            Ordering::Less => {
+                self.columns.resize(x, EMPTY_TERMINAL_CHARACTER);
+                self.columns.push(terminal_character);
+            }
+            Ordering::Greater => {
+                self.columns.insert(x, terminal_character);
             }
         }
     }
