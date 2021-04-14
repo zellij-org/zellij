@@ -88,15 +88,26 @@ fn patch_plugins(root: &str, part: Yaml) -> Yaml {
 [tasks.pre-launch]
 script_runner = "@duckscript"
 script = '''
-if is_empty ${CARGO_MAKE_TASK_ARGS}
-    set_env CARGO_MAKE_TASK_ARGS default
+args = split ${CARGO_MAKE_TASK_ARGS} ;
+set_env ZELLIJ_LAYOUT default
+
+if not array_is_empty ${args}
+    first = array_get ${args} 0
+    if starts_with ${first} -
+        set_env ZELLIJ_ARGS ${CARGO_MAKE_TASK_ARGS}
+    else
+        set_env ZELLIJ_LAYOUT ${first}
+        array_remove ${args} 0
+        args = array_join ${args} ;
+        set_env ZELLIJ_ARGS ${args}
+    end
 end
 '''
 
 [tasks.launch]
 dependencies = ["pre-launch"]
 command = "cargo"
-args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/${CARGO_MAKE_TASK_ARGS}.yaml"]
+args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/${ZELLIJ_LAYOUT}.yaml", "@@split(ZELLIJ_ARGS,;)"]
 
 # Simple clippy tweak
 [tasks.clippy]
