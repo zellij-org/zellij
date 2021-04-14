@@ -6,7 +6,6 @@ parts:
       Fixed: 1
     plugin: tab-bar
   - direction: Vertical
-    expansion_boundary: true
   - direction: Vertical
     split_size:
       Fixed: 2
