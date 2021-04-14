@@ -92,13 +92,11 @@ end
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
-run_task = [
-    { name = "publish-zellij-tile" },
-    { name = "publish-zellij" }
-]
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "publish-zellij-tile"]
+run_task = "publish-zellij"
 
 [tasks.publish-zellij-tile]
+ignore_errors = true
 cwd = "zellij-tile"
 command = "cargo"
 args = ["publish"]
