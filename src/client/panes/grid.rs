@@ -883,7 +883,12 @@ impl vte::Perform for Grid {
             if first_intermediate_is_questionmark {
                 match params.get(0) {
                     Some(&1049) => {
-                        if let Some((alternative_lines_above, alternative_viewport, alternative_cursor)) = self.alternative_lines_above_viewport_and_cursor.as_mut() {
+                        if let Some((
+                            alternative_lines_above,
+                            alternative_viewport,
+                            alternative_cursor,
+                        )) = self.alternative_lines_above_viewport_and_cursor.as_mut()
+                        {
                             std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
                             std::mem::swap(&mut self.cursor, alternative_cursor);
@@ -916,12 +921,15 @@ impl vte::Perform for Grid {
                         self.mark_for_rerender();
                     }
                     Some(&1049) => {
-                        let current_lines_above =
-                            std::mem::replace(&mut self.lines_above, VecDeque::with_capacity(SCROLL_BACK));
+                        let current_lines_above = std::mem::replace(
+                            &mut self.lines_above,
+                            VecDeque::with_capacity(SCROLL_BACK),
+                        );
                         let current_viewport =
                             std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        self.alternative_lines_above_viewport_and_cursor = Some((current_lines_above, current_viewport, current_cursor));
+                        self.alternative_lines_above_viewport_and_cursor =
+                            Some((current_lines_above, current_viewport, current_cursor));
                         self.clear_viewport_before_rendering = true;
                     }
                     Some(&1) => {
