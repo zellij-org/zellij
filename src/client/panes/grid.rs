@@ -447,11 +447,25 @@ impl Grid {
             self.scroll_down_one_line();
         }
     }
-    pub fn rotate_scroll_region_up(&mut self, _count: usize) {
-        // TBD
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            for _ in 0..count {
+                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                self.viewport.remove(scroll_region_bottom);
+                self.viewport
+                    .insert(scroll_region_top, Row::from_columns(columns).canonical());
+            }
+        }
     }
-    pub fn rotate_scroll_region_down(&mut self, _count: usize) {
-        // TBD
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            for _ in 0..count {
+                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                self.viewport.remove(scroll_region_top);
+                self.viewport
+                    .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+            }
+        }
     }
     pub fn add_canonical_line(&mut self) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
