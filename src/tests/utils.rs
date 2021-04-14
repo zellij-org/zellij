@@ -12,7 +12,7 @@ pub fn get_output_frame_snapshots(
     let mut snapshots = vec![];
     for frame in output_frames.iter() {
         for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
+            vte_parser.advance(&mut terminal_output.grid, *byte);
         }
         let output_lines = terminal_output.read_buffer_as_lines();
         let cursor_coordinates = terminal_output.cursor_coordinates();
