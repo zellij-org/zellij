@@ -1,6 +1,7 @@
 # Global Settings
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target"
 SKIP_TEST = false
 
 # Add clippy to the default flow
@@ -27,87 +28,34 @@ dependencies = ["pre-test"]
 [tasks.post-test]
 env = { "SKIP_TEST" = false }
 
-# Running Zellij using patched layouts
+# Running Zellij using the development data directory
 [tasks.run]
 workspace = false
-dependencies = ["build-workspace", "patch-layouts"]
+dependencies = ["build-workspace", "build-dev-data-dir"]
 run_task = "launch"
 
 [tasks.build-workspace]
 run_task = { name = "build", fork = true }
 
-[tasks.patch-layouts]
-script_runner = "@rust"
-script = '''
-//! ```cargo
-//! [dependencies]
-//! yaml-rust = "0.4"
-//! ```
-use std::{env, error::Error, fs, path::Path};
-use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let root = env::var("CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY")?;
-    let layout_path = Path::new(&root).join("assets/layouts");
-    for layout in fs::read_dir(layout_path)? {
-        let layout = layout?.path();
-        let yaml = fs::read_to_string(&layout)?;
-        let yaml = YamlLoader::load_from_str(&yaml)?.remove(0);
-        let yaml = patch_plugins(&root, yaml);
-        let new_layout = Path::new(&root)
-            .join("target")
-            .join(layout.file_name().unwrap());
-        let mut new_yaml = String::new();
-        let mut emitter = YamlEmitter::new(&mut new_yaml);
-        emitter.dump(&yaml)?;
-        fs::write(new_layout, new_yaml)?;
-    }
-    Ok(())
-}
-
-fn patch_plugins(root: &str, part: Yaml) -> Yaml {
-    let mut map = part.into_hash().unwrap();
-    if let Some(plugin) = map.get_mut(&Yaml::from_str("plugin")) {
-        let new_plugin = Path::new(root)
-            .join("target/wasm32-wasi/debug")
-            .join(plugin.as_str().unwrap());
-        *plugin = Yaml::String(new_plugin.to_string_lossy().into_owned());
-    }
-    if let Some(parts) = map.get_mut(&Yaml::from_str("parts")) {
-        let new_parts = parts
-            .clone()
-            .into_iter()
-            .map(|p| patch_plugins(root, p))
-            .collect();
-        *parts = Yaml::Array(new_parts);
-    }
-    Yaml::Hash(map)
-}
-'''
-
-[tasks.pre-launch]
+[tasks.build-dev-data-dir]
 script_runner = "@duckscript"
 script = '''
-args = split ${CARGO_MAKE_TASK_ARGS} ;
-set_env ZELLIJ_LAYOUT default
-
-if not array_is_empty ${args}
-    first = array_get ${args} 0
-    if starts_with ${first} -
-        set_env ZELLIJ_ARGS ${CARGO_MAKE_TASK_ARGS}
-    else
-        set_env ZELLIJ_LAYOUT ${first}
-        array_remove ${args} 0
-        args = array_join ${args} ;
-        set_env ZELLIJ_ARGS ${args}
-    end
+asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
+target_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target
+data_dir = set ${target_dir}/dev-data
+rm -r ${data_dir}
+cp ${asset_dir}/layouts ${data_dir}/
+plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
+for plugin in ${plugins}
+    plugin_name = basename ${plugin}
+    cp ${plugin} ${data_dir}/plugins/${plugin_name}
 end
+writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
 '''
 
 [tasks.launch]
-dependencies = ["pre-launch"]
 command = "cargo"
-args = ["run", "--", "-l", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/${ZELLIJ_LAYOUT}.yaml", "@@split(ZELLIJ_ARGS,;)"]
+args = ["run", "--", "--data-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/dev-data/", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Simple clippy tweak
 [tasks.clippy]
@@ -116,7 +64,7 @@ args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 # Release building and installing Zellij
 [tasks.install]
 workspace = false
-dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "clear-data-directory"]
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
 script_runner = "@duckscript"
 script = '''
 cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
@@ -140,33 +88,15 @@ for tile in ${tiles}
 end
 '''
 
-# FIXME: Maybe this should be more generic? Or just blow away the whole directory?
-[tasks.clear-data-directory]
-script_runner = "@rust"
-script = '''
-//! ```cargo
-//! [dependencies]
-//! directories-next = "2.0"
-//! ```
-use directories_next::ProjectDirs;
-use std::fs;
-
-fn main() {
-    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-    let data_dir = project_dirs.data_dir();
-    drop(fs::remove_file(data_dir.join("plugins/status-bar.wasm")));
-    drop(fs::remove_file(data_dir.join("plugins/tab-bar.wasm")));
-    drop(fs::remove_file(data_dir.join("plugins/strider.wasm")));
-    drop(fs::remove_file(data_dir.join("layouts/default.yaml")));
-    drop(fs::remove_file(data_dir.join("layouts/strider.yaml")));
-}
-'''
-
 # Publishing Zellij
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "publish-zellij-tile", "publish-zellij"]
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
+run_task = [
+    { name = "publish-zellij-tile" },
+    { name = "publish-zellij" }
+]
 
 [tasks.publish-zellij-tile]
 cwd = "zellij-tile"
