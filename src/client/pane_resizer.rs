@@ -12,9 +12,7 @@ pub struct PaneResizer<'a> {
 }
 
 // TODO: currently there are some functions here duplicated with Tab
-// the reason for this is that we need to get rid of the expansion_boundary
-// otherwise we'll have a big separation of concerns issue
-// once that is done, all resizing functions should move here
+// all resizing functions should move here
 
 impl<'a> PaneResizer<'a> {
     pub fn new(
