@@ -31,7 +31,6 @@ Zellij was initially called "Mosaic".
 ## How to use it?
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
-* Make sure that the `~/.cargo/bin` directory is on your PATH
 * In the project folder, run: `cargo make run`
 
 (note that right now Zellij only supports linux and mac)

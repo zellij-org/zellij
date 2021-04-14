@@ -20,8 +20,10 @@ jobs:
       run: rustup target add wasm32-wasi
     - name: Install cargo-make
       run: cargo install --debug cargo-make
-    - name: Build & Test
-      run: cargo make
+    - name: Build
+      run: cargo make build
+    - name: Test
+      run: cargo make test
 
   format:
     name: Check Formatting
