@@ -895,7 +895,10 @@ impl vte::Perform for Grid {
             } else if params[0] == 0 {
                 (0, (params[1] as usize).saturating_sub(1))
             } else {
-                ((params[0] as usize).saturating_sub(1), (params[1] as usize).saturating_sub(1))
+                (
+                    (params[0] as usize).saturating_sub(1),
+                    (params[1] as usize).saturating_sub(1),
+                )
             };
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to(col, row, pad_character);
