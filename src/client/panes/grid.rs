@@ -476,6 +476,10 @@ impl Grid {
                 // then we add an empty line at its end which will be filled by the application
                 // controlling the scroll region (presumably filled by whatever comes next in the
                 // scroll buffer, but that's not something we control)
+                if scroll_region_top >= self.viewport.len() {
+                    // the state is corrupted
+                    return;
+                }
                 self.viewport.remove(scroll_region_top);
                 let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
                 self.viewport
@@ -648,7 +652,9 @@ impl Grid {
             if current_line_index == scroll_region_top {
                 // if we're at the top line, we create a new line and remove the last line that
                 // would otherwise overflow
-                self.viewport.remove(scroll_region_bottom);
+                if scroll_region_bottom < self.viewport.len() {
+                    self.viewport.remove(scroll_region_bottom);
+                }
                 self.viewport.insert(current_line_index, Row::new()); // TODO: .canonical() ?
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
@@ -711,8 +717,12 @@ impl Grid {
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
                     let columns = vec![pad_character; self.width];
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                    if self.viewport.len() > scroll_region_bottom {
+                        self.viewport
+                            .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                    } else {
+                        self.viewport.push(Row::from_columns(columns).canonical());
+                    }
                 }
             }
         }
@@ -731,7 +741,9 @@ impl Grid {
                 // so we add an empty line where the cursor currently is, and delete the last line
                 // of the scroll region
                 for _ in 0..count {
-                    self.viewport.remove(scroll_region_bottom);
+                    if scroll_region_bottom < self.viewport.len() {
+                        self.viewport.remove(scroll_region_bottom);
+                    }
                     let columns = vec![pad_character; self.width];
                     self.viewport
                         .insert(current_line_index, Row::from_columns(columns).canonical());
@@ -784,6 +796,7 @@ impl Grid {
         self.viewport = vec![Row::new().canonical()];
         self.alternative_lines_above_viewport_and_cursor = None;
         self.cursor_key_mode = false;
+        self.scroll_region = None;
         self.clear_viewport_before_rendering = true;
         self.cursor = Cursor::new(0, 0);
     }
@@ -881,12 +894,15 @@ impl vte::Perform for Grid {
                 if params[0] == 0 {
                     (0, params[0] as usize)
                 } else {
-                    (params[0] as usize - 1, params[0] as usize)
+                    ((params[0] as usize).saturating_sub(1), params[0] as usize)
                 }
             } else if params[0] == 0 {
-                (0, params[1] as usize - 1)
+                (0, (params[1] as usize).saturating_sub(1))
             } else {
-                (params[0] as usize - 1, params[1] as usize - 1)
+                (
+                    (params[0] as usize).saturating_sub(1),
+                    (params[1] as usize).saturating_sub(1),
+                )
             };
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to(col, row, pad_character);
@@ -973,8 +989,8 @@ impl vte::Perform for Grid {
         } else if c == 'r' {
             if params.len() > 1 {
                 // minus 1 because these are 1 indexed
-                let top_line_index = params[0] as usize - 1;
-                let bottom_line_index = params[1] as usize - 1;
+                let top_line_index = (params[0] as usize).saturating_sub(1);
+                let bottom_line_index = (params[1] as usize).saturating_sub(1);
                 self.set_scroll_region(top_line_index, bottom_line_index);
                 self.show_cursor();
             } else {
@@ -1160,8 +1176,10 @@ impl Row {
     }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         // this is much more performant than remove/insert
-        self.columns.push(terminal_character);
-        self.columns.swap_remove(x);
+        if x < self.columns.len() {
+            self.columns.push(terminal_character);
+            self.columns.swap_remove(x);
+        }
     }
     pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
         self.columns = columns;
@@ -1176,7 +1194,11 @@ impl Row {
         self.columns.append(to_append);
     }
     pub fn replace_beginning_with(&mut self, mut line_part: Vec<TerminalCharacter>) {
-        drop(self.columns.drain(0..line_part.len()));
+        if line_part.len() > self.columns.len() {
+            self.columns.clear();
+        } else {
+            drop(self.columns.drain(0..line_part.len()));
+        }
         line_part.append(&mut self.columns);
         self.columns = line_part;
     }
@@ -1184,7 +1206,9 @@ impl Row {
         self.columns.len()
     }
     pub fn delete_character(&mut self, x: usize) {
-        self.columns.remove(x);
+        if x < self.columns.len() {
+            self.columns.remove(x);
+        }
     }
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let mut parts: Vec<Row> = vec![];
