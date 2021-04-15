@@ -25,9 +25,9 @@ cargo make
 cargo make format
 cargo make build
 cargo make test
-# Run Zellij (optionally with a non-default layout)
+# Run Zellij (optionally with additional arguments)
 cargo make run
-cargo make run strider
+cargo make run -- -l strider
 # Run Clippy (potentially with additional options)
 cargo make clippy
 cargo make clippy -W clippy::pedantic

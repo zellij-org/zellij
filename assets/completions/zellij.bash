@@ -29,7 +29,7 @@ _zellij() {
 
     case "${cmd}" in
         zellij)
-            opts=" -m -d -h -V -s -o -l  --move-focus --debug --help --version --split --open-file --max-panes --layout   config help  c c"
+            opts=" -m -d -h -V -s -o -l  --move-focus --debug --help --version --split --open-file --max-panes --data-dir --layout   config help  c c"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -53,6 +53,10 @@ _zellij() {
                     return 0
                     ;;
                 --max-panes)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

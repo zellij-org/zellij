@@ -1,6 +1,5 @@
-use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fs::File, io::prelude::*};
 
 use crate::panes::PositionAndSize;
@@ -180,11 +179,9 @@ pub struct Layout {
 }
 
 impl Layout {
-    pub fn new(layout_path: PathBuf) -> Self {
-        let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-        let layout_dir = project_dirs.data_dir().join("layouts/");
+    pub fn new(layout_path: &Path, data_dir: &Path) -> Self {
+        let layout_dir = data_dir.join("layouts/");
         let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
             .or_else(|_| File::open(&layout_dir.join(&layout_path).with_extension("yaml")))
             .unwrap_or_else(|_| panic!("cannot find layout {}", &layout_path.display()));
 

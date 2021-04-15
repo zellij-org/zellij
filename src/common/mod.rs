@@ -33,6 +33,7 @@ use errors::{
     ScreenContext,
 };
 use input::handler::input_loop;
+use install::populate_data_dir;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
@@ -167,12 +168,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         opts.debug,
     );
 
+    // Determine and initialize the data directory
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    let data_dir = opts
+        .data_dir
+        .unwrap_or_else(|| project_dirs.data_dir().to_path_buf());
+    populate_data_dir(&data_dir);
+
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
     #[cfg(test)]
     let default_layout = None;
-    let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
+    let maybe_layout = opts
+        .layout
+        .or(default_layout)
+        .map(|p| Layout::new(&p, &data_dir));
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -443,9 +454,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
-                        let project_dirs =
-                            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-                        let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        let plugin_dir = data_dir.join("plugins/");
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
