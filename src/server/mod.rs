@@ -8,7 +8,7 @@ use std::{collections::HashMap, fs};
 use std::{
     collections::HashSet,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
@@ -175,7 +175,7 @@ impl ServerInstruction {
     }
 }
 
-struct ClientMetaData {
+struct SessionMetaData {
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -184,7 +184,7 @@ struct ClientMetaData {
     wasm_thread: Option<thread::JoinHandle<()>>,
 }
 
-impl Drop for ClientMetaData {
+impl Drop for SessionMetaData {
     fn drop(&mut self) {
         let _ = self.send_pty_instructions.send(PtyInstruction::Exit);
         let _ = self.send_screen_instructions.send(ScreenInstruction::Exit);
@@ -201,16 +201,67 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
     > = channel();
     let send_server_instructions =
         SenderWithContext::new(SenderType::Sender(send_server_instructions));
+
+    let sessions: Arc<RwLock<HashMap<String, SessionMetaData>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    // We handle only single client for now
+    let session: Arc<RwLock<String>> = Arc::new(RwLock::new("session1".into()));
     let router_thread = thread::Builder::new()
         .name("server_router".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let session = session.clone();
+            let sessions = sessions.clone();
             let send_server_instructions = send_server_instructions.clone();
             move || loop {
                 let (instruction, mut err_ctx) = os_input.server_recv();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
+                let rlocked_session = &*session.read().unwrap();
+                let rlocked_sessions = sessions.read().unwrap();
                 match instruction {
                     ServerInstruction::Exit => break,
+                    ServerInstruction::OpenFile(file_name) => {
+                        rlocked_sessions[rlocked_session]
+                            .send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminal(Some(file_name)))
+                            .unwrap();
+                    }
+                    ServerInstruction::SplitHorizontally => {
+                        rlocked_sessions[rlocked_session]
+                            .send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                            .unwrap();
+                    }
+                    ServerInstruction::SplitVertically => {
+                        rlocked_sessions[rlocked_session]
+                            .send_pty_instructions
+                            .send(PtyInstruction::SpawnTerminalVertically(None))
+                            .unwrap();
+                    }
+                    ServerInstruction::MoveFocus => {
+                        rlocked_sessions[rlocked_session]
+                            .send_screen_instructions
+                            .send(ScreenInstruction::FocusNextPane)
+                            .unwrap();
+                    }
+                    ServerInstruction::ToScreen(instruction) => {
+                        rlocked_sessions[rlocked_session]
+                            .send_screen_instructions
+                            .send(instruction)
+                            .unwrap();
+                    }
+                    ServerInstruction::ToPty(instruction) => {
+                        rlocked_sessions[rlocked_session]
+                            .send_pty_instructions
+                            .send(instruction)
+                            .unwrap();
+                    }
+                    ServerInstruction::PluginUpdate(pid, event) => {
+                        rlocked_sessions[rlocked_session]
+                            .send_plugin_instructions
+                            .send(PluginInstruction::Update(pid, event))
+                            .unwrap();
+                    }
                     _ => {
                         send_server_instructions.send(instruction).unwrap();
                     }
@@ -222,63 +273,28 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
     thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
-            let mut clients: HashMap<String, ClientMetaData> = HashMap::new();
-            // We handle only single client for now
-            let mut client: Option<String> = None;
             move || loop {
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
-                    ServerInstruction::OpenFile(file_name) => {
-                        clients[client.as_ref().unwrap()]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminal(Some(file_name)))
-                            .unwrap();
-                    }
-                    ServerInstruction::SplitHorizontally => {
-                        clients[client.as_ref().unwrap()]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                            .unwrap();
-                    }
-                    ServerInstruction::SplitVertically => {
-                        clients[client.as_ref().unwrap()]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminalVertically(None))
-                            .unwrap();
-                    }
-                    ServerInstruction::MoveFocus => {
-                        clients[client.as_ref().unwrap()]
-                            .send_screen_instructions
-                            .send(ScreenInstruction::FocusNextPane)
-                            .unwrap();
-                    }
                     ServerInstruction::NewClient(buffer_path, full_screen_ws) => {
-                        client = Some(buffer_path.clone());
-                        let client_data = init_client(
+                        let session_data = init_session(
                             os_input.clone(),
                             opts.clone(),
                             send_server_instructions.clone(),
                             full_screen_ws,
                         );
-                        clients.insert(buffer_path.clone(), client_data);
-                        clients[client.as_ref().unwrap()]
+                        drop(
+                            sessions
+                                .write()
+                                .unwrap()
+                                .insert(session.read().unwrap().clone(), session_data),
+                        );
+                        sessions.read().unwrap()[&*session.read().unwrap()]
                             .send_pty_instructions
                             .send(PtyInstruction::NewTab)
                             .unwrap();
                         os_input.add_client_sender(buffer_path);
-                    }
-                    ServerInstruction::ToScreen(instruction) => {
-                        clients[client.as_ref().unwrap()]
-                            .send_screen_instructions
-                            .send(instruction)
-                            .unwrap();
-                    }
-                    ServerInstruction::ToPty(instruction) => {
-                        clients[client.as_ref().unwrap()]
-                            .send_pty_instructions
-                            .send(instruction)
-                            .unwrap();
                     }
                     ServerInstruction::DoneClosingPane => {
                         os_input.send_to_client(ClientInstruction::DoneClosingPane);
@@ -292,14 +308,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                     ServerInstruction::ClientShouldExit => {
                         os_input.send_to_client(ClientInstruction::Exit);
                     }
-                    ServerInstruction::PluginUpdate(pid, event) => {
-                        clients[client.as_ref().unwrap()]
-                            .send_plugin_instructions
-                            .send(PluginInstruction::Update(pid, event))
-                            .unwrap();
-                    }
                     ServerInstruction::ClientExit => {
-                        clients.remove(client.as_ref().unwrap()).unwrap();
+                        drop(
+                            sessions
+                                .write()
+                                .unwrap()
+                                .remove(&*session.read().unwrap())
+                                .unwrap(),
+                        );
                         os_input.server_exit();
                         let _ = router_thread.join();
                         let _ = os_input.send_to_client(ClientInstruction::Exit);
@@ -308,19 +324,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                     ServerInstruction::Render(output) => {
                         os_input.send_to_client(ClientInstruction::Render(output))
                     }
-                    _ => {}
+                    _ => panic!("Received unexpected instruction."),
                 }
             }
         })
         .unwrap()
 }
 
-fn init_client(
+fn init_session(
     os_input: Box<dyn ServerOsApi>,
     opts: CliArgs,
     send_server_instructions: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
-) -> ClientMetaData {
+) -> SessionMetaData {
     let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
         ScreenInstruction,
     > = channel();
@@ -736,7 +752,7 @@ fn init_client(
             }
         })
         .unwrap();
-    ClientMetaData {
+    SessionMetaData {
         send_plugin_instructions,
         send_screen_instructions,
         send_pty_instructions,
