@@ -207,7 +207,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
             let os_input = os_input.clone();
             let send_server_instructions = send_server_instructions.clone();
             move || loop {
-                let (instruction, _err_ctx) = os_input.server_recv();
+                let (instruction, mut err_ctx) = os_input.server_recv();
+                err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
                     ServerInstruction::Exit => break,
                     _ => {
@@ -227,13 +228,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
             move || loop {
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
-                os_input.update_senders(err_ctx);
                 match instruction {
                     ServerInstruction::OpenFile(file_name) => {
-                        let path = PathBuf::from(file_name);
                         clients[client.as_ref().unwrap()]
                             .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminal(Some(path)))
+                            .send(PtyInstruction::SpawnTerminal(Some(file_name)))
                             .unwrap();
                     }
                     ServerInstruction::SplitHorizontally => {
@@ -421,7 +420,7 @@ fn init_client(
             let os_input = os_input.clone();
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
-            let send_server_instructions = send_server_instructions.clone();
+            let send_server_instructions = send_server_instructions;
             let max_panes = opts.max_panes;
 
             move || {
