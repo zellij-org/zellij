@@ -24,7 +24,7 @@ use crate::server::ServerInstruction;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientInstruction {
     Error(String),
-    Render(String),
+    Render(Option<String>),
     DoneClosingPane,
     DoneOpeningNewPane,
     DoneUpdatingTabs,
@@ -92,7 +92,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
                 os_input.receive_sigwinch(Box::new({
                     let os_api = os_input.clone();
                     move || {
-                        os_api.send_to_server(ServerInstruction::terminal_resize(
+                        os_api.send_to_server(ServerInstruction::TerminalResize(
                             os_api.get_terminal_size_using_fd(0),
                         ));
                     }
@@ -148,9 +148,12 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
                 std::process::exit(1);
             }
             ClientInstruction::Render(output) => {
+                if output.is_none() {
+                    break;
+                }
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
-                    .write_all(&output.as_bytes())
+                    .write_all(&output.unwrap().as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }

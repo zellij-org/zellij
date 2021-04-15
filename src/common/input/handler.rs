@@ -7,13 +7,11 @@ use crate::common::input::config::Config;
 use crate::common::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
-use crate::pty_bus::PtyInstruction;
-use crate::screen::ScreenInstruction;
 use crate::server::ServerInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{Event, InputMode, Key, ModeInfo, Palette};
+use zellij_tile::data::{InputMode, Key, ModeInfo};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -107,12 +105,6 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
-            Action::Write(val) => {
-                self.os_input
-                    .send_to_server(ServerInstruction::clear_scroll());
-                self.os_input
-                    .send_to_server(ServerInstruction::write_character(val));
-            }
             Action::Quit => {
                 self.exit();
                 should_break = true;
@@ -120,135 +112,33 @@ impl InputHandler {
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
                 self.os_input
-                    .send_to_server(ServerInstruction::PluginUpdate(
-                        None,
-                        Event::ModeUpdate(get_mode_info(mode)),
-                    ));
-                self.os_input
-                    .send_to_server(ServerInstruction::change_mode(get_mode_info(mode)));
-                self.os_input.send_to_server(ServerInstruction::render());
+                    .send_to_server(ServerInstruction::Action(action.clone()));
             }
-            Action::Resize(direction) => {
-                let screen_instr = match direction {
-                    super::actions::Direction::Left => ServerInstruction::resize_left(),
-                    super::actions::Direction::Right => ServerInstruction::resize_right(),
-                    super::actions::Direction::Up => ServerInstruction::resize_up(),
-                    super::actions::Direction::Down => ServerInstruction::resize_down(),
-                };
-                self.os_input.send_to_server(screen_instr);
-            }
-            Action::SwitchFocus => {
-                self.os_input
-                    .send_to_server(ServerInstruction::ToScreen(ScreenInstruction::SwitchFocus));
-            }
-            Action::FocusNextPane => {
-                self.os_input.send_to_server(ServerInstruction::ToScreen(
-                    ScreenInstruction::FocusNextPane,
-                ));
-            }
-            Action::FocusPreviousPane => {
-                self.os_input.send_to_server(ServerInstruction::ToScreen(
-                    ScreenInstruction::FocusPreviousPane,
-                ));
-            }
-            Action::MoveFocus(direction) => {
-                let screen_instr = match direction {
-                    super::actions::Direction::Left => ServerInstruction::move_focus_left(),
-                    super::actions::Direction::Right => ServerInstruction::move_focus_right(),
-                    super::actions::Direction::Up => ServerInstruction::move_focus_up(),
-                    super::actions::Direction::Down => ServerInstruction::move_focus_down(),
-                };
-                self.os_input.send_to_server(screen_instr);
-            }
-            Action::ScrollUp => {
-                self.os_input.send_to_server(ServerInstruction::scroll_up());
-            }
-            Action::ScrollDown => {
-                self.os_input
-                    .send_to_server(ServerInstruction::scroll_down());
-            }
-            Action::PageScrollUp => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::PageScrollUp)
-                    .unwrap();
-            }
-            Action::PageScrollDown => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::PageScrollDown)
-                    .unwrap();
-            }
-            Action::ToggleFocusFullscreen => {
-                self.os_input
-                    .send_to_server(ServerInstruction::toggle_active_terminal_fullscreen());
-            }
-            Action::NewPane(direction) => {
-                let pty_instr = match direction {
-                    Some(super::actions::Direction::Left) => {
-                        PtyInstruction::SpawnTerminalVertically(None)
-                    }
-                    Some(super::actions::Direction::Right) => {
-                        PtyInstruction::SpawnTerminalVertically(None)
-                    }
-                    Some(super::actions::Direction::Up) => {
-                        PtyInstruction::SpawnTerminalHorizontally(None)
-                    }
-                    Some(super::actions::Direction::Down) => {
-                        PtyInstruction::SpawnTerminalHorizontally(None)
-                    }
-                    // No direction specified - try to put it in the biggest available spot
-                    None => PtyInstruction::SpawnTerminal(None),
-                };
+            Action::NewPane(_) => {
                 self.command_is_executing.opening_new_pane();
                 self.os_input
-                    .send_to_server(ServerInstruction::ToPty(pty_instr));
+                    .send_to_server(ServerInstruction::Action(action));
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
             Action::CloseFocus => {
                 self.command_is_executing.closing_pane();
                 self.os_input
-                    .send_to_server(ServerInstruction::close_focused_pane());
+                    .send_to_server(ServerInstruction::Action(action));
                 self.command_is_executing.wait_until_pane_is_closed();
             }
-            Action::NewTab => {
+            Action::NewTab
+            | Action::GoToNextTab
+            | Action::GoToPreviousTab
+            | Action::CloseTab
+            | Action::GoToTab(_) => {
                 self.command_is_executing.updating_tabs();
                 self.os_input
-                    .send_to_server(ServerInstruction::pty_new_tab());
+                    .send_to_server(ServerInstruction::Action(action));
                 self.command_is_executing.wait_until_tabs_are_updated();
             }
-            Action::GoToNextTab => {
-                self.command_is_executing.updating_tabs();
-                self.os_input
-                    .send_to_server(ServerInstruction::switch_tab_next());
-                self.command_is_executing.wait_until_tabs_are_updated();
-            }
-            Action::GoToPreviousTab => {
-                self.command_is_executing.updating_tabs();
-                self.os_input
-                    .send_to_server(ServerInstruction::switch_tab_prev());
-                self.command_is_executing.wait_until_tabs_are_updated();
-            }
-            Action::ToggleActiveSyncPanes => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ToggleActiveSyncPanes)
-                    .unwrap();
-            }
-            Action::CloseTab => {
-                self.command_is_executing.updating_tabs();
-                self.os_input
-                    .send_to_server(ServerInstruction::screen_close_tab());
-                self.command_is_executing.wait_until_tabs_are_updated();
-            }
-            Action::GoToTab(i) => {
-                self.command_is_executing.updating_tabs();
-                self.os_input
-                    .send_to_server(ServerInstruction::go_to_tab(i));
-                self.command_is_executing.wait_until_tabs_are_updated();
-            }
-            Action::TabNameInput(c) => {
-                self.os_input
-                    .send_to_server(ServerInstruction::update_tab_name(c));
-            }
-            Action::NoOp => {}
+            _ => self
+                .os_input
+                .send_to_server(ServerInstruction::Action(action)),
         }
 
         should_break

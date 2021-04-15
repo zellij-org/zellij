@@ -1,6 +1,5 @@
 use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -18,8 +17,10 @@ use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
 use crate::common::{
     errors::{ContextType, PluginContext, PtyContext, ScreenContext, ServerContext},
+    input::actions::{Action, Direction},
+    input::handler::get_mode_info,
     os_input_output::ServerOsApi,
-    pty_bus::{PtyBus, PtyInstruction, VteBytes},
+    pty_bus::{PtyBus, PtyInstruction},
     screen::{Screen, ScreenInstruction},
     wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginEnv, PluginInstruction},
     ChannelWithContext, SenderType, SenderWithContext,
@@ -36,143 +37,16 @@ pub enum ServerInstruction {
     SplitHorizontally,
     SplitVertically,
     MoveFocus,
+    TerminalResize(PositionAndSize),
     NewClient(String, PositionAndSize),
-    ToPty(PtyInstruction),
-    ToScreen(ScreenInstruction),
-    Render(String),
-    PluginUpdate(Option<u32>, Event),
+    Action(Action),
+    Render(Option<String>),
     DoneClosingPane,
     DoneOpeningNewPane,
     DoneUpdatingTabs,
     ClientExit,
-    ClientShouldExit,
     // notify router thread to exit
     Exit,
-}
-impl ServerInstruction {
-    // ToPty
-    pub fn spawn_terminal(path: Option<PathBuf>) -> Self {
-        Self::ToPty(PtyInstruction::SpawnTerminal(path))
-    }
-    pub fn spawn_terminal_vertically(path: Option<PathBuf>) -> Self {
-        Self::ToPty(PtyInstruction::SpawnTerminalVertically(path))
-    }
-    pub fn spawn_terminal_horizontally(path: Option<PathBuf>) -> Self {
-        Self::ToPty(PtyInstruction::SpawnTerminalHorizontally(path))
-    }
-    pub fn pty_new_tab() -> Self {
-        Self::ToPty(PtyInstruction::NewTab)
-    }
-    pub fn pty_close_pane(id: PaneId) -> Self {
-        Self::ToPty(PtyInstruction::ClosePane(id))
-    }
-    pub fn pty_close_tab(ids: Vec<PaneId>) -> Self {
-        Self::ToPty(PtyInstruction::CloseTab(ids))
-    }
-    pub fn pty_exit() -> Self {
-        Self::ToPty(PtyInstruction::Exit)
-    }
-
-    // ToScreen
-    pub fn render() -> Self {
-        Self::ToScreen(ScreenInstruction::Render)
-    }
-    pub fn new_pane(id: PaneId) -> Self {
-        Self::ToScreen(ScreenInstruction::NewPane(id))
-    }
-    pub fn horizontal_split(id: PaneId) -> Self {
-        Self::ToScreen(ScreenInstruction::HorizontalSplit(id))
-    }
-    pub fn vertical_split(id: PaneId) -> Self {
-        Self::ToScreen(ScreenInstruction::VerticalSplit(id))
-    }
-    pub fn write_character(chars: Vec<u8>) -> Self {
-        Self::ToScreen(ScreenInstruction::WriteCharacter(chars))
-    }
-    pub fn resize_left() -> Self {
-        Self::ToScreen(ScreenInstruction::ResizeLeft)
-    }
-    pub fn resize_right() -> Self {
-        Self::ToScreen(ScreenInstruction::ResizeRight)
-    }
-    pub fn resize_down() -> Self {
-        Self::ToScreen(ScreenInstruction::ResizeDown)
-    }
-    pub fn resize_up() -> Self {
-        Self::ToScreen(ScreenInstruction::ResizeUp)
-    }
-    pub fn move_focus_left() -> Self {
-        Self::ToScreen(ScreenInstruction::MoveFocusLeft)
-    }
-    pub fn move_focus_right() -> Self {
-        Self::ToScreen(ScreenInstruction::MoveFocusRight)
-    }
-    pub fn move_focus_down() -> Self {
-        Self::ToScreen(ScreenInstruction::MoveFocusDown)
-    }
-    pub fn move_focus_up() -> Self {
-        Self::ToScreen(ScreenInstruction::MoveFocusUp)
-    }
-    pub fn screen_exit() -> Self {
-        Self::ToScreen(ScreenInstruction::Exit)
-    }
-    pub fn scroll_up() -> Self {
-        Self::ToScreen(ScreenInstruction::ScrollUp)
-    }
-    pub fn scroll_down() -> Self {
-        Self::ToScreen(ScreenInstruction::ScrollDown)
-    }
-    pub fn clear_scroll() -> Self {
-        Self::ToScreen(ScreenInstruction::ClearScroll)
-    }
-    pub fn close_focused_pane() -> Self {
-        Self::ToScreen(ScreenInstruction::CloseFocusedPane)
-    }
-    pub fn toggle_active_terminal_fullscreen() -> Self {
-        Self::ToScreen(ScreenInstruction::ToggleActiveTerminalFullscreen)
-    }
-    pub fn set_selectable(pane_id: PaneId, value: bool) -> Self {
-        Self::ToScreen(ScreenInstruction::SetSelectable(pane_id, value))
-    }
-    pub fn set_max_height(pane_id: PaneId, max_height: usize) -> Self {
-        Self::ToScreen(ScreenInstruction::SetMaxHeight(pane_id, max_height))
-    }
-    pub fn set_invisible_borders(pane_id: PaneId, value: bool) -> Self {
-        Self::ToScreen(ScreenInstruction::SetInvisibleBorders(pane_id, value))
-    }
-    pub fn screen_close_pane(pane_id: PaneId) -> Self {
-        Self::ToScreen(ScreenInstruction::ClosePane(pane_id))
-    }
-    pub fn apply_layout(layout: PathBuf, pids: Vec<RawFd>) -> Self {
-        Self::ToScreen(ScreenInstruction::ApplyLayout(layout, pids))
-    }
-    pub fn screen_new_tab(fd: RawFd) -> Self {
-        Self::ToScreen(ScreenInstruction::NewTab(fd))
-    }
-    pub fn switch_tab_prev() -> Self {
-        Self::ToScreen(ScreenInstruction::SwitchTabPrev)
-    }
-    pub fn switch_tab_next() -> Self {
-        Self::ToScreen(ScreenInstruction::SwitchTabPrev)
-    }
-    pub fn screen_close_tab() -> Self {
-        Self::ToScreen(ScreenInstruction::CloseTab)
-    }
-    pub fn go_to_tab(tab_id: u32) -> Self {
-        Self::ToScreen(ScreenInstruction::GoToTab(tab_id))
-    }
-    pub fn update_tab_name(tab_ids: Vec<u8>) -> Self {
-        Self::ToScreen(ScreenInstruction::UpdateTabName(tab_ids))
-    }
-    pub fn change_mode(mode_info: ModeInfo) -> Self {
-        Self::ToScreen(ScreenInstruction::ChangeMode(mode_info))
-    }
-    pub fn pty(fd: RawFd, bytes: VteBytes) -> Self {
-        Self::ToScreen(ScreenInstruction::PtyBytes(fd, bytes))
-    }
-    pub fn terminal_resize(new_size: PositionAndSize) -> Self {
-        Self::ToScreen(ScreenInstruction::TerminalResize(new_size))
-    }
 }
 
 struct SessionMetaData {
@@ -244,22 +118,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                             .send(ScreenInstruction::FocusNextPane)
                             .unwrap();
                     }
-                    ServerInstruction::ToScreen(instruction) => {
+                    ServerInstruction::Action(action) => {
+                        route_action(action, &rlocked_sessions[rlocked_session]);
+                    }
+                    ServerInstruction::TerminalResize(new_size) => {
                         rlocked_sessions[rlocked_session]
                             .send_screen_instructions
-                            .send(instruction)
-                            .unwrap();
-                    }
-                    ServerInstruction::ToPty(instruction) => {
-                        rlocked_sessions[rlocked_session]
-                            .send_pty_instructions
-                            .send(instruction)
-                            .unwrap();
-                    }
-                    ServerInstruction::PluginUpdate(pid, event) => {
-                        rlocked_sessions[rlocked_session]
-                            .send_plugin_instructions
-                            .send(PluginInstruction::Update(pid, event))
+                            .send(ScreenInstruction::TerminalResize(new_size))
                             .unwrap();
                     }
                     _ => {
@@ -305,9 +170,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                     ServerInstruction::DoneUpdatingTabs => {
                         os_input.send_to_client(ClientInstruction::DoneUpdatingTabs);
                     }
-                    ServerInstruction::ClientShouldExit => {
-                        os_input.send_to_client(ClientInstruction::Exit);
-                    }
                     ServerInstruction::ClientExit => {
                         drop(
                             sessions
@@ -316,9 +178,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                                 .remove(&*session.read().unwrap())
                                 .unwrap(),
                         );
+                        os_input.send_to_client(ClientInstruction::Exit);
                         os_input.server_exit();
                         let _ = router_thread.join();
-                        let _ = os_input.send_to_client(ClientInstruction::Exit);
                         break;
                     }
                     ServerInstruction::Render(output) => {
@@ -759,5 +621,146 @@ fn init_session(
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
+    }
+}
+
+fn route_action(action: Action, session: &SessionMetaData) {
+    match action {
+        Action::Write(val) => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ClearScroll)
+                .unwrap();
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::WriteCharacter(val))
+                .unwrap();
+        }
+        Action::SwitchToMode(mode) => {
+            session
+                .send_plugin_instructions
+                .send(PluginInstruction::Update(
+                    None,
+                    Event::ModeUpdate(get_mode_info(mode)),
+                ))
+                .unwrap();
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
+                .unwrap();
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::Render)
+                .unwrap();
+        }
+        Action::Resize(direction) => {
+            let screen_instr = match direction {
+                Direction::Left => ScreenInstruction::ResizeLeft,
+                Direction::Right => ScreenInstruction::ResizeRight,
+                Direction::Up => ScreenInstruction::ResizeUp,
+                Direction::Down => ScreenInstruction::ResizeDown,
+            };
+            session.send_screen_instructions.send(screen_instr).unwrap();
+        }
+        Action::SwitchFocus => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::SwitchFocus)
+                .unwrap();
+        }
+        Action::FocusNextPane => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::FocusNextPane)
+                .unwrap();
+        }
+        Action::FocusPreviousPane => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::FocusPreviousPane)
+                .unwrap();
+        }
+        Action::MoveFocus(direction) => {
+            let screen_instr = match direction {
+                Direction::Left => ScreenInstruction::MoveFocusLeft,
+                Direction::Right => ScreenInstruction::MoveFocusRight,
+                Direction::Up => ScreenInstruction::MoveFocusUp,
+                Direction::Down => ScreenInstruction::MoveFocusDown,
+            };
+            session.send_screen_instructions.send(screen_instr).unwrap();
+        }
+        Action::ScrollUp => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ScrollUp)
+                .unwrap();
+        }
+        Action::ScrollDown => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ScrollDown)
+                .unwrap();
+        }
+        Action::ToggleFocusFullscreen => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                .unwrap();
+        }
+        Action::NewPane(direction) => {
+            let pty_instr = match direction {
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(None),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(None),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(None),
+                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(None),
+                // No direction specified - try to put it in the biggest available spot
+                None => PtyInstruction::SpawnTerminal(None),
+            };
+            session.send_pty_instructions.send(pty_instr).unwrap();
+        }
+        Action::CloseFocus => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::CloseFocusedPane)
+                .unwrap();
+        }
+        Action::NewTab => {
+            session
+                .send_pty_instructions
+                .send(PtyInstruction::NewTab)
+                .unwrap();
+        }
+        Action::GoToNextTab => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::SwitchTabNext)
+                .unwrap();
+        }
+        Action::GoToPreviousTab => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::SwitchTabPrev)
+                .unwrap();
+        }
+        Action::CloseTab => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::CloseTab)
+                .unwrap();
+        }
+        Action::GoToTab(i) => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::GoToTab(i))
+                .unwrap();
+        }
+        Action::TabNameInput(c) => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::UpdateTabName(c))
+                .unwrap();
+        }
+        Action::NoOp => {}
+        Action::Quit => panic!("Received unexpected action"),
     }
 }
