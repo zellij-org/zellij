@@ -107,7 +107,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
             let os_input = os_input.clone();
             move || {
                 loop {
-                    let (instruction, _err_ctx) = os_input.client_recv();
+                    let (instruction, mut err_ctx) = os_input.client_recv();
+                    err_ctx.add_call(ContextType::Client(ClientContext::from(&instruction)));
                     if let ClientInstruction::Exit = instruction {
                         break;
                     }
@@ -129,7 +130,6 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
         err_ctx.add_call(ContextType::Client(ClientContext::from(
             &client_instruction,
         )));
-        os_input.update_senders(err_ctx);
         match client_instruction {
             ClientInstruction::Exit => break,
             ClientInstruction::Error(backtrace) => {

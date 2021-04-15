@@ -196,7 +196,6 @@ impl ClientOsApi for FakeInputOutput {
     fn send_to_server(&self, msg: ServerInstruction) {
         self.server_sender.send(msg).unwrap();
     }
-    fn update_senders(&mut self, new_ctx: ErrorContext) {}
     fn connect_to_server(&mut self, full_screen_ws: PositionAndSize) {
         ClientOsApi::send_to_server(
             self,
@@ -284,9 +283,8 @@ impl ServerOsApi for FakeInputOutput {
     fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
         self.server_receiver.lock().unwrap().recv().unwrap()
     }
-    fn send_to_client(&mut self, msg: ClientInstruction) {
+    fn send_to_client(&self, msg: ClientInstruction) {
         self.client_sender.send(msg).unwrap();
     }
     fn add_client_sender(&mut self, _buffer_path: String) {}
-    fn update_senders(&mut self, new_ctx: ErrorContext) {}
 }
