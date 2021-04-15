@@ -717,7 +717,7 @@ impl Grid {
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
                     let columns = vec![pad_character; self.width];
-                    if self.viewport.len() > scroll_region_bottom  {
+                    if self.viewport.len() > scroll_region_bottom {
                         self.viewport
                             .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                     } else {
