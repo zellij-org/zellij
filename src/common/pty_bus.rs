@@ -6,7 +6,6 @@ use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
 use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::SenderWithContext;
@@ -69,7 +68,7 @@ impl Stream for ReadFromPid {
 pub type VteBytes = Vec<u8>;
 
 /// Instructions related to PTYs (pseudoterminals).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(Option<PathBuf>),
     SpawnTerminalVertically(Option<PathBuf>),

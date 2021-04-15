@@ -1,6 +1,5 @@
 //! Things related to [`Screen`]s.
 
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -19,7 +18,7 @@ use crate::{layout::Layout, panes::PaneId};
 use zellij_tile::data::{Event, ModeInfo, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
@@ -209,7 +208,7 @@ impl Screen {
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.send_server_instructions
-                .send(ServerInstruction::ClientShouldExit)
+                .send(ServerInstruction::Render(None))
                 .unwrap();
         } else {
             for t in self.tabs.values_mut() {

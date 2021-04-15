@@ -727,7 +727,7 @@ impl Tab {
         }
 
         self.send_server_instructions
-            .send(ServerInstruction::Render(output))
+            .send(ServerInstruction::Render(Some(output)))
             .unwrap();
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
