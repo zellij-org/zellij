@@ -451,9 +451,13 @@ impl Grid {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             for _ in 0..count {
                 let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
-                self.viewport.remove(scroll_region_bottom);
-                self.viewport
-                    .insert(scroll_region_top, Row::from_columns(columns).canonical());
+                if scroll_region_bottom < self.viewport.len() {
+                    self.viewport.remove(scroll_region_bottom);
+                }
+                if scroll_region_top < self.viewport.len() {
+                    self.viewport
+                        .insert(scroll_region_top, Row::from_columns(columns).canonical());
+                }
             }
         }
     }
@@ -462,8 +466,12 @@ impl Grid {
             for _ in 0..count {
                 let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
                 self.viewport.remove(scroll_region_top);
-                self.viewport
-                    .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                if self.viewport.len() > scroll_region_top {
+                    self.viewport
+                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                } else {
+                    self.viewport.push(Row::from_columns(columns).canonical());
+                }
             }
         }
     }
@@ -1060,6 +1068,7 @@ impl vte::Perform for Grid {
             if line_count >= 0 {
                 self.rotate_scroll_region_up(line_count as usize);
             } else {
+                // TODO: can this actually happen?
                 self.rotate_scroll_region_down(line_count.abs() as usize);
             }
         } else if c == 'S' {
@@ -1069,10 +1078,7 @@ impl vte::Perform for Grid {
             } else {
                 params[0] as usize
             };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.delete_lines_in_scroll_region(count, pad_character);
-            // TODO: since delete_lines_in_scroll_region also adds lines, is the below redundant?
-            self.add_empty_lines_in_scroll_region(count, pad_character);
+            self.rotate_scroll_region_down(count);
         } else if c == '@' {
             let count = if params[0] == 0 {
                 1
