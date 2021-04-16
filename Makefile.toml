@@ -67,7 +67,11 @@ workspace = false
 dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
 script_runner = "@duckscript"
 script = '''
-cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
+if is_dir ${CARGO_MAKE_TASK_ARGS}
+    trigger_error "You need to specify a full path for the binary, not just a directory!"
+else
+    cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
+end
 '''
 
 [tasks.build-tiles-release]
