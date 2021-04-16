@@ -30,11 +30,14 @@ Zellij was initially called "Mosaic".
 
 ## How to use it?
 * Clone the project
-* In the project folder, run: `./build-all.sh && cargo run`
+* Install cargo-make with `cargo install --force cargo-make`
+* In the project folder, run: `cargo make run`
 
 (note that right now Zellij only supports linux and mac)
 
 The status bar on the bottom should guide you through the possible keyboard shortcuts in the app.
+
+For more build commands, take a look at [`Contributing.md`](CONTRIBUTING.md).
 
 # Configuration
 It is possible to configure keyboard shortcuts and their actions in a yaml file.

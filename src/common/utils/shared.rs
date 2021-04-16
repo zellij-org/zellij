@@ -18,9 +18,9 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
             if actual_len > columns {
                 let mut line = String::from(l);
                 line.truncate(columns);
-                return line;
+                line
             } else {
-                return [l, &str::repeat(" ", columns - ansi_len(l))].concat();
+                [l, &str::repeat(" ", columns - ansi_len(l))].concat()
             }
         })
         .chain(iter::repeat(str::repeat(" ", columns)))

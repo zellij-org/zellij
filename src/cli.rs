@@ -20,6 +20,10 @@ pub struct CliArgs {
     #[structopt(long)]
     pub max_panes: Option<usize>,
 
+    /// Change where zellij looks for layouts and plugins
+    #[structopt(long)]
+    pub data_dir: Option<PathBuf>,
+
     /// Path to a layout yaml file
     #[structopt(short, long)]
     pub layout: Option<PathBuf>,
@@ -34,6 +38,7 @@ pub struct CliArgs {
 #[derive(Debug, StructOpt)]
 pub enum ConfigCli {
     /// Path to the configuration yaml file
+    #[structopt(alias = "c")]
     Config {
         path: Option<PathBuf>,
         #[structopt(long)]

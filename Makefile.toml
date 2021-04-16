@@ -1,0 +1,110 @@
+# Global Settings
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target"
+SKIP_TEST = false
+
+# Add clippy to the default flow
+[tasks.dev-test-flow]
+dependencies = [
+  "format-flow",
+  "format-toml-conditioned-flow",
+  "pre-build",
+  "build",
+  "post-build",
+  "test-flow",
+  "clippy",
+]
+
+# Patching the default flows to skip testing of wasm32-wasi targets
+[tasks.pre-test]
+condition = { env = { "CARGO_MAKE_CRATE_TARGET_TRIPLE" = "wasm32-wasi" } }
+env = { "SKIP_TEST" = true }
+
+[tasks.test]
+condition = { env_false = ["SKIP_TEST"] }
+dependencies = ["pre-test"]
+
+[tasks.post-test]
+env = { "SKIP_TEST" = false }
+
+# Running Zellij using the development data directory
+[tasks.run]
+workspace = false
+dependencies = ["build-workspace", "build-dev-data-dir"]
+run_task = "launch"
+
+[tasks.build-workspace]
+run_task = { name = "build", fork = true }
+
+[tasks.build-dev-data-dir]
+script_runner = "@duckscript"
+script = '''
+asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
+target_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target
+data_dir = set ${target_dir}/dev-data
+rm -r ${data_dir}
+cp ${asset_dir}/layouts ${data_dir}/
+plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
+for plugin in ${plugins}
+    plugin_name = basename ${plugin}
+    cp ${plugin} ${data_dir}/plugins/${plugin_name}
+end
+writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
+'''
+
+[tasks.launch]
+command = "cargo"
+args = ["run", "--", "--data-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/dev-data/", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+
+# Simple clippy tweak
+[tasks.clippy]
+args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+
+# Release building and installing Zellij
+[tasks.install]
+workspace = false
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
+script_runner = "@duckscript"
+script = '''
+if is_dir ${CARGO_MAKE_TASK_ARGS}
+    trigger_error "You need to specify a full path for the binary, not just a directory!"
+else
+    cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
+end
+'''
+
+[tasks.build-tiles-release]
+env = { "CARGO_MAKE_WORKSPACE_SKIP_MEMBERS" = ["."] }
+run_task = { name = "build-release", fork = true }
+
+[tasks.wasm-opt-tiles]
+script_runner = "@duckscript"
+script = '''
+tiles = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/wasm32-wasi/release/*.wasm
+
+for tile in ${tiles}
+    tile_name = basename ${tile}
+    tile_out = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/${tile_name}
+    if is_path_newer ${tile} ${tile_out}
+        exec wasm-opt -O ${tile} -o ${tile_out}
+    end
+end
+'''
+
+# Publishing Zellij
+[tasks.publish]
+clear = true
+workspace = false
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release", "publish-zellij-tile"]
+run_task = "publish-zellij"
+
+[tasks.publish-zellij-tile]
+ignore_errors = true
+cwd = "zellij-tile"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij]
+command = "cargo"
+args = ["publish"]

@@ -1,6 +1,4 @@
-#![allow(clippy::clippy::if_same_then_else)]
-
-use crate::{common::SenderWithContext, pty_bus::VteEvent, tab::Pane, wasm_vm::PluginInstruction};
+use crate::{common::SenderWithContext, pty_bus::VteBytes, tab::Pane, wasm_vm::PluginInstruction};
 
 use std::{sync::mpsc::channel, unimplemented};
 
@@ -79,7 +77,7 @@ impl Pane for PluginPane {
         self.position_and_size_override = Some(position_and_size_override);
         self.should_render = true;
     }
-    fn handle_event(&mut self, _event: VteEvent) {
+    fn handle_pty_bytes(&mut self, _event: VteBytes) {
         unimplemented!()
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {

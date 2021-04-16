@@ -20,6 +20,7 @@ _zellij() {
 '-o+[Send "open file in new pane" to active zellij session]' \
 '--open-file=[Send "open file in new pane" to active zellij session]' \
 '--max-panes=[Maximum panes on screen, caution: opening more panes will close old ones]' \
+'--data-dir=[Change where zellij looks for layouts and plugins]' \
 '-l+[Path to a layout yaml file]' \
 '--layout=[Path to a layout yaml file]' \
 '-m[Send "move focused pane" to active zellij session]' \
@@ -39,7 +40,27 @@ _zellij() {
         (( CURRENT += 1 ))
         curcontext="${curcontext%:*:*}:zellij-command-$line[1]:"
         case $line[1] in
-            (config)
+            (c)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(c)
+_arguments "${_arguments_options[@]}" \
+'--clean[Disables loading of configuration file at default location]' \
+'-h[Prints help information]' \
+'--help[Prints help information]' \
+'-V[Prints version information]' \
+'--version[Prints version information]' \
+'::path:_files' \
+&& ret=0
+;;
+(config)
 _arguments "${_arguments_options[@]}" \
 '--clean[Disables loading of configuration file at default location]' \
 '-h[Prints help information]' \
@@ -69,6 +90,20 @@ _zellij_commands() {
 "help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'zellij commands' commands "$@"
+}
+(( $+functions[_c_commands] )) ||
+_c_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'c commands' commands "$@"
+}
+(( $+functions[_zellij__c_commands] )) ||
+_zellij__c_commands() {
+    local commands; commands=(
+        
+    )
+    _describe -t commands 'zellij c commands' commands "$@"
 }
 (( $+functions[_zellij__config_commands] )) ||
 _zellij__config_commands() {

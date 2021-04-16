@@ -1,7 +1,10 @@
 use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize};
 use crate::tab::Pane;
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashSet},
+};
 
 pub struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
@@ -9,9 +12,7 @@ pub struct PaneResizer<'a> {
 }
 
 // TODO: currently there are some functions here duplicated with Tab
-// the reason for this is that we need to get rid of the expansion_boundary
-// otherwise we'll have a big separation of concerns issue
-// once that is done, all resizing functions should move here
+// all resizing functions should move here
 
 impl<'a> PaneResizer<'a> {
     pub fn new(
@@ -29,63 +30,72 @@ impl<'a> PaneResizer<'a> {
         let mut successfully_resized = false;
         let mut column_difference: isize = 0;
         let mut row_difference: isize = 0;
-        if new_size.columns < current_size.columns {
-            let reduce_by = current_size.columns - new_size.columns;
-            find_reducible_vertical_chain(
-                &self.panes,
-                reduce_by,
-                current_size.columns,
-                current_size.rows,
-            )
-            .map(|panes_to_resize| {
-                self.reduce_panes_left_and_pull_adjacents_left(panes_to_resize, reduce_by);
-                column_difference = new_size.columns as isize - current_size.columns as isize;
-                current_size.columns = (current_size.columns as isize + column_difference) as usize;
-                successfully_resized = true;
-            });
-        } else if new_size.columns > current_size.columns {
-            let increase_by = new_size.columns - current_size.columns;
-            find_increasable_vertical_chain(
-                &self.panes,
-                increase_by,
-                current_size.columns,
-                current_size.rows,
-            )
-            .map(|panes_to_resize| {
-                self.increase_panes_right_and_push_adjacents_right(panes_to_resize, increase_by);
-                column_difference = new_size.columns as isize - current_size.columns as isize;
-                current_size.columns = (current_size.columns as isize + column_difference) as usize;
-                successfully_resized = true;
-            });
+        match new_size.columns.cmp(&current_size.columns) {
+            Ordering::Greater => {
+                let increase_by = new_size.columns - current_size.columns;
+                if let Some(panes_to_resize) = find_increasable_vertical_chain(
+                    &self.panes,
+                    increase_by,
+                    current_size.columns,
+                    current_size.rows,
+                ) {
+                    self.increase_panes_right_and_push_adjacents_right(
+                        panes_to_resize,
+                        increase_by,
+                    );
+                    column_difference = new_size.columns as isize - current_size.columns as isize;
+                    current_size.columns =
+                        (current_size.columns as isize + column_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Less => {
+                let reduce_by = current_size.columns - new_size.columns;
+                if let Some(panes_to_resize) = find_reducible_vertical_chain(
+                    &self.panes,
+                    reduce_by,
+                    current_size.columns,
+                    current_size.rows,
+                ) {
+                    self.reduce_panes_left_and_pull_adjacents_left(panes_to_resize, reduce_by);
+                    column_difference = new_size.columns as isize - current_size.columns as isize;
+                    current_size.columns =
+                        (current_size.columns as isize + column_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Equal => (),
         }
-        if new_size.rows < current_size.rows {
-            let reduce_by = current_size.rows - new_size.rows;
-            find_reducible_horizontal_chain(
-                &self.panes,
-                reduce_by,
-                current_size.columns,
-                current_size.rows,
-            )
-            .map(|panes_to_resize| {
-                self.reduce_panes_up_and_pull_adjacents_up(panes_to_resize, reduce_by);
-                row_difference = new_size.rows as isize - current_size.rows as isize;
-                current_size.rows = (current_size.rows as isize + row_difference) as usize;
-                successfully_resized = true;
-            });
-        } else if new_size.rows > current_size.rows {
-            let increase_by = new_size.rows - current_size.rows;
-            find_increasable_horizontal_chain(
-                &self.panes,
-                increase_by,
-                current_size.columns,
-                current_size.rows,
-            )
-            .map(|panes_to_resize| {
-                self.increase_panes_down_and_push_down_adjacents(panes_to_resize, increase_by);
-                row_difference = new_size.rows as isize - current_size.rows as isize;
-                current_size.rows = (current_size.rows as isize + row_difference) as usize;
-                successfully_resized = true;
-            });
+        match new_size.rows.cmp(&current_size.rows) {
+            Ordering::Greater => {
+                let increase_by = new_size.rows - current_size.rows;
+                if let Some(panes_to_resize) = find_increasable_horizontal_chain(
+                    &self.panes,
+                    increase_by,
+                    current_size.columns,
+                    current_size.rows,
+                ) {
+                    self.increase_panes_down_and_push_down_adjacents(panes_to_resize, increase_by);
+                    row_difference = new_size.rows as isize - current_size.rows as isize;
+                    current_size.rows = (current_size.rows as isize + row_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Less => {
+                let reduce_by = current_size.rows - new_size.rows;
+                if let Some(panes_to_resize) = find_reducible_horizontal_chain(
+                    &self.panes,
+                    reduce_by,
+                    current_size.columns,
+                    current_size.rows,
+                ) {
+                    self.reduce_panes_up_and_pull_adjacents_up(panes_to_resize, reduce_by);
+                    row_difference = new_size.rows as isize - current_size.rows as isize;
+                    current_size.rows = (current_size.rows as isize + row_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Equal => (),
         }
         if successfully_resized {
             Some((column_difference, row_difference))
@@ -229,13 +239,12 @@ impl<'a> PaneResizer<'a> {
 
 fn find_next_increasable_horizontal_pane(
     panes: &BTreeMap<PaneId, Box<dyn Pane>>,
-    right_of: &Box<dyn Pane>,
+    right_of: &dyn Pane,
     increase_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
         |p| {
-            p.x() == right_of.x() + right_of.columns() + 1
-                && p.horizontally_overlaps_with(right_of.as_ref())
+            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
         }, // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates =
@@ -255,11 +264,11 @@ fn find_next_increasable_horizontal_pane(
 
 fn find_next_increasable_vertical_pane(
     panes: &BTreeMap<PaneId, Box<dyn Pane>>,
-    below: &Box<dyn Pane>,
+    below: &dyn Pane,
     increase_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below.as_ref()), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
     );
     let resizable_candidates =
         next_pane_candidates.filter(|p| p.can_increase_width_by(increase_by));
@@ -278,11 +287,11 @@ fn find_next_increasable_vertical_pane(
 
 fn find_next_reducible_vertical_pane(
     panes: &BTreeMap<PaneId, Box<dyn Pane>>,
-    below: &Box<dyn Pane>,
+    below: &dyn Pane,
     reduce_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below.as_ref()), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
     );
     let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_width_by(reduce_by));
     resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
@@ -300,13 +309,12 @@ fn find_next_reducible_vertical_pane(
 
 fn find_next_reducible_horizontal_pane(
     panes: &BTreeMap<PaneId, Box<dyn Pane>>,
-    right_of: &Box<dyn Pane>,
+    right_of: &dyn Pane,
     reduce_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
         |p| {
-            p.x() == right_of.x() + right_of.columns() + 1
-                && p.horizontally_overlaps_with(right_of.as_ref())
+            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
         }, // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_height_by(reduce_by));
@@ -351,7 +359,11 @@ fn find_increasable_horizontal_chain(
                     if current_pane.x() + current_pane.columns() == screen_width {
                         return Some(panes_to_resize);
                     }
-                    match find_next_increasable_horizontal_pane(panes, &current_pane, increase_by) {
+                    match find_next_increasable_horizontal_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
                         Some(next_pane_id) => {
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
@@ -397,7 +409,11 @@ fn find_increasable_vertical_chain(
                     if current_pane.y() + current_pane.rows() == screen_height {
                         return Some(panes_to_resize);
                     }
-                    match find_next_increasable_vertical_pane(panes, &current_pane, increase_by) {
+                    match find_next_increasable_vertical_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
                         Some(next_pane_id) => {
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
@@ -443,7 +459,11 @@ fn find_reducible_horizontal_chain(
                     if current_pane.x() + current_pane.columns() == screen_width {
                         return Some(panes_to_resize);
                     }
-                    match find_next_reducible_horizontal_pane(panes, &current_pane, reduce_by) {
+                    match find_next_reducible_horizontal_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        reduce_by,
+                    ) {
                         Some(next_pane_id) => {
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
@@ -489,7 +509,11 @@ fn find_reducible_vertical_chain(
                     if current_pane.y() + current_pane.rows() == screen_height {
                         return Some(panes_to_resize);
                     }
-                    match find_next_reducible_vertical_pane(panes, &current_pane, increase_by) {
+                    match find_next_reducible_vertical_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
                         Some(next_pane_id) => {
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }

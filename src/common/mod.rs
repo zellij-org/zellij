@@ -25,10 +25,15 @@ use crate::cli::CliArgs;
 use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
+use async_std::task_local;
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
-use errors::{AppContext, ContextType, ErrorContext, PluginContext, PtyContext, ScreenContext};
+use errors::{
+    get_current_ctx, AppContext, ContextType, ErrorContext, PluginContext, PtyContext,
+    ScreenContext,
+};
 use input::handler::input_loop;
+use install::populate_data_dir;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
@@ -72,31 +77,22 @@ enum SenderType<T: Clone> {
 /// synchronously or asynchronously depending on the underlying [`SenderType`].
 #[derive(Clone)]
 pub struct SenderWithContext<T: Clone> {
-    err_ctx: ErrorContext,
     sender: SenderType<T>,
 }
 
 impl<T: Clone> SenderWithContext<T> {
-    fn new(err_ctx: ErrorContext, sender: SenderType<T>) -> Self {
-        Self { err_ctx, sender }
+    fn new(sender: SenderType<T>) -> Self {
+        Self { sender }
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this
     /// [`SenderWithContext`]'s channel.
     pub fn send(&self, event: T) -> Result<(), mpsc::SendError<(T, ErrorContext)>> {
+        let err_ctx = get_current_ctx();
         match self.sender {
-            SenderType::Sender(ref s) => s.send((event, self.err_ctx)),
-            SenderType::SyncSender(ref s) => s.send((event, self.err_ctx)),
+            SenderType::Sender(ref s) => s.send((event, err_ctx)),
+            SenderType::SyncSender(ref s) => s.send((event, err_ctx)),
         }
-    }
-
-    /// Updates this [`SenderWithContext`]'s [`ErrorContext`]. This is the way one adds
-    /// a call to the error context.
-    ///
-    /// Updating [`ErrorContext`]s works in this way so that these contexts are only ever
-    /// allocated on the stack (which is thread-specific), and not on the heap.
-    pub fn update(&mut self, new_ctx: ErrorContext) {
-        self.err_ctx = new_ctx;
     }
 }
 
@@ -108,6 +104,12 @@ thread_local!(
     /// stack in the form of an [`ErrorContext`].
     static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
+
+task_local! {
+    /// A key to some task local storage that holds a representation of the task's call
+    /// stack in the form of an [`ErrorContext`].
+    static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
+}
 
 /// Instructions related to the entire application.
 #[derive(Clone)]
@@ -140,25 +142,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
         ScreenInstruction,
     > = mpsc::channel();
-    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-    let mut send_screen_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_screen_instructions));
+    let send_screen_instructions =
+        SenderWithContext::new(SenderType::Sender(send_screen_instructions));
 
     let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
         mpsc::channel();
-    let mut send_pty_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_pty_instructions));
+    let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
 
     let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
         PluginInstruction,
     > = mpsc::channel();
     let send_plugin_instructions =
-        SenderWithContext::new(err_ctx, SenderType::Sender(send_plugin_instructions));
+        SenderWithContext::new(SenderType::Sender(send_plugin_instructions));
 
     let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
         mpsc::sync_channel(0);
     let send_app_instructions =
-        SenderWithContext::new(err_ctx, SenderType::SyncSender(send_app_instructions));
+        SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
@@ -168,12 +168,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         opts.debug,
     );
 
+    // Determine and initialize the data directory
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    let data_dir = opts
+        .data_dir
+        .unwrap_or_else(|| project_dirs.data_dir().to_path_buf());
+    populate_data_dir(&data_dir);
+
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
     #[cfg(test)]
     let default_layout = None;
-    let maybe_layout = opts.layout.or(default_layout).map(Layout::new);
+    let maybe_layout = opts
+        .layout
+        .or(default_layout)
+        .map(|p| Layout::new(&p, &data_dir));
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -195,7 +205,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                pty_bus.send_screen_instructions.update(err_ctx);
                 match event {
                     PtyInstruction::SpawnTerminal(file_to_open) => {
                         let pid = pty_bus.spawn_terminal(file_to_open);
@@ -272,14 +281,24 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
-                    screen.send_app_instructions.update(err_ctx);
-                    screen.send_pty_instructions.update(err_ctx);
                     match event {
-                        ScreenInstruction::Pty(pid, vte_event) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .handle_pty_event(pid, vte_event);
+                        ScreenInstruction::PtyBytes(pid, vte_bytes) => {
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            if active_tab.has_terminal_pid(pid) {
+                                // it's most likely that this event is directed at the active tab
+                                // look there first
+                                active_tab.handle_pty_bytes(pid, vte_bytes);
+                            } else {
+                                // if this event wasn't directed at the active tab, start looking
+                                // in other tabs
+                                let all_tabs = screen.get_tabs_mut();
+                                for tab in all_tabs.values_mut() {
+                                    if tab.has_terminal_pid(pid) {
+                                        tab.handle_pty_bytes(pid, vte_bytes);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         ScreenInstruction::Render => {
                             screen.render();
@@ -314,8 +333,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ResizeUp => {
                             screen.get_active_tab_mut().unwrap().resize_up();
                         }
-                        ScreenInstruction::MoveFocus => {
+                        ScreenInstruction::SwitchFocus => {
                             screen.get_active_tab_mut().unwrap().move_focus();
+                        }
+                        ScreenInstruction::FocusNextPane => {
+                            screen.get_active_tab_mut().unwrap().focus_next_pane();
+                        }
+                        ScreenInstruction::FocusPreviousPane => {
+                            screen.get_active_tab_mut().unwrap().focus_previous_pane();
                         }
                         ScreenInstruction::MoveFocusLeft => {
                             screen.get_active_tab_mut().unwrap().move_focus_left();
@@ -415,9 +440,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let wasm_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let mut send_pty_instructions = send_pty_instructions.clone();
-            let mut send_screen_instructions = send_screen_instructions.clone();
-            let mut send_app_instructions = send_app_instructions.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
+            let send_app_instructions = send_app_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -427,14 +452,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                send_screen_instructions.update(err_ctx);
-                send_pty_instructions.update(err_ctx);
-                send_app_instructions.update(err_ctx);
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
-                        let project_dirs =
-                            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-                        let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        let plugin_dir = data_dir.join("plugins/");
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
@@ -538,16 +558,14 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("ipc_server".to_string())
         .spawn({
             use std::io::Read;
-            let mut send_pty_instructions = send_pty_instructions.clone();
-            let mut send_screen_instructions = send_screen_instructions.clone();
+            let send_pty_instructions = send_pty_instructions.clone();
+            let send_screen_instructions = send_screen_instructions.clone();
             move || {
                 std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
                     .expect("could not listen on ipc socket");
                 let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
                 err_ctx.add_call(ContextType::IpcServer);
-                send_pty_instructions.update(err_ctx);
-                send_screen_instructions.update(err_ctx);
 
                 for stream in listener.incoming() {
                     match stream {
@@ -577,7 +595,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 }
                                 ApiCommand::MoveFocus => {
                                     send_screen_instructions
-                                        .send(ScreenInstruction::MoveFocus)
+                                        .send(ScreenInstruction::FocusNextPane)
                                         .unwrap();
                                 }
                             }
@@ -619,8 +637,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             .expect("failed to receive app instruction on channel");
 
         err_ctx.add_call(ContextType::App(AppContext::from(&app_instruction)));
-        send_screen_instructions.update(err_ctx);
-        send_pty_instructions.update(err_ctx);
         match app_instruction {
             AppInstruction::Exit => {
                 break;
@@ -634,7 +650,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 let _ = wasm_thread.join();
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-                let error = format!("{}\n{}", goto_start_of_last_line, backtrace);
+                let restore_snapshot = "\u{1b}[?1049l";
+                let error = format!(
+                    "{}\n{}{}",
+                    goto_start_of_last_line, restore_snapshot, backtrace
+                );
                 let _ = os_input
                     .get_stdout_writer()
                     .write(error.as_bytes())

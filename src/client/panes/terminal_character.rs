@@ -37,10 +37,18 @@ pub enum NamedColor {
     Magenta,
     Cyan,
     White,
+    BrightBlack,
+    BrightRed,
+    BrightGreen,
+    BrightYellow,
+    BrightBlue,
+    BrightMagenta,
+    BrightCyan,
+    BrightWhite,
 }
 
 impl NamedColor {
-    fn to_foreground_ansi_code(&self) -> String {
+    fn to_foreground_ansi_code(self) -> String {
         match self {
             NamedColor::Black => format!("{}", 30),
             NamedColor::Red => format!("{}", 31),
@@ -50,9 +58,17 @@ impl NamedColor {
             NamedColor::Magenta => format!("{}", 35),
             NamedColor::Cyan => format!("{}", 36),
             NamedColor::White => format!("{}", 37),
+            NamedColor::BrightBlack => format!("{}", 90),
+            NamedColor::BrightRed => format!("{}", 91),
+            NamedColor::BrightGreen => format!("{}", 92),
+            NamedColor::BrightYellow => format!("{}", 93),
+            NamedColor::BrightBlue => format!("{}", 94),
+            NamedColor::BrightMagenta => format!("{}", 95),
+            NamedColor::BrightCyan => format!("{}", 96),
+            NamedColor::BrightWhite => format!("{}", 97),
         }
     }
-    fn to_background_ansi_code(&self) -> String {
+    fn to_background_ansi_code(self) -> String {
         match self {
             NamedColor::Black => format!("{}", 40),
             NamedColor::Red => format!("{}", 41),
@@ -62,6 +78,14 @@ impl NamedColor {
             NamedColor::Magenta => format!("{}", 45),
             NamedColor::Cyan => format!("{}", 46),
             NamedColor::White => format!("{}", 47),
+            NamedColor::BrightBlack => format!("{}", 100),
+            NamedColor::BrightRed => format!("{}", 101),
+            NamedColor::BrightGreen => format!("{}", 102),
+            NamedColor::BrightYellow => format!("{}", 103),
+            NamedColor::BrightBlue => format!("{}", 104),
+            NamedColor::BrightMagenta => format!("{}", 105),
+            NamedColor::BrightCyan => format!("{}", 106),
+            NamedColor::BrightWhite => format!("{}", 107),
         }
     }
 }
@@ -383,6 +407,46 @@ impl CharacterStyles {
                 params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
             }
             [49, ..] => *self = self.background(Some(AnsiCode::Reset)),
+            [90, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+            }
+            [91, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
+            [92, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+            }
+            [93, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+            }
+            [94, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
+            [95, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+            }
+            [96, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
+            [97, ..] => {
+                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+            }
+            [100, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+            }
+            [101, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
+            [102, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+            }
+            [103, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+            }
+            [104, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue)))
+            }
+            [105, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+            }
+            [106, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan)))
+            }
+            [107, ..] => {
+                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+            }
             _ => {
                 // if this happens, it's a bug
                 let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));

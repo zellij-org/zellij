@@ -1,62 +1,27 @@
-#[cfg(test)]
-mod tests;
-
 mod cli;
 mod common;
+#[cfg(test)]
+mod tests;
 // TODO mod server;
 mod client;
 
+use crate::cli::CliArgs;
+use crate::command_is_executing::CommandIsExecuting;
+use crate::os_input_output::get_os_input;
+use crate::utils::{
+    consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
+    logging::*,
+};
 use client::{boundaries, layout, panes, tab};
 use common::{
     command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
     ApiCommand,
 };
-use directories_next::ProjectDirs;
-
+use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::{fs, io::Write};
-
 use structopt::StructOpt;
 
-use crate::cli::CliArgs;
-use crate::command_is_executing::CommandIsExecuting;
-use crate::os_input_output::get_os_input;
-use crate::pty_bus::VteEvent;
-use crate::utils::{
-    consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
-    logging::*,
-};
-
 pub fn main() {
-    // First run installation of default plugins & layouts
-    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-    let data_dir = project_dirs.data_dir();
-    let mut assets = asset_map! {
-        "assets/layouts/default.yaml" => "layouts/default.yaml",
-        "assets/layouts/strider.yaml" => "layouts/strider.yaml",
-    };
-    // FIXME: This is a hideous hack and I hate it (a lot)
-    #[cfg(not(feature = "publish"))]
-    assets.extend(asset_map! {
-        "target/status-bar.wasm" => "plugins/status-bar.wasm",
-        "target/tab-bar.wasm" => "plugins/tab-bar.wasm",
-        "target/strider.wasm" => "plugins/strider.wasm",
-    });
-    #[cfg(feature = "publish")]
-    assets.extend(asset_map! {
-        "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",
-        "assets/plugins/tab-bar.wasm" => "plugins/tab-bar.wasm",
-        "assets/plugins/strider.wasm" => "plugins/strider.wasm",
-    });
-
-    for (path, bytes) in assets {
-        let path = data_dir.join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        if !path.exists() {
-            fs::write(path, bytes).expect("Failed to install default assets!");
-        }
-    }
-
     let opts = CliArgs::from_args();
     if let Some(split_dir) = opts.split {
         match split_dir {

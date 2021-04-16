@@ -21,9 +21,9 @@ pub mod boundary_type {
 
 pub mod colors {
     use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
     pub const GREEN: Colour = Fixed(154);
     pub const GRAY: Colour = Fixed(238);
+    pub const ORANGE: Colour = Fixed(166);
 }
 
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
@@ -768,7 +768,7 @@ impl Boundaries {
         let color = match color.is_some() {
             true => match input_mode {
                 InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
-                _ => Some(colors::WHITE),
+                _ => Some(colors::ORANGE),
             },
             false => None,
         };

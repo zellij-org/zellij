@@ -84,15 +84,10 @@ fn handle_command_exit(mut child: Child) {
         }
 
         for signal in signals.pending() {
-            // FIXME: We need to handle more signals here!
-            #[allow(clippy::single_match)]
-            match signal {
-                SIGINT => {
-                    child.kill().unwrap();
-                    child.wait().unwrap();
-                    break 'handle_exit;
-                }
-                _ => {}
+            if let SIGINT = signal {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                break 'handle_exit;
             }
         }
     }
@@ -242,7 +237,13 @@ impl OsApi for OsInputOutput {
         Box::new(stdout)
     }
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        kill(Pid::from_raw(pid), Some(Signal::SIGINT)).unwrap();
+        // TODO:
+        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
+        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
+        // that's why we're sending SIGKILL here
+        // A better solution would be to send SIGINT here and not wait for it, and then have
+        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
+        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }

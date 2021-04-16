@@ -51,7 +51,6 @@ impl Config {
     }
 
     /// Deserializes from given path.
-    #[allow(unused_must_use)]
     pub fn new(path: &Path) -> ConfigResult {
         match File::open(path) {
             Ok(mut file) => {
@@ -79,6 +78,7 @@ impl Config {
     }
 
     /// Entry point of the configuration
+    #[cfg(not(test))]
     pub fn from_cli_config(cli_config: Option<ConfigCli>) -> ConfigResult {
         match cli_config {
             Some(ConfigCli::Config { clean, .. }) if clean => Ok(Config::default()),
@@ -87,6 +87,12 @@ impl Config {
             }
             Some(_) | None => Ok(Config::from_default_path()?),
         }
+    }
+
+    /// In order not to mess up tests from changing configurations
+    #[cfg(test)]
+    pub fn from_cli_config(_: Option<ConfigCli>) -> ConfigResult {
+        Ok(Config::default())
     }
 }
 

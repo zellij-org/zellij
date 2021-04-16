@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{AppInstruction, OPENCALLS};
+use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 
@@ -72,6 +72,12 @@ pub fn handle_panic(
     }
 }
 
+pub fn get_current_ctx() -> ErrorContext {
+    ASYNCOPENCALLS
+        .try_with(|ctx| *ctx.borrow())
+        .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow()))
+}
+
 /// A representation of the call stack.
 #[derive(Clone, Copy)]
 pub struct ErrorContext {
@@ -95,7 +101,9 @@ impl ErrorContext {
                 break;
             }
         }
-        OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self);
+        ASYNCOPENCALLS
+            .try_with(|ctx| *ctx.borrow_mut() = *self)
+            .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self));
     }
 }
 
@@ -168,7 +176,7 @@ impl Display for ContextType {
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScreenContext {
-    HandlePtyEvent,
+    HandlePtyBytes,
     Render,
     NewPane,
     HorizontalSplit,
@@ -178,7 +186,9 @@ pub enum ScreenContext {
     ResizeRight,
     ResizeDown,
     ResizeUp,
-    MoveFocus,
+    SwitchFocus,
+    FocusNextPane,
+    FocusPreviousPane,
     MoveFocusLeft,
     MoveFocusDown,
     MoveFocusUp,
@@ -208,7 +218,7 @@ pub enum ScreenContext {
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
-            ScreenInstruction::Pty(..) => ScreenContext::HandlePtyEvent,
+            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(_) => ScreenContext::NewPane,
             ScreenInstruction::HorizontalSplit(_) => ScreenContext::HorizontalSplit,
@@ -218,7 +228,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ResizeRight => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown => ScreenContext::ResizeDown,
             ScreenInstruction::ResizeUp => ScreenContext::ResizeUp,
-            ScreenInstruction::MoveFocus => ScreenContext::MoveFocus,
+            ScreenInstruction::SwitchFocus => ScreenContext::SwitchFocus,
+            ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
+            ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
             ScreenInstruction::MoveFocusLeft => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusDown => ScreenContext::MoveFocusDown,
             ScreenInstruction::MoveFocusUp => ScreenContext::MoveFocusUp,
