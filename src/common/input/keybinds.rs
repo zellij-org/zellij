@@ -19,6 +19,7 @@ pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 pub struct KeybindsFromYaml {
     #[serde(flatten)]
     keybinds: HashMap<InputMode, Vec<KeyActionUnbind>>,
+    #[serde(default)]
     unbind: Unbind,
 }
 
@@ -50,7 +51,7 @@ struct UnbindFromYaml {
 #[serde(untagged)]
 enum Unbind {
     All(bool),
-    // TODO: use the enum
+    // TODO@a-kenji: use the enum
     //Keys(Vec<Key>),
 }
 
@@ -453,6 +454,12 @@ impl From<KeyActionUnbind> for ModeKeybinds {
         match key_action_unbind {
             KeyActionUnbind::KeyAction(key_action) => ModeKeybinds::from(key_action),
         }
+    }
+}
+
+impl Default for Unbind {
+    fn default() -> Unbind {
+        Unbind::All(false)
     }
 }
 
