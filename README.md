@@ -45,8 +45,11 @@ An example file can be found under `example/config.yaml`.
 
 Zellij will look for a file `/zellij/config.yaml` in the default configuration location of your os.
 
-To pass a config file directly to zellij run it either with:
-`cargo run -- config [FILE]` or `zellij config [FILE]`.
+* To ignore the default config file location:
+`zellij config --clean` or `cargo make run -- config --clean`
+
+* To pass a config file directly to zellij run it either with:
+`zellij config [FILE]` or `cargo make run -- config [FILE]` .
 
 The structure is as follows:
 ```
@@ -76,6 +79,13 @@ keybinds:
           key: [ Char: 'c', Char: 'd',]
 ```
 Will create a new tab on pressing either the `c` or the `d` key.
+
+* It is possible to unbind the default Keybindings:
+```
+keybinds:
+    unbind: true
+```
+
 
 # What is the current status of the project?
 

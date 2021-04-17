@@ -124,12 +124,25 @@ fn from_keyaction_from_yaml_to_mode_keybindings() {
     assert_eq!(expected, ModeKeybinds::from(keyaction));
 }
 
-//#[test]
-//fn from_keybinds_from_yaml_to_keybinds(){
-//let mut keybinds_from_yaml = KeybindsFromYaml(HashMap<InputMode, Vec<KeyActionFromYaml>>);
-//let actions = vec![Action::NoOp, Action::GoToTab(1), ];
-//let keyaction = KeyActionFromYaml {
-//action : actions.clone(),
-//key : vec![ Key::F(1), Key::Backspace , Key::Char('t'), ],
-//};
-//}
+#[test]
+fn toplevel_unbind_unbinds_all() {
+    let from_yaml = KeybindsFromYaml {
+        unbind: Unbind::All(true),
+        keybinds: HashMap::new(),
+    };
+
+    let keybinds_from_yaml = Keybinds::get_default_keybinds_with_config(Some(from_yaml));
+
+    assert_eq!(keybinds_from_yaml, Keybinds::new());
+}
+
+fn no_unbind_unbinds_none() {
+    let from_yaml = KeybindsFromYaml {
+        unbind: Unbind::All(false),
+        keybinds: HashMap::new(),
+    };
+
+    let keybinds_from_yaml = Keybinds::get_default_keybinds_with_config(Some(from_yaml));
+
+    assert_eq!(keybinds_from_yaml, Keybinds::new());
+}
