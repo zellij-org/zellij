@@ -39,11 +39,7 @@ fn first_word_shortcut(is_first_shortcut: bool, letter: &str, description: &str)
     let shortcut_right_separator = Style::new().fg(WHITE).paint("> ");
     let description_first_word = description.split(' ').next().unwrap_or("");
     let description_first_word_length = description_first_word.chars().count();
-    let description_first_word = Style::new()
-        
-        .fg(WHITE)
-        .bold()
-        .paint(description_first_word);
+    let description_first_word = Style::new().fg(WHITE).bold().paint(description_first_word);
     let len = shortcut_len + description_first_word_length + separator.chars().count();
     LinePart {
         part: format!(
