@@ -153,10 +153,18 @@ impl OsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::UnsetRawMode(pid));
     }
-    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(
+        &mut self,
+        _file_to_open: Option<PathBuf>,
+        _working_dir: Option<PathBuf>,
+    ) -> (RawFd, RawFd, RawFd) {
         let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
-        (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
+        (
+            next_terminal_id as i32,
+            next_terminal_id + 1000,
+            next_terminal_id + 2000,
+        ) // secondary number is arbitrary here
     }
     fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
@@ -234,5 +242,9 @@ impl OsApi for FakeInputOutput {
             }
             cb();
         }
+    }
+    fn get_cwd(&self, _pid: RawFd) -> Option<PathBuf> {
+        let home = std::env::var("HOME").unwrap();
+        Some(PathBuf::from(home))
     }
 }
