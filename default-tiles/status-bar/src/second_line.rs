@@ -2,18 +2,18 @@
 use ansi_term::{ANSIStrings, Style};
 use zellij_tile::prelude::*;
 
-use crate::colors::{BLACK, GREEN, ORANGE, WHITE};
+use crate::colors::{GREEN, ORANGE, WHITE};
 use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(is_first_shortcut: bool, letter: &str, description: &str) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().on(BLACK).fg(WHITE).paint(separator);
+    let separator = Style::new().fg(WHITE).paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().on(BLACK).fg(WHITE).paint("<");
-    let shortcut = Style::new().on(BLACK).fg(GREEN).bold().paint(letter);
-    let shortcut_right_separator = Style::new().on(BLACK).fg(WHITE).paint("> ");
+    let shortcut_left_separator = Style::new().fg(WHITE).paint("<");
+    let shortcut = Style::new().fg(GREEN).bold().paint(letter);
+    let shortcut_right_separator = Style::new().fg(WHITE).paint("> ");
     let description_len = description.chars().count();
-    let description = Style::new().on(BLACK).fg(WHITE).bold().paint(description);
+    let description = Style::new().fg(WHITE).bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
         part: format!(
@@ -32,15 +32,15 @@ fn full_length_shortcut(is_first_shortcut: bool, letter: &str, description: &str
 
 fn first_word_shortcut(is_first_shortcut: bool, letter: &str, description: &str) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().on(BLACK).fg(WHITE).paint(separator);
+    let separator = Style::new().fg(WHITE).paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().on(BLACK).fg(WHITE).paint("<");
-    let shortcut = Style::new().on(BLACK).fg(GREEN).bold().paint(letter);
-    let shortcut_right_separator = Style::new().on(BLACK).fg(WHITE).paint("> ");
+    let shortcut_left_separator = Style::new().fg(WHITE).paint("<");
+    let shortcut = Style::new().fg(GREEN).bold().paint(letter);
+    let shortcut_right_separator = Style::new().fg(WHITE).paint("> ");
     let description_first_word = description.split(' ').next().unwrap_or("");
     let description_first_word_length = description_first_word.chars().count();
     let description_first_word = Style::new()
-        .on(BLACK)
+        
         .fg(WHITE)
         .bold()
         .paint(description_first_word);
@@ -179,7 +179,7 @@ fn quicknav_short() -> LinePart {
 fn locked_interface_indication() -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let locked_text_len = locked_text.chars().count();
-    let locked_styled_text = Style::new().on(BLACK).fg(WHITE).bold().paint(locked_text);
+    let locked_styled_text = Style::new().fg(WHITE).bold().paint(locked_text);
     LinePart {
         part: format!("{}", locked_styled_text),
         len: locked_text_len,
@@ -190,13 +190,13 @@ fn select_pane_shortcut(is_first_shortcut: bool) -> LinePart {
     let shortcut = "ENTER";
     let description = "Select pane";
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().on(BLACK).fg(WHITE).paint(separator);
+    let separator = Style::new().fg(WHITE).paint(separator);
     let shortcut_len = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().on(BLACK).fg(WHITE).paint("<");
-    let shortcut = Style::new().on(BLACK).fg(ORANGE).bold().paint(shortcut);
-    let shortcut_right_separator = Style::new().on(BLACK).fg(WHITE).paint("> ");
+    let shortcut_left_separator = Style::new().fg(WHITE).paint("<");
+    let shortcut = Style::new().fg(ORANGE).bold().paint(shortcut);
+    let shortcut_right_separator = Style::new().fg(WHITE).paint("> ");
     let description_len = description.chars().count();
-    let description = Style::new().on(BLACK).fg(WHITE).bold().paint(description);
+    let description = Style::new().fg(WHITE).bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
         part: format!(
