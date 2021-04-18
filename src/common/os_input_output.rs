@@ -5,7 +5,7 @@ use darwin_libproc;
 
 use byteorder::{BigEndian, ByteOrder};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::pty::{forkpty, Winsize};
+use nix::pty::{forkpty, ForkptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
@@ -102,102 +102,131 @@ fn handle_command_exit(mut child: Child) {
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
-/// `orig_termios`.
-///
-/// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
-/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
-/// file open. If no file is given, the shell specified by environment variable `SHELL` will
-/// be started in the new terminal.
-///
-/// # Panics
-///
-/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
-/// set.
-// FIXME this should probably be split into different functions, or at least have less levels
-// of indentation in some way
+/// `orig_termios`. Let `handle_pty_fork` handle a successful fork, otherwire panic.
 fn spawn_terminal(
     file_to_open: Option<PathBuf>,
     orig_termios: termios::Termios,
     working_dir: Option<PathBuf>,
 ) -> (RawFd, RawFd, RawFd) {
-    // Choose the working directory to use
-    let dir = match working_dir {
-        Some(dir) => dir,
-        None => match env::current_dir() {
-            Ok(env_dir) => env_dir,
-            Err(_) => PathBuf::from(env::var("HOME").unwrap()),
-        },
-    };
-
+    // Create a pipe to allow the child the communicate the shell's pid to it's
+    // parent.
     let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
 
-    let (pid_primary, pid_secondary, pid_tertiary): (RawFd, RawFd, RawFd) = {
+    let (pid_parent, pid_child, pid_shell): (RawFd, RawFd, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
-                let pid_primary = fork_pty_res.master;
-                let (pid_secondary, pid_tertiary) = match fork_pty_res.fork_result {
-                    ForkResult::Parent { child } => {
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))
-                            .expect("could not fcntl");
-
-                        let mut buffer = [0; 4];
-                        unistd::close(child_fd).expect("couldn't close child_fd");
-                        match unistd::read(parent_fd, &mut buffer) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                panic!("Read operation failed: {:?}", e);
-                            }
-                        }
-                        unistd::close(parent_fd).expect("couldn't close parent_fd");
-                        let pid: u32 = u32::from_be_bytes(buffer);
-                        (child, pid)
-                    }
-                    ForkResult::Child => match file_to_open {
-                        Some(file_to_open) => {
-                            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
-                            }
-                            let editor =
-                                env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
-
-                            let child = Command::new(editor)
-                                .args(&[file_to_open])
-                                .current_dir(dir)
-                                .spawn()
-                                .expect("failed to spawn");
-                            handle_command_exit(child);
-                            ::std::process::exit(0);
-                        }
-                        None => {
-                            let child = Command::new(env::var("SHELL").unwrap())
-                                .current_dir(dir)
-                                .spawn()
-                                .expect("failed to spawn");
-
-                            let mut buff = [0; 4];
-                            BigEndian::write_u32(&mut buff, child.id() as u32);
-                            unistd::close(parent_fd).expect("couldn't close parent_fd");
-                            match unistd::write(child_fd, &buff) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    panic!("Read operation failed: {:?}", e);
-                                }
-                            }
-                            unistd::close(child_fd).expect("couldn't close child_fd");
-
-                            handle_command_exit(child);
-                            ::std::process::exit(0);
-                        }
-                    },
-                };
-                (pid_primary, pid_secondary.as_raw(), pid_tertiary as i32)
+                handle_pty_fork(fork_pty_res, file_to_open, working_dir, parent_fd, child_fd)
             }
             Err(e) => {
                 panic!("failed to fork {:?}", e);
             }
         }
     };
-    (pid_primary, pid_secondary, pid_tertiary)
+    (pid_parent, pid_child, pid_shell)
+}
+
+/// Handle a succefull pty fork.
+///
+/// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
+/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
+/// file open. If no file is given, the shell specified by environment variable `SHELL` will
+/// be started in the new terminal.
+///
+/// If a `working_dir` is given, the shell will be started at `working_dir`
+///
+/// # Panics
+///
+/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
+/// set.
+fn handle_pty_fork(
+    fork_pty_res: ForkptyResult,
+    file_to_open: Option<PathBuf>,
+    working_dir: Option<PathBuf>,
+    parent_fd: RawFd,
+    child_fd: RawFd,
+) -> (RawFd, RawFd, RawFd) {
+    let pid_parent = fork_pty_res.master;
+    let (pid_child, pid_shell) = match fork_pty_res.fork_result {
+        ForkResult::Parent { child } => {
+            fcntl(pid_parent, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
+            let pid_shell: u32 = read_from_pipe(parent_fd, child_fd);
+            (child, pid_shell)
+        }
+        ForkResult::Child => match file_to_open {
+            Some(file_to_open) => {
+                if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
+                    panic!(
+                        "Can't edit files if an editor is not defined.
+                        To fix: define the EDITOR or VISUAL environment
+                        variables with the path to your editor (eg. /usr/bin/vim)"
+                    );
+                }
+                let editor = env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
+
+                let child = Command::new(editor)
+                    .args(&[file_to_open])
+                    .spawn()
+                    .expect("failed to spawn");
+                handle_command_exit(child);
+                ::std::process::exit(0);
+            }
+            None => {
+                let child = match working_dir {
+                    Some(working_dir) => Command::new(env::var("SHELL").unwrap())
+                        .current_dir(working_dir)
+                        .spawn()
+                        .expect("failed to spawn"),
+                    None => Command::new(env::var("SHELL").unwrap())
+                        .spawn()
+                        .expect("failed to spawn"),
+                };
+
+                write_to_pipe(child.id() as u32, parent_fd, child_fd);
+
+                handle_command_exit(child);
+                ::std::process::exit(0);
+            }
+        },
+    };
+    (pid_parent, pid_child.as_raw(), pid_shell as i32)
+}
+
+/// Read from a pipe given both file descriptors
+///
+/// # Panics
+///
+/// This function will panic if a close operation on one of the file descriptors fails or if the
+/// read operation fails.
+fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> u32 {
+    let mut buffer = [0; 4];
+    unistd::close(child_fd).expect("Read: couldn't close child_fd");
+    match unistd::read(parent_fd, &mut buffer) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("Read operation failed: {:?}", e);
+        }
+    }
+    unistd::close(parent_fd).expect("Read: couldn't close parent_fd");
+    u32::from_be_bytes(buffer)
+}
+
+/// Write to a pipe given both file descriptors
+///
+/// # Panics
+///
+/// This function will panic if a close operation on one of the file descriptors fails or if the
+/// write operation fails.
+fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
+    let mut buff = [0; 4];
+    BigEndian::write_u32(&mut buff, data);
+    unistd::close(parent_fd).expect("Write: couldn't close parent_fd");
+    match unistd::write(child_fd, &buff) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("Write operation failed: {:?}", e);
+        }
+    }
+    unistd::close(child_fd).expect("Write: couldn't close child_fd");
 }
 
 #[derive(Clone)]
