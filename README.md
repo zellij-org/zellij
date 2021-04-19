@@ -21,85 +21,38 @@
 [Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
 At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
 
-For more details, read about upcoming features in our [roadmap](#roadmap).
+Zellij includes a [layout system](https://www.zellij.dev/documents/layout.html), and a [plugin system](https://www.zellij.dev/documents/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
-Right now Zellij is in its early development stages and is not yet ready for everyday usage.
-If you're interested, watch this space or better yet - get involved!
+For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
 Zellij was initially called "Mosaic".
 
-## How to use it?
+## How do I install it?
+You can install it through `cargo`:
+
+```
+cargo install zellij
+```
+
+Or you can download a prebuilt binary from our Releases.
+
+## How do I hack on it?
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
 * In the project folder, run: `cargo make run`
 
-(note that right now Zellij only supports linux and mac)
-
-The status bar on the bottom should guide you through the possible keyboard shortcuts in the app.
-
 For more build commands, take a look at [`Contributing.md`](CONTRIBUTING.md).
 
-# Configuration
-It is possible to configure keyboard shortcuts and their actions in a yaml file.
-An example file can be found under `example/config.yaml`.
+## Configuration
+For configuring Zellij, please see the [Configuration documentation](https://zellij.dev/documentation/configuration.html).
 
-Zellij will look for a file `/zellij/config.yaml` in the default configuration location of your os.
+## What is the current status of the project?
 
-* To ignore the default config file location:
-`zellij config --clean` or `cargo make run -- config --clean`
+Zellij should be ready for everyday use, but it's still classified as a beta. This means that there might be a rare crash or wrong behaviour here and there, but that once found it should be fixed rather quickly. If this happens to you, we would be very happy if you could open an issue and tell us how to reproduce it as best you can.
 
-* To pass a config file directly to zellij run it either with:
-`zellij config [FILE]` or `cargo make run -- config [FILE]` .
+## How do I get involved?
 
-The structure is as follows:
-```
-keybinds:
-    normal:
-        - action: []
-          key: []
-```
-`normal` is one of the `modes` zellij can be in.
-It is possible to bind a sequence of actions to numerous keys at the same time.
-Here a reference to the [Key](https://docs.rs/termion/1.5.6/termion/event/enum.Key.html) format that is used.
-
-For example:
-```
-keybinds:
-    normal:
-        - action: [ NewTab, GoToTab: 1,]
-          key: [ Char: 'c',]
-```
-Will create a new tab and then switch to tab number 1 on pressing the
-`c` key.
-Whereas:
-```
-keybinds:
-    normal:
-        - action: [ NewTab,]
-          key: [ Char: 'c', Char: 'd',]
-```
-Will create a new tab on pressing either the `c` or the `d` key.
-
-* It is possible to unbind the default Keybindings:
-```
-keybinds:
-    unbind: true
-```
-
-
-# What is the current status of the project?
-
-Zellij is in the last stages of being VT compatible. As much as modern terminals are.
-Most things should work inside a terminal pane, but some edge cases don't. Fixing these edge cases is a priority, so please open an issue if you find a bug.
-
-Zellij is in its alpha stage right now. Please treat it accordingly.
-
-# How do I get involved?
-
-At the moment, the project is in early development.
-A lot of the work needed to be done is product work (making decisions about what Zellij will be and do) as well as development work. Most tasks would probably involve a little of both.
-We're a small team of enthusiasts, and we eagerly welcome people who would like to join in at this early stage.
-We welcome all contributors, regardless of experience level. We believe any person who would like to contribute can make the project better!
+Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level.
 
 To get started, you can:
 1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
@@ -108,22 +61,18 @@ To get started, you can:
 
 And most importantly, please read our [code of conduct](CODE_OF_CONDUCT.md).
 
-# Roadmap
+## Roadmap
 This section contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.
+  * **A web client/server** - Connect to Zellij through the browser instead of opening a terminal window. Either on a local or remote machine.
+  * **Share sessions with others** - See the focused window and cursor of other users, work on a problem or a code base together in real time.
+  * **Support for multiple terminal windows across screens** - Transfer panes across different windows and screens by having them all belong to the same session.
+  * **Smart layouts** - expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed.
 
-  * <b>A layout engine</b> that would allow you to define how your panes will be (re)arranged when you open or close them. As well as when you change the terminal window size.
-  * <b>Pane types beyond a simple shell prompt</b>, for example:
-    - A file explorer (similar to ranger) that opens files for editing in a new pane.
-    - A launcher that opens any command you enter in a new pane
-    - A command pane that would run any command, display its output and re-run that command when clicked. Changing its frame colour to green/yellow/red depending on the exit status.
-  * <b>A Webassembly plugin system for compiled languages</b> built using WASI to allow you to write plugins in any compiled language. These plugins would be able to create new panes, interact with existing ones, interact with the filesystem and subscribe to events. You could consume them at runtime and decide what permissions to give them.
-  * <b>Built in support for portable workspaces across machines, projects and teams</b>: imagine being able to include a configuration file with your project that would include all the layouts and plugins that would best help new developers getting onboarded. Including all the shortcuts, customized panes and help-message hints triggered by things such as opening a file, entering a folder or running a command. How about being able to log into a new server or container, start Zellij with a URL of a git repository including your favorite configuration and plugins, and working with it as if you were on your own machine?
-  * <b>Support for multiple terminal windows across screens</b>: Why limit yourself to one terminal window? Zellij would allow you to transfer panes, view powerlines, get alerts and control your workspace from different windows by having them all belong to the same session.
 
-# Contributing
+## Contributing
 
 Take a look at [`Contributing.md`](CONTRIBUTING.md) guide.
 
-# License
+## License
 
 MIT
