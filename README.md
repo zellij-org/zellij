@@ -21,7 +21,7 @@
 [Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
 At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
 
-Zellij includes a [layout system](https://www.zellij.dev/documents/layout.html), and a [plugin system](https://www.zellij.dev/documents/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
+Zellij includes a [layout system](https://zellij.dev/documentation/layouts.html), and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
