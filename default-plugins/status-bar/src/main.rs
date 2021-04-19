@@ -27,7 +27,7 @@ struct State {
     mode_info: ModeInfo,
 }
 
-register_tile!(State);
+register_plugin!(State);
 
 #[derive(Default)]
 pub struct LinePart {
@@ -41,7 +41,7 @@ impl Display for LinePart {
     }
 }
 
-impl ZellijTile for State {
+impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
