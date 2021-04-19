@@ -2184,7 +2184,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.3.3"
+version = "0.5.0-beta"
 dependencies = [
  "ansi_term 0.12.1",
  "async-std",

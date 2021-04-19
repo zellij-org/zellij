@@ -1,11 +1,12 @@
 [package]
 name = "zellij"
-version = "0.3.3"
+version = "0.5.0-beta"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
-description = "Terminal workspace (WIP)"
+description = "A terminal workspace with batteries included"
 license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
+homepage = "https://zellij.dev"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
