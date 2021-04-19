@@ -34,7 +34,7 @@ You can install it through `cargo`:
 cargo install zellij
 ```
 
-Or you can download a prebuilt binary from our Releases.
+Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
 ## How do I hack on it?
 * Clone the project
