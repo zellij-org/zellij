@@ -41,7 +41,7 @@ run_task = { name = "build", fork = true }
 script_runner = "@duckscript"
 script = '''
 asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
-target_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target
+target_dir = set ${CARGO_TARGET_DIR}
 data_dir = set ${target_dir}/dev-data
 rm -r ${data_dir}
 cp ${asset_dir}/layouts ${data_dir}/
@@ -55,7 +55,7 @@ writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
 
 [tasks.launch]
 command = "cargo"
-args = ["run", "--", "--data-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/dev-data/", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["run", "--", "--data-dir", "${CARGO_TARGET_DIR}/dev-data/", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Simple clippy tweak
 [tasks.clippy]
@@ -70,7 +70,7 @@ script = '''
 if is_dir ${CARGO_MAKE_TASK_ARGS}
     trigger_error "You need to specify a full path for the binary, not just a directory!"
 else
-    cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
+    cp ${CARGO_TARGET_DIR}/release/${CARGO_MAKE_CRATE_NAME} ${CARGO_MAKE_TASK_ARGS}
 end
 '''
 
@@ -81,7 +81,7 @@ run_task = { name = "build-release", fork = true }
 [tasks.wasm-opt-tiles]
 script_runner = "@duckscript"
 script = '''
-tiles = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/wasm32-wasi/release/*.wasm
+tiles = glob_array ${CARGO_TARGET_DIR}/wasm32-wasi/release/*.wasm
 
 for tile in ${tiles}
     tile_name = basename ${tile}
@@ -91,6 +91,13 @@ for tile in ${tiles}
     end
 end
 '''
+
+# CI Releasing Zellij
+[tasks.ci-build-release]
+workspace = false
+dependencies = ["build-tiles-release", "wasm-opt-tiles", "build-release"]
+command = "cargo"
+args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
 
 # Publishing Zellij
 [tasks.publish]
