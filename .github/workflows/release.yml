@@ -19,20 +19,20 @@ jobs:
         include:
           - os: ubuntu-18.04
             target: x86_64-unknown-linux-gnu
-            client_artifact_name: target/x86_64-unknown-linux-gnu/release/mosaic
-            client_release_name: mosaic-x86_64-unknown-linux-gnu
+            client_artifact_name: target/x86_64-unknown-linux-gnu/release/zellij
+            client_release_name: zellij-x86_64-unknown-linux-gnu
             strip: true
 
           - os: ubuntu-18.04
             target: x86_64-unknown-linux-musl
-            client_artifact_name: target/x86_64-unknown-linux-musl/release/mosaic
-            client_release_name: mosaic-x86_64-unknown-linux-musl
+            client_artifact_name: target/x86_64-unknown-linux-musl/release/zellij
+            client_release_name: zellij-x86_64-unknown-linux-musl
             strip: true
 
           - os: macos-latest
             target: x86_64-apple-darwin
-            client_artifact_name: target/x86_64-apple-darwin/release/mosaic
-            client_release_name: mosaic-x86_64-macos-darwin
+            client_artifact_name: target/x86_64-apple-darwin/release/zellij
+            client_release_name: zellij-x86_64-macos-darwin
             strip: true
 
     steps:
@@ -52,11 +52,10 @@ jobs:
         sudo apt update
         sudo apt install musl-tools -y
 
-    - name: cargo build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --locked --target=${{ matrix.target }}
+    - name: make and make build-release
+      run: |
+        cargo install --force cargo-make
+        cargo make build-release
 
 
     - name: Compress client
@@ -93,7 +92,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/x86_64-unknown-linux-musl/debian/mosaic*
-          asset_name: mosaic-amd64.deb
+          file: target/x86_64-unknown-linux-musl/debian/zellij*
+          asset_name: zellij-amd64.deb
           tag: ${{ github.ref }}
           file_glob: true
