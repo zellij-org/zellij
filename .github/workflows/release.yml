@@ -60,6 +60,8 @@ jobs:
       run: |
         cargo install --force cargo-make
         cargo make build-release
+        tree target
+
 
     - name: Compress client
       uses: svenstaro/upx-action@v2
@@ -67,6 +69,7 @@ jobs:
         file: ${{ matrix.client_artifact_name }}
         args: --lzma
         strip: ${{ matrix.strip }}
+
 
     # TODO?
     # - name: Get CHANGELOG.md entry
