@@ -45,6 +45,10 @@ jobs:
         toolchain: stable
         target: ${{ matrix.target }}
         override: true
+    - name: install wasm32-wasi
+      run: |
+        rustup target add wasm32-wasi
+        
 
     - name: Install musl
       if: matrix.target == 'x86_64-unknown-linux-musl'
@@ -57,14 +61,12 @@ jobs:
         cargo install --force cargo-make
         cargo make build-release
 
-
     - name: Compress client
       uses: svenstaro/upx-action@v2
       with:
         file: ${{ matrix.client_artifact_name }}
         args: --lzma
         strip: ${{ matrix.strip }}
-
 
     # TODO?
     # - name: Get CHANGELOG.md entry
@@ -81,18 +83,18 @@ jobs:
         asset_name: ${{ matrix.client_release_name }}
         tag: ${{ github.ref }}
 
-  deb-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@master
-      - name: Deb Build
-        uses: ebbflow-io/cargo-deb-amd64-ubuntu@1.0
+  # deb-build:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@master
+  #     - name: Deb Build
+  #       uses: ebbflow-io/cargo-deb-amd64-ubuntu@1.0
 
-      - name: Upload deb to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/x86_64-unknown-linux-musl/debian/zellij*
-          asset_name: zellij-amd64.deb
-          tag: ${{ github.ref }}
-          file_glob: true
+  #     - name: Upload deb to release
+  #       uses: svenstaro/upload-release-action@v2
+  #       with:
+  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
+  #         file: target/x86_64-unknown-linux-musl/debian/zellij*
+  #         asset_name: zellij-amd64.deb
+  #         tag: ${{ github.ref }}
+  #         file_glob: true
