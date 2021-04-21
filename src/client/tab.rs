@@ -13,6 +13,7 @@ use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
+use std::time::Instant;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
@@ -122,6 +123,8 @@ pub trait Pane {
     fn scroll_up(&mut self, count: usize);
     fn scroll_down(&mut self, count: usize);
     fn clear_scroll(&mut self);
+    fn active_at(&self) -> Instant;
+    fn set_active_at(&mut self, instant: Instant);
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -700,6 +703,7 @@ impl Tab {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 match self.active_terminal.unwrap() == pane.pid() {
                     true => {
+                        pane.set_active_at(Instant::now());
                         boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(colors::GREEN))
                     }
                     false => boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None),
@@ -1837,7 +1841,7 @@ impl Tab {
                 .filter(|(_, (_, c))| {
                     c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(active))
+                .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1867,7 +1871,7 @@ impl Tab {
                 .filter(|(_, (_, c))| {
                     c.is_directly_below(active) && c.vertically_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(active))
+                .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1897,7 +1901,7 @@ impl Tab {
                 .filter(|(_, (_, c))| {
                     c.is_directly_above(active) && c.vertically_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_vertical_overlap_with(active))
+                .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
@@ -1927,7 +1931,7 @@ impl Tab {
                 .filter(|(_, (_, c))| {
                     c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
                 })
-                .max_by_key(|(_, (_, c))| c.get_horizontal_overlap_with(active))
+                .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {

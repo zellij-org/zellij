@@ -1,8 +1,9 @@
 use crate::{common::SenderWithContext, pty_bus::VteBytes, tab::Pane, wasm_vm::PluginInstruction};
 
-use std::{sync::mpsc::channel, unimplemented};
-
 use crate::panes::{PaneId, PositionAndSize};
+
+use std::time::Instant;
+use std::{sync::mpsc::channel, unimplemented};
 
 pub struct PluginPane {
     pub pid: u32,
@@ -14,6 +15,7 @@ pub struct PluginPane {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub max_height: Option<usize>,
     pub max_width: Option<usize>,
+    pub active_at: Instant,
 }
 
 impl PluginPane {
@@ -32,6 +34,7 @@ impl PluginPane {
             send_plugin_instructions,
             max_height: None,
             max_width: None,
+            active_at: Instant::now(),
         }
     }
 }
@@ -206,5 +209,13 @@ impl Pane for PluginPane {
     }
     fn invisible_borders(&self) -> bool {
         self.invisible_borders
+    }
+
+    fn active_at(&self) -> Instant {
+        self.active_at
+    }
+
+    fn set_active_at(&mut self, time: Instant) {
+        self.active_at = time;
     }
 }
