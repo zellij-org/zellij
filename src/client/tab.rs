@@ -2174,6 +2174,30 @@ impl Tab {
             self.render();
         }
     }
+    pub fn scroll_active_terminal_up_page(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            // prevent overflow when row == 0
+            let scroll_columns = active_terminal.rows().max(1) - 1;
+            active_terminal.scroll_up(scroll_columns);
+            self.render();
+        }
+    }
+    pub fn scroll_active_terminal_down_page(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            // prevent overflow when row == 0
+            let scroll_columns = active_terminal.rows().max(1) - 1;
+            active_terminal.scroll_down(scroll_columns);
+            self.render();
+        }
+    }
     pub fn clear_active_terminal_scroll(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             let active_terminal = self

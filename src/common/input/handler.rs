@@ -184,6 +184,16 @@ impl InputHandler {
                     .send(ScreenInstruction::ScrollDown)
                     .unwrap();
             }
+            Action::PageScrollUp => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollUp)
+                    .unwrap();
+            }
+            Action::PageScrollDown => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollDown)
+                    .unwrap();
+            }
             Action::ToggleFocusFullscreen => {
                 self.send_screen_instructions
                     .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
@@ -293,6 +303,7 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
         }
         InputMode::Scroll => {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
+            keybinds.push(("PGUP/PGDN".to_string(), "Scroll Page".to_string()));
         }
         InputMode::RenameTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));

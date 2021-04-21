@@ -63,6 +63,8 @@ pub mod commands {
     pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
     pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
     pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
+    pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
+    pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
 
     pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
     pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j

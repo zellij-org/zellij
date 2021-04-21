@@ -340,6 +340,11 @@ impl Keybinds {
                 defaults.insert(Key::Char('j'), vec![Action::ScrollDown]);
                 defaults.insert(Key::Char('k'), vec![Action::ScrollUp]);
 
+                defaults.insert(Key::Ctrl('f'), vec![Action::PageScrollDown]);
+                defaults.insert(Key::Ctrl('b'), vec![Action::PageScrollUp]);
+                defaults.insert(Key::PageDown, vec![Action::PageScrollDown]);
+                defaults.insert(Key::PageUp, vec![Action::PageScrollUp]);
+
                 defaults.insert(Key::Down, vec![Action::ScrollDown]);
                 defaults.insert(Key::Up, vec![Action::ScrollUp]);
 

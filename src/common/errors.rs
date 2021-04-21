@@ -196,6 +196,8 @@ pub enum ScreenContext {
     Quit,
     ScrollUp,
     ScrollDown,
+    PageScrollUp,
+    PageScrollDown,
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
@@ -238,6 +240,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Quit => ScreenContext::Quit,
             ScreenInstruction::ScrollUp => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown => ScreenContext::ScrollDown,
+            ScreenInstruction::PageScrollUp => ScreenContext::PageScrollUp,
+            ScreenInstruction::PageScrollDown => ScreenContext::PageScrollDown,
             ScreenInstruction::ClearScroll => ScreenContext::ClearScroll,
             ScreenInstruction::CloseFocusedPane => ScreenContext::CloseFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
