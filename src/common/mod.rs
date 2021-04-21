@@ -16,6 +16,7 @@ use std::thread;
 use std::{collections::HashMap, fs};
 use std::{
     collections::HashSet,
+    env,
     io::Write,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -127,6 +128,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
         .unwrap();
+
+    env::set_var(&"ZELLIJ", "0");
 
     let config = Config::from_cli_config(opts.config, opts.option)
         .map_err(|e| {
