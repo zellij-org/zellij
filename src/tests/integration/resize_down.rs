@@ -98,17 +98,18 @@ pub fn resize_down_with_panes_above_and_below() {
     // ┌───────────┐                  ┌───────────┐
     // │           │                  │           │
     // │           │                  │           │
-    // ├───────────┤                  │           │
-    // │███████████│ ==resize=down==> ├───────────┤
-    // │███████████│                  │███████████│
     // ├───────────┤                  ├───────────┤
-    // │           │                  │           │
+    // │███████████│ ==resize=down==> │███████████│
+    // │███████████│                  │███████████│
+    // │███████████│                  │███████████│
+    // ├───────────┤                  │███████████│
+    // │           │                  ├───────────┤
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
         columns: 121,
-        rows: 20,
+        rows: 25,
         x: 0,
         y: 0,
     };
@@ -599,7 +600,7 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     // █ == focused pane
     let fake_win_size = PositionAndSize {
         columns: 121,
-        rows: 5,
+        rows: 7,
         x: 0,
         y: 0,
     };

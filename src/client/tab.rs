@@ -21,7 +21,10 @@ use std::{io::Write, sync::mpsc::channel};
 use zellij_tile::data::{Event, ModeInfo};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
-const MIN_TERMINAL_HEIGHT: usize = 2;
+
+// MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
+// this is a dirty hack until we implement fixed panes
+const MIN_TERMINAL_HEIGHT: usize = 3;
 const MIN_TERMINAL_WIDTH: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
