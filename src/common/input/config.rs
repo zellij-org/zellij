@@ -141,9 +141,7 @@ mod config_test {
 
     #[test]
     fn clean_option_equals_default_config() {
-        let cli_config = ConfigCli::Config {
-            clean: true,
-        };
+        let cli_config = ConfigCli::Config { clean: true };
         let config = Config::from_cli_config(None, Some(cli_config)).unwrap();
         let default = Config::default();
         assert_eq!(config, default);
