@@ -2178,7 +2178,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_columns =  active_terminal.rows().max(1) - 1;
+            let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_up(scroll_columns);
             self.render();
         }
@@ -2190,7 +2190,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_columns =  active_terminal.rows().max(1) - 1;
+            let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_down(scroll_columns);
             self.render();
         }
