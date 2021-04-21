@@ -594,7 +594,7 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     // █ == focused pane
     let fake_win_size = PositionAndSize {
         columns: 121,
-        rows: 5,
+        rows: 7,
         x: 0,
         y: 0,
     };
