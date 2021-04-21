@@ -38,6 +38,8 @@ pub enum ScreenInstruction {
     Quit,
     ScrollUp,
     ScrollDown,
+    PageScrollUp,
+    PageScrollDown,
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,

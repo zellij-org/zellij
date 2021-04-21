@@ -184,6 +184,16 @@ impl InputHandler {
                     .send(ScreenInstruction::ScrollDown)
                     .unwrap();
             }
+            Action::PageScrollUp => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollUp)
+                    .unwrap();
+            }
+            Action::PageScrollDown => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollDown)
+                    .unwrap();
+            }
             Action::ToggleFocusFullscreen => {
                 self.send_screen_instructions
                     .send(ScreenInstruction::ToggleActiveTerminalFullscreen)

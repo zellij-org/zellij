@@ -366,6 +366,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .unwrap()
                                 .scroll_active_terminal_down();
                         }
+                        ScreenInstruction::PageScrollUp => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_up_page();
+                        }
+                        ScreenInstruction::PageScrollDown => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_down_page();
+                        }
                         ScreenInstruction::ClearScroll => {
                             screen
                                 .get_active_tab_mut()
