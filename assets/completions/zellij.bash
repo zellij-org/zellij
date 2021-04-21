@@ -13,14 +13,11 @@ _zellij() {
                 cmd="zellij"
                 ;;
             
-            c)
-                cmd+="__c"
-                ;;
-            config)
-                cmd+="__config"
-                ;;
             help)
                 cmd+="__help"
+                ;;
+            option)
+                cmd+="__option"
                 ;;
             *)
                 ;;
@@ -29,7 +26,7 @@ _zellij() {
 
     case "${cmd}" in
         zellij)
-            opts=" -m -d -h -V -s -o -l  --move-focus --debug --help --version --split --open-file --max-panes --data-dir --layout   config help  c c"
+            opts=" -m -d -h -V -s -o -l -c  --move-focus --debug --help --version --split --open-file --max-panes --data-dir --layout --config   option help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -68,6 +65,14 @@ _zellij() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
+                --config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                    -c)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -76,38 +81,23 @@ _zellij() {
             return 0
             ;;
         
-        zellij__c)
-            opts=" -h -V  --clean --help --version  <path> "
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        zellij__config)
-            opts=" -h -V  --clean --help --version  <path> "
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         zellij__help)
             opts=" -h -V  --help --version  "
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        zellij__option)
+            opts=" -h -V  --clean --help --version  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

@@ -128,7 +128,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .write(take_snapshot.as_bytes())
         .unwrap();
 
-    let config = Config::from_cli_config(opts.config)
+    let config = Config::from_cli_config(opts.config, opts.option)
         .map_err(|e| {
             eprintln!("There was an error in the config file:\n{}", e);
             std::process::exit(1);
