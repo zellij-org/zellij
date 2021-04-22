@@ -20,7 +20,7 @@ fn split_space_to_parts_vertically(
         let (columns, max_columns) = match size {
             Some(SplitSize::Percent(percent)) => {
                 ((max_width as f32 * (percent as f32 / 100.0)) as usize, None)
-            }, // TODO: round properly
+            } // TODO: round properly
             Some(SplitSize::Fixed(size)) => (size as usize, Some(size as usize)),
             None => {
                 parts_to_grow.push(current_x_position);
@@ -86,9 +86,10 @@ fn split_space_to_parts_horizontally(
 
     for size in sizes {
         let (rows, max_rows) = match size {
-            Some(SplitSize::Percent(percent)) => {
-                ((max_height as f32 * (percent as f32 / 100.0)) as usize, None)
-            }, // TODO: round properly
+            Some(SplitSize::Percent(percent)) => (
+                (max_height as f32 * (percent as f32 / 100.0)) as usize,
+                None,
+            ), // TODO: round properly
             Some(SplitSize::Fixed(size)) => (size as usize, Some(size as usize)),
             None => {
                 parts_to_grow.push(current_y_position);
