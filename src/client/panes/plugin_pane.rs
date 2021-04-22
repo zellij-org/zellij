@@ -13,6 +13,7 @@ pub struct PluginPane {
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub max_height: Option<usize>,
+    pub max_width: Option<usize>,
 }
 
 impl PluginPane {
@@ -30,6 +31,7 @@ impl PluginPane {
             position_and_size_override: None,
             send_plugin_instructions,
             max_height: None,
+            max_width: None,
         }
     }
 }
@@ -73,6 +75,7 @@ impl Pane for PluginPane {
             y,
             rows: size.rows,
             columns: size.columns,
+            ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.should_render = true;
@@ -107,6 +110,9 @@ impl Pane for PluginPane {
     }
     fn set_max_height(&mut self, max_height: usize) {
         self.max_height = Some(max_height);
+    }
+    fn set_max_width(&mut self, max_width: usize) {
+        self.max_width = Some(max_width);
     }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
@@ -194,6 +200,9 @@ impl Pane for PluginPane {
     }
     fn max_height(&self) -> Option<usize> {
         self.max_height
+    }
+    fn max_width(&self) -> Option<usize> {
+        self.max_width
     }
     fn invisible_borders(&self) -> bool {
         self.invisible_borders

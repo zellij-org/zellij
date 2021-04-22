@@ -17,6 +17,7 @@ pub fn window_width_decrease_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
@@ -25,6 +26,7 @@ pub fn window_width_decrease_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     });
     let opts = CliArgs::default();
     start(Box::new(fake_input_output.clone()), opts);
@@ -46,6 +48,7 @@ pub fn window_width_increase_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
@@ -54,6 +57,7 @@ pub fn window_width_increase_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     });
     let opts = CliArgs::default();
     start(Box::new(fake_input_output.clone()), opts);
@@ -75,6 +79,7 @@ pub fn window_height_increase_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
@@ -83,6 +88,7 @@ pub fn window_height_increase_with_one_pane() {
         rows: 30,
         x: 0,
         y: 0,
+        ..Default::default()
     });
     let opts = CliArgs::default();
     start(Box::new(fake_input_output.clone()), opts);
@@ -104,6 +110,7 @@ pub fn window_width_and_height_decrease_with_one_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
@@ -112,6 +119,7 @@ pub fn window_width_and_height_decrease_with_one_pane() {
         rows: 10,
         x: 0,
         y: 0,
+        ..Default::default()
     });
     let opts = CliArgs::default();
     start(Box::new(fake_input_output.clone()), opts);

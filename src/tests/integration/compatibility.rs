@@ -36,6 +36,7 @@ pub fn run_bandwhich_from_fish_shell() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "fish_and_bandwhich";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -59,6 +60,7 @@ pub fn fish_tab_completion_options() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "fish_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -87,6 +89,7 @@ pub fn fish_select_tab_completion_options() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "fish_select_tab_completion_options";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -119,6 +122,7 @@ pub fn vim_scroll_region_down() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "vim_scroll_region_down";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -148,6 +152,7 @@ pub fn vim_ctrl_d() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "vim_ctrl_d";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -176,6 +181,7 @@ pub fn vim_ctrl_u() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "vim_ctrl_u";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -199,6 +205,7 @@ pub fn htop() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "htop";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -222,6 +229,7 @@ pub fn htop_scrolling() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "htop_scrolling";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -245,6 +253,7 @@ pub fn htop_right_scrolling() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "htop_right_scrolling";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -276,6 +285,7 @@ pub fn vim_overwrite() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "vim_overwrite";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -302,6 +312,7 @@ pub fn clear_scroll_region() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "clear_scroll_region";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -325,6 +336,7 @@ pub fn display_tab_characters_properly() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "tab_characters";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -348,6 +360,7 @@ pub fn neovim_insert_mode() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "nvim_insert";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -373,6 +386,7 @@ pub fn bash_cursor_linewrap() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "bash_cursor_linewrap";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -398,6 +412,7 @@ pub fn fish_paste_multiline() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "fish_paste_multiline";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -421,6 +436,7 @@ pub fn git_log() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "git_log";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -446,6 +462,7 @@ pub fn git_diff_scrollup() {
         rows: 28,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "git_diff_scrollup";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -469,6 +486,7 @@ pub fn emacs_longbuf() {
         rows: 60,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "emacs_longbuf_tutorial";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -492,6 +510,7 @@ pub fn top_and_quit() {
         rows: 56,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "top_and_quit";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
@@ -521,6 +540,7 @@ pub fn exa_plus_omf_theme() {
         rows: 56,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let fixture_name = "exa_plus_omf_theme";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
