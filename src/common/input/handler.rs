@@ -1,8 +1,8 @@
 //! Main input logic.
 
-use super::actions::Action;
 use super::keybinds::Keybinds;
-use crate::common::input::config::Config;
+use super::{actions::Action, keybinds::ModeKeybinds};
+use crate::common::input::{actions::Direction, config::Config};
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
@@ -131,11 +131,14 @@ impl InputHandler {
                 self.send_plugin_instructions
                     .send(PluginInstruction::Update(
                         None,
-                        Event::ModeUpdate(get_mode_info(mode)),
+                        Event::ModeUpdate(get_mode_info(mode, &self.config.keybinds)),
                     ))
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
+                    .send(ScreenInstruction::ChangeMode(get_mode_info(
+                        mode,
+                        &self.config.keybinds,
+                    )))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -281,35 +284,145 @@ impl InputHandler {
     }
 }
 
+const PRIOR_KEYS: &[Key] = &[
+    Key::Left,
+    Key::Right,
+    Key::Up,
+    Key::Down,
+    Key::PageUp,
+    Key::PageDown,
+];
+
+/// Get a prior key from keybinds
+/// many keys may be mapped to one action, e.g. kj/↑↓
+/// but we do not want to show all of them in help info,
+/// so just pickup one primary key.
+fn get_major_key_by_action(keybinds: &ModeKeybinds, action: &[Action]) -> Key {
+    let mut key = Key::Null;
+    for (k, actions) in &keybinds.0 {
+        if actions == action {
+            key = *k;
+            if PRIOR_KEYS.contains(k) {
+                break;
+            }
+        }
+    }
+    key
+}
+
+fn get_key_map_string(key_config: &ModeKeybinds, actions: &[&[Action]]) -> String {
+    let map = actions
+        .iter()
+        .map(|&actions| get_major_key_by_action(&key_config, actions))
+        .map(|key| key.to_string())
+        .collect::<Vec<_>>();
+    let should_split = map.iter().any(|s| s.len() > 1);
+    map.into_iter().fold(String::new(), |s0, s| {
+        if should_split {
+            format!("{}{}", s0, s)
+        } else {
+            format!("{}/{}", s0, s)
+        }
+    })
+}
+
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_mode_info(mode: InputMode) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode, key_config: &Keybinds) -> ModeInfo {
+    let key_config = key_config
+        .0
+        .get(&mode)
+        .cloned()
+        .unwrap_or_else(|| Keybinds::get_defaults_for_mode(&mode));
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {
-            keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
+            let key_map = get_key_map_string(
+                &key_config,
+                &[
+                    &[Action::Resize(Direction::Left)],
+                    &[Action::Resize(Direction::Down)],
+                    &[Action::Resize(Direction::Up)],
+                    &[Action::Resize(Direction::Right)],
+                ],
+            );
+            keybinds.push((key_map, "Resize".to_string()));
         }
         InputMode::Pane => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("p".to_string(), "Next".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("d".to_string(), "Down split".to_string()));
-            keybinds.push(("r".to_string(), "Right split".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("s".to_string(), "Sync".to_string()));
-            keybinds.push(("f".to_string(), "Fullscreen".to_string()));
+            let key_map = get_key_map_string(
+                &key_config,
+                &[
+                    &[Action::MoveFocus(Direction::Left)],
+                    &[Action::MoveFocus(Direction::Down)],
+                    &[Action::MoveFocus(Direction::Up)],
+                    &[Action::MoveFocus(Direction::Right)],
+                ],
+            );
+            keybinds.push((key_map, "Move focus".to_string()));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::SwitchFocus]).to_string(),
+                "Next".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::NewPane(None)]).to_string(),
+                "New".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::NewPane(Some(Direction::Down))])
+                    .to_string(),
+                "Down split".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::NewPane(Some(Direction::Right))])
+                    .to_string(),
+                "Right split".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::CloseFocus]).to_string(),
+                "Close".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::ToggleFocusFullscreen]).to_string(),
+                "Fullscreen".to_string(),
+            ));
         }
         InputMode::Tab => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("r".to_string(), "Rename".to_string()));
+            let key_map = get_key_map_string(
+                &key_config,
+                &[&[Action::GoToPreviousTab], &[Action::GoToNextTab]],
+            );
+            keybinds.push((key_map, "Move focus".to_string()));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::NewTab]).to_string(),
+                "New".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::CloseTab]).to_string(),
+                "Close".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(
+                    &key_config,
+                    &[
+                        Action::SwitchToMode(InputMode::RenameTab),
+                        Action::TabNameInput(vec![0]),
+                    ],
+                )
+                .to_string(),
+                "Rename".to_string(),
+            ));
         }
         InputMode::Scroll => {
-            keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
-            keybinds.push(("PgUp/PgDn".to_string(), "Scroll Page".to_string()));
+            let key_map =
+                get_key_map_string(&key_config, &[&[Action::ScrollUp], &[Action::ScrollDown]]);
+            keybinds.push((key_map, "Scroll".to_string()));
+            let key_map = get_key_map_string(
+                &key_config,
+                &[&[Action::PageScrollUp], &[Action::PageScrollDown]],
+            );
+            keybinds.push((key_map, "Scroll Page".to_string()));
         }
         InputMode::RenameTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));

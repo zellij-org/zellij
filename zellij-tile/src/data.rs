@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -23,7 +25,32 @@ pub enum Key {
     Esc,
 }
 
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+impl Display for Key {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Key::Backspace => write!(f, "BS"),
+            Key::Left => write!(f, "←"),
+            Key::Right => write!(f, "→"),
+            Key::Up => write!(f, "↑"),
+            Key::Down => write!(f, "↓"),
+            Key::Home => write!(f, "HOME"),
+            Key::End => write!(f, "END"),
+            Key::PageUp => write!(f, "PGUP"),
+            Key::PageDown => write!(f, "PGDN"),
+            Key::BackTab => write!(f, "BT"),
+            Key::Delete => write!(f, "DEL"),
+            Key::Insert => write!(f, "INS"),
+            Key::F(n) => write!(f, "F{}", n),
+            Key::Char(c) => write!(f, "{}", c.to_uppercase()),
+            Key::Alt(c) => write!(f, "ALT-{}", c.to_uppercase()),
+            Key::Ctrl(c) => write!(f, "Ctrl-{}", c.to_uppercase()),
+            Key::Esc => write!(f, "ESC"),
+            Key::Null => write!(f, ""),
+        }
+    }
+}
+
+#[derive(Debug, Clone, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 #[non_exhaustive]
