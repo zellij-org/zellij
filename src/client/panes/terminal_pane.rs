@@ -161,8 +161,8 @@ impl Pane for TerminalPane {
         //    around
         // 2. When there are wide characters in a pane, since we don't yet handle them properly,
         //    the spill over to the pane to the right
-        // if self.should_render() || cfg!(test) {
-        if true {
+        if self.should_render() {
+        //if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
@@ -316,6 +316,7 @@ impl TerminalPane {
         let rows = self.get_rows();
         let columns = self.get_columns();
         self.grid.change_size(rows, columns);
+        self.set_should_render(true);
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
