@@ -296,7 +296,7 @@ lazy_static! {
         m.insert(Key::Down, 1);
         m.insert(Key::PageUp, 2);
         m.insert(Key::PageDown, 2);
-        m 
+        m
     };
 }
 
