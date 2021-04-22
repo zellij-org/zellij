@@ -81,6 +81,7 @@ impl Pane for TerminalPane {
         for byte in bytes.iter() {
             self.vte_parser.advance(&mut self.grid, *byte);
         }
+        self.set_should_render(true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
@@ -160,7 +161,7 @@ impl Pane for TerminalPane {
         //    around
         // 2. When there are wide characters in a pane, since we don't yet handle them properly,
         //    the spill over to the pane to the right
-        // if self.should_render || cfg!(test) {
+        // if self.should_render() || cfg!(test) {
         if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
@@ -203,7 +204,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.grid.should_render = false;
+            self.set_should_render(false);
             Some(vte_output)
         } else {
             None
@@ -262,15 +263,15 @@ impl Pane for TerminalPane {
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
-        self.grid.should_render = true;
+        self.set_should_render(true);
     }
     fn scroll_down(&mut self, count: usize) {
         self.grid.move_viewport_down(count);
-        self.grid.should_render = true;
+        self.set_should_render(true);
     }
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
-        self.grid.should_render = true;
+        self.set_should_render(true);
     }
 }
 

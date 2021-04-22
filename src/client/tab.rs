@@ -656,6 +656,11 @@ impl Tab {
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
+    pub fn set_force_render(&mut self) {
+        for (_, pane) in &mut self.panes {
+            pane.set_should_render(true);
+        }
+    }
     pub fn render(&mut self) {
         if self.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
