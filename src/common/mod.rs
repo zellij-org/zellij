@@ -26,8 +26,8 @@ use crate::cli::CliArgs;
 use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
-use colors_transform::{Color, Rgb};
 use async_std::task_local;
+use colors_transform::{Color, Rgb};
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
 use errors::{

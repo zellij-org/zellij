@@ -307,7 +307,7 @@ pub fn superkey(palette: Palette) -> LinePart {
         .bold()
         .paint(prefix_text);
 
-        let suffix_separator = Style::new()
+    let suffix_separator = Style::new()
         .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
