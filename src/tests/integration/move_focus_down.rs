@@ -21,6 +21,7 @@ pub fn move_focus_down() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -50,6 +51,7 @@ pub fn move_focus_down_to_the_largest_overlap() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[

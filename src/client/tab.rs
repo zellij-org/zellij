@@ -104,6 +104,7 @@ pub trait Pane {
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
     fn set_max_height(&mut self, max_height: usize);
+    fn set_max_width(&mut self, max_width: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: usize);
@@ -170,6 +171,7 @@ pub trait Pane {
             y: self.y(),
             columns: self.columns(),
             rows: self.rows(),
+            ..Default::default()
         }
     }
     fn can_increase_height_by(&self, increase_by: usize) -> bool {
@@ -260,6 +262,7 @@ impl Tab {
             y: 0,
             rows: self.full_screen_ws.rows,
             columns: self.full_screen_ws.columns,
+            ..Default::default()
         };
         self.panes_to_hide.clear();
         let positions_in_layout = layout.position_panes_in_space(&free_space);
@@ -270,6 +273,12 @@ impl Tab {
                 match positions_and_size.next() {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
+                        if let Some(max_rows) = position_and_size.max_rows {
+                            terminal_pane.set_max_height(max_rows);
+                        }
+                        if let Some(max_columns) = position_and_size.max_columns {
+                            terminal_pane.set_max_width(max_columns);
+                        }
                         terminal_pane.change_pos_and_size(&position_and_size);
                         self.os_api.set_terminal_size_using_fd(
                             *pid,
@@ -294,11 +303,17 @@ impl Tab {
                     .send(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let new_plugin = PluginPane::new(
+                let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.send_plugin_instructions.clone(),
                 );
+                if let Some(max_rows) = position_and_size.max_rows {
+                    new_plugin.set_max_height(max_rows);
+                }
+                if let Some(max_columns) = position_and_size.max_columns {
+                    new_plugin.set_max_width(max_columns);
+                }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.send_plugin_instructions
@@ -381,6 +396,7 @@ impl Tab {
                 columns: terminal_to_split.columns(),
                 x: terminal_to_split.x(),
                 y: terminal_to_split.y(),
+                ..Default::default()
             };
             if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.columns()
                 && terminal_to_split.rows() > terminal_to_split.min_height() * 2
@@ -459,6 +475,7 @@ impl Tab {
                 y: active_pane.y(),
                 rows: active_pane.rows(),
                 columns: active_pane.columns(),
+                ..Default::default()
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
 
@@ -515,6 +532,7 @@ impl Tab {
                 y: active_pane.y(),
                 rows: active_pane.rows(),
                 columns: active_pane.columns(),
+                ..Default::default()
             };
             let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
 

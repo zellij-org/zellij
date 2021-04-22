@@ -27,6 +27,7 @@ pub fn resize_right_with_pane_to_the_left() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -63,6 +64,7 @@ pub fn resize_right_with_pane_to_the_right() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -100,6 +102,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -139,6 +142,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -181,6 +185,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -225,6 +230,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -266,6 +272,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -309,6 +316,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -353,6 +361,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -400,6 +409,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -449,6 +459,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         rows: 40,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -515,6 +526,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         rows: 40,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
 
@@ -581,6 +593,7 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
