@@ -1,5 +1,7 @@
 //! Main input logic.
 
+use std::collections::HashMap;
+
 use super::keybinds::Keybinds;
 use super::{actions::Action, keybinds::ModeKeybinds};
 use crate::common::input::{actions::Direction, config::Config};
@@ -11,6 +13,7 @@ use crate::screen::ScreenInstruction;
 use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
+use lazy_static::lazy_static;
 use termion::input::{TermRead, TermReadEventsAndRaw};
 use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
@@ -284,14 +287,18 @@ impl InputHandler {
     }
 }
 
-const PRIOR_KEYS: &[Key] = &[
-    Key::Left,
-    Key::Right,
-    Key::Up,
-    Key::Down,
-    Key::PageUp,
-    Key::PageDown,
-];
+lazy_static! {
+    static ref KEY_ORDER: HashMap<Key, i32> = {
+        let mut m = HashMap::new();
+        m.insert(Key::Left, 0);
+        m.insert(Key::Right, 0);
+        m.insert(Key::Up, 1);
+        m.insert(Key::Down, 1);
+        m.insert(Key::PageUp, 2);
+        m.insert(Key::PageDown, 2);
+        m 
+    };
+}
 
 /// Get a prior key from keybinds
 /// many keys may be mapped to one action, e.g. kj/↑↓
@@ -301,9 +308,20 @@ fn get_major_key_by_action(keybinds: &ModeKeybinds, action: &[Action]) -> Key {
     let mut key = Key::Null;
     for (k, actions) in &keybinds.0 {
         if actions == action {
-            key = *k;
-            if PRIOR_KEYS.contains(k) {
-                break;
+            if key == Key::Null {
+                // old key is null
+                key = *k;
+            } else if let Some(new_order) = KEY_ORDER.get(k) {
+                if let Some(old_order) = KEY_ORDER.get(&key) {
+                    if new_order < old_order {
+                        // old key has lower order (larger number) than new one
+                        key = *k;
+                    }
+                } else {
+                    // old key does not have order, new key have order
+                    // then use new keybind
+                    key = *k;
+                }
             }
         }
     }
@@ -316,12 +334,12 @@ fn get_key_map_string(key_config: &ModeKeybinds, actions: &[&[Action]]) -> Strin
         .map(|&actions| get_major_key_by_action(&key_config, actions))
         .map(|key| key.to_string())
         .collect::<Vec<_>>();
-    let should_split = map.iter().any(|s| s.len() > 1);
+    let should_split = map.iter().any(|s| s.chars().count() > 1);
     map.into_iter().fold(String::new(), |s0, s| {
-        if should_split {
-            format!("{}{}", s0, s)
-        } else {
+        if !s0.is_empty() && should_split {
             format!("{}/{}", s0, s)
+        } else {
+            format!("{}{}", s0, s)
         }
     })
 }
