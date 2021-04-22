@@ -657,7 +657,7 @@ impl Tab {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
     pub fn set_force_render(&mut self) {
-        for (_, pane) in &mut self.panes {
+        for pane in self.panes.values_mut() {
             pane.set_should_render(true);
         }
     }
