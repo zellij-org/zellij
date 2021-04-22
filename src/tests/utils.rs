@@ -12,7 +12,7 @@ pub fn get_output_frame_snapshots(
     let mut snapshots = vec![];
     for frame in output_frames.iter() {
         for byte in frame.iter() {
-            vte_parser.advance(&mut terminal_output, *byte);
+            vte_parser.advance(&mut terminal_output.grid, *byte);
         }
         let output_lines = terminal_output.read_buffer_as_lines();
         let cursor_coordinates = terminal_output.cursor_coordinates();
@@ -63,6 +63,8 @@ pub mod commands {
     pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
     pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
     pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
+    pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
+    pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
 
     pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
     pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j

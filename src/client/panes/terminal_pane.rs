@@ -1,5 +1,3 @@
-#![allow(clippy::clippy::if_same_then_else)]
-
 use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
@@ -10,7 +8,6 @@ use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::pty_bus::VteBytes;
-use crate::utils::logging::debug_log_to_file;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -38,19 +35,14 @@ impl From<Winsize> for PositionAndSize {
     }
 }
 
-#[derive(Debug)]
 pub struct TerminalPane {
     pub grid: Grid,
-    pub alternative_grid: Option<Grid>, // for 1049h/l instructions which tell us to switch between these two
     pub pid: RawFd,
-    pub should_render: bool,
     pub selectable: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
-    pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub max_height: Option<usize>,
-    pending_styles: CharacterStyles,
-    clear_viewport_before_rendering: bool,
+    vte_parser: vte::Parser,
 }
 
 impl Pane for TerminalPane {
@@ -86,9 +78,8 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
-        let mut vte_parser = vte::Parser::new();
         for byte in bytes.iter() {
-            vte_parser.advance(self, *byte);
+            self.vte_parser.advance(&mut self.grid, *byte);
         }
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
@@ -103,7 +94,7 @@ impl Pane for TerminalPane {
         match input_bytes.as_slice() {
             [27, 91, 68] => {
                 // left arrow
-                if self.cursor_key_mode {
+                if self.grid.cursor_key_mode {
                     // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
                     // some editors will not show this
                     return "OD".as_bytes().to_vec();
@@ -111,7 +102,7 @@ impl Pane for TerminalPane {
             }
             [27, 91, 67] => {
                 // right arrow
-                if self.cursor_key_mode {
+                if self.grid.cursor_key_mode {
                     // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
                     // some editors will not show this
                     return "OC".as_bytes().to_vec();
@@ -119,7 +110,7 @@ impl Pane for TerminalPane {
             }
             [27, 91, 65] => {
                 // up arrow
-                if self.cursor_key_mode {
+                if self.grid.cursor_key_mode {
                     // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
                     // some editors will not show this
                     return "OA".as_bytes().to_vec();
@@ -127,7 +118,7 @@ impl Pane for TerminalPane {
             }
             [27, 91, 66] => {
                 // down arrow
-                if self.cursor_key_mode {
+                if self.grid.cursor_key_mode {
                     // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
                     // some editors will not show this
                     return "OB".as_bytes().to_vec();
@@ -142,10 +133,10 @@ impl Pane for TerminalPane {
         self.position_and_size_override
     }
     fn should_render(&self) -> bool {
-        self.should_render
+        self.grid.should_render
     }
     fn set_should_render(&mut self, should_render: bool) {
-        self.should_render = should_render;
+        self.grid.should_render = should_render;
     }
     fn selectable(&self) -> bool {
         self.selectable
@@ -175,7 +166,7 @@ impl Pane for TerminalPane {
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
             let mut character_styles = CharacterStyles::new();
-            if self.clear_viewport_before_rendering {
+            if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
                     let x = self.get_x();
                     let y = self.get_y();
@@ -188,7 +179,7 @@ impl Pane for TerminalPane {
                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
                     }
                 }
-                self.clear_viewport_before_rendering = false;
+                self.grid.clear_viewport_before_rendering = false;
             }
             for (row, line) in buffer_lines.iter().enumerate() {
                 let x = self.get_x();
@@ -212,7 +203,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            self.should_render = false;
+            self.grid.should_render = false;
             Some(vte_output)
         } else {
             None
@@ -271,39 +262,30 @@ impl Pane for TerminalPane {
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
-        self.mark_for_rerender();
+        self.grid.should_render = true;
     }
     fn scroll_down(&mut self, count: usize) {
         self.grid.move_viewport_down(count);
-        self.mark_for_rerender();
+        self.grid.should_render = true;
     }
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
-        self.mark_for_rerender();
+        self.grid.should_render = true;
     }
 }
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
         let grid = Grid::new(position_and_size.rows, position_and_size.columns);
-        let pending_styles = CharacterStyles::new();
-
         TerminalPane {
             pid,
             grid,
-            alternative_grid: None,
-            should_render: true,
             selectable: true,
-            pending_styles,
             position_and_size,
             position_and_size_override: None,
-            cursor_key_mode: false,
-            clear_viewport_before_rendering: false,
             max_height: None,
+            vte_parser: vte::Parser::new(),
         }
-    }
-    pub fn mark_for_rerender(&mut self) {
-        self.should_render = true;
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
@@ -333,11 +315,7 @@ impl TerminalPane {
         let rows = self.get_rows();
         let columns = self.get_columns();
         self.grid.change_size(rows, columns);
-        if let Some(alternative_grid) = self.alternative_grid.as_mut() {
-            alternative_grid.change_size(rows, columns);
-        }
     }
-
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
     }
@@ -345,329 +323,5 @@ impl TerminalPane {
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
-    }
-    pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        self.grid.rotate_scroll_region_up(count);
-        self.mark_for_rerender();
-    }
-    pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        self.grid.rotate_scroll_region_down(count);
-        self.mark_for_rerender();
-    }
-    fn reset_terminal_state(&mut self) {
-        let rows = self.get_rows();
-        let columns = self.get_columns();
-        self.grid = Grid::new(rows, columns);
-        self.alternative_grid = None;
-        self.cursor_key_mode = false;
-    }
-    fn add_newline(&mut self) {
-        let pad_character = EMPTY_TERMINAL_CHARACTER;
-        self.grid.add_canonical_line(pad_character);
-        self.mark_for_rerender();
-    }
-    fn move_to_beginning_of_line(&mut self) {
-        self.grid.move_cursor_to_beginning_of_line();
-    }
-    fn move_cursor_backwards(&mut self, count: usize) {
-        self.grid.move_cursor_backwards(count);
-    }
-    fn _reset_all_ansi_codes(&mut self) {
-        self.pending_styles.clear();
-    }
-}
-
-impl vte::Perform for TerminalPane {
-    fn print(&mut self, c: char) {
-        // apparently, building TerminalCharacter like this without a "new" method
-        // is a little faster
-        let terminal_character = TerminalCharacter {
-            character: c,
-            styles: self.pending_styles,
-        };
-        self.grid.add_character(terminal_character);
-    }
-
-    fn execute(&mut self, byte: u8) {
-        match byte {
-            8 => {
-                // backspace
-                self.move_cursor_backwards(1);
-            }
-            9 => {
-                // tab
-                self.grid.advance_to_next_tabstop(self.pending_styles);
-            }
-            10 => {
-                // 0a, newline
-                self.add_newline();
-            }
-            13 => {
-                // 0d, carriage return
-                self.move_to_beginning_of_line();
-            }
-            _ => {}
-        }
-    }
-
-    fn hook(&mut self, _params: &[i64], _intermediates: &[u8], _ignore: bool, _c: char) {
-        // TBD
-    }
-
-    fn put(&mut self, _byte: u8) {
-        // TBD
-    }
-
-    fn unhook(&mut self) {
-        // TBD
-    }
-
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {
-        // TBD
-    }
-
-    fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
-        if c == 'm' {
-            self.pending_styles.add_style_from_ansi_params(params);
-        } else if c == 'C' {
-            // move cursor forward
-            let move_by = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            self.grid.move_cursor_forward_until_edge(move_by);
-        } else if c == 'K' {
-            // clear line (0 => right, 1 => left, 2 => all)
-            if params[0] == 0 {
-                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                char_to_replace.styles = self.pending_styles;
-                self.grid
-                    .replace_characters_in_line_after_cursor(char_to_replace);
-            } else if params[0] == 1 {
-                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                char_to_replace.styles = self.pending_styles;
-                self.grid
-                    .replace_characters_in_line_before_cursor(char_to_replace);
-            } else if params[0] == 2 {
-                self.grid.clear_cursor_line();
-            }
-        } else if c == 'J' {
-            // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
-            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-            char_to_replace.styles = self.pending_styles;
-            if params[0] == 0 {
-                self.grid.clear_all_after_cursor(char_to_replace);
-            } else if params[0] == 2 {
-                self.grid.clear_all(char_to_replace);
-            }
-        // TODO: implement 1
-        } else if c == 'H' {
-            // goto row/col
-            // we subtract 1 from the row/column because these are 1 indexed
-            // (except when they are 0, in which case they should be 1
-            // don't look at me, I don't make the rules)
-            let (row, col) = if params.len() == 1 {
-                if params[0] == 0 {
-                    (0, params[0] as usize)
-                } else {
-                    (params[0] as usize - 1, params[0] as usize)
-                }
-            } else if params[0] == 0 {
-                (0, params[1] as usize - 1)
-            } else {
-                (params[0] as usize - 1, params[1] as usize - 1)
-            };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid.move_cursor_to(col, row, pad_character);
-        } else if c == 'A' {
-            // move cursor up until edge of screen
-            let move_up_count = if params[0] == 0 { 1 } else { params[0] };
-            self.grid.move_cursor_up(move_up_count as usize);
-        } else if c == 'B' {
-            // move cursor down until edge of screen
-            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid
-                .move_cursor_down(move_down_count as usize, pad_character);
-        } else if c == 'D' {
-            let move_back_count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            self.grid.move_cursor_back(move_back_count);
-        } else if c == 'l' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false,
-            };
-            if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(&1049) => {
-                        if let Some(alternative_grid) = self.alternative_grid.as_mut() {
-                            std::mem::swap(&mut self.grid, alternative_grid);
-                        }
-                        self.alternative_grid = None;
-                        self.clear_viewport_before_rendering = true;
-                        self.mark_for_rerender();
-                    }
-                    Some(&25) => {
-                        self.grid.hide_cursor();
-                        self.mark_for_rerender();
-                    }
-                    Some(&1) => {
-                        self.cursor_key_mode = false;
-                    }
-                    _ => {}
-                };
-            }
-        } else if c == 'h' {
-            let first_intermediate_is_questionmark = match _intermediates.get(0) {
-                Some(b'?') => true,
-                None => false,
-                _ => false,
-            };
-            if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(&25) => {
-                        self.grid.show_cursor();
-                        self.mark_for_rerender();
-                    }
-                    Some(&1049) => {
-                        let columns = self
-                            .position_and_size_override
-                            .map(|x| x.columns)
-                            .unwrap_or(self.position_and_size.columns);
-                        let rows = self
-                            .position_and_size_override
-                            .map(|x| x.rows)
-                            .unwrap_or(self.position_and_size.rows);
-                        let current_grid =
-                            std::mem::replace(&mut self.grid, Grid::new(rows, columns));
-                        self.alternative_grid = Some(current_grid);
-                        self.clear_viewport_before_rendering = true;
-                    }
-                    Some(&1) => {
-                        self.cursor_key_mode = true;
-                    }
-                    _ => {}
-                };
-            }
-        } else if c == 'r' {
-            if params.len() > 1 {
-                // minus 1 because these are 1 indexed
-                let top_line_index = params[0] as usize - 1;
-                let bottom_line_index = params[1] as usize - 1;
-                self.grid
-                    .set_scroll_region(top_line_index, bottom_line_index);
-                self.grid.show_cursor();
-            } else {
-                self.grid.clear_scroll_region();
-            }
-        } else if c == 't' {
-            // TBD - title?
-        } else if c == 'n' {
-            // TBD - device status report
-        } else if c == 'c' {
-            // TBD - identify terminal
-        } else if c == 'M' {
-            // delete lines if currently inside scroll region
-            let line_count_to_delete = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid
-                .delete_lines_in_scroll_region(line_count_to_delete, pad_character);
-        } else if c == 'L' {
-            // insert blank lines if inside scroll region
-            let line_count_to_add = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid
-                .add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
-        } else if c == 'q' {
-            // ignore for now to run on mac
-        } else if c == 'G' {
-            let column = if params[0] == 0 {
-                0
-            } else {
-                params[0] as usize - 1
-            };
-            self.grid.move_cursor_to_column(column);
-        } else if c == 'd' {
-            // goto line
-            let line = if params[0] == 0 {
-                1
-            } else {
-                // minus 1 because this is 1 indexed
-                params[0] as usize - 1
-            };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid.move_cursor_to_line(line, pad_character);
-        } else if c == 'P' {
-            // erase characters
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            self.grid.erase_characters(count, self.pending_styles);
-        } else if c == 'X' {
-            // erase characters and replace with empty characters of current style
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            self.grid
-                .replace_with_empty_chars(count, self.pending_styles);
-        } else if c == 'T' {
-            /*
-             * 124  54  T   SD
-             * Scroll down, new lines inserted at top of screen
-             * [4T = Scroll down 4, bring previous lines back into view
-             */
-            let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
-
-            if line_count >= 0 {
-                self.rotate_scroll_region_up(line_count as usize);
-            } else {
-                self.rotate_scroll_region_down(line_count.abs() as usize);
-            }
-        } else if c == 'S' {
-            // move scroll up
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.grid
-                .delete_lines_in_scroll_region(count, pad_character);
-            // TODO: since delete_lines_in_scroll_region also adds lines, is the below redundant?
-            self.grid
-                .add_empty_lines_in_scroll_region(count, pad_character);
-        } else {
-            let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
-        }
-    }
-
-    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        match (byte, intermediates.get(0)) {
-            (b'M', None) => {
-                self.grid.move_cursor_up_with_scrolling(1);
-            }
-            (b'c', None) => {
-                self.reset_terminal_state();
-            }
-            _ => {}
-        }
     }
 }

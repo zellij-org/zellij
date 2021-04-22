@@ -33,6 +33,10 @@ pub enum Action {
     ScrollUp,
     /// Scroll down in focus pane.
     ScrollDown,
+    /// Scroll up one page in focus pane.
+    PageScrollUp,
+    /// Scroll down one page in focus pane.
+    PageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
     /// Open a new pane in the specified direction (relative to focus).

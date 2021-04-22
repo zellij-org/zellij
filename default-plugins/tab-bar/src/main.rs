@@ -31,9 +31,9 @@ pub mod colors {
     pub const RED: Colour = Fixed(88);
 }
 
-register_tile!(State);
+register_plugin!(State);
 
-impl ZellijTile for State {
+impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);

@@ -2,7 +2,7 @@
 use ansi_term::{ANSIStrings, Color::RGB, Style};
 use zellij_tile::{data::Theme, prelude::*};
 
-use crate::colors::{BLACK, GREEN, ORANGE, WHITE};
+use crate::colors::{GREEN, ORANGE, WHITE};
 use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(

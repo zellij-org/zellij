@@ -5,9 +5,9 @@ use state::{FsEntry, State};
 use std::{cmp::min, fs::read_dir};
 use zellij_tile::prelude::*;
 
-register_tile!(State);
+register_plugin!(State);
 
-impl ZellijTile for State {
+impl ZellijPlugin for State {
     fn load(&mut self) {
         refresh_directory(self);
         subscribe(&[EventType::KeyPress]);

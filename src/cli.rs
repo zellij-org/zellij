@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+// TODO add to consts.rs
+const ZELLIJ_CONFIG_ENV: &str = "ZELLIJ_CONFIG";
+
 #[derive(StructOpt, Default, Debug)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
@@ -20,12 +23,20 @@ pub struct CliArgs {
     #[structopt(long)]
     pub max_panes: Option<usize>,
 
+    /// Change where zellij looks for layouts and plugins
+    #[structopt(long)]
+    pub data_dir: Option<PathBuf>,
+
     /// Path to a layout yaml file
     #[structopt(short, long)]
     pub layout: Option<PathBuf>,
 
+    /// Change where zellij looks for the configuration
+    #[structopt(short, long, env=ZELLIJ_CONFIG_ENV)]
+    pub config: Option<PathBuf>,
+
     #[structopt(subcommand)]
-    pub config: Option<ConfigCli>,
+    pub option: Option<ConfigCli>,
 
     #[structopt(short, long)]
     pub debug: bool,
@@ -33,10 +44,9 @@ pub struct CliArgs {
 
 #[derive(Debug, StructOpt)]
 pub enum ConfigCli {
-    /// Path to the configuration yaml file
-    #[structopt(alias = "c")]
+    /// Change the behaviour of zellij
+    #[structopt(name = "option")]
     Config {
-        path: Option<PathBuf>,
         #[structopt(long)]
         /// Disables loading of configuration file at default location
         clean: bool,

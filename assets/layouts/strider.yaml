@@ -12,7 +12,6 @@ parts:
           Percent: 20
         plugin: strider
       - direction: Horizontal
-        expansion_boundary: true
   - direction: Vertical
     split_size:
       Fixed: 2

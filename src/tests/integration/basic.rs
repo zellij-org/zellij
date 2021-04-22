@@ -3,8 +3,9 @@ use ::insta::assert_snapshot;
 
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE, SCROLL_MODE, SCROLL_UP_IN_SCROLL_MODE,
-    SPAWN_TERMINAL_IN_PANE_MODE, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
+    PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE, SCROLL_MODE, SCROLL_PAGE_DOWN_IN_SCROLL_MODE,
+    SCROLL_PAGE_UP_IN_SCROLL_MODE, SCROLL_UP_IN_SCROLL_MODE, SPAWN_TERMINAL_IN_PANE_MODE,
+    SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
     TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
@@ -223,6 +224,67 @@ pub fn scrolling_down_inside_a_pane() {
         &SCROLL_UP_IN_SCROLL_MODE,
         &SCROLL_DOWN_IN_SCROLL_MODE,
         &SCROLL_DOWN_IN_SCROLL_MODE,
+        &QUIT,
+    ]);
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
+}
+
+#[test]
+pub fn scrolling_page_up_inside_a_pane() {
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &SCROLL_MODE,
+        &SCROLL_PAGE_UP_IN_SCROLL_MODE,
+        &QUIT,
+    ]);
+    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    let output_frames = fake_input_output
+        .stdout_writer
+        .output_frames
+        .lock()
+        .unwrap();
+    let snapshots = get_output_frame_snapshots(&output_frames, &fake_win_size);
+    let snapshot_before_quit =
+        get_next_to_last_snapshot(snapshots).expect("could not find snapshot");
+    assert_snapshot!(snapshot_before_quit);
+}
+
+#[test]
+pub fn scrolling_page_down_inside_a_pane() {
+    let fake_win_size = PositionAndSize {
+        columns: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+    };
+    let mut fake_input_output = get_fake_os_input(&fake_win_size);
+    fake_input_output.add_terminal_input(&[
+        &PANE_MODE,
+        &SPLIT_DOWN_IN_PANE_MODE,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &SCROLL_MODE,
+        &SCROLL_PAGE_UP_IN_SCROLL_MODE,
+        &SCROLL_PAGE_UP_IN_SCROLL_MODE,
+        &SCROLL_PAGE_DOWN_IN_SCROLL_MODE,
+        &SCROLL_PAGE_DOWN_IN_SCROLL_MODE,
         &QUIT,
     ]);
     start(Box::new(fake_input_output.clone()), CliArgs::default());

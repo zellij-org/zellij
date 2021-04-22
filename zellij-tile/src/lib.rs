@@ -5,14 +5,14 @@ pub mod shim;
 use data::*;
 
 #[allow(unused_variables)]
-pub trait ZellijTile {
+pub trait ZellijPlugin {
     fn load(&mut self) {}
     fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
 }
 
 #[macro_export]
-macro_rules! register_tile {
+macro_rules! register_plugin {
     ($t:ty) => {
         thread_local! {
             static STATE: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());

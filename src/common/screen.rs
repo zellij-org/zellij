@@ -38,6 +38,8 @@ pub enum ScreenInstruction {
     Quit,
     ScrollUp,
     ScrollDown,
+    PageScrollUp,
+    PageScrollDown,
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
@@ -83,7 +85,9 @@ pub struct Screen {
 }
 
 impl Screen {
+    // FIXME: This lint needs actual fixing! Maybe by bundling the Senders
     /// Creates and returns a new [`Screen`].
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
         send_pty_instructions: SenderWithContext<PtyInstruction>,

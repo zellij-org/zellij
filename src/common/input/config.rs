@@ -51,7 +51,6 @@ impl Config {
     }
 
     /// Deserializes from given path.
-    #[allow(unused_must_use)]
     pub fn new(path: &Path) -> ConfigResult {
         match File::open(path) {
             Ok(mut file) => {
@@ -80,20 +79,23 @@ impl Config {
 
     /// Entry point of the configuration
     #[cfg(not(test))]
-    pub fn from_cli_config(cli_config: Option<ConfigCli>) -> ConfigResult {
+    pub fn from_cli_config(
+        location: Option<PathBuf>,
+        cli_config: Option<ConfigCli>,
+    ) -> ConfigResult {
+        if let Some(path) = location {
+            return Config::new(&path);
+        }
+
         match cli_config {
             Some(ConfigCli::Config { clean, .. }) if clean => Ok(Config::default()),
-            Some(ConfigCli::Config { path, .. }) if path.is_some() => {
-                Ok(Config::new(&path.unwrap())?)
-            }
             Some(_) | None => Ok(Config::from_default_path()?),
         }
     }
 
-    //#[allow(unused_must_use)]
     /// In order not to mess up tests from changing configurations
     #[cfg(test)]
-    pub fn from_cli_config(_: Option<ConfigCli>) -> ConfigResult {
+    pub fn from_cli_config(_: Option<PathBuf>, _: Option<ConfigCli>) -> ConfigResult {
         Ok(Config::default())
     }
 }
@@ -139,19 +141,15 @@ mod config_test {
 
     #[test]
     fn clean_option_equals_default_config() {
-        let no_file = PathBuf::from(r"../fixtures/config/config.yamlll");
-        let cli_config = ConfigCli::Config {
-            path: Some(no_file),
-            clean: true,
-        };
-        let config = Config::from_cli_config(Some(cli_config)).unwrap();
+        let cli_config = ConfigCli::Config { clean: true };
+        let config = Config::from_cli_config(None, Some(cli_config)).unwrap();
         let default = Config::default();
         assert_eq!(config, default);
     }
 
     #[test]
     fn no_config_option_file_equals_default_config() {
-        let config = Config::from_cli_config(None).unwrap();
+        let config = Config::from_cli_config(None, None).unwrap();
         let default = Config::default();
         assert_eq!(config, default);
     }

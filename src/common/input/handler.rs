@@ -59,9 +59,6 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        self.send_pty_instructions.update(err_ctx);
-        self.send_app_instructions.update(err_ctx);
-        self.send_screen_instructions.update(err_ctx);
         let keybinds = self.config.keybinds.clone();
         let alt_left_bracket = vec![27, 91];
         loop {
@@ -188,6 +185,16 @@ impl InputHandler {
                     .send(ScreenInstruction::ScrollDown)
                     .unwrap();
             }
+            Action::PageScrollUp => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollUp)
+                    .unwrap();
+            }
+            Action::PageScrollDown => {
+                self.send_screen_instructions
+                    .send(ScreenInstruction::PageScrollDown)
+                    .unwrap();
+            }
             Action::ToggleFocusFullscreen => {
                 self.send_screen_instructions
                     .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
@@ -298,6 +305,7 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
         }
         InputMode::Scroll => {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
+            keybinds.push(("PgUp/PgDn".to_string(), "Scroll Page".to_string()));
         }
         InputMode::RenameTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));

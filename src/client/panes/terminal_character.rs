@@ -48,7 +48,7 @@ pub enum NamedColor {
 }
 
 impl NamedColor {
-    fn to_foreground_ansi_code(&self) -> String {
+    fn to_foreground_ansi_code(self) -> String {
         match self {
             NamedColor::Black => format!("{}", 30),
             NamedColor::Red => format!("{}", 31),
@@ -68,7 +68,7 @@ impl NamedColor {
             NamedColor::BrightWhite => format!("{}", 97),
         }
     }
-    fn to_background_ansi_code(&self) -> String {
+    fn to_background_ansi_code(self) -> String {
         match self {
             NamedColor::Black => format!("{}", 40),
             NamedColor::Red => format!("{}", 41),

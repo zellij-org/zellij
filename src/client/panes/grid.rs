@@ -1,9 +1,13 @@
 use std::{
     cmp::Ordering,
+    collections::VecDeque,
     fmt::{self, Debug, Formatter},
 };
 
-static TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+const SCROLL_BACK: usize = 10_000;
+
+use crate::utils::logging::debug_log_to_file;
 
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
@@ -26,14 +30,12 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     }
 }
 
-fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate().rev() {
+        index_of_last_non_canonical_row = Some(i);
         if row.is_canonical {
-            index_of_last_non_canonical_row = Some(i);
             break;
-        } else {
-            index_of_last_non_canonical_row = Some(i);
         }
     }
     match index_of_last_non_canonical_row {
@@ -45,7 +47,7 @@ fn get_bottom_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
 }
 
 fn transfer_rows_down(
-    source: &mut Vec<Row>,
+    source: &mut VecDeque<Row>,
     destination: &mut Vec<Row>,
     count: usize,
     max_src_width: Option<usize>,
@@ -58,7 +60,7 @@ fn transfer_rows_down(
             break;
         }
         if next_lines.is_empty() {
-            match source.pop() {
+            match source.pop_back() {
                 Some(next_line) => {
                     let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(destination);
                     lines_added_to_destination -= top_non_canonical_rows_in_dst.len() as isize;
@@ -84,13 +86,12 @@ fn transfer_rows_down(
     if !next_lines.is_empty() {
         match max_src_width {
             Some(max_row_width) => {
-                let mut excess_rows =
-                    Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
-                source.append(&mut excess_rows);
+                let excess_rows = Row::from_rows(next_lines).split_to_rows_of_length(max_row_width);
+                source.extend(excess_rows);
             }
             None => {
                 let excess_row = Row::from_rows(next_lines);
-                source.push(excess_row);
+                bounded_push(source, excess_row);
             }
         }
     }
@@ -98,7 +99,7 @@ fn transfer_rows_down(
 
 fn transfer_rows_up(
     source: &mut Vec<Row>,
-    destination: &mut Vec<Row>,
+    destination: &mut VecDeque<Row>,
     count: usize,
     max_src_width: Option<usize>,
     max_dst_width: Option<usize>,
@@ -124,7 +125,7 @@ fn transfer_rows_up(
                 break; // no more rows
             }
         }
-        destination.push(next_lines.remove(0));
+        bounded_push(destination, next_lines.remove(0));
     }
     if !next_lines.is_empty() {
         match max_src_width {
@@ -142,13 +143,25 @@ fn transfer_rows_up(
     }
 }
 
+fn bounded_push(vec: &mut VecDeque<Row>, value: Row) {
+    if vec.len() >= SCROLL_BACK {
+        vec.pop_front();
+    }
+    vec.push_back(value)
+}
+
 #[derive(Clone)]
 pub struct Grid {
-    lines_above: Vec<Row>,
+    lines_above: VecDeque<Row>,
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
+    alternative_lines_above_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
     cursor: Cursor,
     scroll_region: Option<(usize, usize)>,
+    pending_styles: CharacterStyles,
+    pub should_render: bool,
+    pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
+    pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
 }
@@ -169,13 +182,18 @@ impl Debug for Grid {
 impl Grid {
     pub fn new(rows: usize, columns: usize) -> Self {
         Grid {
-            lines_above: vec![],
+            lines_above: VecDeque::with_capacity(SCROLL_BACK),
             viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             cursor: Cursor::new(0, 0),
             scroll_region: None,
             width: columns,
             height: rows,
+            pending_styles: CharacterStyles::new(),
+            should_render: true,
+            cursor_key_mode: false,
+            alternative_lines_above_viewport_and_cursor: None,
+            clear_viewport_before_rendering: false,
         }
     }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
@@ -237,7 +255,7 @@ impl Grid {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
-            let line_to_insert_at_viewport_top = self.lines_above.pop().unwrap();
+            let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
         }
     }
@@ -245,11 +263,11 @@ impl Grid {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
             if line_to_push_up.is_canonical {
-                self.lines_above.push(line_to_push_up);
+                bounded_push(&mut self.lines_above, line_to_push_up);
             } else {
-                let mut last_line_above = self.lines_above.pop().unwrap();
+                let mut last_line_above = self.lines_above.pop_back().unwrap();
                 last_line_above.append(&mut line_to_push_up.columns);
-                self.lines_above.push(last_line_above);
+                bounded_push(&mut self.lines_above, last_line_above);
             }
             let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
             self.viewport.push(line_to_insert_at_viewport_bottom);
@@ -265,7 +283,7 @@ impl Grid {
                     && viewport_canonical_lines.is_empty()
                     && !self.lines_above.is_empty()
                 {
-                    let mut first_line_above = self.lines_above.pop().unwrap();
+                    let mut first_line_above = self.lines_above.pop_back().unwrap();
                     first_line_above.append(&mut row.columns);
                     viewport_canonical_lines.push(first_line_above);
                     cursor_canonical_line_index += 1;
@@ -429,13 +447,35 @@ impl Grid {
             self.scroll_down_one_line();
         }
     }
-    pub fn rotate_scroll_region_up(&mut self, _count: usize) {
-        // TBD
+    pub fn rotate_scroll_region_up(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            for _ in 0..count {
+                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                if scroll_region_bottom < self.viewport.len() {
+                    self.viewport.remove(scroll_region_bottom);
+                }
+                if scroll_region_top < self.viewport.len() {
+                    self.viewport
+                        .insert(scroll_region_top, Row::from_columns(columns).canonical());
+                }
+            }
+        }
     }
-    pub fn rotate_scroll_region_down(&mut self, _count: usize) {
-        // TBD
+    pub fn rotate_scroll_region_down(&mut self, count: usize) {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+            for _ in 0..count {
+                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                self.viewport.remove(scroll_region_top);
+                if self.viewport.len() > scroll_region_top {
+                    self.viewport
+                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                } else {
+                    self.viewport.push(Row::from_columns(columns).canonical());
+                }
+            }
+        }
     }
-    pub fn add_canonical_line(&mut self, pad_character: TerminalCharacter) {
+    pub fn add_canonical_line(&mut self) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y == scroll_region_bottom {
                 // end of scroll region
@@ -444,8 +484,12 @@ impl Grid {
                 // then we add an empty line at its end which will be filled by the application
                 // controlling the scroll region (presumably filled by whatever comes next in the
                 // scroll buffer, but that's not something we control)
+                if scroll_region_top >= self.viewport.len() {
+                    // the state is corrupted
+                    return;
+                }
                 self.viewport.remove(scroll_region_top);
-                let columns = vec![pad_character; self.width];
+                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
                 self.viewport
                     .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 return;
@@ -483,6 +527,24 @@ impl Grid {
     }
     pub fn insert_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
         match self.viewport.get_mut(self.cursor.y) {
+            Some(row) => {
+                row.insert_character_at(terminal_character, self.cursor.x);
+                if row.len() > self.width {
+                    row.truncate(self.width);
+                }
+            }
+            None => {
+                // pad lines until cursor if they do not exist
+                for _ in self.viewport.len()..self.cursor.y {
+                    self.viewport.push(Row::new().canonical());
+                }
+                self.viewport
+                    .push(Row::new().with_character(terminal_character).canonical());
+            }
+        }
+    }
+    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
+        match self.viewport.get_mut(self.cursor.y) {
             Some(row) => row.add_character_at(terminal_character, self.cursor.x),
             None => {
                 // pad lines until cursor if they do not exist
@@ -496,9 +558,7 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         // TODO: try to separate adding characters from moving the cursors in this function
-        if self.cursor.x < self.width {
-            self.insert_character_at_cursor_position(terminal_character);
-        } else {
+        if self.cursor.x >= self.width {
             // line wrap
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
@@ -519,8 +579,8 @@ impl Grid {
                     self.viewport.push(line_wrapped_row);
                 }
             }
-            self.insert_character_at_cursor_position(terminal_character);
         }
+        self.add_character_at_cursor_position(terminal_character);
         self.move_cursor_forward_until_edge(1);
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
@@ -546,15 +606,17 @@ impl Grid {
         row.replace_beginning_with(line_part);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        let cursor_row = self.viewport.get_mut(self.cursor.y).unwrap();
-        cursor_row.truncate(self.cursor.x);
-        let mut replace_with_columns_in_cursor_row = vec![replace_with; self.width - self.cursor.x];
-        cursor_row.append(&mut replace_with_columns_in_cursor_row);
+        if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y).as_mut() {
+            cursor_row.truncate(self.cursor.x);
+            let mut replace_with_columns_in_cursor_row =
+                vec![replace_with; self.width - self.cursor.x];
+            cursor_row.append(&mut replace_with_columns_in_cursor_row);
 
-        let replace_with_columns = vec![replace_with; self.width];
-        self.replace_characters_in_line_after_cursor(replace_with);
-        for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
-            row.replace_columns(replace_with_columns.clone());
+            let replace_with_columns = vec![replace_with; self.width];
+            self.replace_characters_in_line_after_cursor(replace_with);
+            for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
+                row.replace_columns(replace_with_columns.clone());
+            }
         }
     }
     pub fn clear_cursor_line(&mut self) {
@@ -600,7 +662,9 @@ impl Grid {
             if current_line_index == scroll_region_top {
                 // if we're at the top line, we create a new line and remove the last line that
                 // would otherwise overflow
-                self.viewport.remove(scroll_region_bottom);
+                if scroll_region_bottom < self.viewport.len() {
+                    self.viewport.remove(scroll_region_bottom);
+                }
                 self.viewport.insert(current_line_index, Row::new()); // TODO: .canonical() ?
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
@@ -621,7 +685,7 @@ impl Grid {
             self.cursor.y + count
         };
         for _ in 0..lines_to_add {
-            self.add_canonical_line(pad_character);
+            self.add_canonical_line();
         }
         self.pad_lines_until(self.cursor.y, pad_character);
     }
@@ -663,8 +727,12 @@ impl Grid {
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
                     let columns = vec![pad_character; self.width];
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                    if self.viewport.len() > scroll_region_bottom {
+                        self.viewport
+                            .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                    } else {
+                        self.viewport.push(Row::from_columns(columns).canonical());
+                    }
                 }
             }
         }
@@ -683,7 +751,9 @@ impl Grid {
                 // so we add an empty line where the cursor currently is, and delete the last line
                 // of the scroll region
                 for _ in 0..count {
-                    self.viewport.remove(scroll_region_bottom);
+                    if scroll_region_bottom < self.viewport.len() {
+                        self.viewport.remove(scroll_region_bottom);
+                    }
                     let columns = vec![pad_character; self.width];
                     self.viewport
                         .insert(current_line_index, Row::from_columns(columns).canonical());
@@ -722,6 +792,320 @@ impl Grid {
             .get_mut(self.cursor.y)
             .unwrap()
             .append(&mut empty_space_to_append);
+    }
+    fn add_newline(&mut self) {
+        self.add_canonical_line();
+        self.mark_for_rerender();
+    }
+    pub fn mark_for_rerender(&mut self) {
+        self.should_render = true;
+    }
+    fn reset_terminal_state(&mut self) {
+        self.lines_above = VecDeque::with_capacity(SCROLL_BACK);
+        self.lines_below = vec![];
+        self.viewport = vec![Row::new().canonical()];
+        self.alternative_lines_above_viewport_and_cursor = None;
+        self.cursor_key_mode = false;
+        self.scroll_region = None;
+        self.clear_viewport_before_rendering = true;
+        self.cursor = Cursor::new(0, 0);
+    }
+}
+
+impl vte::Perform for Grid {
+    fn print(&mut self, c: char) {
+        // apparently, building TerminalCharacter like this without a "new" method
+        // is a little faster
+        let terminal_character = TerminalCharacter {
+            character: c,
+            styles: self.pending_styles,
+        };
+        self.add_character(terminal_character);
+    }
+
+    fn execute(&mut self, byte: u8) {
+        match byte {
+            8 => {
+                // backspace
+                self.move_cursor_backwards(1);
+            }
+            9 => {
+                // tab
+                self.advance_to_next_tabstop(self.pending_styles);
+            }
+            10 => {
+                // 0a, newline
+                self.add_newline();
+            }
+            13 => {
+                // 0d, carriage return
+                self.move_cursor_to_beginning_of_line();
+            }
+            _ => {}
+        }
+    }
+
+    fn hook(&mut self, _params: &[i64], _intermediates: &[u8], _ignore: bool, _c: char) {
+        // TBD
+    }
+
+    fn put(&mut self, _byte: u8) {
+        // TBD
+    }
+
+    fn unhook(&mut self) {
+        // TBD
+    }
+
+    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {
+        // TBD
+    }
+
+    fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
+        if c == 'm' {
+            self.pending_styles.add_style_from_ansi_params(params);
+        } else if c == 'C' {
+            // move cursor forward
+            let move_by = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.move_cursor_forward_until_edge(move_by);
+        } else if c == 'K' {
+            // clear line (0 => right, 1 => left, 2 => all)
+            if params[0] == 0 {
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                char_to_replace.styles = self.pending_styles;
+                self.replace_characters_in_line_after_cursor(char_to_replace);
+            } else if params[0] == 1 {
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                char_to_replace.styles = self.pending_styles;
+                self.replace_characters_in_line_before_cursor(char_to_replace);
+            } else if params[0] == 2 {
+                self.clear_cursor_line();
+            }
+        } else if c == 'J' {
+            // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+            char_to_replace.styles = self.pending_styles;
+            if params[0] == 0 {
+                self.clear_all_after_cursor(char_to_replace);
+            } else if params[0] == 2 {
+                self.clear_all(char_to_replace);
+            }
+        // TODO: implement 1
+        } else if c == 'H' {
+            // goto row/col
+            // we subtract 1 from the row/column because these are 1 indexed
+            // (except when they are 0, in which case they should be 1
+            // don't look at me, I don't make the rules)
+            let (row, col) = if params.len() == 1 {
+                if params[0] == 0 {
+                    (0, params[0] as usize)
+                } else {
+                    ((params[0] as usize).saturating_sub(1), params[0] as usize)
+                }
+            } else if params[0] == 0 {
+                (0, (params[1] as usize).saturating_sub(1))
+            } else {
+                (
+                    (params[0] as usize).saturating_sub(1),
+                    (params[1] as usize).saturating_sub(1),
+                )
+            };
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            self.move_cursor_to(col, row, pad_character);
+        } else if c == 'A' {
+            // move cursor up until edge of screen
+            let move_up_count = if params[0] == 0 { 1 } else { params[0] };
+            self.move_cursor_up(move_up_count as usize);
+        } else if c == 'B' {
+            // move cursor down until edge of screen
+            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            self.move_cursor_down(move_down_count as usize, pad_character);
+        } else if c == 'D' {
+            let move_back_count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.move_cursor_back(move_back_count);
+        } else if c == 'l' {
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(&1049) => {
+                        if let Some((
+                            alternative_lines_above,
+                            alternative_viewport,
+                            alternative_cursor,
+                        )) = self.alternative_lines_above_viewport_and_cursor.as_mut()
+                        {
+                            std::mem::swap(&mut self.lines_above, alternative_lines_above);
+                            std::mem::swap(&mut self.viewport, alternative_viewport);
+                            std::mem::swap(&mut self.cursor, alternative_cursor);
+                        }
+                        self.alternative_lines_above_viewport_and_cursor = None;
+                        self.clear_viewport_before_rendering = true;
+                        self.change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                        self.mark_for_rerender();
+                    }
+                    Some(&25) => {
+                        self.hide_cursor();
+                        self.mark_for_rerender();
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = false;
+                    }
+                    _ => {}
+                };
+            }
+        } else if c == 'h' {
+            let first_intermediate_is_questionmark = match _intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                match params.get(0) {
+                    Some(&25) => {
+                        self.show_cursor();
+                        self.mark_for_rerender();
+                    }
+                    Some(&1049) => {
+                        let current_lines_above = std::mem::replace(
+                            &mut self.lines_above,
+                            VecDeque::with_capacity(SCROLL_BACK),
+                        );
+                        let current_viewport =
+                            std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
+                        let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
+                        self.alternative_lines_above_viewport_and_cursor =
+                            Some((current_lines_above, current_viewport, current_cursor));
+                        self.clear_viewport_before_rendering = true;
+                    }
+                    Some(&1) => {
+                        self.cursor_key_mode = true;
+                    }
+                    _ => {}
+                };
+            }
+        } else if c == 'r' {
+            if params.len() > 1 {
+                // minus 1 because these are 1 indexed
+                let top_line_index = (params[0] as usize).saturating_sub(1);
+                let bottom_line_index = (params[1] as usize).saturating_sub(1);
+                self.set_scroll_region(top_line_index, bottom_line_index);
+                self.show_cursor();
+            } else {
+                self.clear_scroll_region();
+            }
+        } else if c == 'M' {
+            // delete lines if currently inside scroll region
+            let line_count_to_delete = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
+        } else if c == 'L' {
+            // insert blank lines if inside scroll region
+            let line_count_to_add = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
+        } else if c == 'q' {
+            // ignore for now to run on mac
+        } else if c == 'G' {
+            let column = if params[0] == 0 {
+                0
+            } else {
+                params[0] as usize - 1
+            };
+            self.move_cursor_to_column(column);
+        } else if c == 'd' {
+            // goto line
+            let line = if params[0] == 0 {
+                1
+            } else {
+                // minus 1 because this is 1 indexed
+                params[0] as usize - 1
+            };
+            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            self.move_cursor_to_line(line, pad_character);
+        } else if c == 'P' {
+            // erase characters
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.erase_characters(count, self.pending_styles);
+        } else if c == 'X' {
+            // erase characters and replace with empty characters of current style
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.replace_with_empty_chars(count, self.pending_styles);
+        } else if c == 'T' {
+            /*
+             * 124  54  T   SD
+             * Scroll down, new lines inserted at top of screen
+             * [4T = Scroll down 4, bring previous lines back into view
+             */
+            let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
+
+            if line_count >= 0 {
+                self.rotate_scroll_region_up(line_count as usize);
+            } else {
+                // TODO: can this actually happen?
+                self.rotate_scroll_region_down(line_count.abs() as usize);
+            }
+        } else if c == 'S' {
+            // move scroll up
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            self.rotate_scroll_region_down(count);
+        } else if c == '@' {
+            let count = if params[0] == 0 {
+                1
+            } else {
+                params[0] as usize
+            };
+            for _ in 0..count {
+                // TODO: should this be styled?
+                self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);
+            }
+        } else {
+            let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
+        }
+    }
+
+    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
+        match (byte, intermediates.get(0)) {
+            (b'M', None) => {
+                self.move_cursor_up_with_scrolling(1);
+            }
+            (b'c', None) => {
+                self.reset_terminal_state();
+            }
+            _ => {}
+        }
     }
 }
 
@@ -786,10 +1170,24 @@ impl Row {
             }
         }
     }
+    pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
+        match self.columns.len().cmp(&x) {
+            Ordering::Equal => self.columns.push(terminal_character),
+            Ordering::Less => {
+                self.columns.resize(x, EMPTY_TERMINAL_CHARACTER);
+                self.columns.push(terminal_character);
+            }
+            Ordering::Greater => {
+                self.columns.insert(x, terminal_character);
+            }
+        }
+    }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         // this is much more performant than remove/insert
-        self.columns.push(terminal_character);
-        self.columns.swap_remove(x);
+        if x < self.columns.len() {
+            self.columns.push(terminal_character);
+            self.columns.swap_remove(x);
+        }
     }
     pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
         self.columns = columns;
@@ -804,7 +1202,11 @@ impl Row {
         self.columns.append(to_append);
     }
     pub fn replace_beginning_with(&mut self, mut line_part: Vec<TerminalCharacter>) {
-        drop(self.columns.drain(0..line_part.len()));
+        if line_part.len() > self.columns.len() {
+            self.columns.clear();
+        } else {
+            drop(self.columns.drain(0..line_part.len()));
+        }
         line_part.append(&mut self.columns);
         self.columns = line_part;
     }
@@ -812,7 +1214,9 @@ impl Row {
         self.columns.len()
     }
     pub fn delete_character(&mut self, x: usize) {
-        self.columns.remove(x);
+        if x < self.columns.len() {
+            self.columns.remove(x);
+        }
     }
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let mut parts: Vec<Row> = vec![];
