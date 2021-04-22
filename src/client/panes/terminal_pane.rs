@@ -161,8 +161,8 @@ impl Pane for TerminalPane {
         //    around
         // 2. When there are wide characters in a pane, since we don't yet handle them properly,
         //    the spill over to the pane to the right
-        if self.should_render() {
-        //if true {
+        // if self.should_render() {
+        if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
             let display_cols = self.get_columns();
