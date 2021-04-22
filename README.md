@@ -36,6 +36,11 @@ cargo install zellij
 
 Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
+If you're on macOS, you can also install Zellij using [MacPorts](https://www.macports.org):
+```
+sudo port install zellij
+```
+
 ## How do I hack on it?
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
