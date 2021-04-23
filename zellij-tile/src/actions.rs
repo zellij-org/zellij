@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
-use serde::{Deserialize, Serialize};
 use super::data::InputMode;
+use serde::{Deserialize, Serialize};
 
 /// The four directions (left, right, up, down).
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]

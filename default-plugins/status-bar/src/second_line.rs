@@ -3,8 +3,8 @@ use ansi_term::{ANSIStrings, Style};
 use zellij_tile::prelude::*;
 
 use crate::colors::{GREEN, ORANGE, WHITE};
-use crate::{LinePart, MORE_MSG};
 use crate::mode_info::get_mode_info;
+use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(is_first_shortcut: bool, letter: &str, description: &str) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
@@ -210,13 +210,12 @@ fn select_pane_shortcut(is_first_shortcut: bool) -> LinePart {
     }
 }
 
-fn full_shortcut_list(help: &ModeInfo) -> LinePart {
+fn full_shortcut_list(help: &ModeInfo, keybinds: &[(String, String)]) -> LinePart {
     match help.mode {
         InputMode::Normal => quicknav_full(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
-            let keybinds = get_mode_info(help.mode, &help.keybinds);
             for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = full_length_shortcut(i == 0, &letter, &description);
                 line_part.len += shortcut.len;
@@ -230,13 +229,12 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
-fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
+fn shortened_shortcut_list(help: &ModeInfo, keybinds: &[(String, String)]) -> LinePart {
     match help.mode {
         InputMode::Normal => quicknav_medium(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
-            let keybinds = get_mode_info(help.mode, &help.keybinds);
             for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = first_word_shortcut(i == 0, &letter, &description);
                 line_part.len += shortcut.len;
@@ -250,7 +248,11 @@ fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
-fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
+fn best_effort_shortcut_list(
+    help: &ModeInfo,
+    max_len: usize,
+    keybinds: &[(String, String)],
+) -> LinePart {
     match help.mode {
         InputMode::Normal => {
             let line_part = quicknav_short();
@@ -270,7 +272,6 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
         }
         _ => {
             let mut line_part = LinePart::default();
-            let keybinds = get_mode_info(help.mode, &help.keybinds);
             for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = first_word_shortcut(i == 0, &letter, &description);
                 if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
@@ -293,13 +294,14 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
 }
 
 pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
-    let full_shortcut_list = full_shortcut_list(help);
+    let keybinds = get_mode_info(help.mode, &help.keybinds.clone().into_iter().collect());
+    let full_shortcut_list = full_shortcut_list(help, &keybinds);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help);
+    let shortened_shortcut_list = shortened_shortcut_list(help, &keybinds);
     if shortened_shortcut_list.len <= max_width {
         return shortened_shortcut_list;
     }
-    best_effort_shortcut_list(help, max_width)
+    best_effort_shortcut_list(help, max_width, &keybinds)
 }

@@ -4,26 +4,26 @@ use std::collections::HashMap;
 
 // const fn now does not support PartialEq/Eq, we have to implement our own compare fn
 const fn compare_key(l: &Key, r: &Key) -> bool {
-    match (l, r) {
-        (Key::Backspace, Key::Backspace) |
-        (Key::Left, Key::Left) |
-        (Key::Right, Key::Right) |
-        (Key::Up, Key::Up) |
-        (Key::Down, Key::Down) |
-        (Key::Home, Key::Home) |
-        (Key::End, Key::End) |
-        (Key::PageUp, Key::PageUp) |
-        (Key::PageDown, Key::PageDown) |
-        (Key::Delete, Key::Delete) |
-        (Key::Insert, Key::Insert) |
-        (Key::Esc, Key::Esc) |
-        (Key::BackTab, Key::BackTab) => true,
-        _ => false,
-    }
+    matches!(
+        (l, r),
+        (Key::Backspace, Key::Backspace)
+            | (Key::Left, Key::Left)
+            | (Key::Right, Key::Right)
+            | (Key::Up, Key::Up)
+            | (Key::Down, Key::Down)
+            | (Key::Home, Key::Home)
+            | (Key::End, Key::End)
+            | (Key::PageUp, Key::PageUp)
+            | (Key::PageDown, Key::PageDown)
+            | (Key::Delete, Key::Delete)
+            | (Key::Insert, Key::Insert)
+            | (Key::Esc, Key::Esc)
+            | (Key::BackTab, Key::BackTab)
+    )
 }
 
 const fn get_key_order(key: &Key) -> Option<i32> {
-    const V : &[(Key, i32)]= &[
+    const V: &[(Key, i32)] = &[
         (Key::Left, 0),
         (Key::Right, 0),
         (Key::Up, 1),
@@ -32,9 +32,9 @@ const fn get_key_order(key: &Key) -> Option<i32> {
         (Key::PageDown, 2),
     ];
     let mut i = 0;
-    while  i < V.len() {
+    while i < V.len() {
         let (k, o) = V[i];
-        if compare_key(&k, key){
+        if compare_key(&k, key) {
             return Some(o);
         }
         i += 1;
@@ -86,7 +86,10 @@ fn get_key_map_string(key_config: &HashMap<Key, Vec<Action>>, actions: &[&[Actio
     })
 }
 
-pub fn get_mode_info(mode: InputMode, key_config: &HashMap<Key, Vec<Action>>) -> Vec<(String, String)> {
+pub fn get_mode_info(
+    mode: InputMode,
+    key_config: &HashMap<Key, Vec<Action>>,
+) -> Vec<(String, String)> {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}
