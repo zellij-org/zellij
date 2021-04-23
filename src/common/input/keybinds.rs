@@ -3,7 +3,10 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 use strum::IntoEnumIterator;
-use zellij_tile::{actions::{Action, Direction}, data::*};
+use zellij_tile::{
+    actions::{Action, Direction},
+    data::*,
+};
 
 /// Used in the config struct
 #[derive(Clone, Debug, PartialEq)]

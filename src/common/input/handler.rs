@@ -1,7 +1,7 @@
 //! Main input logic.
 
 use super::keybinds::Keybinds;
-use crate::common::input::{config::Config};
+use crate::common::input::config::Config;
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
@@ -11,7 +11,10 @@ use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::{actions::{Action, Direction}, data::{Event, InputMode, Key, ModeInfo}};
+use zellij_tile::{
+    actions::{Action, Direction},
+    data::{Event, InputMode, Key, ModeInfo},
+};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -127,20 +130,27 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                let keybinds = self.config.keybinds.0.get(&mode).cloned().unwrap_or(Keybinds::get_defaults_for_mode(&mode)).0;
+                let keybinds: Vec<(Key, Vec<Action>)> = self
+                    .config
+                    .keybinds
+                    .0
+                    .get(&mode)
+                    .cloned()
+                    .unwrap_or_else(|| Keybinds::get_defaults_for_mode(&mode))
+                    .0
+                    .into_iter()
+                    .collect();
                 self.send_plugin_instructions
                     .send(PluginInstruction::Update(
                         None,
                         Event::ModeUpdate(ModeInfo {
-                            mode: mode.clone(), 
-                            keybinds: keybinds.clone()}),
+                            mode,
+                            keybinds: keybinds.clone(),
+                        }),
                     ))
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeMode(ModeInfo{
-                        mode,
-                        keybinds,
-                    }))
+                    .send(ScreenInstruction::ChangeMode(ModeInfo { mode, keybinds }))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -206,18 +216,10 @@ impl InputHandler {
             }
             Action::NewPane(direction) => {
                 let pty_instr = match direction {
-                    Some(Direction::Left) => {
-                        PtyInstruction::SpawnTerminalVertically(None)
-                    }
-                    Some(Direction::Right) => {
-                        PtyInstruction::SpawnTerminalVertically(None)
-                    }
-                    Some(Direction::Up) => {
-                        PtyInstruction::SpawnTerminalHorizontally(None)
-                    }
-                    Some(Direction::Down) => {
-                        PtyInstruction::SpawnTerminalHorizontally(None)
-                    }
+                    Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(None),
+                    Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(None),
+                    Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(None),
+                    Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(None),
                     // No direction specified - try to put it in the biggest available spot
                     None => PtyInstruction::SpawnTerminal(None),
                 };

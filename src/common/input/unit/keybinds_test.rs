@@ -1,6 +1,5 @@
-use super::super::actions::*;
 use super::super::keybinds::*;
-use zellij_tile::data::Key;
+use zellij_tile::{actions::Action, data::Key};
 
 #[test]
 fn merge_keybinds_merges_different_keys() {
