@@ -44,7 +44,7 @@ pub fn move_focus_up() {
 }
 
 #[test]
-pub fn move_focus_up_to_the_largest_overlap() {
+pub fn move_focus_up_to_the_most_recently_used_pane() {
     let fake_win_size = PositionAndSize {
         columns: 121,
         rows: 20,

@@ -2,6 +2,7 @@ use crate::tab::Pane;
 use ::nix::pty::Winsize;
 use ::std::os::unix::io::RawFd;
 use std::fmt::Debug;
+use std::time::Instant;
 
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
@@ -45,6 +46,7 @@ pub struct TerminalPane {
     pub position_and_size_override: Option<PositionAndSize>,
     pub max_height: Option<usize>,
     pub max_width: Option<usize>,
+    pub active_at: Instant,
     vte_parser: vte::Parser,
 }
 
@@ -282,6 +284,14 @@ impl Pane for TerminalPane {
         self.grid.reset_viewport();
         self.grid.should_render = true;
     }
+
+    fn active_at(&self) -> Instant {
+        self.active_at
+    }
+
+    fn set_active_at(&mut self, time: Instant) {
+        self.active_at = time;
+    }
 }
 
 impl TerminalPane {
@@ -296,6 +306,7 @@ impl TerminalPane {
             max_height: None,
             max_width: None,
             vte_parser: vte::Parser::new(),
+            active_at: Instant::now(),
         }
     }
     pub fn get_x(&self) -> usize {
