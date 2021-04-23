@@ -1,7 +1,5 @@
 //! Main input logic.
 
-use std::collections::HashMap;
-
 use super::keybinds::Keybinds;
 use super::{actions::Action, keybinds::ModeKeybinds};
 use crate::common::input::{actions::Direction, config::Config};
@@ -13,7 +11,6 @@ use crate::screen::ScreenInstruction;
 use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
-use lazy_static::lazy_static;
 use termion::input::{TermRead, TermReadEventsAndRaw};
 use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
 
@@ -287,17 +284,44 @@ impl InputHandler {
     }
 }
 
-lazy_static! {
-    static ref KEY_ORDER: HashMap<Key, i32> = {
-        let mut m = HashMap::new();
-        m.insert(Key::Left, 0);
-        m.insert(Key::Right, 0);
-        m.insert(Key::Up, 1);
-        m.insert(Key::Down, 1);
-        m.insert(Key::PageUp, 2);
-        m.insert(Key::PageDown, 2);
-        m
-    };
+// const fn now does not support PartialEq/Eq, we have to implement our own compare fn
+const fn compare_key(l: &Key, r: &Key) -> bool {
+    match (l, r) {
+        (Key::Backspace, Key::Backspace) |
+        (Key::Left, Key::Left) |
+        (Key::Right, Key::Right) |
+        (Key::Up, Key::Up) |
+        (Key::Down, Key::Down) |
+        (Key::Home, Key::Home) |
+        (Key::End, Key::End) |
+        (Key::PageUp, Key::PageUp) |
+        (Key::PageDown, Key::PageDown) |
+        (Key::Delete, Key::Delete) |
+        (Key::Insert, Key::Insert) |
+        (Key::Esc, Key::Esc) |
+        (Key::BackTab, Key::BackTab) => true,
+        _ => false,
+    }
+}
+
+const fn get_key_order(key: &Key) -> Option<i32> {
+    const V : &[(Key, i32)]= &[
+        (Key::Left, 0),
+        (Key::Right, 0),
+        (Key::Up, 1),
+        (Key::Down, 1),
+        (Key::PageUp, 2),
+        (Key::PageDown, 2),
+    ];
+    let mut i = 0;
+    while  i < V.len() {
+        let (k, o) = V[i];
+        if compare_key(&k, key){
+            return Some(o);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Get a prior key from keybinds
@@ -311,8 +335,8 @@ fn get_major_key_by_action(keybinds: &ModeKeybinds, action: &[Action]) -> Key {
             if key == Key::Null {
                 // old key is null
                 key = *k;
-            } else if let Some(new_order) = KEY_ORDER.get(k) {
-                if let Some(old_order) = KEY_ORDER.get(&key) {
+            } else if let Some(new_order) = get_key_order(k) {
+                if let Some(old_order) = get_key_order(&key) {
                     if new_order < old_order {
                         // old key has lower order (larger number) than new one
                         key = *k;
