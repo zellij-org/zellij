@@ -2,6 +2,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
+use super::actions::{Action};
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
@@ -23,6 +25,12 @@ pub enum Key {
     Ctrl(char),
     Null,
     Esc,
+}
+
+impl Default for Key {
+    fn default() -> Self {
+        Key::Null
+    }
 }
 
 impl Display for Key {
@@ -100,8 +108,7 @@ impl Default for InputMode {
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
-    // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
-    pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
+    pub keybinds: HashMap<Key, Vec<Action>>, 
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

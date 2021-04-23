@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use serde::{Deserialize, Serialize};
-use zellij_tile::data::InputMode;
+use super::data::InputMode;
 
 /// The four directions (left, right, up, down).
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -58,4 +58,10 @@ pub enum Action {
     CloseTab,
     GoToTab(u32),
     TabNameInput(Vec<u8>),
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::NoOp
+    }
 }

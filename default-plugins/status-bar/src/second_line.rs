@@ -4,6 +4,7 @@ use zellij_tile::prelude::*;
 
 use crate::colors::{GREEN, ORANGE, WHITE};
 use crate::{LinePart, MORE_MSG};
+use crate::mode_info::get_mode_info;
 
 fn full_length_shortcut(is_first_shortcut: bool, letter: &str, description: &str) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
@@ -215,7 +216,8 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let keybinds = get_mode_info(help.mode, &help.keybinds);
+            for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = full_length_shortcut(i == 0, &letter, &description);
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
@@ -234,7 +236,8 @@ fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let keybinds = get_mode_info(help.mode, &help.keybinds);
+            for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = first_word_shortcut(i == 0, &letter, &description);
                 line_part.len += shortcut.len;
                 line_part.part = format!("{}{}", line_part.part, shortcut,);
@@ -267,7 +270,8 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
         }
         _ => {
             let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let keybinds = get_mode_info(help.mode, &help.keybinds);
+            for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = first_word_shortcut(i == 0, &letter, &description);
                 if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
                     // TODO: better
