@@ -772,7 +772,7 @@ impl Boundaries {
         let color = match palette.is_some() {
             true => match input_mode {
                 InputMode::Normal | InputMode::Locked => Some(palette.unwrap().green),
-                _ => Some(palette.unwrap().white),
+                _ => Some(palette.unwrap().orange),
             },
             false => None,
         };
