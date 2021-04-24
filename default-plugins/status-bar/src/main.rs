@@ -3,14 +3,11 @@ mod second_line;
 
 use ansi_term::{Color::RGB, Style};
 
-use std::{
-    fmt::{Display, Error, Formatter},
-};
-use zellij_tile::{prelude::*};
+use std::fmt::{Display, Error, Formatter};
+use zellij_tile::prelude::*;
 
 use first_line::{ctrl_keys, superkey};
 use second_line::keybinds;
-
 
 pub mod colors {
     use ansi_term::Colour::{self, Fixed};

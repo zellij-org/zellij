@@ -43,7 +43,7 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) {
         match event {
-            Event::ModeUpdate(mode_info) => self.mode_info.mode = mode_info.mode,
+            Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }

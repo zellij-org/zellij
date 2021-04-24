@@ -192,7 +192,12 @@ pub fn tab_line(
     }
     tab_line.append(&mut tabs_to_render);
     if !tabs_after_active.is_empty() {
-        add_next_tabs_msg(&mut tabs_after_active, &mut tab_line, cols - prefix.len, palette);
+        add_next_tabs_msg(
+            &mut tabs_after_active,
+            &mut tab_line,
+            cols - prefix.len,
+            palette,
+        );
     }
     tab_line.insert(0, prefix);
     tab_line

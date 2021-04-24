@@ -18,7 +18,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::{colors, Event, InputMode, ModeInfo, Palette};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 

@@ -74,7 +74,7 @@ pub enum Theme {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PaletteSource {
     Default,
-    Xresources
+    Xresources,
 }
 pub mod colors {
     pub const WHITE: (u8, u8, u8) = (238, 238, 238);

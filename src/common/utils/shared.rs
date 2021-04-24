@@ -6,7 +6,7 @@ use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
 use xrdb::Colors;
-use zellij_tile::data::{Palette, Theme, PaletteSource};
+use zellij_tile::data::{Palette, PaletteSource, Theme};
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())

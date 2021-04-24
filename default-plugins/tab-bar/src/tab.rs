@@ -1,11 +1,10 @@
-use crate::colors::{BLACK, BRIGHT_GRAY, GRAY, GREEN};
 use crate::{LinePart, ARROW_SEPARATOR};
 use ansi_term::{ANSIStrings, Color::RGB, Style};
 use zellij_tile::data::Palette;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = Style::new()
-        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
@@ -30,7 +29,7 @@ pub fn active_tab(text: String, palette: Palette) -> LinePart {
 
 pub fn non_active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = Style::new()
-        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
@@ -40,7 +39,7 @@ pub fn non_active_tab(text: String, palette: Palette) -> LinePart {
         .bold()
         .paint(format!(" {} ", text));
     let right_separator = Style::new()
-        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .paint(ARROW_SEPARATOR);
     let tab_styled_text = format!(

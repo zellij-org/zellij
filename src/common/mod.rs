@@ -27,7 +27,6 @@ use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use async_std::task_local;
-use colors_transform::{Color, Rgb};
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
 use errors::{
@@ -45,10 +44,7 @@ use wasm_vm::PluginEnv;
 use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use xrdb::Colors;
-use zellij_tile::data::{EventType, InputMode, ModeInfo, Palette, Theme};
-
-use self::utils::logging::debug_log_to_file;
+use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
