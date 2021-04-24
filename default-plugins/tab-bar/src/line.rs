@@ -1,7 +1,8 @@
 use crate::colors::{BLACK, GRAY, ORANGE, WHITE};
-use ansi_term::{ANSIStrings, Style};
+use ansi_term::{ANSIStrings, Color::RGB, Style};
 
 use crate::{LinePart, ARROW_SEPARATOR};
+use zellij_tile::data::Palette;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title
@@ -47,7 +48,7 @@ fn populate_tabs_in_tab_line(
     }
 }
 
-fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
+fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart {
     if tab_count_to_the_left == 0 {
         return LinePart {
             part: String::new(),
@@ -62,7 +63,11 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
     let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
-    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let more_styled_text = Style::new()
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(ORANGE)
+        .bold()
+        .paint(more_text);
     let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
@@ -74,7 +79,7 @@ fn left_more_message(tab_count_to_the_left: usize) -> LinePart {
     }
 }
 
-fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
+fn right_more_message(tab_count_to_the_right: usize, palette: Palette) -> LinePart {
     if tab_count_to_the_right == 0 {
         return LinePart {
             part: String::new(),
@@ -88,7 +93,11 @@ fn right_more_message(tab_count_to_the_right: usize) -> LinePart {
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
     let left_separator = Style::new().fg(GRAY).on(ORANGE).paint(ARROW_SEPARATOR);
-    let more_styled_text = Style::new().fg(BLACK).on(ORANGE).bold().paint(more_text);
+    let more_styled_text = Style::new()
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(ORANGE)
+        .bold()
+        .paint(more_text);
     let right_separator = Style::new().fg(ORANGE).on(GRAY).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
@@ -105,13 +114,15 @@ fn add_previous_tabs_msg(
     tabs_to_render: &mut Vec<LinePart>,
     title_bar: &mut Vec<LinePart>,
     cols: usize,
+    palette: Palette,
 ) {
-    while get_current_title_len(&tabs_to_render) + left_more_message(tabs_before_active.len()).len
+    while get_current_title_len(&tabs_to_render)
+        + left_more_message(tabs_before_active.len(), palette).len
         >= cols
     {
         tabs_before_active.push(tabs_to_render.remove(0));
     }
-    let left_more_message = left_more_message(tabs_before_active.len());
+    let left_more_message = left_more_message(tabs_before_active.len(), palette);
     title_bar.push(left_more_message);
 }
 
@@ -119,20 +130,26 @@ fn add_next_tabs_msg(
     tabs_after_active: &mut Vec<LinePart>,
     title_bar: &mut Vec<LinePart>,
     cols: usize,
+    palette: Palette,
 ) {
-    while get_current_title_len(&title_bar) + right_more_message(tabs_after_active.len()).len
+    while get_current_title_len(&title_bar)
+        + right_more_message(tabs_after_active.len(), palette).len
         >= cols
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
     }
-    let right_more_message = right_more_message(tabs_after_active.len());
+    let right_more_message = right_more_message(tabs_after_active.len(), palette);
     title_bar.push(right_more_message);
 }
 
-fn tab_line_prefix() -> LinePart {
+fn tab_line_prefix(palette: Palette) -> LinePart {
     let prefix_text = " Zellij ".to_string();
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
+    let prefix_styled_text = Style::new()
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+        .bold()
+        .paint(prefix_text);
     LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
@@ -143,6 +160,7 @@ pub fn tab_line(
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
+    palette: Palette,
 ) -> Vec<LinePart> {
     let mut tabs_to_render: Vec<LinePart> = vec![];
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
@@ -154,7 +172,7 @@ pub fn tab_line(
     };
     tabs_to_render.push(active_tab);
 
-    let prefix = tab_line_prefix();
+    let prefix = tab_line_prefix(palette);
     populate_tabs_in_tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
@@ -169,11 +187,12 @@ pub fn tab_line(
             &mut tabs_to_render,
             &mut tab_line,
             cols - prefix.len,
+            palette,
         );
     }
     tab_line.append(&mut tabs_to_render);
     if !tabs_after_active.is_empty() {
-        add_next_tabs_msg(&mut tabs_after_active, &mut tab_line, cols - prefix.len);
+        add_next_tabs_msg(&mut tabs_after_active, &mut tab_line, cols - prefix.len, palette);
     }
     tab_line.insert(0, prefix);
     tab_line

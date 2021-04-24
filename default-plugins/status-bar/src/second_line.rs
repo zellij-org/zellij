@@ -1,8 +1,11 @@
 // use colored::*;
 use ansi_term::{ANSIStrings, Color::RGB, Style};
-use zellij_tile::{data::Theme, prelude::*};
+use zellij_tile::prelude::*;
 
-use crate::colors::{GREEN, ORANGE, WHITE};
+use crate::{
+    colors::{GREEN, ORANGE, WHITE},
+    ColoredElements,
+};
 use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(
@@ -13,27 +16,22 @@ fn full_length_shortcut(
 ) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
     let separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
     let shortcut_left_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("<");
     let shortcut = Style::new()
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .fg(ORANGE)
+        .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(letter);
     let shortcut_right_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("> ");
     let description_len = description.chars().count();
     let description = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
@@ -60,28 +58,23 @@ fn first_word_shortcut(
 ) -> LinePart {
     let separator = if is_first_shortcut { " " } else { " / " };
     let separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
     let shortcut_left_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("<");
     let shortcut = Style::new()
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
         .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(letter);
     let shortcut_right_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("> ");
     let description_first_word = description.split(' ').next().unwrap_or("");
     let description_first_word_length = description_first_word.chars().count();
     let description_first_word = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(description_first_word);
     let len = shortcut_len + description_first_word_length + separator.chars().count();
@@ -99,7 +92,7 @@ fn first_word_shortcut(
         len,
     }
 }
-fn quicknav_full() -> LinePart {
+fn quicknav_full(palette: Palette) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -126,15 +119,30 @@ fn quicknav_full() -> LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
+            Style::new()
+                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
+                .bold()
+                .paint(alt),
             text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(ORANGE).bold().paint(second_alt),
+            Style::new()
+                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
+                .bold()
+                .paint(second_alt),
             text_fourth_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(hjkl_navigation),
             text_sixths_part,
         ),
         len,
@@ -220,7 +228,7 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let locked_text_len = locked_text.chars().count();
     let locked_styled_text = Style::new()
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(locked_text);
     LinePart {
@@ -234,27 +242,22 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
     let description = "Select pane";
     let separator = if is_first_shortcut { " " } else { " / " };
     let separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint(separator);
     let shortcut_len = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
     let shortcut_left_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("<");
     let shortcut = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(ORANGE)
+        .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
         .bold()
         .paint(shortcut);
     let shortcut_right_separator = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("> ");
     let description_len = description.chars().count();
     let description = Style::new()
-        .on(RGB(palette.black.0, palette.black.1, palette.black.2))
-        .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .bold()
         .paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
@@ -275,7 +278,7 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
 
 fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_full(),
+        InputMode::Normal => quicknav_full(help.palette),
         InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();

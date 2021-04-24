@@ -5,12 +5,12 @@ use zellij_tile::data::Palette;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = Style::new()
-        .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
     let tab_styled_text = Style::new()
-        .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
+        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .on(RGB(palette.green.0, palette.green.1, palette.green.2))
         .bold()
         .paint(format!(" {} ", text));

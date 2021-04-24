@@ -140,7 +140,7 @@ fn color_elements(palette: Palette) -> ColoredElements {
                 .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2)),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2))
                 .bold(),
             Style::new()
@@ -149,16 +149,16 @@ fn color_elements(palette: Palette) -> ColoredElements {
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
                 .bold(),
             Style::new()
                 .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
@@ -179,7 +179,7 @@ fn color_elements(palette: Palette) -> ColoredElements {
                 .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
                 .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
                 .bold(),
             Style::new()
@@ -218,11 +218,11 @@ fn color_elements(palette: Palette) -> ColoredElements {
                 .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
                 .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
             Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+                .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
+                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
+                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
                 .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
         ),
         PaletteSource::Xresources => ColoredElements::new(
@@ -247,8 +247,8 @@ fn color_elements(palette: Palette) -> ColoredElements {
                 .on(RGB(palette.green.0, palette.green.1, palette.green.2))
                 .bold(),
             Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
                 .bold(),
             Style::new()
                 .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
