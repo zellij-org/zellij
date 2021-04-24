@@ -23,3 +23,6 @@ In Zellij, there is one pty pair  for each terminal pane.
 
 ## tab
 @@@
+
+## input modes
+@@@
