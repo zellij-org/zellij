@@ -6,7 +6,7 @@ use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
 use xrdb::Colors;
-use zellij_tile::data::{Palette, Theme};
+use zellij_tile::data::{Palette, Theme, PaletteSource};
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
@@ -51,6 +51,7 @@ pub fn hex_to_rgb(hex: &Option<String>) -> (u8, u8, u8) {
     (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
 }
 
+// Dark magic
 pub fn detect_theme(bg: (u8, u8, u8)) -> Theme {
     let (r, g, b) = bg;
     // HSP, P stands for perceived brightness
@@ -72,6 +73,7 @@ pub fn load_palette() -> Palette {
             let colors: Vec<(u8, u8, u8)> = palette.colors.iter().map(|c| hex_to_rgb(c)).collect();
             let theme = detect_theme(bg);
             Palette {
+                source: PaletteSource::Xresources,
                 theme,
                 fg,
                 bg,
@@ -86,9 +88,10 @@ pub fn load_palette() -> Palette {
             }
         }
         None => Palette {
+            source: PaletteSource::Default,
             theme: Theme::Dark,
             fg: colors::BRIGHT_GRAY,
-            bg: colors::BLACK,
+            bg: colors::GRAY,
             black: colors::BLACK,
             red: colors::RED,
             green: colors::GREEN,

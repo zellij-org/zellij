@@ -70,6 +70,12 @@ pub enum Theme {
     Light,
     Dark,
 }
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum PaletteSource {
+    Default,
+    Xresources
+}
 pub mod colors {
     pub const WHITE: (u8, u8, u8) = (238, 238, 238);
     pub const GREEN: (u8, u8, u8) = (175, 255, 0);
@@ -81,6 +87,7 @@ pub mod colors {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Palette {
+    pub source: PaletteSource,
     pub theme: Theme,
     pub fg: (u8, u8, u8),
     pub bg: (u8, u8, u8),
@@ -97,6 +104,7 @@ pub struct Palette {
 impl Default for Palette {
     fn default() -> Palette {
         Palette {
+            source: PaletteSource::Default,
             theme: Theme::Dark,
             fg: colors::BRIGHT_GRAY,
             bg: colors::BLACK,
