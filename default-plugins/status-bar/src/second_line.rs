@@ -2,10 +2,6 @@
 use ansi_term::{ANSIStrings, Color::RGB, Style};
 use zellij_tile::prelude::*;
 
-use crate::{
-    colors::{GREEN, ORANGE, WHITE},
-    ColoredElements,
-};
 use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(
@@ -120,7 +116,7 @@ fn quicknav_full(palette: Palette) -> LinePart {
             "{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
             Style::new()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
+                .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
                 .bold()
                 .paint(alt),
             text_second_part,
@@ -130,7 +126,7 @@ fn quicknav_full(palette: Palette) -> LinePart {
                 .paint(new_pane_shortcut),
             text_third_part,
             Style::new()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
+                .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
                 .bold()
                 .paint(second_alt),
             text_fourth_part,
@@ -149,7 +145,7 @@ fn quicknav_full(palette: Palette) -> LinePart {
     }
 }
 
-fn quicknav_medium() -> LinePart {
+fn quicknav_medium(palette: Palette) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -176,22 +172,37 @@ fn quicknav_medium() -> LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
+            Style::new()
+                .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
+                .bold()
+                .paint(alt),
             text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(ORANGE).bold().paint(second_alt),
+            Style::new()
+                .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
+                .bold()
+                .paint(second_alt),
             text_fourth_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(hjkl_navigation),
             text_sixths_part,
         ),
         len,
     }
 }
 
-fn quicknav_short() -> LinePart {
+fn quicknav_short(palette: Palette) -> LinePart {
     let text_first_part = " QuickNav: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -212,13 +223,13 @@ fn quicknav_short() -> LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
+            Style::new().fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2)).bold().paint(alt),
             text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
+            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
+            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
+            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(hjkl_navigation),
         ),
         len,
     }
@@ -249,7 +260,7 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
         .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
         .paint("<");
     let shortcut = Style::new()
-        .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
+        .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
         .bold()
         .paint(shortcut);
     let shortcut_right_separator = Style::new()
@@ -297,7 +308,7 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
 
 fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_medium(),
+        InputMode::Normal => quicknav_medium(help.palette),
         InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();
@@ -317,7 +328,7 @@ fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
 fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = quicknav_short();
+            let line_part = quicknav_short(help.palette);
             if line_part.len <= max_len {
                 line_part
             } else {

@@ -40,6 +40,7 @@ pub mod colors {
     pub const GRAY: (u8, u8, u8) = (68, 68, 68);
     pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
     pub const RED: (u8, u8, u8) = (135, 0, 0);
+    pub const ORANGE: (u8, u8, u8) = (215,95,0);
     pub const BLACK: (u8, u8, u8) = (0, 0, 0);
 }
 
@@ -85,6 +86,7 @@ pub fn load_palette() -> Palette {
                 magenta: colors[5],
                 cyan: colors[6],
                 white: colors[7],
+                orange: colors[9]
             }
         }
         None => Palette {
@@ -100,6 +102,7 @@ pub fn load_palette() -> Palette {
             magenta: colors::GRAY,
             cyan: colors::GRAY,
             white: colors::WHITE,
+            orange: colors::ORANGE
         },
     };
     palette

@@ -9,17 +9,6 @@ use zellij_tile::prelude::*;
 use first_line::{ctrl_keys, superkey};
 use second_line::keybinds;
 
-pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
-    pub const BLACK: Colour = Fixed(16);
-    pub const GREEN: Colour = Fixed(154);
-    pub const ORANGE: Colour = Fixed(166);
-    pub const GRAY: Colour = Fixed(238);
-    pub const BRIGHT_GRAY: Colour = Fixed(245);
-    pub const RED: Colour = Fixed(88);
-}
-
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
@@ -130,187 +119,74 @@ impl ColoredElements {
     }
 }
 
+macro_rules! rgb {
+    ($a:expr) => {
+        RGB($a.0, $a.1, $a.2)
+    };
+}
+macro_rules! style {
+    ($a:expr, $b:expr) => {
+        Style::new()
+            .fg(RGB($a.0, $a.1, $a.2))
+            .on(RGB($b.0, $b.1, $b.2))
+    };
+}
+
+// I really hate this, but I can't come up with a good solution for this,
+// we need different colors from palette for the default theme
+// plus here we can add new sources in the future, like Theme
+// that can be defined in the config perhaps
 fn color_elements(palette: Palette) -> ColoredElements {
     match palette.source {
         PaletteSource::Default => ColoredElements::new(
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2)),
-            Style::new()
-                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.black.0, palette.black.1, palette.black.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .dimmed(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.white.0, palette.white.1, palette.white.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
+            style!(palette.bg, palette.green),
+            style!(palette.black, palette.green).bold(),
+            style!(palette.red, palette.green).bold(),
+            style!(palette.black, palette.green).bold(),
+            style!(palette.black, palette.green).bold(),
+            style!(palette.green, palette.bg).bold(),
+            style!(palette.bg, palette.fg),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.red, palette.fg).bold(),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.black, palette.fg).bold(),
+            style!(palette.fg, palette.bg),
+            style!(palette.fg, palette.bg),
+            style!(palette.bg, palette.fg).dimmed(),
+            style!(palette.fg, palette.bg),
+            style!(palette.fg, palette.green),
+            style!(palette.red, palette.green).bold(),
+            style!(palette.green, palette.fg),
+            style!(palette.fg, palette.bg),
+            style!(palette.red, palette.fg).bold(),
+            style!(palette.fg, palette.bg),
+            style!(palette.white, palette.bg).bold(),
+            Style::new().fg(rgb!(palette.bg)).on(rgb!(palette.bg)),
         ),
         PaletteSource::Xresources => ColoredElements::new(
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2)),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .dimmed(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2)),
-            Style::new()
-                .bold()
-                .fg(RGB(palette.red.0, palette.red.1, palette.red.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
-            Style::new()
-                .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-                .on(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .bold(),
-            Style::new()
-                .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-                .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2)),
+            style!(palette.bg, palette.green),
+            style!(palette.fg, palette.green).bold(),
+            style!(palette.red, palette.green).bold(),
+            style!(palette.fg, palette.green).bold(),
+            style!(palette.bg, palette.green).bold(),
+            style!(palette.green, palette.bg).bold(),
+            style!(palette.bg, palette.fg),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.red, palette.fg).bold(),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.fg, palette.bg),
+            style!(palette.fg, palette.bg),
+            style!(palette.bg, palette.fg).dimmed(),
+            style!(palette.fg, palette.bg),
+            style!(palette.fg, palette.green),
+            style!(palette.red, palette.green).bold(),
+            style!(palette.green, palette.fg),
+            style!(palette.fg, palette.bg),
+            style!(palette.red, palette.fg).bold(),
+            style!(palette.fg, palette.bg),
+            style!(palette.bg, palette.fg).bold(),
+            style!(palette.fg, palette.bg),
         ),
     }
 }
