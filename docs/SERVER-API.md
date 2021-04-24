@@ -17,14 +17,6 @@ The document does not describe implementation details on the server side and is 
 
 **Response:** None.
 
-### Quit
-
-**Purpose:** Indicates that the current client is terminating.
-
-**Parameters:** None.
-
-**Response:** None.
-
 ### Switch input mode
 @@@Is this part of the API or a client detail?
 
@@ -50,6 +42,21 @@ The document does not describe implementation details on the server side and is 
 
 **Response:** None.
 
+### Terminal resize
+
+**Purpose:** Indicates that the terminal has been resized and so the layout should be redrawn.
+
+**Parameters:** New size of the layout.
+
+**Response:** @@@do we have a lock here?
+
+### Open file
+
+**Purpose:** Indicates that a new terminal should be spawned.
+
+**Parameters:** File name (optional) - the name of a file to be opened, using a terminal application determined by first the `EDITOR` and (if `EDITOR` is not set) `VISUAL` environment variables.
+
+**Response:** @@@do we have a lock here?
 
 ## Pane controls
 
@@ -100,6 +107,22 @@ The document does not describe implementation details on the server side and is 
 **Parameters:** Direction in which the pane should be resized. @@@ When does it shrink, when does it grow? Is it the top left that's fixed?
 
 **Response:** None.
+
+### Horizontal split
+
+**Purpose:** Split the current focus [pane](./TERMINOLOGY.md#pane) horizontally, creating a new pane @@@above or below?
+
+**Parameters:** None.
+
+**Response:** Done opening new pane - indicates that the server has finished opening the pane. This exists for the purpose of synchronization @@@what's blocked?
+
+### Vertical split
+
+**Purpose:** Split the current focus [pane](./TERMINOLOGY.md#pane) vertically, creating a new pane to the @@@left or right?
+
+**Parameters:** None.
+
+**Response:** Done opening new pane - indicates that the server has finished opening the pane. This exists for the purpose of synchronization @@@what's blocked?
 
 
 ## Tab controls
@@ -161,3 +184,31 @@ The document does not describe implementation details on the server side and is 
 **Response:** None.
 
 ## Session management
+
+### New client
+
+**Purpose:** Indicates that a new client is connecting to the server.
+
+**Parameters:**
+- Name - a user-defined name for the new client session.
+- Size and position - the size and position of the terminal to be created for the new client.
+
+**Response:** None @@@no response?
+
+### Quit
+
+**Purpose:** Indicates that the current client is exiting.
+
+**Parameters:** None.
+
+**Response:** None.
+
+### Shut down server
+
+**Purpose:** Attempts to shut down the server, causing all client sessions (attached or detached) to exit and lose any saved state.
+
+Sending this command will cause all child shells opened by the server on behalf of clients to be killed.
+
+**Parameter:** None.
+
+**Response:** None.
