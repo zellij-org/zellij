@@ -14,7 +14,9 @@ Please attach the files that were created in
 
 `/tmp/zellij/zellij-log/`
 
-To the extend you are comfortable with.
+To the extent you are comfortable with.
+
+Also please add the size in columns/lines of the terminal in which the bug happened. You can usually find these out with `tput lines` and `tput cols`.
 
 And the name and version of progams you interacted with as well as
 the operating system.
