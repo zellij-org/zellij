@@ -55,6 +55,14 @@ fn get_key_map_string(key_config: &HashMap<Key, Vec<Action>>, actions: &[&[Actio
     })
 }
 
+pub fn pick_key_from_keybinds(action: Action, key_config: &[(Key, Vec<Action>)]) -> Option<Key> {
+    let action = &[action];
+    key_config
+        .iter()
+        .filter_map(|(k, a)| if a == action { Some(*k) } else { None })
+        .next()
+}
+
 pub fn get_mode_info(
     mode: InputMode,
     key_config: &HashMap<Key, Vec<Action>>,
