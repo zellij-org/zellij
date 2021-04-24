@@ -2,3 +2,4 @@
 *.new
 .vscode
 .vim
+.DS_Store 
