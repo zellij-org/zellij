@@ -21,6 +21,7 @@ pub fn move_focus_up() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -43,12 +44,13 @@ pub fn move_focus_up() {
 }
 
 #[test]
-pub fn move_focus_up_to_the_largest_overlap() {
+pub fn move_focus_up_to_the_most_recently_used_pane() {
     let fake_win_size = PositionAndSize {
         columns: 121,
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
