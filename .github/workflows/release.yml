@@ -1,0 +1,89 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+jobs:
+  build-release:
+    needs: create-release
+    name: build-release
+    runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        build:
+          - linux musl x64
+          - macos x64
+        include:
+          - build: linux musl x64
+            os: ubuntu-latest
+            rust: stable
+            target: x86_64-unknown-linux-musl
+          - build: macos x64
+            os: macos-latest
+            rust: stable
+            target: x86_64-apple-darwin 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Add WASM target
+        run: rustup target add wasm32-wasi
+
+      - name: Install cargo-make
+        run: cargo install --debug cargo-make
+
+      - name: Install musl-tools
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install wasm-opt
+        run: brew install binaryen
+
+      - name: Build release binary
+        run: cargo make ci-build-release ${{ matrix.target }}
+
+      - name: Strip release binary
+        run: strip "target/${{ matrix.target }}/release/zellij"
+        
+      - name: Tar release
+        id: make-artifact
+        working-directory: ./target/${{ matrix.target }}/release
+        run: |
+          name="zellij-${GITHUB_REF#refs/tags/}-${{ matrix.target }}.tar.gz"
+          tar cvfz "${name}" "zellij"
+          echo "::set-output name=name::${name}"
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }} 
+          asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
+          asset_name: zellij-v${{ github.event.release.tag_name }}-${{matrix.target}}.tar.gz
+          asset_content_type: application/octet-stream
+  create-release:
+    runs-on: ubuntu-latest
+    outputs: 
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: create_release 
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false  
+
