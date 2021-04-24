@@ -20,17 +20,6 @@ struct State {
 
 static ARROW_SEPARATOR: &str = "";
 
-pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
-    pub const BLACK: Colour = Fixed(16);
-    pub const GREEN: Colour = Fixed(154);
-    pub const ORANGE: Colour = Fixed(166);
-    pub const GRAY: Colour = Fixed(238);
-    pub const BRIGHT_GRAY: Colour = Fixed(245);
-    pub const RED: Colour = Fixed(88);
-}
-
 register_plugin!(State);
 
 impl ZellijPlugin for State {

@@ -2,21 +2,21 @@ use crate::{LinePart, ARROW_SEPARATOR};
 use ansi_term::{ANSIStrings, Color::RGB, Style};
 use zellij_tile::data::Palette;
 
+macro_rules! style {
+    ($a:expr, $b:expr) => {
+        Style::new()
+            .fg(RGB($a.0, $a.1, $a.2))
+            .on(RGB($b.0, $b.1, $b.2))
+    };
+}
+
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
-    let left_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .on(RGB(palette.green.0, palette.green.1, palette.green.2))
-        .paint(ARROW_SEPARATOR);
+    let left_separator = style!(palette.bg, palette.green).paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
-    let tab_styled_text = Style::new()
-        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-        .on(RGB(palette.green.0, palette.green.1, palette.green.2))
+    let tab_styled_text = style!(palette.bg, palette.green)
         .bold()
         .paint(format!(" {} ", text));
-    let right_separator = Style::new()
-        .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.green, palette.bg).paint(ARROW_SEPARATOR);
     let tab_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
@@ -28,20 +28,12 @@ pub fn active_tab(text: String, palette: Palette) -> LinePart {
 }
 
 pub fn non_active_tab(text: String, palette: Palette) -> LinePart {
-    let left_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .paint(ARROW_SEPARATOR);
+    let left_separator = style!(palette.bg, palette.bg).paint(ARROW_SEPARATOR);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
-    let tab_styled_text = Style::new()
-        .fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
+    let tab_styled_text = style!(palette.fg, palette.bg)
         .bold()
         .paint(format!(" {} ", text));
-    let right_separator = Style::new()
-        .fg(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .on(RGB(palette.bg.0, palette.bg.1, palette.bg.2))
-        .paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.bg, palette.bg).paint(ARROW_SEPARATOR);
     let tab_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
