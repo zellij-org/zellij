@@ -28,20 +28,24 @@ impl OutputBuffer {
         }
     }
 
+    pub fn same_size(&self, other: &OutputBuffer) -> bool {
+        self.width == other.width && self.height == other.height
+    }
+
     /// Takes another buffer and returns a string with the commands to put the difference into STDOUT
     pub fn diff(&self, other: &OutputBuffer, (x_offset, y_offset): (usize, usize)) -> String {
         if other.width != self.width || other.height != self.height {
-            // TODO: Clean rerender on a resize
+            todo!("Attempted to diff buffers that do not match, ({}, {}) -> ({}, {})", self.width, self.height, other.width, other.height);
         }
         self.chars
             .iter()
             .zip(other.chars.iter())
             .enumerate()
             .fold(
-                (String::new(), false, CharacterStyles::new()),
+                (String::new(), true, CharacterStyles::new()),
                 |(mut output, was_previous_match, mut styles), (index, (old_char, new_char))| {
                     if old_char != new_char {
-                        if was_previous_match {
+                        if was_previous_match || index % self.width == 0 {
                             let y = index / self.width + y_offset;
                             let x = index % self.width + x_offset;
                             styles.clear();
