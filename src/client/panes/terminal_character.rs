@@ -90,7 +90,7 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -623,7 +623,7 @@ impl Display for CharacterStyles {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,

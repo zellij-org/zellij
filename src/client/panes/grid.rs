@@ -13,6 +13,8 @@ use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 
+use super::output_buffer::OutputBuffer;
+
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate() {
@@ -423,6 +425,17 @@ impl Grid {
             lines.push(empty_row.clone());
         }
         lines
+    }
+    pub fn as_output_buffer(&self) -> OutputBuffer {
+        // TODO: Make this more cache friendly
+        let mut output = OutputBuffer::new(self.width, self.height);
+        for line in self.viewport.iter() {
+            for char in line.columns.iter() {
+                output.chars.push(*char);
+            }
+        }
+        debug_log_to_file(format!("output: {:?}", output)).unwrap();
+        output
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor.is_hidden {
