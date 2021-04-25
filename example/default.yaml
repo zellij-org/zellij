@@ -30,7 +30,7 @@ keybinds:
           key: [ Alt: ']',]
     locked:
         - action: [SwitchToMode: Normal,]
-          key: [Ctrl: 'c',]
+          key: [Ctrl: 'g',]
     resize:
         - action: [SwitchToMode: Locked,]
           key: [Ctrl: 'g']
