@@ -49,6 +49,7 @@ pub struct TerminalPane {
     pub max_height: Option<usize>,
     pub max_width: Option<usize>,
     pub active_at: Instant,
+    last_buffer: OutputBuffer,
     vte_parser: vte::Parser,
 }
 
@@ -195,7 +196,9 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            vte_output.push_str(&OutputBuffer::new_filled(self.grid.width, self.grid.height, ' ').diff(self.grid.as_output_buffer(), (self.x(), self.y()))); // TODO: store and actually do diff
+            let new_output = self.grid.as_output_buffer();
+            vte_output.push_str(&self.last_buffer.diff(&new_output, (self.x(), self.y()))); // TODO: store and actually do diff
+            self.last_buffer = new_output;
             // for (row, line) in buffer_lines.iter().enumerate() {
             //     let x = self.get_x();
             //     let y = self.get_y();
@@ -310,6 +313,7 @@ impl TerminalPane {
             max_width: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
+            last_buffer: OutputBuffer::new_empty(position_and_size.columns, position_and_size.rows),
         }
     }
     pub fn get_x(&self) -> usize {

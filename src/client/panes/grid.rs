@@ -433,8 +433,11 @@ impl Grid {
             for char in line.columns.iter() {
                 output.chars.push(*char);
             }
+            for _ in line.columns.len()..self.width {
+                output.chars.push(EMPTY_TERMINAL_CHARACTER);
+            }
         }
-        debug_log_to_file(format!("output: {:?}", output)).unwrap();
+        // debug_log_to_file(format!("output: {:?}", output)).unwrap();
         output
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
