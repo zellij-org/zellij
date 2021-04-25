@@ -47,15 +47,15 @@ pub fn main() {
         stream.write_all(&api_command).unwrap();
     } else if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
         let shell = match shell.as_ref() {
-            "bash"       => structopt::clap::Shell::Bash,
-            "fish"       => structopt::clap::Shell::Fish,
-            "zsh"        => structopt::clap::Shell::Zsh,
+            "bash" => structopt::clap::Shell::Bash,
+            "fish" => structopt::clap::Shell::Fish,
+            "zsh" => structopt::clap::Shell::Zsh,
             "powerShell" => structopt::clap::Shell::PowerShell,
-            "elvish"     => structopt::clap::Shell::Elvish,
-            other        => {
+            "elvish" => structopt::clap::Shell::Elvish,
+            other => {
                 eprintln!("Unsupported shell: {}", other);
                 std::process::exit(1);
-            },
+            }
         };
         let mut out = std::io::stdout();
         CliArgs::clap().gen_completions_to("zellij", shell, &mut out);

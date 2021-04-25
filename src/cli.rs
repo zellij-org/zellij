@@ -53,8 +53,5 @@ pub enum ConfigCli {
     },
 
     #[structopt(name = "generate-completion")]
-    GenerateCompletion {
-        shell: String,
-    },
+    GenerateCompletion { shell: String },
 }
-
