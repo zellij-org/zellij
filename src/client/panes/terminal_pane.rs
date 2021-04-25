@@ -196,7 +196,7 @@ impl Pane for TerminalPane {
                 self.last_buffer = OutputBuffer::new_empty(self.grid.width, self.grid.height);
                 self.grid.clear_viewport_before_rendering = false;
             }
-            vte_output.push_str(&self.last_buffer.diff(&new_output, (self.x(), self.y()))); // TODO: store and actually do diff
+            vte_output.push_str(&self.last_buffer.diff(&new_output, (self.x(), self.y())));
             self.last_buffer = new_output;
             self.grid.should_render = false;
             Some(vte_output)
