@@ -45,6 +45,20 @@ pub fn main() {
         let mut stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
         let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
         stream.write_all(&api_command).unwrap();
+    } else if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
+        let shell = match shell.as_ref() {
+            "bash"       => structopt::clap::Shell::Bash,
+            "fish"       => structopt::clap::Shell::Fish,
+            "zsh"        => structopt::clap::Shell::Zsh,
+            "powerShell" => structopt::clap::Shell::PowerShell,
+            "elvish"     => structopt::clap::Shell::Elvish,
+            other        => {
+                eprintln!("Unsupported shell: {}", other);
+                std::process::exit(1);
+            },
+        };
+        let mut out = std::io::stdout();
+        CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
     } else {
         let os_input = get_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
