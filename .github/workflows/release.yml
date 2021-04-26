@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+
 jobs:
   build-release:
     needs: create-release
