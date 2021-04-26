@@ -1,17 +1,18 @@
-use std::{fmt, time::Instant};
+use chrono::prelude::*;
+use std::fmt;
 use zellij_tile::prelude::LogLevel;
 
 pub struct Message {
     content: String,
     log_level: LogLevel,
-    timestamp: Instant,
+    timestamp: DateTime<Local>,
 }
 impl Message {
     pub fn new(content: String, log_level: Option<LogLevel>) -> Self {
         Message {
             content,
             log_level: log_level.unwrap_or_default(),
-            timestamp: Instant::now(),
+            timestamp: Local::now(),
         }
     }
 }
@@ -59,16 +60,17 @@ impl State {
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(msg) = self.get_current_message() {
+            let index = self.get_index() + 1;
             writeln!(
                 f,
-                "{}/{} ({})%",
-                self.get_index() + 1,
-                self.get_message_count() + 1,
-                (self.get_index() + 1) / ((self.get_message_count() + 1) * 100)
+                "{}/{} ({}%)",
+                index,
+                self.get_message_count(),
+                (index as f32 / (self.get_message_count() as f32)) * 100.
             )?;
-            writeln!(f, "{}", msg.log_level)?;
-            writeln!(f, "{}", msg.content)?;
-            writeln!(f, "{:#?}", msg.timestamp)?;
+            writeln!(f, "Level: {}", msg.log_level)?;
+            writeln!(f, "Message: {}", msg.content)?;
+            writeln!(f, "@{}", msg.timestamp.format("%Y-%m-%d %H:%M:%S").to_string())?;
         } else {
             writeln!(f, "All good!")?;
         }

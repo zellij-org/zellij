@@ -6,6 +6,7 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
+chrono = "0.4"
 colored = "2"
 ansi_term = "0.12"
 zellij-tile = { path = "../../zellij-tile" }
