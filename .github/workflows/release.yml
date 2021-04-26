@@ -84,7 +84,7 @@ jobs:
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }} 
           asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
-          asset_name: zellij-v${{ github.event.release.tag_name }}-${{matrix.target}}.tar.gz
+          asset_name: zellij-${{ env.RELEASE_TAG }}-${{matrix.target}}.tar.gz
           asset_content_type: application/octet-stream
 
   create-release:
