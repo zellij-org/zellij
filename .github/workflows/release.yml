@@ -16,6 +16,7 @@ jobs:
       matrix:
         build:
           - linux musl x64
+          - linux musl aarch64
           - macos x64
         include:
           - build: linux musl x64
