@@ -213,6 +213,7 @@ pub enum ScreenContext {
     CloseTab,
     GoToTab,
     UpdateTabName,
+    UpdateTabSearch,
     TerminalResize,
     ChangeMode,
 }
@@ -259,6 +260,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
+            ScreenInstruction::UpdateTabSearch(_) => ScreenContext::UpdateTabSearch,
             ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncPanes => ScreenContext::ToggleActiveSyncPanes,

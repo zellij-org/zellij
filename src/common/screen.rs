@@ -55,6 +55,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
+    UpdateTabSearch(Vec<u8>),
     TerminalResize,
     ChangeMode(ModeInfo),
 }
@@ -78,6 +79,8 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
+    //A Buffer to hold the input string when searching for a tab
+    tab_search_buf: String,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
     mode_info: ModeInfo,
@@ -109,6 +112,7 @@ impl Screen {
             send_app_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab_index: None,
+            tab_search_buf: String::new(),
             tabs: BTreeMap::new(),
             os_api,
             mode_info,
@@ -195,6 +199,18 @@ impl Screen {
         if let Some(t) = self.tabs.values_mut().find(|t| t.position == tab_index) {
             if t.index != active_tab_index {
                 t.set_force_render();
+                self.active_tab_index = Some(t.index);
+                self.update_tabs();
+                self.render();
+            }
+        }
+    }
+
+
+    pub fn search_tab(&mut self, tab_name: String) {
+        let active_tab = self.get_active_tab().unwrap();
+        if let Some(t) = self.tabs.values().find(|t| t.name == tab_name) {
+            if t.index != active_tab.index {
                 self.active_tab_index = Some(t.index);
                 self.update_tabs();
                 self.render();
@@ -333,6 +349,24 @@ impl Screen {
         }
         self.update_tabs();
     }
+
+    pub fn update_tab_search_buf(&mut self, buf: Vec<u8>) {
+        let s = str::from_utf8(&buf).unwrap();
+        match s {
+            "\0" => {
+                self.tab_search_buf = String::new();
+            }
+            "\u{007f}" | "\u{0008}" => {
+                //delete and backspace
+                self.tab_search_buf.pop();
+            }
+            c => {
+                self.tab_search_buf.push_str(c);
+                self.search_tab(self.tab_search_buf.clone());
+            }
+        }
+    }
+
     pub fn change_mode(&mut self, mode_info: ModeInfo) {
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {

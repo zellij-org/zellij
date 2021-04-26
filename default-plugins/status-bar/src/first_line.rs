@@ -280,7 +280,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
             ],
             colored_elements,
         ),
-        InputMode::Tab | InputMode::RenameTab => key_indicators(
+        InputMode::Tab | InputMode::RenameTab | InputMode::SearchTab => key_indicators(
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),

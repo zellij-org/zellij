@@ -59,6 +59,8 @@ pub enum InputMode {
     Scroll,
     #[serde(alias = "renametab")]
     RenameTab,
+    #[serde(alias = "searchtab")]
+    SearchTab,
 }
 
 impl Default for InputMode {

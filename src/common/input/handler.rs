@@ -269,6 +269,11 @@ impl InputHandler {
                     .send(ScreenInstruction::UpdateTabName(c))
                     .unwrap();
             }
+            Action::SearchTabInput(c) => {
+                self.send_screen_instructions
+                .send(ScreenInstruction::UpdateTabSearch(c))
+                .unwrap();
+            }
             Action::NoOp => {}
         }
 
@@ -309,12 +314,16 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
             keybinds.push(("n".to_string(), "New".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
             keybinds.push(("r".to_string(), "Rename".to_string()));
+            keybinds.push(("s".to_string(), "Search".to_string()));
         }
         InputMode::Scroll => {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
             keybinds.push(("PgUp/PgDn".to_string(), "Scroll Page".to_string()));
         }
         InputMode::RenameTab => {
+            keybinds.push(("Enter".to_string(), "when done".to_string()));
+        }
+        InputMode::SearchTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
