@@ -298,7 +298,6 @@ impl Keybinds {
                         Action::SearchTabInput(vec![0]),
                     ],
                 );
-                defaults.insert(Key::Char('q'), vec![Action::Quit]);
                 defaults.insert(
                     Key::Ctrl('g'),
                     vec![Action::SwitchToMode(InputMode::Normal)],
