@@ -97,8 +97,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
+          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: false  
 
