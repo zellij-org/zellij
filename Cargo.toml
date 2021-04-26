@@ -54,6 +54,7 @@ members = [
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",
+    "default-plugins/logger",
     ".",
 ]
 

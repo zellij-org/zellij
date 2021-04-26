@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -23,6 +24,31 @@ pub enum Key {
     Esc,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LogLevel {
+    DEBUG,
+    INFO,
+    LOG,
+    WARN,
+    ERROR,
+}
+impl Default for LogLevel {
+    fn default() -> Self {
+        LogLevel::LOG
+    }
+}
+impl fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogLevel::DEBUG => write!(f, "DEBUG"),
+            LogLevel::INFO => write!(f, "INFO"),
+            LogLevel::LOG => write!(f, "LOG"),
+            LogLevel::WARN => write!(f, "WARN"),
+            LogLevel::ERROR => write!(f, "ERROR"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
@@ -30,6 +56,7 @@ pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
+    Log(String, Option<LogLevel>),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.

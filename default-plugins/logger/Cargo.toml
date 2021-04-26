@@ -1,0 +1,11 @@
+[package]
+name = "logger"
+version = "0.1.0"
+authors = ["Roee Shapira <ro33.sha@gmail.com>"]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+colored = "2"
+ansi_term = "0.12"
+zellij-tile = { path = "../../zellij-tile" }
