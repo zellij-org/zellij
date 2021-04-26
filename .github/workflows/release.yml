@@ -62,7 +62,7 @@ jobs:
         working-directory: ./target/${{ matrix.target }}/release
         run: |
           name="zellij-${GITHUB_REF#refs/tags/}-${{ matrix.target }}.tar.gz"
-          tar cvfz "${name}" "zellij"
+          tar cvzf "${name}" "zellij"
           echo "::set-output name=name::${name}"
       - name: Upload release archive
         uses: actions/upload-release-asset@v1.0.1
