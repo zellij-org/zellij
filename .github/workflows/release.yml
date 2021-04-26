@@ -73,7 +73,7 @@ jobs:
         id: make-artifact
         working-directory: ./target/${{ matrix.target }}/release
         run: |
-          name="zellij-${{ RELEASE_TAG }}-${{ matrix.target }}.tar.gz"
+          name="zellij-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz"
           tar cvzf "${name}" "zellij"
           echo "::set-output name=name::${name}"
       - name: Upload release archive
