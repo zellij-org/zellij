@@ -20,13 +20,25 @@ jobs:
         include:
           - build: linux musl x64
             os: ubuntu-latest
-            rust: stable
+            rust: beta
             target: x86_64-unknown-linux-musl
+          - build: linux musl aarch64
+            os: ubuntu-latest
+            rust: beta
+            target: aarch64-unknown-linux-musl
           - build: macos x64
             os: macos-latest
-            rust: stable
+            rust: beta
             target: x86_64-apple-darwin 
     steps:
+      - name: Set release tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
+            echo "RELEASE_TAG=main"
+          else
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v2
 
@@ -61,7 +73,7 @@ jobs:
         id: make-artifact
         working-directory: ./target/${{ matrix.target }}/release
         run: |
-          name="zellij-${GITHUB_REF#refs/tags/}-${{ matrix.target }}.tar.gz"
+          name="zellij-${{ RELEASE_TAG }}-${{ matrix.target }}.tar.gz"
           tar cvzf "${name}" "zellij"
           echo "::set-output name=name::${name}"
       - name: Upload release archive
@@ -73,6 +85,7 @@ jobs:
           asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
           asset_name: zellij-v${{ github.event.release.tag_name }}-${{matrix.target}}.tar.gz
           asset_content_type: application/octet-stream
+
   create-release:
     runs-on: ubuntu-latest
     outputs: 
