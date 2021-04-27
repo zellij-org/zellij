@@ -18,6 +18,7 @@ jobs:
           - linux musl x64
           - linux musl aarch64
           - macos x64
+          - macos aarch64
         include:
           - build: linux musl x64
             os: ubuntu-latest
@@ -30,7 +31,11 @@ jobs:
           - build: macos x64
             os: macos-latest
             rust: beta
-            target: x86_64-apple-darwin 
+            target: x86_64-apple-darwin
+          - build: macos aarch64
+            os: macos-latest
+            rust: beta
+            target: aarch64-apple-darwin
     steps:
       - name: Set release tag
         run: |
@@ -63,6 +68,14 @@ jobs:
 
       - name: Install wasm-opt
         run: brew install binaryen
+
+      # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
+      - name: Switch Xcode SDK
+        if: runner.os == 'macos'
+        run: |
+          cat <<EOF >> "$GITHUB_ENV"
+          SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+          EOF
 
       - name: Build release binary
         run: cargo make ci-build-release ${{ matrix.target }}
