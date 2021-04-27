@@ -28,6 +28,7 @@ pub enum Key {
 )]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
+#[non_exhaustive]
 pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
