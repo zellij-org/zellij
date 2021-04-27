@@ -246,9 +246,8 @@ impl InputHandler {
             }
             Action::ToggleActiveSyncPanes => {
                 self.send_screen_instructions
-                .send(ScreenInstruction::ToggleActiveSyncPanes)
-                .unwrap();
-                
+                    .send(ScreenInstruction::ToggleActiveSyncPanes)
+                    .unwrap();
             }
             Action::CloseTab => {
                 self.command_is_executing.closing_pane();

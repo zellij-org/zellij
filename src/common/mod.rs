@@ -323,8 +323,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let active_tab = screen.get_active_tab_mut().unwrap();
                             match active_tab.is_sync_panes_active() {
                                 true => active_tab.write_to_terminals_on_current_tab(bytes),
-                                false => active_tab
-                                    .write_to_active_terminal(bytes),
+                                false => active_tab.write_to_active_terminal(bytes),
                             }
                         }
                         ScreenInstruction::ResizeLeft => {
@@ -455,7 +454,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::Quit => {
                             break;
                         }
-                        
                     }
                 }
             }

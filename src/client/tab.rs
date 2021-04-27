@@ -596,22 +596,18 @@ impl Tab {
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
         let pane_ids = self.get_pane_ids();
-        pane_ids.iter().for_each(|pane_id| {
-            match pane_id {
-                PaneId::Terminal(pid) => {
-                    self.write_to_pane_id(input_bytes.clone(), *pid);
-                }
-                PaneId::Plugin(_) => {}
+        pane_ids.iter().for_each(|pane_id| match pane_id {
+            PaneId::Terminal(pid) => {
+                self.write_to_pane_id(input_bytes.clone(), *pid);
             }
-        }); 
+            PaneId::Plugin(_) => {}
+        });
     }
-    pub fn write_to_pane_id(&mut self, mut input_bytes: Vec<u8>, pid:RawFd) {
+    pub fn write_to_pane_id(&mut self, mut input_bytes: Vec<u8>, pid: RawFd) {
         self.os_api
-                    .write_to_tty_stdin(pid, &mut input_bytes)
-                    .expect("failed to write to terminal");
-                self.os_api
-                    .tcdrain(pid)
-                    .expect("failed to drain terminal");
+            .write_to_tty_stdin(pid, &mut input_bytes)
+            .expect("failed to write to terminal");
+        self.os_api.tcdrain(pid).expect("failed to drain terminal");
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         match self.get_active_pane_id() {
