@@ -40,8 +40,7 @@ use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::consts::ZELLIJ_IPC_PIPE;
-use wasm_vm::PluginEnv;
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasm_vm::{wasi_stdout, wasi_write_json, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, ModeInfo};
@@ -506,7 +505,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
 
-                        let zellij = zellij_imports(&store, &plugin_env);
+                        let zellij = zellij_exports(&store, &plugin_env);
                         let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
                         let start = instance.exports.get_function("_start").unwrap();
@@ -525,10 +524,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let event_type = EventType::from_str(&event.to_string()).unwrap();
                             if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
                                 let update = instance.exports.get_function("update").unwrap();
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&event).unwrap(),
-                                );
+                                wasi_write_json(&plugin_env.wasi_env, &event);
                                 update.call(&[]).unwrap();
                             }
                         }
