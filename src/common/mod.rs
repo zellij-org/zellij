@@ -40,7 +40,7 @@ use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::consts::ZELLIJ_IPC_PIPE;
-use wasm_vm::{wasi_stdout, wasi_write_json, zellij_exports, PluginEnv, PluginInstruction};
+use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, ModeInfo};
@@ -457,6 +457,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -501,6 +502,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_pty_instructions: send_pty_instructions.clone(),
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
+                            send_plugin_instructions: send_plugin_instructions.clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
@@ -510,7 +512,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let start = instance.exports.get_function("_start").unwrap();
 
-                        // This eventually calls the `.init()` method
+                        // This eventually calls the `.load()` method
                         start.call(&[]).unwrap();
 
                         plugin_map.insert(plugin_id, (instance, plugin_env));
@@ -524,7 +526,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let event_type = EventType::from_str(&event.to_string()).unwrap();
                             if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
                                 let update = instance.exports.get_function("update").unwrap();
-                                wasi_write_json(&plugin_env.wasi_env, &event);
+                                wasi_write_object(&plugin_env.wasi_env, &event);
                                 update.call(&[]).unwrap();
                             }
                         }
@@ -539,7 +541,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
                             .unwrap();
 
-                        buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                        buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,

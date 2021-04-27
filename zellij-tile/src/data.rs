@@ -23,9 +23,7 @@ pub enum Key {
     Esc,
 }
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, EnumDiscriminants, ToString, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 #[non_exhaustive]
@@ -33,6 +31,7 @@ pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
+    Timer(f64),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
