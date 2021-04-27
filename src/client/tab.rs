@@ -664,7 +664,7 @@ impl Tab {
             pane.set_should_render(true);
         }
     }
-    pub fn pane_contains_widechar(&self) -> bool {
+    pub fn panes_contain_widechar(&self) -> bool {
         self.panes.iter().any(|(_, p)| p.contains_widechar())
     }
     pub fn render(&mut self) {
@@ -675,7 +675,7 @@ impl Tab {
         }
         // if any pane contain widechar, all pane in the same row will messup. We should render them every time
         // FIXME: remove this when we can handle widechars correctly
-        if self.pane_contains_widechar() {
+        if self.panes_contain_widechar() {
             self.set_force_render()
         }
         let mut stdout = self.os_api.get_stdout_writer();
