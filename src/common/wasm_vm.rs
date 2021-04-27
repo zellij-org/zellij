@@ -39,7 +39,8 @@ pub fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
-                    $("$host_function" => Function::new_native_with_env(store, plugin_env.clone(), $host_function),)+
+                    $(stringify!($host_function) =>
+                        Function::new_native_with_env(store, plugin_env.clone(), $host_function),)+
                 }
             }
         }
