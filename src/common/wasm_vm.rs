@@ -1,10 +1,5 @@
 use serde::Serialize;
-use std::{
-    collections::HashSet,
-    path::PathBuf,
-    process,
-    sync::{mpsc::Sender, Arc, Mutex},
-};
+use std::{collections::HashSet, path::PathBuf, process, sync::{mpsc::Sender, Arc, Mutex}, time::{Duration, Instant}};
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, PluginIds};
@@ -30,6 +25,13 @@ pub struct PluginEnv {
     pub send_pty_instructions: SenderWithContext<PtyInstruction>, // FIXME: This should be a big bundle of all of the channels
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    // FIXME: Add timers struct here! BinaryHeap?
+}
+
+struct CallbackTimer {
+    wake_time: Instant,
+    plugin_id: u32,
+    recurring: bool,
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------

@@ -462,6 +462,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
             move || loop {
+                // BLUEPRINT:
+                /* next = binheap.get_timer(); // peek
+                let event = if let Some(time) = next {
+                    // match for the right timeout error here...
+                    if let Some(event) = chan.recv_timeout(time) {
+                        event
+                    } else {
+                        continue
+                    }
+                } else {
+                    ch.recv().unwrap()
+                } */
                 let (event, mut err_ctx) = receive_plugin_instructions
                     .recv()
                     .expect("failed to receive event on channel");
@@ -510,7 +522,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let start = instance.exports.get_function("_start").unwrap();
 
-                        // This eventually calls the `.init()` method
+                        // This eventually calls the `.load()` method
                         start.call(&[]).unwrap();
 
                         plugin_map.insert(plugin_id, (instance, plugin_env));
