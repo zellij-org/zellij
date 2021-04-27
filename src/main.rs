@@ -14,7 +14,7 @@ use crate::utils::{
 };
 use client::{boundaries, layout, panes, tab};
 use common::{
-    command_is_executing, errors, os_input_output, pty_bus, screen, start, utils, wasm_vm,
+    command_is_executing, errors, install, os_input_output, pty_bus, screen, start, utils, wasm_vm,
     ApiCommand,
 };
 use std::io::Write;
@@ -59,6 +59,9 @@ pub fn main() {
         };
         let mut out = std::io::stdout();
         CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
+    } else if let Some(crate::cli::ConfigCli::Setup { .. }) = opts.option {
+        install::dump_default_config().expect("Failed to print to stdout");
+        std::process::exit(1);
     } else {
         let os_input = get_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();

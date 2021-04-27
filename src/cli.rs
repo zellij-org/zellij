@@ -1,8 +1,6 @@
+use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
 use std::path::PathBuf;
 use structopt::StructOpt;
-
-// TODO add to consts.rs
-const ZELLIJ_CONFIG_ENV: &str = "ZELLIJ_CONFIG";
 
 #[derive(StructOpt, Default, Debug)]
 #[structopt(name = "zellij")]
@@ -32,8 +30,12 @@ pub struct CliArgs {
     pub layout: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration
-    #[structopt(short, long, env=ZELLIJ_CONFIG_ENV)]
+    #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV)]
     pub config: Option<PathBuf>,
+
+    /// Change where zellij looks for the configuration
+    #[structopt(long, env=ZELLIJ_CONFIG_DIR_ENV)]
+    pub config_dir: Option<PathBuf>,
 
     #[structopt(subcommand)]
     pub option: Option<ConfigCli>,
@@ -47,11 +49,19 @@ pub enum ConfigCli {
     /// Change the behaviour of zellij
     #[structopt(name = "option")]
     Config {
-        #[structopt(long)]
         /// Disables loading of configuration file at default location
+        #[structopt(long)]
         clean: bool,
     },
 
     #[structopt(name = "generate-completion")]
     GenerateCompletion { shell: String },
+
+    #[structopt(name = "setup")]
+    Setup {
+        /// Disables loading of configuration file at default location
+        /// Dump the default configuration file to stdout
+        #[structopt(long)]
+        dump_config: bool,
+    },
 }
