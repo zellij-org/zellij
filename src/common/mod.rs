@@ -320,10 +320,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .write_to_active_terminal(bytes);
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            match active_tab.is_sync_panes_active() {
+                                true => active_tab.write_to_terminals_on_current_tab(bytes),
+                                false => active_tab
+                                    .write_to_active_terminal(bytes),
+                            }
                         }
                         ScreenInstruction::ResizeLeft => {
                             screen.get_active_tab_mut().unwrap().resize_left();
@@ -444,9 +446,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
                         }
+                        ScreenInstruction::ToggleActiveSyncPanes => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .toggle_sync_panes_is_active();
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
+                        
                     }
                 }
             }

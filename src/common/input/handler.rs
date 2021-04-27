@@ -244,6 +244,12 @@ impl InputHandler {
                     .send(ScreenInstruction::SwitchTabPrev)
                     .unwrap();
             }
+            Action::ToggleActiveSyncPanes => {
+                self.send_screen_instructions
+                .send(ScreenInstruction::ToggleActiveSyncPanes)
+                .unwrap();
+                
+            }
             Action::CloseTab => {
                 self.command_is_executing.closing_pane();
                 self.send_screen_instructions
@@ -293,6 +299,7 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
             keybinds.push(("d".to_string(), "Down split".to_string()));
             keybinds.push(("r".to_string(), "Right split".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
+            keybinds.push(("s".to_string(), "Sync".to_string()));
             keybinds.push(("f".to_string(), "Fullscreen".to_string()));
         }
         InputMode::Tab => {
