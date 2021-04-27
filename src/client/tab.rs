@@ -665,7 +665,7 @@ impl Tab {
         }
     }
     pub fn pane_contains_widechar(&self) -> bool {
-        self.panes.iter().all(|(_, p)| p.contains_widechar())
+        self.panes.iter().any(|(_, p)| p.contains_widechar())
     }
     pub fn render(&mut self) {
         if self.active_terminal.is_none() {
