@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use crate::common::utils::consts::SYSTEM_DEFAULT_CONFIG_DIR;
+use directories_next::{BaseDirs, ProjectDirs};
+use std::io::Write;
+use std::{fs, path::Path, path::PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -38,4 +41,45 @@ pub fn populate_data_dir(data_dir: &Path) {
             fs::write(path, bytes).expect("Failed to install default assets!");
         }
     }
+}
+
+pub fn default_config_dir() -> Option<PathBuf> {
+    vec![
+        Some(xdg_config_dir()),
+        home_config_dir(),
+        Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
+    ]
+    .into_iter()
+    .filter(|p| p.is_some())
+    .find(|p| p.clone().unwrap().exists())
+    .flatten()
+}
+
+pub fn xdg_config_dir() -> PathBuf {
+    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    project_dirs.config_dir().to_owned()
+}
+
+pub fn home_config_dir() -> Option<PathBuf> {
+    if let Some(user_dirs) = BaseDirs::new() {
+        let config_dir = user_dirs.home_dir().join("/.config/zellij");
+        Some(config_dir)
+    } else {
+        None
+    }
+}
+
+pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
+    std::io::stdout().write_all(&asset)?;
+    Ok(())
+}
+
+pub const DEFAULT_CONFIG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/config/default.yaml"
+));
+
+pub fn dump_default_config() -> std::io::Result<()> {
+    dump_asset(DEFAULT_CONFIG)
 }

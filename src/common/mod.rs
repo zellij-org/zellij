@@ -131,7 +131,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     env::set_var(&"ZELLIJ", "0");
 
-    let config = Config::from_cli_config(opts.config, opts.option)
+    let config_dir = opts.config_dir.or_else(install::default_config_dir);
+
+    let config = Config::from_cli_config(opts.config, opts.option, config_dir)
         .map_err(|e| {
             eprintln!("There was an error in the config file:\n{}", e);
             std::process::exit(1);
