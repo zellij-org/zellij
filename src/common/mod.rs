@@ -450,6 +450,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 .get_active_tab_mut()
                                 .unwrap()
                                 .toggle_sync_panes_is_active();
+                            screen.update_tabs();
                         }
                         ScreenInstruction::Quit => {
                             break;

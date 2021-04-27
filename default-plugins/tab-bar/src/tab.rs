@@ -40,9 +40,18 @@ pub fn non_active_tab(text: String) -> LinePart {
     }
 }
 
-pub fn tab_style(text: String, is_active_tab: bool, position: usize) -> LinePart {
+pub fn tab_style(
+    text: String,
+    is_active_tab: bool,
+    position: usize,
+    is_sync_panes_active: bool,
+) -> LinePart {
+    let sync_text = match is_sync_panes_active {
+        true => " (Sync)".to_string(),
+        false => "".to_string(),
+    };
     let tab_text = if text.is_empty() {
-        format!("Tab #{}", position + 1)
+        format!("Tab #{}{}", position + 1, sync_text)
     } else {
         text
     };
