@@ -1,11 +1,13 @@
+use serde::Serialize;
 use std::{
     collections::HashSet,
     path::PathBuf,
+    process,
     sync::{mpsc::Sender, Arc, Mutex},
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_tile::data::{Event, EventType};
+use zellij_tile::data::{Event, EventType, PluginIds};
 
 use super::{
     pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
@@ -32,16 +34,25 @@ pub struct PluginEnv {
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
 
-pub fn zellij_imports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
-    imports! {
-        "zellij" => {
-            "host_subscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_subscribe),
-            "host_unsubscribe" => Function::new_native_with_env(store, plugin_env.clone(), host_unsubscribe),
-            "host_open_file" => Function::new_native_with_env(store, plugin_env.clone(), host_open_file),
-            "host_set_invisible_borders" => Function::new_native_with_env(store, plugin_env.clone(), host_set_invisible_borders),
-            "host_set_max_height" => Function::new_native_with_env(store, plugin_env.clone(), host_set_max_height),
-            "host_set_selectable" => Function::new_native_with_env(store, plugin_env.clone(), host_set_selectable),
+pub fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
+    macro_rules! zellij_export {
+        ($($host_function:ident),+ $(,)?) => {
+            imports! {
+                "zellij" => {
+                    $("$host_function" => Function::new_native_with_env(store, plugin_env.clone(), $host_function),)+
+                }
+            }
         }
+    }
+
+    zellij_export! {
+        host_subscribe,
+        host_unsubscribe,
+        host_set_invisible_borders,
+        host_set_max_height,
+        host_set_selectable,
+        host_get_plugin_ids,
+        host_open_file,
     }
 }
 
@@ -55,14 +66,6 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
     let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
     let old: HashSet<EventType> = serde_json::from_str(&wasi_stdout(&plugin_env.wasi_env)).unwrap();
     subscriptions.retain(|k| !old.contains(k));
-}
-
-fn host_open_file(plugin_env: &PluginEnv) {
-    let path = PathBuf::from(wasi_stdout(&plugin_env.wasi_env).lines().next().unwrap());
-    plugin_env
-        .send_pty_instructions
-        .send(PtyInstruction::SpawnTerminal(Some(path)))
-        .unwrap();
 }
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
@@ -98,6 +101,22 @@ fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
         .unwrap()
 }
 
+fn host_get_plugin_ids(plugin_env: &PluginEnv) {
+    let ids = PluginIds {
+        plugin_id: plugin_env.plugin_id,
+        zellij_pid: process::id(),
+    };
+    wasi_write_json(&plugin_env.wasi_env, &ids);
+}
+
+fn host_open_file(plugin_env: &PluginEnv) {
+    let path = PathBuf::from(wasi_stdout(&plugin_env.wasi_env).lines().next().unwrap());
+    plugin_env
+        .send_pty_instructions
+        .send(PtyInstruction::SpawnTerminal(Some(path)))
+        .unwrap();
+}
+
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
 // FIXME: Unwrap city
@@ -113,4 +132,8 @@ pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
     let mut state = wasi_env.state();
     let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
     writeln!(wasi_file, "{}\r", buf).unwrap();
+}
+
+pub fn wasi_write_json(wasi_env: &WasiEnv, object: &impl Serialize) {
+    wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
 }
