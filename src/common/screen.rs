@@ -79,7 +79,7 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
-    //A Buffer to hold the input string when searching for a tab
+    // A Buffer to hold the input string when searching for a tab
     tab_search_buf: String,
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
