@@ -391,7 +391,7 @@ keybinds:
           key: [Ctrl: 'r', Ctrl: 's', Char: ' ',]
         - action: [SwitchToMode: Tab,]
           key: [Char: "\n",]
-        - action: [TabNameInput: [27] , SwitchToMode: Tab,]
+        - action: [SearchTabInput: [27] , SwitchToMode: Tab,]
           key: [Esc,]
         - action: [NewPane: ,]
           key: [ Alt: 'n',]
