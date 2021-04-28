@@ -1,5 +1,6 @@
 ---
-#This file functions as an overview of using screen binds in place of the lock mode, it currently functions fine in Zellij, but doesn't give the user the opportunity to use lock mode.
+#This file functions as an overview of using screen binds in place of the lock mode.
+#It currently functions fine in Zellij, but doesn't give the user the opportunity to use lock mode.
 keybinds:
     unbind: true
     normal:
