@@ -9,17 +9,16 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::thread;
-use std::{collections::HashMap, fs};
 use std::{
-    collections::HashSet,
+    cell::RefCell,
+    path::PathBuf,
+    sync::{Arc, mpsc, Mutex},
+    thread,
+    collections::{HashSet, HashMap},
+    fs,
     env,
     io::Write,
     str::FromStr,
-    sync::{Arc, Mutex},
 };
 
 use crate::cli::CliArgs;
