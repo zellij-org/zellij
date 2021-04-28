@@ -1,4 +1,5 @@
 use crate::panes::PositionAndSize;
+use interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
@@ -196,12 +197,6 @@ impl ClientOsApi for FakeInputOutput {
     fn send_to_server(&self, msg: ServerInstruction) {
         self.server_sender.send(msg).unwrap();
     }
-    fn connect_to_server(&mut self, full_screen_ws: PositionAndSize) {
-        ClientOsApi::send_to_server(
-            self,
-            ServerInstruction::NewClient("zellij".into(), full_screen_ws),
-        );
-    }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
         self.client_receiver.lock().unwrap().recv().unwrap()
     }
@@ -217,6 +212,7 @@ impl ClientOsApi for FakeInputOutput {
             cb();
         }
     }
+    fn connect_to_server(&self) {}
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -277,14 +273,12 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn server_exit(&mut self) {
-        self.server_sender.send(ServerInstruction::Exit).unwrap();
-    }
     fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
         self.server_receiver.lock().unwrap().recv().unwrap()
     }
     fn send_to_client(&self, msg: ClientInstruction) {
         self.client_sender.send(msg).unwrap();
     }
-    fn add_client_sender(&mut self, _buffer_path: String) {}
+    fn add_client_sender(&mut self) {}
+    fn update_receiver(&mut self, stream: LocalSocketStream) {}
 }

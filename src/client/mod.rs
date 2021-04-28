@@ -49,6 +49,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
     let mut command_is_executing = CommandIsExecuting::new();
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    os_input.connect_to_server();
+    os_input.send_to_server(ServerInstruction::NewClient(full_screen_ws));
     os_input.set_raw_mode(0);
 
     let (send_client_instructions, receive_client_instructions): SyncChannelWithContext<
@@ -56,8 +58,6 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
     > = mpsc::sync_channel(500);
     let send_client_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_client_instructions));
-
-    os_input.connect_to_server(full_screen_ws);
 
     #[cfg(not(test))]
     std::panic::set_hook({

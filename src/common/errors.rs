@@ -357,7 +357,6 @@ pub enum ServerContext {
     DoneOpeningNewPane,
     DoneUpdatingTabs,
     ClientExit,
-    Exit,
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -375,7 +374,6 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DoneOpeningNewPane => ServerContext::DoneOpeningNewPane,
             ServerInstruction::DoneUpdatingTabs => ServerContext::DoneUpdatingTabs,
             ServerInstruction::ClientExit => ServerContext::ClientExit,
-            ServerInstruction::Exit => ServerContext::Exit,
         }
     }
 }

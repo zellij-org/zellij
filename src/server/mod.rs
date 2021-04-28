@@ -1,4 +1,5 @@
 use directories_next::ProjectDirs;
+use interprocess::local_socket::LocalSocketListener;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -28,6 +29,7 @@ use crate::common::{
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use crate::panes::PositionAndSize;
+use crate::utils::consts::ZELLIJ_IPC_PIPE;
 
 /// Instructions related to server-side application including the
 /// ones sent by client to server
@@ -38,15 +40,13 @@ pub enum ServerInstruction {
     SplitVertically,
     MoveFocus,
     TerminalResize(PositionAndSize),
-    NewClient(String, PositionAndSize),
+    NewClient(PositionAndSize),
     Action(Action),
     Render(Option<String>),
     DoneClosingPane,
     DoneOpeningNewPane,
     DoneUpdatingTabs,
     ClientExit,
-    // notify router thread to exit
-    Exit,
 }
 
 struct SessionMetaData {
@@ -69,71 +69,44 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
     let (send_server_instructions, receive_server_instructions): ChannelWithContext<
         ServerInstruction,
     > = channel();
     let send_server_instructions =
         SenderWithContext::new(SenderType::Sender(send_server_instructions));
+    let sessions: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
 
-    let sessions: Arc<RwLock<HashMap<String, SessionMetaData>>> =
-        Arc::new(RwLock::new(HashMap::new()));
-    // We handle only single client for now
-    let session: Arc<RwLock<String>> = Arc::new(RwLock::new("session1".into()));
-    let router_thread = thread::Builder::new()
-        .name("server_router".to_string())
-        .spawn({
-            let os_input = os_input.clone();
-            let session = session.clone();
-            let sessions = sessions.clone();
-            let send_server_instructions = send_server_instructions.clone();
-            move || loop {
-                let (instruction, mut err_ctx) = os_input.server_recv();
-                err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
-                let rlocked_session = &*session.read().unwrap();
-                let rlocked_sessions = sessions.read().unwrap();
-                match instruction {
-                    ServerInstruction::Exit => break,
-                    ServerInstruction::OpenFile(file_name) => {
-                        rlocked_sessions[rlocked_session]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminal(Some(file_name)))
-                            .unwrap();
+    #[cfg(test)]
+    handle_client(
+        sessions.clone(),
+        os_input.clone(),
+        send_server_instructions.clone(),
+    );
+    #[cfg(not(test))]
+    let _ = thread::Builder::new().name("listener".to_string()).spawn({
+        let os_input = os_input.clone();
+        let sessions = sessions.clone();
+        let send_server_instructions = send_server_instructions.clone();
+        move || {
+            drop(std::fs::remove_file(ZELLIJ_IPC_PIPE));
+            let listener = LocalSocketListener::bind(ZELLIJ_IPC_PIPE).unwrap();
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let mut os_input = os_input.clone();
+                        os_input.update_receiver(stream);
+                        let sessions = sessions.clone();
+                        let send_server_instructions = send_server_instructions.clone();
+                        handle_client(sessions, os_input, send_server_instructions);
                     }
-                    ServerInstruction::SplitHorizontally => {
-                        rlocked_sessions[rlocked_session]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                            .unwrap();
-                    }
-                    ServerInstruction::SplitVertically => {
-                        rlocked_sessions[rlocked_session]
-                            .send_pty_instructions
-                            .send(PtyInstruction::SpawnTerminalVertically(None))
-                            .unwrap();
-                    }
-                    ServerInstruction::MoveFocus => {
-                        rlocked_sessions[rlocked_session]
-                            .send_screen_instructions
-                            .send(ScreenInstruction::FocusNextPane)
-                            .unwrap();
-                    }
-                    ServerInstruction::Action(action) => {
-                        route_action(action, &rlocked_sessions[rlocked_session]);
-                    }
-                    ServerInstruction::TerminalResize(new_size) => {
-                        rlocked_sessions[rlocked_session]
-                            .send_screen_instructions
-                            .send(ScreenInstruction::TerminalResize(new_size))
-                            .unwrap();
-                    }
-                    _ => {
-                        send_server_instructions.send(instruction).unwrap();
+                    Err(err) => {
+                        panic!("err {:?}", err);
                     }
                 }
             }
-        })
-        .unwrap();
+        }
+    });
 
     thread::Builder::new()
         .name("ipc_server".to_string())
@@ -142,24 +115,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
-                    ServerInstruction::NewClient(buffer_path, full_screen_ws) => {
+                    ServerInstruction::NewClient(full_screen_ws) => {
                         let session_data = init_session(
                             os_input.clone(),
                             opts.clone(),
                             send_server_instructions.clone(),
                             full_screen_ws,
                         );
-                        drop(
-                            sessions
-                                .write()
-                                .unwrap()
-                                .insert(session.read().unwrap().clone(), session_data),
-                        );
-                        sessions.read().unwrap()[&*session.read().unwrap()]
+                        *sessions.write().unwrap() = Some(session_data);
+                        sessions
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
                             .send_pty_instructions
                             .send(PtyInstruction::NewTab)
                             .unwrap();
-                        os_input.add_client_sender(buffer_path);
                     }
                     ServerInstruction::DoneClosingPane => {
                         os_input.send_to_client(ClientInstruction::DoneClosingPane);
@@ -171,16 +142,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
                         os_input.send_to_client(ClientInstruction::DoneUpdatingTabs);
                     }
                     ServerInstruction::ClientExit => {
-                        drop(
-                            sessions
-                                .write()
-                                .unwrap()
-                                .remove(&*session.read().unwrap())
-                                .unwrap(),
-                        );
+                        *sessions.write().unwrap() = None;
                         os_input.send_to_client(ClientInstruction::Exit);
-                        os_input.server_exit();
-                        let _ = router_thread.join();
                         break;
                     }
                     ServerInstruction::Render(output) => {
@@ -191,6 +154,81 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread
             }
         })
         .unwrap()
+}
+
+fn handle_client(
+    sessions: Arc<RwLock<Option<SessionMetaData>>>,
+    mut os_input: Box<dyn ServerOsApi>,
+    send_server_instructions: SenderWithContext<ServerInstruction>,
+) {
+    thread::Builder::new()
+        .name("router".to_string())
+        .spawn(move || loop {
+            let (instruction, mut err_ctx) = os_input.server_recv();
+            err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
+            let rlocked_sessions = sessions.read().unwrap();
+            match instruction {
+                ServerInstruction::ClientExit => {
+                    send_server_instructions.send(instruction).unwrap();
+                    break;
+                }
+                ServerInstruction::OpenFile(file_name) => {
+                    rlocked_sessions
+                        .as_ref()
+                        .unwrap()
+                        .send_pty_instructions
+                        .send(PtyInstruction::SpawnTerminal(Some(file_name)))
+                        .unwrap();
+                    break;
+                }
+                ServerInstruction::SplitHorizontally => {
+                    rlocked_sessions
+                        .as_ref()
+                        .unwrap()
+                        .send_pty_instructions
+                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                        .unwrap();
+                    break;
+                }
+                ServerInstruction::SplitVertically => {
+                    rlocked_sessions
+                        .as_ref()
+                        .unwrap()
+                        .send_pty_instructions
+                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                        .unwrap();
+                    break;
+                }
+                ServerInstruction::MoveFocus => {
+                    rlocked_sessions
+                        .as_ref()
+                        .unwrap()
+                        .send_screen_instructions
+                        .send(ScreenInstruction::FocusNextPane)
+                        .unwrap();
+                    break;
+                }
+                ServerInstruction::Action(action) => {
+                    route_action(action, rlocked_sessions.as_ref().unwrap());
+                }
+                ServerInstruction::TerminalResize(new_size) => {
+                    rlocked_sessions
+                        .as_ref()
+                        .unwrap()
+                        .send_screen_instructions
+                        .send(ScreenInstruction::TerminalResize(new_size))
+                        .unwrap();
+                }
+                ServerInstruction::NewClient(_) => {
+                    os_input.add_client_sender();
+                    send_server_instructions.send(instruction).unwrap();
+                }
+                _ => {
+                    send_server_instructions.send(instruction).unwrap();
+                }
+            }
+        })
+        .unwrap();
 }
 
 fn init_session(

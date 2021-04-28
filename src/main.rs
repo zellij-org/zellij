@@ -60,23 +60,30 @@ pub fn main() {
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
-                get_client_os_input().send_to_server(ServerInstruction::SplitHorizontally);
+                let os_input = get_client_os_input();
+                os_input.connect_to_server();
+                os_input.send_to_server(ServerInstruction::SplitHorizontally);
             }
             'v' => {
-                get_client_os_input().send_to_server(ServerInstruction::SplitVertically);
+                let os_input = get_client_os_input();
+                os_input.connect_to_server();
+                os_input.send_to_server(ServerInstruction::SplitVertically);
             }
             _ => {}
         };
     } else if opts.move_focus {
-        get_client_os_input().send_to_server(ServerInstruction::MoveFocus);
-    } else if let Some(file_to_open) = opts.open_file {
-        get_client_os_input().send_to_server(ServerInstruction::OpenFile(file_to_open));
-    } else {
-        // Mind the order: server_os_input should be created before client_os_input
-        let server_os_input = get_server_os_input();
         let os_input = get_client_os_input();
+        os_input.connect_to_server();
+        os_input.send_to_server(ServerInstruction::MoveFocus);
+    } else if let Some(file_to_open) = opts.open_file {
+        let os_input = get_client_os_input();
+        os_input.connect_to_server();
+        os_input.send_to_server(ServerInstruction::OpenFile(file_to_open));
+    } else {
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
+        let server_os_input = get_server_os_input();
+        let os_input = get_client_os_input();
         start(Box::new(os_input), opts, Box::new(server_os_input));
     }
 }
