@@ -97,6 +97,8 @@ keybinds:
           key: [Char: 'r',]
         - action: [CloseFocus,]
           key: [Char: 'x',]
+        - action: [ToggleActiveSyncPanes]
+          key: [Char: 's']
         - action: [ToggleFocusFullscreen,]
           key: [Char: 'f',]
         - action: [FocusPreviousPane,]
