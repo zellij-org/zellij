@@ -51,4 +51,7 @@ pub enum ConfigCli {
         /// Disables loading of configuration file at default location
         clean: bool,
     },
+
+    #[structopt(name = "generate-completion")]
+    GenerateCompletion { shell: String },
 }
