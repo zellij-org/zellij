@@ -58,7 +58,6 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        let keybinds = self.config.keybinds.clone();
         let alt_left_bracket = vec![27, 91];
         loop {
             if self.should_exit {
@@ -70,14 +69,14 @@ impl InputHandler {
                     Ok((event, raw_bytes)) => match event {
                         termion::event::Event::Key(key) => {
                             let key = cast_termion_key(key);
-                            self.handle_key(&key, raw_bytes, &keybinds);
+                            self.handle_key(&key, raw_bytes);
                         }
                         termion::event::Event::Unsupported(unsupported_key) => {
                             // we have to do this because of a bug in termion
                             // this should be a key event and not an unsupported event
                             if unsupported_key == alt_left_bracket {
                                 let key = Key::Alt('[');
-                                self.handle_key(&key, raw_bytes, &keybinds);
+                                self.handle_key(&key, raw_bytes);
                             }
                         }
                         termion::event::Event::Mouse(_) => {
@@ -90,8 +89,9 @@ impl InputHandler {
             }
         }
     }
-    fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>, keybinds: &Keybinds) {
-        for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, &keybinds) {
+    fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
+        let keybinds = &self.config.keybinds;
+        for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, keybinds) {
             let should_exit = self.dispatch_action(action);
             if should_exit {
                 self.should_exit = true;
