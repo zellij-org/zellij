@@ -271,8 +271,8 @@ impl InputHandler {
             }
             Action::SearchTabInput(c) => {
                 self.send_screen_instructions
-                .send(ScreenInstruction::UpdateTabSearch(c))
-                .unwrap();
+                    .send(ScreenInstruction::UpdateTabSearch(c))
+                    .unwrap();
             }
             Action::NoOp => {}
         }
@@ -294,6 +294,7 @@ impl InputHandler {
 // TODO this should probably be automatically generated in some way
 pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
+    let mut input_prompt: String = String::new();
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {
