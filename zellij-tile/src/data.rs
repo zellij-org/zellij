@@ -83,6 +83,7 @@ pub struct TabInfo {
     pub position: usize,
     pub name: String,
     pub active: bool,
+    pub is_sync_panes_active: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

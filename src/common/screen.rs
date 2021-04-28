@@ -51,6 +51,7 @@ pub enum ScreenInstruction {
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
+    ToggleActiveSyncPanes,
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
@@ -285,7 +286,7 @@ impl Screen {
         self.update_tabs();
     }
 
-    fn update_tabs(&self) {
+    pub fn update_tabs(&self) {
         let mut tab_data = vec![];
         let active_tab_index = self.active_tab_index.unwrap();
         for tab in self.tabs.values() {
@@ -293,6 +294,7 @@ impl Screen {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,
+                is_sync_panes_active: tab.is_sync_panes_active(),
             });
         }
         self.send_plugin_instructions

@@ -68,6 +68,7 @@ pub struct Tab {
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
+    synchronize_is_active: bool,
     os_api: Box<dyn OsApi>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -249,6 +250,7 @@ impl Tab {
             active_terminal: pane_id,
             full_screen_ws: *full_screen_ws,
             fullscreen_is_active: false,
+            synchronize_is_active: false,
             os_api,
             send_app_instructions,
             send_pty_instructions,
@@ -592,6 +594,21 @@ impl Tab {
             terminal_output.handle_pty_bytes(bytes);
         }
     }
+    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
+        let pane_ids = self.get_pane_ids();
+        pane_ids.iter().for_each(|pane_id| match pane_id {
+            PaneId::Terminal(pid) => {
+                self.write_to_pane_id(input_bytes.clone(), *pid);
+            }
+            PaneId::Plugin(_) => {}
+        });
+    }
+    pub fn write_to_pane_id(&mut self, mut input_bytes: Vec<u8>, pid: RawFd) {
+        self.os_api
+            .write_to_tty_stdin(pid, &mut input_bytes)
+            .expect("failed to write to terminal");
+        self.os_api.tcdrain(pid).expect("failed to drain terminal");
+    }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         match self.get_active_pane_id() {
             Some(PaneId::Terminal(active_terminal_id)) => {
@@ -676,6 +693,12 @@ impl Tab {
     }
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
+    }
+    pub fn is_sync_panes_active(&self) -> bool {
+        self.synchronize_is_active
+    }
+    pub fn toggle_sync_panes_is_active(&mut self) {
+        self.synchronize_is_active = !self.synchronize_is_active;
     }
     pub fn render(&mut self) {
         if self.active_terminal.is_none() {
