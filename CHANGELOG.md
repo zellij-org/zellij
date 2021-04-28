@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Added more configuration locations, changed `ZELLIJ_CONFIG` to `ZELLIJ_CONFIG_FILE` (https://github.com/zellij-org/zellij/pull/391)
 * Improved keybind handling (https://github.com/zellij-org/zellij/pull/400)
 * Added initial screen-compat keybinds `screen.yaml` (https://github.com/zellij-org/zellij/pull/399)
+* Added the ability to synchronize input sent to panes (https://github.com/zellij-org/zellij/pull/395)
 
 ## [0.5.1] - 2021-04-23
 * Change config to flag (https://github.com/zellij-org/zellij/pull/300)
