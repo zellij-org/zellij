@@ -114,27 +114,18 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ServerInstruction::Action(action.clone()));
             }
-            Action::NewPane(_) => {
-                self.command_is_executing.opening_new_pane();
-                self.os_input
-                    .send_to_server(ServerInstruction::Action(action));
-                self.command_is_executing.wait_until_new_pane_is_opened();
-            }
-            Action::CloseFocus => {
-                self.command_is_executing.closing_pane();
-                self.os_input
-                    .send_to_server(ServerInstruction::Action(action));
-                self.command_is_executing.wait_until_pane_is_closed();
-            }
-            Action::NewTab
+            Action::CloseFocus
+            | Action::NewPane(_)
+            | Action::NewTab
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab
             | Action::GoToTab(_) => {
-                self.command_is_executing.updating_tabs();
+                self.command_is_executing.blocking_input_thread();
                 self.os_input
                     .send_to_server(ServerInstruction::Action(action));
-                self.command_is_executing.wait_until_tabs_are_updated();
+                self.command_is_executing
+                    .wait_until_input_thread_is_unblocked();
             }
             _ => self
                 .os_input

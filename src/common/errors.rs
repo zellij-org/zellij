@@ -323,9 +323,7 @@ impl From<&PluginInstruction> for PluginContext {
 pub enum ClientContext {
     Exit,
     Error,
-    DoneClosingPane,
-    DoneOpeningNewPane,
-    DoneUpdatingTabs,
+    UnblockInputThread,
     Render,
 }
 
@@ -335,9 +333,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Exit => ClientContext::Exit,
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
-            ClientInstruction::DoneClosingPane => ClientContext::DoneClosingPane,
-            ClientInstruction::DoneOpeningNewPane => ClientContext::DoneOpeningNewPane,
-            ClientInstruction::DoneUpdatingTabs => ClientContext::DoneUpdatingTabs,
+            ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
         }
     }
 }
@@ -353,9 +349,7 @@ pub enum ServerContext {
     Action,
     Render,
     TerminalResize,
-    DoneClosingPane,
-    DoneOpeningNewPane,
-    DoneUpdatingTabs,
+    UnblockInputThread,
     ClientExit,
 }
 
@@ -370,9 +364,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::Action(_) => ServerContext::Action,
             ServerInstruction::TerminalResize(_) => ServerContext::TerminalResize,
             ServerInstruction::Render(_) => ServerContext::Render,
-            ServerInstruction::DoneClosingPane => ServerContext::DoneClosingPane,
-            ServerInstruction::DoneOpeningNewPane => ServerContext::DoneOpeningNewPane,
-            ServerInstruction::DoneUpdatingTabs => ServerContext::DoneUpdatingTabs,
+            ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit => ServerContext::ClientExit,
         }
     }

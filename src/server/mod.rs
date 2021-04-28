@@ -43,9 +43,7 @@ pub enum ServerInstruction {
     NewClient(PositionAndSize),
     Action(Action),
     Render(Option<String>),
-    DoneClosingPane,
-    DoneOpeningNewPane,
-    DoneUpdatingTabs,
+    UnblockInputThread,
     ClientExit,
 }
 
@@ -132,14 +130,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
                             .send(PtyInstruction::NewTab)
                             .unwrap();
                     }
-                    ServerInstruction::DoneClosingPane => {
-                        os_input.send_to_client(ClientInstruction::DoneClosingPane);
-                    }
-                    ServerInstruction::DoneOpeningNewPane => {
-                        os_input.send_to_client(ClientInstruction::DoneOpeningNewPane);
-                    }
-                    ServerInstruction::DoneUpdatingTabs => {
-                        os_input.send_to_client(ClientInstruction::DoneUpdatingTabs);
+                    ServerInstruction::UnblockInputThread => {
+                        os_input.send_to_client(ClientInstruction::UnblockInputThread);
                     }
                     ServerInstruction::ClientExit => {
                         *sessions.write().unwrap() = None;
@@ -313,13 +305,13 @@ fn init_session(
                     PtyInstruction::ClosePane(id) => {
                         pty_bus.close_pane(id);
                         send_server_instructions
-                            .send(ServerInstruction::DoneClosingPane)
+                            .send(ServerInstruction::UnblockInputThread)
                             .unwrap();
                     }
                     PtyInstruction::CloseTab(ids) => {
                         pty_bus.close_tab(ids);
                         send_server_instructions
-                            .send(ServerInstruction::DoneClosingPane)
+                            .send(ServerInstruction::UnblockInputThread)
                             .unwrap();
                     }
                     PtyInstruction::Exit => {
@@ -382,21 +374,21 @@ fn init_session(
                             screen.get_active_tab_mut().unwrap().new_pane(pid);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneOpeningNewPane)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::HorizontalSplit(pid) => {
                             screen.get_active_tab_mut().unwrap().horizontal_split(pid);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneOpeningNewPane)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::VerticalSplit(pid) => {
                             screen.get_active_tab_mut().unwrap().vertical_split(pid);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneOpeningNewPane)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
@@ -493,49 +485,49 @@ fn init_session(
                             screen.new_tab(pane_id);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::SwitchTabNext => {
                             screen.switch_tab_next();
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::SwitchTabPrev => {
                             screen.switch_tab_prev();
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::CloseTab => {
                             screen.close_tab();
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::ApplyLayout(layout, new_pane_pids) => {
                             screen.apply_layout(Layout::new(layout), new_pane_pids);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::GoToTab(tab_index) => {
                             screen.go_to_tab(tab_index as usize);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::UpdateTabName(c) => {
                             screen.update_active_tab_name(c);
                             screen
                                 .send_server_instructions
-                                .send(ServerInstruction::DoneUpdatingTabs)
+                                .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
                         ScreenInstruction::ChangeMode(mode_info) => {

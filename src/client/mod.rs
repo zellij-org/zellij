@@ -25,9 +25,7 @@ use crate::server::ServerInstruction;
 pub enum ClientInstruction {
     Error(String),
     Render(Option<String>),
-    DoneClosingPane,
-    DoneOpeningNewPane,
-    DoneUpdatingTabs,
+    UnblockInputThread,
     Exit,
 }
 
@@ -157,9 +155,9 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }
-            ClientInstruction::DoneClosingPane => command_is_executing.done_closing_pane(),
-            ClientInstruction::DoneOpeningNewPane => command_is_executing.done_opening_new_pane(),
-            ClientInstruction::DoneUpdatingTabs => command_is_executing.done_updating_tabs(),
+            ClientInstruction::UnblockInputThread => {
+                command_is_executing.unblock_input_thread();
+            }
         }
     }
 

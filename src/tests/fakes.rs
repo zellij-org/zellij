@@ -280,5 +280,5 @@ impl ServerOsApi for FakeInputOutput {
         self.client_sender.send(msg).unwrap();
     }
     fn add_client_sender(&mut self) {}
-    fn update_receiver(&mut self, stream: LocalSocketStream) {}
+    fn update_receiver(&mut self, _stream: LocalSocketStream) {}
 }
