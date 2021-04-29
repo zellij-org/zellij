@@ -47,14 +47,15 @@ pub fn tab_style(
     is_sync_panes_active: bool,
 ) -> LinePart {
     let sync_text = match is_sync_panes_active {
-        true => " (Sync)".to_string(),
-        false => "".to_string(),
+        true => " (Sync)",
+        false => "",
     };
-    let tab_text = if text.is_empty() {
-        format!("Tab #{}{}", position + 1, sync_text)
+    let mut tab_text = if text.is_empty() {
+        format!("Tab #{}", position + 1)
     } else {
         text
     };
+    tab_text.push_str(sync_text);
     if is_active_tab {
         active_tab(tab_text)
     } else {
