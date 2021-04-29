@@ -611,7 +611,7 @@ impl Grid {
         row.replace_beginning_with(line_part);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y).as_mut() {
+        if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y) {
             cursor_row.truncate(self.cursor.x);
             let replace_with_columns = vec![replace_with; self.width];
             self.replace_characters_in_line_after_cursor(replace_with);
@@ -621,7 +621,7 @@ impl Grid {
         }
     }
     pub fn clear_all_before_cursor(&mut self, replace_with: TerminalCharacter) {
-        if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y).as_mut() {
+        if self.viewport.get(self.cursor.y).is_some() {
             self.replace_characters_in_line_before_cursor(replace_with);
             let replace_with_columns = vec![replace_with; self.width];
             for row in self.viewport.iter_mut().take(self.cursor.y) {
