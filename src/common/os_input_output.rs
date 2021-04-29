@@ -180,7 +180,8 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     fn send(&mut self, msg: T) -> Result<(), std::io::Error> {
         let err_ctx = get_current_ctx();
         self.sender
-            .write_all(&bincode::serialize(&(msg, err_ctx)).unwrap())
+            .write_all(&bincode::serialize(&(msg, err_ctx)).unwrap())?;
+        self.sender.flush()
     }
 }
 
@@ -404,7 +405,13 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self) {
-        let socket = LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()).unwrap();
+        let socket = match LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()) {
+            Ok(sock) => sock,
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()).unwrap()
+            }
+        };
         let sock_fd = socket.as_raw_fd();
         let dup_fd = unistd::dup(sock_fd).unwrap();
         let receiver = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
