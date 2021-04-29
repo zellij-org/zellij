@@ -162,7 +162,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 
 /// Sends messages on an [ipmpsc](ipmpsc) channel, along with an [`ErrorContext`].
 struct IpcSenderWithContext<T: Serialize> {
-    sender: LocalSocketStream,
+    sender: io::BufWriter<LocalSocketStream>,
     _phantom: PhantomData<T>,
 }
 
@@ -170,7 +170,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns a sender to the given [SharedRingBuffer](ipmpsc::SharedRingBuffer).
     fn new(sender: LocalSocketStream) -> Self {
         Self {
-            sender,
+            sender: io::BufWriter::new(sender),
             _phantom: PhantomData,
         }
     }
@@ -188,7 +188,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    recv_socket: Option<Arc<Mutex<LocalSocketStream>>>,
+    recv_socket: Option<Arc<Mutex<io::BufReader<LocalSocketStream>>>>,
     sender_socket: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
 }
 
@@ -282,13 +282,14 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap()
             .lock()
             .unwrap()
+            .get_ref()
             .as_raw_fd();
         let dup_fd = unistd::dup(sock_fd).unwrap();
         let dup_sock = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
         *self.sender_socket.lock().unwrap() = Some(IpcSenderWithContext::new(dup_sock));
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
-        self.recv_socket = Some(Arc::new(Mutex::new(stream)));
+        self.recv_socket = Some(Arc::new(Mutex::new(io::BufReader::new(stream))));
     }
 }
 
@@ -312,7 +313,7 @@ pub fn get_server_os_input() -> ServerOsInputOutput {
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     server_sender: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
-    receiver: Arc<Mutex<Option<LocalSocketStream>>>,
+    receiver: Arc<Mutex<Option<io::BufReader<LocalSocketStream>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -417,7 +418,7 @@ impl ClientOsApi for ClientOsInputOutput {
         let receiver = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
         let sender = IpcSenderWithContext::new(socket);
         *self.server_sender.lock().unwrap() = Some(sender);
-        *self.receiver.lock().unwrap() = Some(receiver);
+        *self.receiver.lock().unwrap() = Some(io::BufReader::new(receiver));
     }
 }
 
