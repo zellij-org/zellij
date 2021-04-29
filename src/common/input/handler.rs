@@ -11,10 +11,7 @@ use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::{
-    actions::{Action, Direction},
-    data::{Event, InputMode, Key, ModeInfo},
-};
+use zellij_tile::data::{Action, Direction, Event, InputMode, Key, ModeInfo};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].

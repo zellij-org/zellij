@@ -1,5 +1,4 @@
-use super::actions::{Action, Direction};
-use super::data::{InputMode, Key};
+use super::data::{Action, Direction, InputMode, Key};
 use std::collections::HashMap;
 
 // const fn now does not support PartialEq/Eq, we have to implement our own compare fn
