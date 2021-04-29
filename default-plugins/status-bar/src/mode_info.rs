@@ -18,6 +18,7 @@ const fn compare_key(l: &Key, r: &Key) -> bool {
             | (Key::Insert, Key::Insert)
             | (Key::Esc, Key::Esc)
             | (Key::BackTab, Key::BackTab)
+            | (Key::Char(_), Key::Char(_))
     )
 }
 
@@ -29,6 +30,7 @@ const fn get_key_order(key: &Key) -> Option<i32> {
         (Key::Down, 1),
         (Key::PageUp, 2),
         (Key::PageDown, 2),
+        (Key::Char(' '), 3),
     ];
     let mut i = 0;
     while i < V.len() {
@@ -140,6 +142,10 @@ pub fn get_mode_info(
             keybinds.push((
                 get_major_key_by_action(&key_config, &[Action::ToggleFocusFullscreen]).to_string(),
                 "Fullscreen".to_string(),
+            ));
+            keybinds.push((
+                get_major_key_by_action(&key_config, &[Action::ToggleActiveSyncPanes]).to_string(),
+                "Sync".to_string(),
             ));
         }
         InputMode::Tab => {

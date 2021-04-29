@@ -1,6 +1,7 @@
 //! Mapping of inputs to sequences of actions.
 use std::collections::HashMap;
 
+use super::config;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
 use zellij_tile::data::*;

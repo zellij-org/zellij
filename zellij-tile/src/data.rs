@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -13,7 +13,7 @@ pub enum Direction {
 }
 
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -39,6 +39,8 @@ pub enum Action {
     PageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
+    /// Toggle between sending text commands to all panes and normal mode.
+    ToggleActiveSyncPanes,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>),
