@@ -205,6 +205,18 @@ impl Layout {
         layout
     }
 
+    // It wants to use Path here, but that doesn't compile.
+    #[warn(clippy::ptr_arg)]
+    pub fn from_defaults(layout_path: &PathBuf, data_dir: &Path) -> Self {
+        Self::new(
+            &data_dir
+                .join("layouts/")
+                .join(layout_path)
+                .with_extension("yaml"),
+            &data_dir,
+        )
+    }
+
     pub fn total_terminal_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
