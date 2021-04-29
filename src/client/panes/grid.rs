@@ -161,7 +161,7 @@ pub struct Grid {
     pending_styles: CharacterStyles,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
-    pub erasure_mode: bool, // ERM - when set, goto should not reach the last line of the scroll region
+    pub erasure_mode: bool, // ERM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
