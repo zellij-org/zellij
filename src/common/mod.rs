@@ -186,8 +186,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let default_layout = None;
     let maybe_layout = opts
         .layout
-        .or(default_layout)
-        .map(|p| Layout::new(&p, &data_dir));
+        .map(|p| Layout::new(&p, &data_dir))
+        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
 
     #[cfg(not(test))]
     std::panic::set_hook({
