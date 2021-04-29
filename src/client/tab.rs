@@ -713,7 +713,7 @@ impl Tab {
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
-    pub fn toggle_sync_panes_is_active(&mut self) {
+    pub fn toggle_sync_tab_is_active(&mut self) {
         self.synchronize_is_active = !self.synchronize_is_active;
     }
     pub fn panes_contain_widechar(&self) -> bool {
