@@ -698,6 +698,7 @@ impl Tab {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
         }
+    }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
