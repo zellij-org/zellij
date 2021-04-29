@@ -36,6 +36,7 @@ lazy_static = "1.4.0"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 interprocess = "1.1.1"
+uuid = { version = "0.8.2", features = ["v4"] }
 zellij-tile = { path = "zellij-tile/", version = "0.5.0" }
 
 [dependencies.async-std]

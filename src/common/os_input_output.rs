@@ -17,10 +17,10 @@ use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 use crate::client::ClientInstruction;
+use crate::common::UNIQUE_ZELLIJ_IPC_PIPE;
 use crate::errors::{get_current_ctx, ErrorContext};
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
-use crate::utils::consts::ZELLIJ_IPC_PIPE;
 
 const IPC_BUFFER_SIZE: usize = 262144;
 
@@ -404,7 +404,7 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self) {
-        let socket = LocalSocketStream::connect(ZELLIJ_IPC_PIPE).unwrap();
+        let socket = LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()).unwrap();
         let sock_fd = socket.as_raw_fd();
         let dup_fd = unistd::dup(sock_fd).unwrap();
         let receiver = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };

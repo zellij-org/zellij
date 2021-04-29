@@ -11,8 +11,10 @@ pub mod wasm_vm;
 
 use crate::panes::PaneId;
 use crate::server::ServerInstruction;
+use crate::utils::consts::ZELLIJ_IPC_PIPE;
 use async_std::task_local;
 use errors::{get_current_ctx, ErrorContext};
+use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::sync::mpsc;
 
@@ -72,4 +74,9 @@ task_local! {
     /// A key to some task local storage that holds a representation of the task's call
     /// stack in the form of an [`ErrorContext`].
     static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
+}
+
+lazy_static! {
+    pub static ref UNIQUE_ZELLIJ_IPC_PIPE: String =
+        ZELLIJ_IPC_PIPE.to_string() + uuid::Uuid::new_v4().to_string().as_str();
 }
