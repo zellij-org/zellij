@@ -502,8 +502,7 @@ impl Grid {
                     self.viewport
                         .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 } else {
-                    self.viewport
-                        .push(Row::from_columns(columns).canonical());
+                    self.viewport.push(Row::from_columns(columns).canonical());
                 }
                 return;
             }
@@ -656,11 +655,15 @@ impl Grid {
         match self.scroll_region {
             Some((scroll_region_top, scroll_region_bottom)) => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
-                let y_offset = if self.erasure_mode { scroll_region_top } else { 0 };
+                let y_offset = if self.erasure_mode {
+                    scroll_region_top
+                } else {
+                    0
+                };
                 self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
                 self.pad_lines_until(self.cursor.y, pad_character);
                 self.pad_current_line_until(self.cursor.x);
-            },
+            }
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
                 self.cursor.y = std::cmp::min(self.height - 1, y);
