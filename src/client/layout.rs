@@ -17,14 +17,17 @@ fn split_space_to_parts_vertically(
 
     // First fit in the parameterized sizes
     for size in sizes {
-        let columns = match size {
+        let (columns, max_columns) = match size {
             Some(SplitSize::Percent(percent)) => {
-                (max_width as f32 * (percent as f32 / 100.0)) as usize
+                ((max_width as f32 * (percent as f32 / 100.0)) as usize, None)
             } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
+            Some(SplitSize::Fixed(size)) => (size as usize, Some(size as usize)),
             None => {
                 parts_to_grow.push(current_x_position);
-                1 // This is grown later on
+                (
+                    1, // This is grown later on
+                    None,
+                )
             }
         };
         split_parts.push(PositionAndSize {
@@ -32,6 +35,8 @@ fn split_space_to_parts_vertically(
             y: space_to_split.y,
             columns,
             rows: space_to_split.rows,
+            max_columns,
+            ..Default::default()
         });
         current_width += columns;
         current_x_position += columns + 1; // 1 for gap
@@ -80,14 +85,18 @@ fn split_space_to_parts_horizontally(
     let mut parts_to_grow = Vec::new();
 
     for size in sizes {
-        let rows = match size {
-            Some(SplitSize::Percent(percent)) => {
-                (max_height as f32 * (percent as f32 / 100.0)) as usize
-            } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
+        let (rows, max_rows) = match size {
+            Some(SplitSize::Percent(percent)) => (
+                (max_height as f32 * (percent as f32 / 100.0)) as usize,
+                None,
+            ), // TODO: round properly
+            Some(SplitSize::Fixed(size)) => (size as usize, Some(size as usize)),
             None => {
                 parts_to_grow.push(current_y_position);
-                1 // This is grown later on
+                (
+                    1, // This is grown later on
+                    None,
+                )
             }
         };
         split_parts.push(PositionAndSize {
@@ -95,6 +104,8 @@ fn split_space_to_parts_horizontally(
             y: current_y_position,
             columns: space_to_split.columns,
             rows,
+            max_rows,
+            ..Default::default()
         });
         current_height += rows;
         current_y_position += rows + 1; // 1 for gap

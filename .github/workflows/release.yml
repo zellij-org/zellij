@@ -1,99 +1,118 @@
-name: Packaging
-
+name: Release
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
-  publish:
-    name: Publish on ${{ matrix.os }} for ${{ matrix.target }}
+  build-release:
+    needs: create-release
+    name: build-release
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: 1
     strategy:
       matrix:
-        target:
-            - x86_64-unknown-linux-gnu
-            - x86_64-unknown-linux-musl
-            - x86_64-apple-darwin
-
+        build:
+          - linux musl x64
+          - linux musl aarch64
+          - macos x64
+          - macos aarch64
         include:
-          - os: ubuntu-18.04
-            target: x86_64-unknown-linux-gnu
-            client_artifact_name: target/x86_64-unknown-linux-gnu/release/mosaic
-            client_release_name: mosaic-x86_64-unknown-linux-gnu
-            strip: true
-
-          - os: ubuntu-18.04
+          - build: linux musl x64
+            os: ubuntu-latest
+            rust: beta
             target: x86_64-unknown-linux-musl
-            client_artifact_name: target/x86_64-unknown-linux-musl/release/mosaic
-            client_release_name: mosaic-x86_64-unknown-linux-musl
-            strip: true
-
-          - os: macos-latest
+          - build: linux musl aarch64
+            os: ubuntu-latest
+            rust: beta
+            target: aarch64-unknown-linux-musl
+          - build: macos x64
+            os: macos-latest
+            rust: beta
             target: x86_64-apple-darwin
-            client_artifact_name: target/x86_64-apple-darwin/release/mosaic
-            client_release_name: mosaic-x86_64-macos-darwin
-            strip: true
-
+          - build: macos aarch64
+            os: macos-latest
+            rust: beta
+            target: aarch64-apple-darwin
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Set release tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
+            echo "RELEASE_TAG=main" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> $GITHUB_ENV
+          fi
 
-    - name: Setup Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        override: true
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Install musl
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      run: |
-        sudo apt update
-        sudo apt install musl-tools -y
-
-    - name: cargo build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --locked --target=${{ matrix.target }}
-
-
-    - name: Compress client
-      uses: svenstaro/upx-action@v2
-      with:
-        file: ${{ matrix.client_artifact_name }}
-        args: --lzma
-        strip: ${{ matrix.strip }}
-
-
-    # TODO?
-    # - name: Get CHANGELOG.md entry
-    #   id: changelog_reader
-    #   uses: mindsers/changelog-reader-action@v1.2.0
-    #   with:
-    #     path: ./CHANGELOG.md
-
-    - name: Upload client binaries to release
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ${{ matrix.client_artifact_name }}
-        asset_name: ${{ matrix.client_release_name }}
-        tag: ${{ github.ref }}
-
-  deb-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@master
-      - name: Deb Build
-        uses: ebbflow-io/cargo-deb-amd64-ubuntu@1.0
-
-      - name: Upload deb to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/x86_64-unknown-linux-musl/debian/mosaic*
-          asset_name: mosaic-amd64.deb
-          tag: ${{ github.ref }}
-          file_glob: true
+          toolchain: ${{ matrix.rust }}
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Add WASM target
+        run: rustup target add wasm32-wasi
+
+      - name: Install cargo-make
+        run: cargo install --debug cargo-make
+
+      - name: Install musl-tools
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install wasm-opt
+        run: brew install binaryen
+
+      # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
+      - name: Switch Xcode SDK
+        if: runner.os == 'macos'
+        run: |
+          cat <<EOF >> "$GITHUB_ENV"
+          SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+          EOF
+
+      - name: Build release binary
+        run: cargo make ci-build-release ${{ matrix.target }}
+
+      - name: Strip release binary
+        run: strip "target/${{ matrix.target }}/release/zellij"
+        
+      - name: Tar release
+        id: make-artifact
+        working-directory: ./target/${{ matrix.target }}/release
+        run: |
+          name="zellij-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz"
+          tar cvzf "${name}" "zellij"
+          echo "::set-output name=name::${name}"
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }} 
+          asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
+          asset_name: zellij-${{ env.RELEASE_TAG }}-${{matrix.target}}.tar.gz
+          asset_content_type: application/octet-stream
+
+  create-release:
+    runs-on: ubuntu-latest
+    outputs: 
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: create_release 
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
+          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false  
+

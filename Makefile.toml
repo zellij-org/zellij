@@ -95,9 +95,13 @@ end
 # CI Releasing Zellij
 [tasks.ci-build-release]
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release"]
-command = "cargo"
+dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-plugins"]
+command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
+
+[tasks.setup-cross-compilation]
+command = "cargo"
+args = ["install", "cross"]
 
 # Publishing Zellij
 [tasks.publish]

@@ -18,6 +18,7 @@ pub fn accepts_basic_layout() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);

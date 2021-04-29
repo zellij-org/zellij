@@ -22,6 +22,7 @@ pub fn starts_with_one_terminal() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
@@ -44,6 +45,7 @@ pub fn split_terminals_vertically() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_RIGHT_IN_PANE_MODE, &QUIT]);
@@ -66,6 +68,7 @@ pub fn split_terminals_horizontally() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_DOWN_IN_PANE_MODE, &QUIT]);
@@ -89,6 +92,7 @@ pub fn split_largest_terminal() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -117,6 +121,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_RIGHT_IN_PANE_MODE, &QUIT]);
@@ -139,6 +144,7 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
         rows: 4,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&PANE_MODE, &SPLIT_DOWN_IN_PANE_MODE, &QUIT]);
@@ -161,6 +167,7 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
         rows: 4,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&PANE_MODE, &SPAWN_TERMINAL_IN_PANE_MODE, &QUIT]);
@@ -183,6 +190,7 @@ pub fn scrolling_up_inside_a_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -213,6 +221,7 @@ pub fn scrolling_down_inside_a_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -245,6 +254,7 @@ pub fn scrolling_page_up_inside_a_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -274,6 +284,7 @@ pub fn scrolling_page_down_inside_a_pane() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -308,6 +319,7 @@ pub fn max_panes() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
@@ -339,6 +351,7 @@ pub fn toggle_focused_pane_fullscreen() {
         rows: 20,
         x: 0,
         y: 0,
+        ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[
