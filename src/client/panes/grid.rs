@@ -161,6 +161,7 @@ pub struct Grid {
     pending_styles: CharacterStyles,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
+    pub erasure_mode: bool,    // ERM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
@@ -170,9 +171,9 @@ impl Debug for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (i, row) in self.viewport.iter().enumerate() {
             if row.is_canonical {
-                writeln!(f, "{:?} (C): {:?}", i, row)?;
+                writeln!(f, "{:02?} (C): {:?}", i, row)?;
             } else {
-                writeln!(f, "{:?} (W): {:?}", i, row)?;
+                writeln!(f, "{:02?} (W): {:?}", i, row)?;
             }
         }
         Ok(())
@@ -192,20 +193,20 @@ impl Grid {
             pending_styles: CharacterStyles::new(),
             should_render: true,
             cursor_key_mode: false,
+            erasure_mode: false,
             alternative_lines_above_viewport_and_cursor: None,
             clear_viewport_before_rendering: false,
         }
     }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
         let columns_until_next_tabstop = TABSTOP_WIDTH - (self.cursor.x % TABSTOP_WIDTH);
-        let columns_until_screen_end = self.width - self.cursor.x;
+        let columns_until_screen_end = (self.width - self.cursor.x).saturating_sub(1);
         let columns_to_advance =
             std::cmp::min(columns_until_next_tabstop, columns_until_screen_end);
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = styles;
-        for _ in 0..columns_to_advance {
-            self.add_character(empty_character)
-        }
+        self.cursor.x += columns_to_advance;
+        self.pad_current_line_until(self.cursor.x);
     }
     fn cursor_canonical_line_index(&self) -> usize {
         let mut cursor_canonical_line_index = 0;
@@ -475,6 +476,13 @@ impl Grid {
             }
         }
     }
+    pub fn fill_viewport(&mut self, character: TerminalCharacter) {
+        self.viewport.clear();
+        for _ in 0..self.height {
+            let columns = vec![character; self.width];
+            self.viewport.push(Row::from_columns(columns).canonical());
+        }
+    }
     pub fn add_canonical_line(&mut self) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y == scroll_region_bottom {
@@ -490,8 +498,12 @@ impl Grid {
                 }
                 self.viewport.remove(scroll_region_top);
                 let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
-                self.viewport
-                    .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                if self.viewport.len() >= scroll_region_bottom {
+                    self.viewport
+                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                } else {
+                    self.viewport.push(Row::from_columns(columns).canonical());
+                }
                 return;
             }
         }
@@ -517,13 +529,6 @@ impl Grid {
     }
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;
-    }
-    pub fn move_cursor_backwards(&mut self, count: usize) {
-        if self.cursor.x > count {
-            self.cursor.x -= count;
-        } else {
-            self.cursor.x = 0;
-        }
     }
     pub fn insert_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
         match self.viewport.get_mut(self.cursor.y) {
@@ -601,20 +606,25 @@ impl Grid {
         }
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
-        let line_part = vec![replace_with; self.cursor.x];
+        let line_part = vec![replace_with; self.cursor.x + 1];
         let row = self.viewport.get_mut(self.cursor.y).unwrap();
         row.replace_beginning_with(line_part);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
         if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y).as_mut() {
             cursor_row.truncate(self.cursor.x);
-            let mut replace_with_columns_in_cursor_row =
-                vec![replace_with; self.width - self.cursor.x];
-            cursor_row.append(&mut replace_with_columns_in_cursor_row);
-
             let replace_with_columns = vec![replace_with; self.width];
             self.replace_characters_in_line_after_cursor(replace_with);
             for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
+                row.replace_columns(replace_with_columns.clone());
+            }
+        }
+    }
+    pub fn clear_all_before_cursor(&mut self, replace_with: TerminalCharacter) {
+        if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y).as_mut() {
+            self.replace_characters_in_line_before_cursor(replace_with);
+            let replace_with_columns = vec![replace_with; self.width];
+            for row in self.viewport.iter_mut().take(self.cursor.y) {
                 row.replace_columns(replace_with_columns.clone());
             }
         }
@@ -642,10 +652,25 @@ impl Grid {
         }
     }
     pub fn move_cursor_to(&mut self, x: usize, y: usize, pad_character: TerminalCharacter) {
-        self.cursor.x = std::cmp::min(self.width - 1, x);
-        self.cursor.y = std::cmp::min(self.height - 1, y);
-        self.pad_lines_until(self.cursor.y, pad_character);
-        self.pad_current_line_until(self.cursor.x);
+        match self.scroll_region {
+            Some((scroll_region_top, scroll_region_bottom)) => {
+                self.cursor.x = std::cmp::min(self.width - 1, x);
+                let y_offset = if self.erasure_mode {
+                    scroll_region_top
+                } else {
+                    0
+                };
+                self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
+                self.pad_lines_until(self.cursor.y, pad_character);
+                self.pad_current_line_until(self.cursor.x);
+            }
+            None => {
+                self.cursor.x = std::cmp::min(self.width - 1, x);
+                self.cursor.y = std::cmp::min(self.height - 1, y);
+                self.pad_lines_until(self.cursor.y, pad_character);
+                self.pad_current_line_until(self.cursor.x);
+            }
+        }
     }
     pub fn move_cursor_up(&mut self, count: usize) {
         self.cursor.y = if self.cursor.y < count {
@@ -690,6 +715,10 @@ impl Grid {
         self.pad_lines_until(self.cursor.y, pad_character);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
+        if self.cursor.x == self.width {
+            // on the rightmost screen edge, backspace skips one character
+            self.cursor.x -= 1;
+        }
         if self.cursor.x < count {
             self.cursor.x = 0;
         } else {
@@ -827,14 +856,15 @@ impl vte::Perform for Grid {
         match byte {
             8 => {
                 // backspace
-                self.move_cursor_backwards(1);
+                self.move_cursor_back(1);
             }
             9 => {
                 // tab
                 self.advance_to_next_tabstop(self.pending_styles);
             }
-            10 => {
+            10 | 11 => {
                 // 0a, newline
+                // 0b, form-feed
                 self.add_newline();
             }
             13 => {
@@ -891,11 +921,13 @@ impl vte::Perform for Grid {
             char_to_replace.styles = self.pending_styles;
             if params[0] == 0 {
                 self.clear_all_after_cursor(char_to_replace);
+            } else if params[0] == 1 {
+                self.clear_all_before_cursor(char_to_replace);
             } else if params[0] == 2 {
                 self.clear_all(char_to_replace);
             }
         // TODO: implement 1
-        } else if c == 'H' {
+        } else if c == 'H' || c == 'f' {
             // goto row/col
             // we subtract 1 from the row/column because these are 1 indexed
             // (except when they are 0, in which case they should be 1
@@ -963,6 +995,16 @@ impl vte::Perform for Grid {
                     Some(&1) => {
                         self.cursor_key_mode = false;
                     }
+                    Some(&3) => {
+                        // DECCOLM - only side effects
+                        self.scroll_region = None;
+                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                        self.cursor.x = 0;
+                        self.cursor.y = 0;
+                    }
+                    Some(&6) => {
+                        self.erasure_mode = false;
+                    }
                     _ => {}
                 };
             }
@@ -992,6 +1034,16 @@ impl vte::Perform for Grid {
                     }
                     Some(&1) => {
                         self.cursor_key_mode = true;
+                    }
+                    Some(&3) => {
+                        // DECCOLM - only side effects
+                        self.scroll_region = None;
+                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                        self.cursor.x = 0;
+                        self.cursor.y = 0;
+                    }
+                    Some(&6) => {
+                        self.erasure_mode = true;
                     }
                     _ => {}
                 };
@@ -1098,11 +1150,26 @@ impl vte::Perform for Grid {
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
         match (byte, intermediates.get(0)) {
+            (b'D', None) => {
+                self.add_newline();
+            }
+            (b'E', None) => {
+                self.add_newline();
+                self.move_cursor_to_beginning_of_line();
+            }
             (b'M', None) => {
                 self.move_cursor_up_with_scrolling(1);
             }
             (b'c', None) => {
                 self.reset_terminal_state();
+            }
+            (b'H', None) => {
+                self.advance_to_next_tabstop(self.pending_styles);
+            }
+            (b'8', Some(b'#')) => {
+                let mut fill_character = EMPTY_TERMINAL_CHARACTER;
+                fill_character.character = 'E';
+                self.fill_viewport(fill_character);
             }
             _ => {}
         }
@@ -1254,3 +1321,7 @@ impl Cursor {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/grid_tests.rs"]
+mod grid_tests;
