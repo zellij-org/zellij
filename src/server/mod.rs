@@ -35,10 +35,6 @@ use crate::utils::consts::ZELLIJ_IPC_PIPE;
 /// ones sent by client to server
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
-    OpenFile(PathBuf),
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
     TerminalResize(PositionAndSize),
     NewClient(PositionAndSize),
     Action(Action),
@@ -162,42 +158,6 @@ fn handle_client(
             match instruction {
                 ServerInstruction::ClientExit => {
                     send_server_instructions.send(instruction).unwrap();
-                    break;
-                }
-                ServerInstruction::OpenFile(file_name) => {
-                    rlocked_sessions
-                        .as_ref()
-                        .unwrap()
-                        .send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminal(Some(file_name)))
-                        .unwrap();
-                    break;
-                }
-                ServerInstruction::SplitHorizontally => {
-                    rlocked_sessions
-                        .as_ref()
-                        .unwrap()
-                        .send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
-                        .unwrap();
-                    break;
-                }
-                ServerInstruction::SplitVertically => {
-                    rlocked_sessions
-                        .as_ref()
-                        .unwrap()
-                        .send_pty_instructions
-                        .send(PtyInstruction::SpawnTerminalVertically(None))
-                        .unwrap();
-                    break;
-                }
-                ServerInstruction::MoveFocus => {
-                    rlocked_sessions
-                        .as_ref()
-                        .unwrap()
-                        .send_screen_instructions
-                        .send(ScreenInstruction::FocusNextPane)
-                        .unwrap();
                     break;
                 }
                 ServerInstruction::Action(action) => {

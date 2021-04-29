@@ -341,10 +341,6 @@ impl From<&ClientInstruction> for ClientContext {
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ServerContext {
-    OpenFile,
-    SplitHorizontally,
-    SplitVertically,
-    MoveFocus,
     NewClient,
     Action,
     Render,
@@ -356,10 +352,6 @@ pub enum ServerContext {
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
-            ServerInstruction::OpenFile(_) => ServerContext::OpenFile,
-            ServerInstruction::SplitHorizontally => ServerContext::SplitHorizontally,
-            ServerInstruction::SplitVertically => ServerContext::SplitVertically,
-            ServerInstruction::MoveFocus => ServerContext::MoveFocus,
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::Action(_) => ServerContext::Action,
             ServerInstruction::TerminalResize(_) => ServerContext::TerminalResize,

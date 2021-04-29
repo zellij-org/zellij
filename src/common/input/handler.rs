@@ -112,7 +112,7 @@ impl InputHandler {
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
                 self.os_input
-                    .send_to_server(ServerInstruction::Action(action.clone()));
+                    .send_to_server(ServerInstruction::Action(action));
             }
             Action::CloseFocus
             | Action::NewPane(_)
