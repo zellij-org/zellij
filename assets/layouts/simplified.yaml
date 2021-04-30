@@ -1,0 +1,12 @@
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+    split_size:
+      Fixed: 1
+    plugin: tab-bar-simplified
+  - direction: Vertical
+  - direction: Vertical
+    split_size:
+      Fixed: 2
+    plugin: status-bar-simplified
