@@ -186,8 +186,8 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    recv_socket: Option<Arc<Mutex<io::BufReader<LocalSocketStream>>>>,
-    sender_socket: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
+    receive_instructions_from_client: Option<Arc<Mutex<io::BufReader<LocalSocketStream>>>>,
+    send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
 }
 
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
@@ -211,7 +211,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     /// Receives a message on server-side IPC channel
-    fn server_recv(&self) -> (ServerInstruction, ErrorContext);
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext);
     /// Sends a message to client
     fn send_to_client(&self, msg: ClientInstruction);
     /// Adds a sender to client
@@ -251,11 +251,19 @@ impl ServerOsApi for ServerOsInputOutput {
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
-    fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
-        bincode::deserialize_from(&mut *self.recv_socket.as_ref().unwrap().lock().unwrap()).unwrap()
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+        bincode::deserialize_from(
+            &mut *self
+                .receive_instructions_from_client
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap(),
+        )
+        .unwrap()
     }
     fn send_to_client(&self, msg: ClientInstruction) {
-        self.sender_socket
+        self.send_instructions_to_client
             .lock()
             .unwrap()
             .as_mut()
@@ -264,9 +272,9 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap();
     }
     fn add_client_sender(&mut self) {
-        assert!(self.sender_socket.lock().unwrap().is_none());
+        assert!(self.send_instructions_to_client.lock().unwrap().is_none());
         let sock_fd = self
-            .recv_socket
+            .receive_instructions_from_client
             .as_ref()
             .unwrap()
             .lock()
@@ -275,10 +283,12 @@ impl ServerOsApi for ServerOsInputOutput {
             .as_raw_fd();
         let dup_fd = unistd::dup(sock_fd).unwrap();
         let dup_sock = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
-        *self.sender_socket.lock().unwrap() = Some(IpcSenderWithContext::new(dup_sock));
+        *self.send_instructions_to_client.lock().unwrap() =
+            Some(IpcSenderWithContext::new(dup_sock));
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
-        self.recv_socket = Some(Arc::new(Mutex::new(io::BufReader::new(stream))));
+        self.receive_instructions_from_client =
+            Some(Arc::new(Mutex::new(io::BufReader::new(stream))));
     }
 }
 
@@ -293,16 +303,16 @@ pub fn get_server_os_input() -> ServerOsInputOutput {
     let orig_termios = Arc::new(Mutex::new(current_termios));
     ServerOsInputOutput {
         orig_termios,
-        recv_socket: None,
-        sender_socket: Arc::new(Mutex::new(None)),
+        receive_instructions_from_client: None,
+        send_instructions_to_client: Arc::new(Mutex::new(None)),
     }
 }
 
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    server_sender: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
-    receiver: Arc<Mutex<Option<io::BufReader<LocalSocketStream>>>>,
+    send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
+    receive_instructions_from_server: Arc<Mutex<Option<io::BufReader<LocalSocketStream>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -326,7 +336,7 @@ pub trait ClientOsApi: Send + Sync {
     fn send_to_server(&self, msg: ServerInstruction);
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
-    fn client_recv(&self) -> (ClientInstruction, ErrorContext);
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext);
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self);
@@ -360,7 +370,7 @@ impl ClientOsApi for ClientOsInputOutput {
         Box::new(stdout)
     }
     fn send_to_server(&self, msg: ServerInstruction) {
-        self.server_sender
+        self.send_instructions_to_server
             .lock()
             .unwrap()
             .as_mut()
@@ -368,8 +378,16 @@ impl ClientOsApi for ClientOsInputOutput {
             .send(msg)
             .unwrap();
     }
-    fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
-        bincode::deserialize_from(&mut self.receiver.lock().unwrap().as_mut().unwrap()).unwrap()
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+        bincode::deserialize_from(
+            &mut self
+                .receive_instructions_from_server
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap(),
+        )
+        .unwrap()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
@@ -397,8 +415,8 @@ impl ClientOsApi for ClientOsInputOutput {
         let dup_fd = unistd::dup(sock_fd).unwrap();
         let receiver = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
         let sender = IpcSenderWithContext::new(socket);
-        *self.server_sender.lock().unwrap() = Some(sender);
-        *self.receiver.lock().unwrap() = Some(io::BufReader::new(receiver));
+        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+        *self.receive_instructions_from_server.lock().unwrap() = Some(io::BufReader::new(receiver));
     }
 }
 
@@ -413,7 +431,7 @@ pub fn get_client_os_input() -> ClientOsInputOutput {
     let orig_termios = Arc::new(Mutex::new(current_termios));
     ClientOsInputOutput {
         orig_termios,
-        server_sender: Arc::new(Mutex::new(None)),
-        receiver: Arc::new(Mutex::new(None)),
+        send_instructions_to_server: Arc::new(Mutex::new(None)),
+        receive_instructions_from_server: Arc::new(Mutex::new(None)),
     }
 }

@@ -78,32 +78,34 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
         send_server_instructions.clone(),
     );
     #[cfg(not(test))]
-    let _ = thread::Builder::new().name("listener".to_string()).spawn({
-        let os_input = os_input.clone();
-        let sessions = sessions.clone();
-        let send_server_instructions = send_server_instructions.clone();
-        move || {
-            drop(std::fs::remove_file(ZELLIJ_IPC_PIPE.clone()));
-            let listener = LocalSocketListener::bind(ZELLIJ_IPC_PIPE.clone()).unwrap();
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        let mut os_input = os_input.clone();
-                        os_input.update_receiver(stream);
-                        let sessions = sessions.clone();
-                        let send_server_instructions = send_server_instructions.clone();
-                        handle_client(sessions, os_input, send_server_instructions);
-                    }
-                    Err(err) => {
-                        panic!("err {:?}", err);
+    let _ = thread::Builder::new()
+        .name("server_listener".to_string())
+        .spawn({
+            let os_input = os_input.clone();
+            let sessions = sessions.clone();
+            let send_server_instructions = send_server_instructions.clone();
+            move || {
+                drop(std::fs::remove_file(ZELLIJ_IPC_PIPE.clone()));
+                let listener = LocalSocketListener::bind(ZELLIJ_IPC_PIPE.clone()).unwrap();
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(stream) => {
+                            let mut os_input = os_input.clone();
+                            os_input.update_receiver(stream);
+                            let sessions = sessions.clone();
+                            let send_server_instructions = send_server_instructions.clone();
+                            handle_client(sessions, os_input, send_server_instructions);
+                        }
+                        Err(err) => {
+                            panic!("err {:?}", err);
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
     thread::Builder::new()
-        .name("ipc_server".to_string())
+        .name("server_thread".to_string())
         .spawn({
             move || loop {
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
@@ -151,9 +153,9 @@ fn handle_client(
     send_server_instructions: SenderWithContext<ServerInstruction>,
 ) {
     thread::Builder::new()
-        .name("router".to_string())
+        .name("server_router".to_string())
         .spawn(move || loop {
-            let (instruction, mut err_ctx) = os_input.server_recv();
+            let (instruction, mut err_ctx) = os_input.recv_from_client();
             err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
             let rlocked_sessions = sessions.read().unwrap();
             match instruction {

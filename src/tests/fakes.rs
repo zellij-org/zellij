@@ -75,10 +75,10 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
-    client_sender: SenderWithContext<ClientInstruction>,
-    client_receiver: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
-    server_sender: SenderWithContext<ServerInstruction>,
-    server_receiver: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
+    send_instructions_to_client: SenderWithContext<ClientInstruction>,
+    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
+    send_instructions_to_server: SenderWithContext<ServerInstruction>,
+    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
 }
@@ -90,10 +90,10 @@ impl FakeInputOutput {
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         let (client_sender, client_receiver): ChannelWithContext<ClientInstruction> =
             mpsc::channel();
-        let client_sender = SenderWithContext::new(SenderType::Sender(client_sender));
+        let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
         let (server_sender, server_receiver): ChannelWithContext<ServerInstruction> =
             mpsc::channel();
-        let server_sender = SenderWithContext::new(SenderType::Sender(server_sender));
+        let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
 
         FakeInputOutput {
@@ -106,10 +106,10 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
-            server_receiver: Arc::new(Mutex::new(server_receiver)),
-            server_sender,
-            client_receiver: Arc::new(Mutex::new(client_receiver)),
-            client_sender,
+            receive_instructions_from_client: Arc::new(Mutex::new(server_receiver)),
+            send_instructions_to_server,
+            receive_instructions_from_server: Arc::new(Mutex::new(client_receiver)),
+            send_instructions_to_client,
             should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
             sigwinch_event: None,
         }
@@ -195,10 +195,14 @@ impl ClientOsApi for FakeInputOutput {
         Box::new(self.stdout_writer.clone())
     }
     fn send_to_server(&self, msg: ServerInstruction) {
-        self.server_sender.send(msg).unwrap();
+        self.send_instructions_to_server.send(msg).unwrap();
     }
-    fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
-        self.client_receiver.lock().unwrap().recv().unwrap()
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+        self.receive_instructions_from_server
+            .lock()
+            .unwrap()
+            .recv()
+            .unwrap()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         if self.sigwinch_event.is_some() {
@@ -273,11 +277,15 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
-        self.server_receiver.lock().unwrap().recv().unwrap()
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+        self.receive_instructions_from_client
+            .lock()
+            .unwrap()
+            .recv()
+            .unwrap()
     }
     fn send_to_client(&self, msg: ClientInstruction) {
-        self.client_sender.send(msg).unwrap();
+        self.send_instructions_to_client.send(msg).unwrap();
     }
     fn add_client_sender(&mut self) {}
     fn update_receiver(&mut self, _stream: LocalSocketStream) {}

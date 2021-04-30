@@ -105,7 +105,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs) {
             let os_input = os_input.clone();
             move || {
                 loop {
-                    let (instruction, mut err_ctx) = os_input.client_recv();
+                    let (instruction, mut err_ctx) = os_input.recv_from_server();
                     err_ctx.add_call(ContextType::Client(ClientContext::from(&instruction)));
                     if let ClientInstruction::Exit = instruction {
                         break;

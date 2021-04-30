@@ -85,7 +85,6 @@ lazy_static! {
             .unwrap_or_else(|| project_dir.cache_dir());
         std::fs::create_dir_all(ipc_dir).unwrap();
         let session_name = names::Generator::default().next().unwrap();
-        let x = ipc_dir.join(session_name);
-        x
+        ipc_dir.join(session_name)
     };
 }
