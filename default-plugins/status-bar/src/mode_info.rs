@@ -1,46 +1,14 @@
 use super::data::{Action, Direction, InputMode, Key};
 use std::collections::HashMap;
 
-// const fn now does not support PartialEq/Eq, we have to implement our own compare fn
-const fn compare_key(l: &Key, r: &Key) -> bool {
-    matches!(
-        (l, r),
-        (Key::Backspace, Key::Backspace)
-            | (Key::Left, Key::Left)
-            | (Key::Right, Key::Right)
-            | (Key::Up, Key::Up)
-            | (Key::Down, Key::Down)
-            | (Key::Home, Key::Home)
-            | (Key::End, Key::End)
-            | (Key::PageUp, Key::PageUp)
-            | (Key::PageDown, Key::PageDown)
-            | (Key::Delete, Key::Delete)
-            | (Key::Insert, Key::Insert)
-            | (Key::Esc, Key::Esc)
-            | (Key::BackTab, Key::BackTab)
-            | (Key::Char(_), Key::Char(_))
-    )
-}
-
 const fn get_key_order(key: &Key) -> Option<i32> {
-    const V: &[(Key, i32)] = &[
-        (Key::Left, 0),
-        (Key::Right, 0),
-        (Key::Up, 1),
-        (Key::Down, 1),
-        (Key::PageUp, 2),
-        (Key::PageDown, 2),
-        (Key::Char(' '), 3),
-    ];
-    let mut i = 0;
-    while i < V.len() {
-        let (k, o) = V[i];
-        if compare_key(&k, key) {
-            return Some(o);
-        }
-        i += 1;
+    match key {
+        Key::Left | Key::Right => Some(0),
+        Key::Up | Key::Down => Some(1),
+        Key::PageUp | Key::PageDown => Some(2),
+        Key::Char(_) => Some(3),
+        _ => None,
     }
-    None
 }
 
 /// Get a prior key from keybinds
