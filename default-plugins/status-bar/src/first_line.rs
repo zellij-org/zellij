@@ -267,7 +267,7 @@ impl CtrlKeyShortcut {
                                 .push_left_sep()
                                 .push_shortcut(&c.to_string())
                                 .push_right_sep()
-                                .push_text(b)
+                                .push_text(&b.to_lowercase())
                                 .push_suffix()
                                 .done(),
                             None => self.full_text(),
