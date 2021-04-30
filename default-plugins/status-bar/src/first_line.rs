@@ -209,7 +209,7 @@ impl std::fmt::Display for ShortCutTextElement {
             "{}",
             match self {
                 ShortCutTextElement::Prefix | ShortCutTextElement::Suffix => ARROW_SEPARATOR,
-                ShortCutTextElement::LeftSeparator => " <",
+                ShortCutTextElement::LeftSeparator => "<",
                 ShortCutTextElement::RightSeparator => ">",
                 ShortCutTextElement::Shortcut(s) => s,
                 ShortCutTextElement::Text(s) => s,
@@ -238,6 +238,7 @@ impl CtrlKeyShortcut {
             ShortcutText::new()
                 .style(self.mode.clone())
                 .push_prefix()
+                .push_text(" ")
                 .push_left_sep()
                 .push_shortcut(&self.letter_shortcut_key())
                 .push_right_sep()
@@ -263,7 +264,7 @@ impl CtrlKeyShortcut {
                             Some((a, b)) => ShortcutText::new()
                                 .style(self.mode.clone())
                                 .push_prefix()
-                                .push_text(a)
+                                .push_text(&capitalize_str(a))
                                 .push_left_sep()
                                 .push_shortcut(&c.to_string())
                                 .push_right_sep()
@@ -291,6 +292,15 @@ impl CtrlKeyShortcut {
                 .push_suffix()
                 .done()
         }
+    }
+}
+
+fn capitalize_str(s: &str) -> String {
+    if s.len() < 2 {
+        s.to_uppercase()
+    } else {
+        let (l, r) = s.split_at(1);
+        l.to_uppercase() + &r.to_lowercase()
     }
 }
 
