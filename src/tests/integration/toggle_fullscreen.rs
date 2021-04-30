@@ -5,6 +5,7 @@ use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
 
+use crate::common::input::config::Config;
 use crate::tests::utils::commands::{
     MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
     TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
@@ -31,7 +32,11 @@ pub fn adding_new_terminal_in_fullscreen() {
         &SPLIT_DOWN_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -61,7 +66,11 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
