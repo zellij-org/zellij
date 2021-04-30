@@ -7,15 +7,39 @@ use crate::{
 };
 use crate::{LinePart, ARROW_SEPARATOR};
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum Prefix {
+    Ctrl,
+    Alt,
+    None,
+}
+
+impl Prefix {
+    fn text(&self) -> ShortcutText {
+        match self {
+            Prefix::Ctrl => ShortcutText::new().push_superkey("Ctrl + ").done(),
+            Prefix::Alt => ShortcutText::new().push_superkey("Alt + ").done(),
+            Prefix::None => ShortcutText::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct CtrlKeyShortcut {
+    prefix: Prefix,
     mode: CtrlKeyMode,
     action: CtrlKeyAction,
     key: Option<Key>,
 }
 
 impl CtrlKeyShortcut {
-    pub fn new(mode: CtrlKeyMode, action: CtrlKeyAction, key: Option<Key>) -> Self {
-        CtrlKeyShortcut { mode, action, key }
+    pub fn new(prefix: Prefix, mode: CtrlKeyMode, action: CtrlKeyAction, key: Option<Key>) -> Self {
+        CtrlKeyShortcut {
+            prefix,
+            mode,
+            action,
+            key,
+        }
     }
 }
 
@@ -108,6 +132,11 @@ impl ShortcutText {
         self.parts.push(ShortCutTextElement::Text(s.to_string()));
         self
     }
+    fn push_superkey(mut self, s: &str) -> Self {
+        self.parts
+            .push(ShortCutTextElement::SuperKey(s.to_string()));
+        self
+    }
     fn done(self) -> Self {
         self
     }
@@ -138,6 +167,7 @@ enum ShortCutTextElement {
     RightSeparator,
     Shortcut(String),
     Text(String),
+    SuperKey(String),
 }
 
 impl ShortCutTextElement {
@@ -165,6 +195,7 @@ impl ShortCutTextElement {
             (CtrlKeyMode::Disabled, ShortCutTextElement::Suffix) => {
                 Style::new().fg(BRIGHT_GRAY).on(GRAY)
             }
+            (_, ShortCutTextElement::SuperKey(_)) => Style::new().fg(WHITE).on(GRAY).bold(),
             (CtrlKeyMode::Disabled, _) => Style::new().fg(GRAY).on(BRIGHT_GRAY).dimmed(),
         }
         .paint(self.to_string())
@@ -182,31 +213,23 @@ impl std::fmt::Display for ShortCutTextElement {
                 ShortCutTextElement::RightSeparator => ">",
                 ShortCutTextElement::Shortcut(s) => s,
                 ShortCutTextElement::Text(s) => s,
+                ShortCutTextElement::SuperKey(s) => s,
             }
         )
     }
 }
 
 impl CtrlKeyShortcut {
-    fn shortcut_key(&self) -> String {
-        match self.key {
-            Some(k) => k.to_string(),
-            None => String::from(""),
-        }
-    }
-
     fn letter_shortcut_key(&self) -> String {
-        match self.key {
-            Some(Key::Ctrl(c)) | Some(Key::Alt(c)) | Some(Key::Char(c)) => c.to_string(),
-            Some(key) => key.to_string(),
-            None => String::from(""),
+        match (self.key, self.prefix) {
+            (Some(Key::Ctrl(c)), Prefix::Ctrl) | (Some(Key::Alt(c)), Prefix::Alt) => c.to_string(),
+            (Some(Key::Char(c)), _) => c.to_string(),
+            (Some(key), _) => key.to_string(),
+            (None, _) => String::from(""),
         }
     }
 
     pub fn full_text(&self) -> ShortcutText {
-        dbg!(&self.action);
-        dbg!(&self.mode);
-        dbg!(&self.key);
         if self.key.is_none() {
             // if there's no keybind for this mode
             // it should not be displayed on status-bar
@@ -230,7 +253,12 @@ impl CtrlKeyShortcut {
         } else {
             match self.key {
                 Some(key) => match key {
-                    Key::Alt(c) | Key::Char(c) | Key::Ctrl(c) => {
+                    // shortened text only available when 
+                    // * shortcut key is an available character
+                    // * Ctrl/Alt is already extracted as a prefix
+                    // * action string contain current shortcut key
+                    // otherwise, it should just act like a full text
+                    Key::Alt(c) | Key::Char(c) | Key::Ctrl(c) if self.prefix != Prefix::None => {
                         match self.action.to_string().split_once(c.to_ascii_uppercase()) {
                             Some((a, b)) => ShortcutText::new()
                                 .style(self.mode.clone())
@@ -242,38 +270,12 @@ impl CtrlKeyShortcut {
                                 .push_text(b)
                                 .push_suffix()
                                 .done(),
-                            None => ShortcutText::new()
-                                .style(self.mode.clone())
-                                .push_prefix()
-                                .push_left_sep()
-                                .push_shortcut(&c.to_string())
-                                .push_right_sep()
-                                .push_text(" ")
-                                .push_text(&self.action.to_string())
-                                .done(),
+                            None => self.full_text(),
                         }
                     }
-                    Key::Null => ShortcutText::new()
-                        .style(self.mode.clone())
-                        .push_prefix()
-                        .push_text(&self.action.to_string())
-                        .push_suffix()
-                        .done(),
-                    _ => ShortcutText::new()
-                        .style(self.mode.clone())
-                        .push_prefix()
-                        .push_left_sep()
-                        .push_shortcut(&self.shortcut_key())
-                        .push_right_sep()
-                        .push_text(&self.action.to_string())
-                        .done(),
+                    _ => self.full_text(),
                 },
-                None => ShortcutText::new()
-                    .style(self.mode.clone())
-                    .push_prefix()
-                    .push_text(&self.action.to_string())
-                    .push_suffix()
-                    .done(),
+                None => self.full_text(),
             }
         }
     }
@@ -292,8 +294,12 @@ impl CtrlKeyShortcut {
     }
 }
 
-fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut]) -> LinePart {
+fn key_indicators(prefix: Prefix, max_len: usize, keys: &[CtrlKeyShortcut]) -> LinePart {
+    //TODO use .fold instead of for .. in.
+    let prefix = prefix.text().to_styled_text();
     let mut line_part = LinePart::default();
+    line_part.part = format!("{}{}", line_part.part, prefix.part);
+    line_part.len += prefix.len;
     for ctrl_key in keys {
         let key = ctrl_key.full_text().to_styled_text();
         line_part.part = format!("{}{}", line_part.part, key.part);
@@ -303,6 +309,8 @@ fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut]) -> LinePart {
         return line_part;
     }
     line_part = LinePart::default();
+    line_part.part = format!("{}{}", line_part.part, prefix.part);
+    line_part.len += prefix.len;
     for ctrl_key in keys {
         let key = ctrl_key.shortened_text().to_styled_text();
         line_part.part = format!("{}{}", line_part.part, key.part);
@@ -312,6 +320,8 @@ fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut]) -> LinePart {
         return line_part;
     }
     line_part = LinePart::default();
+    line_part.part = format!("{}{}", line_part.part, prefix.part);
+    line_part.len += prefix.len;
     for ctrl_key in keys {
         let key = ctrl_key.single_letter().to_styled_text();
         line_part.part = format!("{}{}", line_part.part, key.part);
@@ -324,12 +334,31 @@ fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut]) -> LinePart {
     line_part
 }
 
-pub fn superkey() -> LinePart {
-    let prefix_text = " Ctrl + ";
-    let prefix = Style::new().fg(WHITE).on(GRAY).bold().paint(prefix_text);
-    LinePart {
-        part: prefix.to_string(),
-        len: prefix_text.chars().count(),
+// if all key starts with Ctrl (or Alt) we should print a lead prefix
+// otherwise the key should be printed as-is
+// e.g.
+// keys: Ctrl-p Ctrl-t Ctrl-q, print: Ctrl - p/t/q
+// Keys: Ctrl-p Alt-t Alt-q, print: Ctrl-p/Alt-t/Alt-q
+fn superkey(help: &ModeInfo) -> Prefix {
+    const MODES_LIST: &[Action] = &[
+        Action::SwitchToMode(InputMode::Locked),
+        Action::SwitchToMode(InputMode::Pane),
+        Action::SwitchToMode(InputMode::Tab),
+        Action::SwitchToMode(InputMode::Resize),
+        Action::SwitchToMode(InputMode::Scroll),
+        Action::SwitchToMode(InputMode::Normal),
+        Action::Quit,
+    ];
+    let mode_keys: Vec<Key> = MODES_LIST
+        .iter()
+        .filter_map(|action| pick_key_from_keybinds(action.clone(), &help.keybinds))
+        .collect();
+    if mode_keys.iter().all(|c| matches!(c, Key::Ctrl(_))) {
+        Prefix::Ctrl
+    } else if mode_keys.iter().all(|c| matches!(c, Key::Alt(_))) {
+        Prefix::Alt
+    } else {
+        Prefix::None
     }
 }
 
@@ -348,16 +377,19 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
         ),
         (CtrlKeyAction::Quit, Action::Quit),
     ];
+    let prefix = superkey(help);
     let mut v = Vec::new();
     for (m, a) in MODES.iter() {
         let shortcut = if m == &help.mode {
             CtrlKeyShortcut::new(
+                prefix,
                 CtrlKeyMode::Selected,
                 m.clone(),
                 pick_key_from_keybinds(Action::SwitchToMode(InputMode::Normal), &help.keybinds),
             )
         } else {
             CtrlKeyShortcut::new(
+                prefix,
                 CtrlKeyMode::Unselected,
                 m.clone(),
                 pick_key_from_keybinds(a.clone(), &help.keybinds),
@@ -365,5 +397,5 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
         };
         v.push(shortcut);
     }
-    key_indicators(max_len, &v)
+    key_indicators(prefix, max_len, &v)
 }

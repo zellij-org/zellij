@@ -61,8 +61,8 @@ pub fn pick_key_from_keybinds(action: Action, key_config: &[(Key, Vec<Action>)])
             Key::Left | Key::Right => 0,
             Key::Up | Key::Down => 1,
             Key::PageUp | Key::PageDown => 2,
-            Key::Ctrl(_) => 3,
-            Key::Alt(_) => 4,
+            Key::Ctrl(c) | Key::Alt(c) if *c != ' ' => 3,
+            Key::Ctrl(' ') | Key::Alt(' ') => 4,
             Key::Char(_) => 5,
             _ => 10,
         }
