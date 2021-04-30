@@ -18,7 +18,7 @@ struct State {
     mode: InputMode,
 }
 
-static ARROW_SEPARATOR: &str = "|";
+static ARROW_SEPARATOR: &str = "";
 
 pub mod colors {
     use ansi_term::Colour::{self, Fixed};

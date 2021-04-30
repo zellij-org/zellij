@@ -1,5 +1,5 @@
 [package]
-name = "tab-bar-simplified"
+name = "status-bar-simplified"
 version = "0.1.0"
 authors = ["Alex Hallam <alexhallam6.28@gmail.com>"]
 edition = "2018"
