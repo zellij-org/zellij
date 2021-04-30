@@ -56,11 +56,25 @@ fn get_key_map_string(key_config: &HashMap<Key, Vec<Action>>, actions: &[&[Actio
 }
 
 pub fn pick_key_from_keybinds(action: Action, key_config: &[(Key, Vec<Action>)]) -> Option<Key> {
+    const fn get_key_order_for_mode(key: &Key) -> i32 {
+        match key {
+            Key::Left | Key::Right => 0,
+            Key::Up | Key::Down => 1,
+            Key::PageUp | Key::PageDown => 2,
+            Key::Ctrl(_) => 3,
+            Key::Alt(_) => 4,
+            Key::Char(_) => 5,
+            _ => 10,
+        }
+    }
+
     let action = &[action];
     key_config
         .iter()
         .filter_map(|(k, a)| if a == action { Some(*k) } else { None })
-        .next()
+        .map(|key| (key, get_key_order_for_mode(&key)))
+        .min_by_key(|x| x.1)
+        .map(|k| k.0)
 }
 
 pub fn get_mode_info(

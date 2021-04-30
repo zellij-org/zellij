@@ -19,7 +19,7 @@ impl CtrlKeyShortcut {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum CtrlKeyAction {
     Lock,
     Pane,
@@ -31,13 +31,15 @@ enum CtrlKeyAction {
 
 impl PartialEq<InputMode> for CtrlKeyAction {
     fn eq(&self, other: &InputMode) -> bool {
-        matches!((other, self),
+        matches!(
+            (other, self),
             (InputMode::Locked, CtrlKeyAction::Lock)
-            | (InputMode::Pane, CtrlKeyAction::Pane)
-            | (InputMode::Tab, CtrlKeyAction::Tab)
-            | (InputMode::RenameTab, CtrlKeyAction::Tab)
-            | (InputMode::Resize, CtrlKeyAction::Resize)
-            | (InputMode::Scroll, CtrlKeyAction::Scroll))
+                | (InputMode::Pane, CtrlKeyAction::Pane)
+                | (InputMode::Tab, CtrlKeyAction::Tab)
+                | (InputMode::RenameTab, CtrlKeyAction::Tab)
+                | (InputMode::Resize, CtrlKeyAction::Resize)
+                | (InputMode::Scroll, CtrlKeyAction::Scroll)
+        )
     }
 }
 
@@ -58,7 +60,7 @@ impl std::fmt::Display for CtrlKeyAction {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum CtrlKeyMode {
     Unselected,
     Selected,
@@ -202,76 +204,91 @@ impl CtrlKeyShortcut {
     }
 
     pub fn full_text(&self) -> ShortcutText {
-        ShortcutText::new()
-            .style(self.mode.clone())
-            .push_prefix()
-            .push_left_sep()
-            .push_shortcut(&self.letter_shortcut_key())
-            .push_right_sep()
-            .push_text(&self.action.to_string())
-            .push_suffix()
-            .done()
+        dbg!(&self.action);
+        dbg!(&self.mode);
+        dbg!(&self.key);
+        if self.key.is_none() {
+            // if there's no keybind for this mode
+            // it should not be displayed on status-bar
+            ShortcutText::new()
+        } else {
+            ShortcutText::new()
+                .style(self.mode.clone())
+                .push_prefix()
+                .push_left_sep()
+                .push_shortcut(&self.letter_shortcut_key())
+                .push_right_sep()
+                .push_text(" ")
+                .push_text(&self.action.to_string())
+                .push_suffix()
+                .done()
+        }
     }
     pub fn shortened_text(&self) -> ShortcutText {
-        match self.key {
-            Some(key) => match key {
-                Key::Alt(c) | Key::Char(c) | Key::Ctrl(c) => {
-                    match self
-                        .action
-                        .to_string()
-                        .split_once(c.to_ascii_uppercase())
-                    {
-                        Some((a, b)) => ShortcutText::new()
-                            .style(self.mode.clone())
-                            .push_prefix()
-                            .push_text(a)
-                            .push_left_sep()
-                            .push_shortcut(&c.to_string())
-                            .push_right_sep()
-                            .push_text(b)
-                            .push_suffix()
-                            .done(),
-                        None => ShortcutText::new()
-                            .style(self.mode.clone())
-                            .push_prefix()
-                            .push_left_sep()
-                            .push_shortcut(&c.to_string())
-                            .push_right_sep()
-                            .push_text(&self.action.to_string())
-                            .done(),
+        if self.key.is_none() {
+            ShortcutText::new()
+        } else {
+            match self.key {
+                Some(key) => match key {
+                    Key::Alt(c) | Key::Char(c) | Key::Ctrl(c) => {
+                        match self.action.to_string().split_once(c.to_ascii_uppercase()) {
+                            Some((a, b)) => ShortcutText::new()
+                                .style(self.mode.clone())
+                                .push_prefix()
+                                .push_text(a)
+                                .push_left_sep()
+                                .push_shortcut(&c.to_string())
+                                .push_right_sep()
+                                .push_text(b)
+                                .push_suffix()
+                                .done(),
+                            None => ShortcutText::new()
+                                .style(self.mode.clone())
+                                .push_prefix()
+                                .push_left_sep()
+                                .push_shortcut(&c.to_string())
+                                .push_right_sep()
+                                .push_text(" ")
+                                .push_text(&self.action.to_string())
+                                .done(),
+                        }
                     }
-                }
-                Key::Null => ShortcutText::new()
+                    Key::Null => ShortcutText::new()
+                        .style(self.mode.clone())
+                        .push_prefix()
+                        .push_text(&self.action.to_string())
+                        .push_suffix()
+                        .done(),
+                    _ => ShortcutText::new()
+                        .style(self.mode.clone())
+                        .push_prefix()
+                        .push_left_sep()
+                        .push_shortcut(&self.shortcut_key())
+                        .push_right_sep()
+                        .push_text(&self.action.to_string())
+                        .done(),
+                },
+                None => ShortcutText::new()
                     .style(self.mode.clone())
                     .push_prefix()
                     .push_text(&self.action.to_string())
                     .push_suffix()
                     .done(),
-                _ => ShortcutText::new()
-                    .style(self.mode.clone())
-                    .push_prefix()
-                    .push_left_sep()
-                    .push_shortcut(&self.shortcut_key())
-                    .push_right_sep()
-                    .push_text(&self.action.to_string())
-                    .done(),
-            },
-            None => ShortcutText::new()
-                .style(self.mode.clone())
-                .push_prefix()
-                .push_text(&self.action.to_string())
-                .push_suffix()
-                .done(),
+            }
         }
     }
 
     pub fn single_letter(&self) -> ShortcutText {
-        ShortcutText::new()
-            .style(self.mode.clone())
-            .push_prefix()
-            .push_shortcut(&self.letter_shortcut_key())
-            .push_suffix()
-            .done()
+        if self.key.is_none() {
+            ShortcutText::new()
+        } else {
+            ShortcutText::new()
+                .style(self.mode.clone())
+                .push_prefix()
+                .push_shortcut(&self.letter_shortcut_key())
+                .push_suffix()
+                .done()
+        }
     }
 }
 
@@ -337,7 +354,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize) -> LinePart {
             CtrlKeyShortcut::new(
                 CtrlKeyMode::Selected,
                 m.clone(),
-                pick_key_from_keybinds(a.clone(), &help.keybinds),
+                pick_key_from_keybinds(Action::SwitchToMode(InputMode::Normal), &help.keybinds),
             )
         } else {
             CtrlKeyShortcut::new(

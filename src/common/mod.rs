@@ -22,7 +22,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::cli::CliArgs;
+use crate::{cli::CliArgs, common::input::keybinds::Keybinds};
 use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
@@ -43,7 +43,7 @@ use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, ModeInfo};
+use zellij_tile::{data::{EventType, ModeInfo}, prelude::InputMode};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -258,6 +258,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
+            let config = config.clone();
 
             move || {
                 let mut screen = Screen::new(
@@ -268,7 +269,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    ModeInfo::default(),
+                    ModeInfo {
+                        mode: InputMode::default(),
+                        keybinds: config.keybinds.0.get(&InputMode::default())
+                        .cloned()
+                        .unwrap_or_else(||
+                            Keybinds::get_defaults_for_mode(&InputMode::default())
+                        ).0
+                        .into_iter()
+                        .collect(),
+                    }
                 );
                 loop {
                     let (event, mut err_ctx) = screen
