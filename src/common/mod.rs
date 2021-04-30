@@ -11,11 +11,12 @@ pub mod wasm_vm;
 
 use crate::panes::PaneId;
 use crate::server::ServerInstruction;
-use crate::utils::consts::ZELLIJ_IPC_PIPE;
 use async_std::task_local;
+use directories_next::ProjectDirs;
 use errors::{get_current_ctx, ErrorContext};
 use lazy_static::lazy_static;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::mpsc;
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
@@ -77,6 +78,14 @@ task_local! {
 }
 
 lazy_static! {
-    pub static ref UNIQUE_ZELLIJ_IPC_PIPE: String =
-        ZELLIJ_IPC_PIPE.to_string() + uuid::Uuid::new_v4().to_string().as_str();
+    pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
+        let project_dir = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+        let ipc_dir = project_dir
+            .runtime_dir()
+            .unwrap_or_else(|| project_dir.cache_dir());
+        std::fs::create_dir_all(ipc_dir).unwrap();
+        let session_name = names::Generator::default().next().unwrap();
+        let x = ipc_dir.join(session_name);
+        x
+    };
 }

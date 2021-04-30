@@ -17,7 +17,7 @@ use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 use crate::client::ClientInstruction;
-use crate::common::UNIQUE_ZELLIJ_IPC_PIPE;
+use crate::common::ZELLIJ_IPC_PIPE;
 use crate::errors::{get_current_ctx, ErrorContext};
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
@@ -386,11 +386,11 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self) {
-        let socket = match LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()) {
+        let socket = match LocalSocketStream::connect(ZELLIJ_IPC_PIPE.clone()) {
             Ok(sock) => sock,
             Err(_) => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
-                LocalSocketStream::connect(UNIQUE_ZELLIJ_IPC_PIPE.as_str()).unwrap()
+                LocalSocketStream::connect(ZELLIJ_IPC_PIPE.clone()).unwrap()
             }
         };
         let sock_fd = socket.as_raw_fd();
