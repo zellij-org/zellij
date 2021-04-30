@@ -22,8 +22,6 @@ use crate::errors::{get_current_ctx, ErrorContext};
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
 
-const IPC_BUFFER_SIZE: usize = 262144;
-
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
     termios::cfmakeraw(&mut tio);
@@ -254,16 +252,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn server_recv(&self) -> (ServerInstruction, ErrorContext) {
-        let mut buf = [0; IPC_BUFFER_SIZE];
-        let bytes = self
-            .recv_socket
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .read(&mut buf)
-            .unwrap();
-        bincode::deserialize(&buf[..bytes]).unwrap()
+        bincode::deserialize_from(&mut *self.recv_socket.as_ref().unwrap().lock().unwrap()).unwrap()
     }
     fn send_to_client(&self, msg: ClientInstruction) {
         self.sender_socket
@@ -380,16 +369,7 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap();
     }
     fn client_recv(&self) -> (ClientInstruction, ErrorContext) {
-        let mut buf = [0; IPC_BUFFER_SIZE];
-        let bytes = self
-            .receiver
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .read(&mut buf)
-            .unwrap();
-        bincode::deserialize(&buf[..bytes]).unwrap()
+        bincode::deserialize_from(&mut self.receiver.lock().unwrap().as_mut().unwrap()).unwrap()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
