@@ -22,10 +22,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{cli::CliArgs, common::input::keybinds::Keybinds};
 use crate::common::input::config::Config;
 use crate::layout::Layout;
 use crate::panes::PaneId;
+use crate::{cli::CliArgs, common::input::keybinds::Keybinds};
 use async_std::task_local;
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
@@ -43,7 +43,10 @@ use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::{data::{EventType, ModeInfo}, prelude::InputMode};
+use zellij_tile::{
+    data::{EventType, ModeInfo},
+    prelude::InputMode,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -271,14 +274,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     max_panes,
                     ModeInfo {
                         mode: InputMode::default(),
-                        keybinds: config.keybinds.0.get(&InputMode::default())
-                        .cloned()
-                        .unwrap_or_else(||
-                            Keybinds::get_defaults_for_mode(&InputMode::default())
-                        ).0
-                        .into_iter()
-                        .collect(),
-                    }
+                        keybinds: config
+                            .keybinds
+                            .0
+                            .get(&InputMode::default())
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                Keybinds::get_defaults_for_mode(&InputMode::default())
+                            })
+                            .0
+                            .into_iter()
+                            .collect(),
+                    },
                 );
                 loop {
                     let (event, mut err_ctx) = screen
