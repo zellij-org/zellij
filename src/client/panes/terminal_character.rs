@@ -1,3 +1,5 @@
+use unicode_width::UnicodeWidthChar;
+
 use crate::utils::logging::debug_log_to_file;
 use ::std::fmt::{self, Debug, Display, Formatter};
 
@@ -632,5 +634,15 @@ pub struct TerminalCharacter {
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.character)
+    }
+}
+
+impl TerminalCharacter {
+    pub fn width(&self) -> usize {
+        self.character.width().unwrap_or(0)
+    }
+
+    pub fn is_widechar(&self) -> bool {
+        self.width() > 1
     }
 }

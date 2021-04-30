@@ -96,6 +96,9 @@ impl Pane for PluginPane {
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
         self.position_and_size_override
     }
+    fn contains_widechar(&self) -> bool {
+        false
+    }
     fn should_render(&self) -> bool {
         self.should_render
     }

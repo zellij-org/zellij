@@ -151,8 +151,9 @@ impl Screen {
         let active_tab_pos = self.get_active_tab().unwrap().position;
         let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
 
-        for tab in self.tabs.values() {
+        for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
+                tab.set_force_render();
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -169,8 +170,9 @@ impl Screen {
         } else {
             active_tab_pos - 1
         };
-        for tab in self.tabs.values() {
+        for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
+                tab.set_force_render();
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -181,9 +183,10 @@ impl Screen {
 
     pub fn go_to_tab(&mut self, mut tab_index: usize) {
         tab_index -= 1;
-        let active_tab = self.get_active_tab().unwrap();
-        if let Some(t) = self.tabs.values().find(|t| t.position == tab_index) {
-            if t.index != active_tab.index {
+        let active_tab_index = self.get_active_tab().unwrap().index;
+        if let Some(t) = self.tabs.values_mut().find(|t| t.position == tab_index) {
+            if t.index != active_tab_index {
+                t.set_force_render();
                 self.active_tab_index = Some(t.index);
                 self.update_tabs();
                 self.render();
@@ -227,6 +230,7 @@ impl Screen {
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
+        let _ = self.get_active_tab_mut().map(|t| t.set_force_render());
         self.render();
     }
 

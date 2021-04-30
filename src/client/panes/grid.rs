@@ -198,6 +198,9 @@ impl Grid {
             clear_viewport_before_rendering: false,
         }
     }
+    pub fn contains_widechar(&self) -> bool {
+        self.viewport.iter().any(|c| c.contains_widechar())
+    }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
         let columns_until_next_tabstop = TABSTOP_WIDTH - (self.cursor.x % TABSTOP_WIDTH);
         let columns_until_screen_end = (self.width - self.cursor.x).saturating_sub(1);
@@ -1222,6 +1225,9 @@ impl Row {
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
         self
+    }
+    pub fn contains_widechar(&self) -> bool {
+        self.columns.iter().any(|c| c.is_widechar())
     }
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.columns.len().cmp(&x) {
