@@ -54,6 +54,8 @@ members = [
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",
+    "default-plugins/status-bar-simplified",
+    "default-plugins/tab-bar-simplified",
     ".",
 ]
 
