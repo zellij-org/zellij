@@ -139,6 +139,9 @@ impl Pane for TerminalPane {
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
         self.position_and_size_override
     }
+    fn contains_widechar(&self) -> bool {
+        self.grid.contains_widechar()
+    }
     fn should_render(&self) -> bool {
         self.grid.should_render
     }
@@ -173,7 +176,7 @@ impl Pane for TerminalPane {
         //    around
         // 2. When there are wide characters in a pane, since we don't yet handle them properly,
         //    the spill over to the pane to the right
-        // if self.should_render() {
+        //if self.should_render() {
         if true {
             let mut vte_output = String::new();
             let buffer_lines = &self.read_buffer_as_lines();
