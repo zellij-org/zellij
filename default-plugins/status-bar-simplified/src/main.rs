@@ -19,7 +19,7 @@ pub mod colors {
 }
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
-static ARROW_SEPARATOR: &str = "|";
+static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
 
 #[derive(Default)]
