@@ -1,6 +1,7 @@
 use insta::assert_snapshot;
 use std::path::PathBuf;
 
+use crate::common::input::config::Config;
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::QUIT;
@@ -27,7 +28,7 @@ pub fn accepts_basic_layout() {
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
 
-    start(Box::new(fake_input_output.clone()), opts);
+    start(Box::new(fake_input_output.clone()), opts, Config::default());
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames

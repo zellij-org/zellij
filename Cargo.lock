@@ -2205,6 +2205,7 @@ dependencies = [
  "strip-ansi-escapes",
  "structopt",
  "strum",
+ "tempfile",
  "termion",
  "termios",
  "unicode-truncate",
