@@ -223,13 +223,25 @@ fn quicknav_short(palette: Palette) -> LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2)).bold().paint(alt),
+            Style::new()
+                .fg(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
+                .bold()
+                .paint(alt),
             text_second_part,
-            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(new_pane_shortcut),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(brackets_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(RGB(palette.green.0, palette.green.1, palette.green.2)).bold().paint(hjkl_navigation),
+            Style::new()
+                .fg(RGB(palette.green.0, palette.green.1, palette.green.2))
+                .bold()
+                .paint(hjkl_navigation),
         ),
         len,
     }

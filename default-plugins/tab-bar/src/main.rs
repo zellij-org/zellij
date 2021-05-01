@@ -59,7 +59,7 @@ impl ZellijPlugin for State {
                 t.active,
                 t.position,
                 t.is_sync_panes_active,
-                self.mode_info.palette
+                self.mode_info.palette,
             );
             all_tabs.push(tab);
         }

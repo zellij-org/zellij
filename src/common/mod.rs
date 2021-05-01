@@ -39,7 +39,7 @@ use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
-use utils::{consts::ZELLIJ_IPC_PIPE, shared::load_palette};
+use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
@@ -267,7 +267,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
-            let colors = load_palette();
+            let colors = os_input.load_palette();
             // debug_log_to_file(format!("{:?}", colors));
             move || {
                 let mut screen = Screen::new(

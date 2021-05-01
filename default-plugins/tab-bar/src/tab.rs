@@ -1,14 +1,6 @@
 use crate::{LinePart, ARROW_SEPARATOR};
 use ansi_term::{ANSIStrings, Color::RGB, Style};
-use zellij_tile::data::Palette;
-
-macro_rules! style {
-    ($a:expr, $b:expr) => {
-        Style::new()
-            .fg(RGB($a.0, $a.1, $a.2))
-            .on(RGB($b.0, $b.1, $b.2))
-    };
-}
+use zellij_tile::prelude::*;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = style!(palette.bg, palette.green).paint(ARROW_SEPARATOR);
@@ -49,7 +41,7 @@ pub fn tab_style(
     is_active_tab: bool,
     position: usize,
     is_sync_panes_active: bool,
-    palette: Palette
+    palette: Palette,
 ) -> LinePart {
     let mut tab_text = if text.is_empty() {
         format!("Tab #{}", position + 1)

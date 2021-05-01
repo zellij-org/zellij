@@ -119,19 +119,6 @@ impl ColoredElements {
     }
 }
 
-macro_rules! rgb {
-    ($a:expr) => {
-        RGB($a.0, $a.1, $a.2)
-    };
-}
-macro_rules! style {
-    ($a:expr, $b:expr) => {
-        Style::new()
-            .fg(RGB($a.0, $a.1, $a.2))
-            .on(RGB($b.0, $b.1, $b.2))
-    };
-}
-
 // I really hate this, but I can't come up with a good solution for this,
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme

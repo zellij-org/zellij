@@ -1,15 +1,7 @@
-use ansi_term::{ANSIStrings, Color::RGB, Style};
+use ansi_term::ANSIStrings;
 
 use crate::{LinePart, ARROW_SEPARATOR};
-use zellij_tile::data::{colors::*, Palette};
-
-macro_rules! style {
-    ($a:expr, $b:expr) => {
-        Style::new()
-            .fg(RGB($a.0, $a.1, $a.2))
-            .on(RGB($b.0, $b.1, $b.2))
-    };
-}
+use zellij_tile::prelude::*;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title
