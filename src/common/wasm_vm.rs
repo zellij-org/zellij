@@ -12,7 +12,7 @@ use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, PluginIds};
 
 use super::{
-    pty::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
+    pty::PtyInstruction, screen::ScreenInstruction, PaneId, ThreadSenders,
 };
 
 #[derive(Clone, Debug)]
@@ -28,10 +28,7 @@ pub enum PluginInstruction {
 pub struct PluginEnv {
     pub plugin_id: u32,
     // FIXME: This should be a big bundle of all of the channels
-    pub to_screen: SenderWithContext<ScreenInstruction>,
-    pub to_app: SenderWithContext<AppInstruction>,
-    pub to_pty: SenderWithContext<PtyInstruction>,
-    pub to_plugin: SenderWithContext<PluginInstruction>,
+    pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
 }
@@ -77,7 +74,10 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     let selectable = selectable != 0;
     plugin_env
+        .senders
         .to_screen
+        .as_ref()
+        .unwrap()
         .send(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
@@ -88,7 +88,10 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
 fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
     let max_height = max_height as usize;
     plugin_env
+        .senders
         .to_screen
+        .as_ref()
+        .unwrap()
         .send(ScreenInstruction::SetMaxHeight(
             PaneId::Plugin(plugin_env.plugin_id),
             max_height,
@@ -99,7 +102,10 @@ fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
 fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
     let invisible_borders = invisible_borders != 0;
     plugin_env
+        .senders
         .to_screen
+        .as_ref()
+        .unwrap()
         .send(ScreenInstruction::SetInvisibleBorders(
             PaneId::Plugin(plugin_env.plugin_id),
             invisible_borders,
@@ -118,7 +124,10 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
 fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
+        .senders
         .to_pty
+        .as_ref()
+        .unwrap()
         .send(PtyInstruction::SpawnTerminal(Some(path)))
         .unwrap();
 }
@@ -133,7 +142,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     // timers as we'd like.
     //
     // But that's a lot of code, and this is a few lines:
-    let send_plugin_instructions = plugin_env.to_plugin.clone();
+    let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
     let update_target = Some(plugin_env.plugin_id);
     thread::spawn(move || {
         let start_time = Instant::now();
@@ -143,6 +152,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
 
         send_plugin_instructions
+            .unwrap()
             .send(PluginInstruction::Update(
                 update_target,
                 Event::Timer(elapsed_time),

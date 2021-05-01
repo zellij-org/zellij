@@ -118,6 +118,7 @@ pub enum AppInstruction {
     Error(String),
 }
 
+#[derive(Clone)]
 pub struct ThreadSenders {
     to_screen: Option<SenderWithContext<ScreenInstruction>>,
     to_pty: Option<SenderWithContext<PtyInstruction>>,
@@ -560,10 +561,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let plugin_env = PluginEnv {
                             plugin_id,
-                            to_pty: plugin_bus.senders.to_pty.as_ref().unwrap().clone(),
-                            to_screen: plugin_bus.senders.to_screen.as_ref().unwrap().clone(),
-                            to_app: plugin_bus.senders.to_app.as_ref().unwrap().clone(),
-                            to_plugin: plugin_bus.senders.to_plugin.as_ref().unwrap().clone(),
+                            senders: plugin_bus.senders.clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
