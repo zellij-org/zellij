@@ -171,7 +171,7 @@ impl Pty {
             .spawn_terminal(file_to_open);
         let task_handle = stream_terminal_bytes(
             pid_primary,
-            self.bus.to_screen.as_ref().unwrap().clone(),
+            self.bus.senders.to_screen.as_ref().unwrap().clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.debug_to_file,
         );
@@ -189,6 +189,7 @@ impl Pty {
             new_pane_pids.push(pid_primary);
         }
         self.bus
+            .senders
             .to_screen
             .as_ref()
             .unwrap()
@@ -200,7 +201,7 @@ impl Pty {
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
                 id,
-                self.bus.to_screen.as_ref().unwrap().clone(),
+                self.bus.senders.to_screen.as_ref().unwrap().clone(),
                 self.bus.os_input.as_ref().unwrap().clone(),
                 self.debug_to_file,
             );
@@ -219,6 +220,7 @@ impl Pty {
             }
             PaneId::Plugin(pid) => drop(
                 self.bus
+                    .senders
                     .to_plugin
                     .as_ref()
                     .unwrap()

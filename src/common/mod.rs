@@ -118,12 +118,16 @@ pub enum AppInstruction {
     Error(String),
 }
 
-pub struct Bus<T> {
-    receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
+pub struct ThreadSenders {
     to_screen: Option<SenderWithContext<ScreenInstruction>>,
     to_pty: Option<SenderWithContext<PtyInstruction>>,
     to_plugin: Option<SenderWithContext<PluginInstruction>>,
     to_app: Option<SenderWithContext<AppInstruction>>,
+}
+
+pub struct Bus<T> {
+    receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
+    senders: ThreadSenders,
     os_input: Option<Box<dyn OsApi>>,
 }
 
@@ -138,10 +142,12 @@ impl<T> Bus<T> {
     ) -> Self {
         Bus {
             receiver,
-            to_screen: to_screen.cloned(),
+            senders: ThreadSenders {
+                to_screen: to_screen.cloned(),
             to_pty: to_pty.cloned(),
             to_plugin: to_plugin.cloned(),
             to_app: to_app.cloned(),
+            },
             os_input: os_input.clone(),
         }
     }
@@ -240,6 +246,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PtyInstruction::SpawnTerminal(file_to_open) => {
                         let pid = pty.spawn_terminal(file_to_open);
                         pty.bus
+                            .senders
                             .to_screen
                             .as_ref()
                             .unwrap()
@@ -249,6 +256,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PtyInstruction::SpawnTerminalVertically(file_to_open) => {
                         let pid = pty.spawn_terminal(file_to_open);
                         pty.bus
+                            .senders
                             .to_screen
                             .as_ref()
                             .unwrap()
@@ -258,6 +266,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
                         let pid = pty.spawn_terminal(file_to_open);
                         pty.bus
+                            .senders
                             .to_screen
                             .as_ref()
                             .unwrap()
@@ -270,6 +279,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         } else {
                             let pid = pty.spawn_terminal(None);
                             pty.bus
+                                .senders
                                 .to_screen
                                 .as_ref()
                                 .unwrap()
@@ -550,10 +560,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let plugin_env = PluginEnv {
                             plugin_id,
-                            to_pty: plugin_bus.to_pty.as_ref().unwrap().clone(),
-                            to_screen: plugin_bus.to_screen.as_ref().unwrap().clone(),
-                            to_app: plugin_bus.to_app.as_ref().unwrap().clone(),
-                            to_plugin: plugin_bus.to_plugin.as_ref().unwrap().clone(),
+                            to_pty: plugin_bus.senders.to_pty.as_ref().unwrap().clone(),
+                            to_screen: plugin_bus.senders.to_screen.as_ref().unwrap().clone(),
+                            to_app: plugin_bus.senders.to_app.as_ref().unwrap().clone(),
+                            to_plugin: plugin_bus.senders.to_plugin.as_ref().unwrap().clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
@@ -583,6 +593,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         }
                         drop(
                             plugin_bus
+                                .senders
                                 .to_screen
                                 .as_ref()
                                 .unwrap()

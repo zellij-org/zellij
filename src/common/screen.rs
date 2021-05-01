@@ -103,9 +103,9 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.bus.os_input.as_ref().unwrap().clone(),
-            self.bus.to_pty.as_ref().unwrap().clone(),
-            self.bus.to_plugin.as_ref().unwrap().clone(),
-            self.bus.to_app.as_ref().unwrap().clone(),
+            self.bus.senders.to_pty.as_ref().unwrap().clone(),
+            self.bus.senders.to_plugin.as_ref().unwrap().clone(),
+            self.bus.senders.to_app.as_ref().unwrap().clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.mode_info.clone(),
@@ -189,6 +189,7 @@ impl Screen {
         // has already closed and this would result in an error
         let _ = self
             .bus
+            .senders
             .to_pty
             .as_ref()
             .unwrap()
@@ -196,6 +197,7 @@ impl Screen {
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             self.bus
+                .senders
                 .to_app
                 .as_ref()
                 .unwrap()
@@ -269,9 +271,9 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.bus.os_input.as_ref().unwrap().clone(),
-            self.bus.to_pty.as_ref().unwrap().clone(),
-            self.bus.to_plugin.as_ref().unwrap().clone(),
-            self.bus.to_app.as_ref().unwrap().clone(),
+            self.bus.senders.to_pty.as_ref().unwrap().clone(),
+            self.bus.senders.to_plugin.as_ref().unwrap().clone(),
+            self.bus.senders.to_app.as_ref().unwrap().clone(),
             self.max_panes,
             None,
             self.mode_info.clone(),
@@ -294,6 +296,7 @@ impl Screen {
             });
         }
         self.bus
+            .senders
             .to_plugin
             .as_ref()
             .unwrap()
