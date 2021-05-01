@@ -207,7 +207,7 @@ impl Layout {
 
     // It wants to use Path here, but that doesn't compile.
     #[warn(clippy::ptr_arg)]
-    pub fn from_defaults(layout_path: &Path, data_dir: &Path) -> Self {
+    pub fn from_defaults(layout_path: &PathBuf, data_dir: &Path) -> Self {
         Self::new(
             &data_dir
                 .join("layouts/")
