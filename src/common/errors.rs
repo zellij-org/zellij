@@ -2,7 +2,7 @@
 //! the instructions that are sent between threads.
 
 use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
-use crate::common::pty::PtyInstruction;
+use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
 
 use std::fmt::{Display, Error, Formatter};
