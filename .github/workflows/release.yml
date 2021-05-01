@@ -1,0 +1,118 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    needs: create-release
+    name: build-release
+    runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        build:
+          - linux musl x64
+          - linux musl aarch64
+          - macos x64
+          - macos aarch64
+        include:
+          - build: linux musl x64
+            os: ubuntu-latest
+            rust: beta
+            target: x86_64-unknown-linux-musl
+          - build: linux musl aarch64
+            os: ubuntu-latest
+            rust: beta
+            target: aarch64-unknown-linux-musl
+          - build: macos x64
+            os: macos-latest
+            rust: beta
+            target: x86_64-apple-darwin
+          - build: macos aarch64
+            os: macos-latest
+            rust: beta
+            target: aarch64-apple-darwin
+    steps:
+      - name: Set release tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
+            echo "RELEASE_TAG=main" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> $GITHUB_ENV
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Add WASM target
+        run: rustup target add wasm32-wasi
+
+      - name: Install cargo-make
+        run: cargo install --debug cargo-make
+
+      - name: Install musl-tools
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install wasm-opt
+        run: brew install binaryen
+
+      # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
+      - name: Switch Xcode SDK
+        if: runner.os == 'macos'
+        run: |
+          cat <<EOF >> "$GITHUB_ENV"
+          SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+          EOF
+
+      - name: Build release binary
+        run: cargo make ci-build-release ${{ matrix.target }}
+
+      - name: Strip release binary
+        run: strip "target/${{ matrix.target }}/release/zellij"
+        
+      - name: Tar release
+        id: make-artifact
+        working-directory: ./target/${{ matrix.target }}/release
+        run: |
+          name="zellij-${{ matrix.target }}.tar.gz"
+          tar cvzf "${name}" "zellij"
+          echo "::set-output name=name::${name}"
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }} 
+          asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
+          asset_name: zellij-${{matrix.target}}.tar.gz
+          asset_content_type: application/octet-stream
+
+  create-release:
+    runs-on: ubuntu-latest
+    outputs: 
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: create_release 
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
+          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false  
+

@@ -67,6 +67,7 @@ pub struct Tab {
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
+    synchronize_is_active: bool,
     os_api: Box<dyn OsApi>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
@@ -104,6 +105,9 @@ pub trait Pane {
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
+    // FIXME: this method is used to trigger a force render to hide widechar problem
+    // it should be removed when we can handle widechars
+    fn contains_widechar(&self) -> bool;
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
@@ -254,6 +258,7 @@ impl Tab {
             active_terminal: pane_id,
             full_screen_ws: *full_screen_ws,
             fullscreen_is_active: false,
+            synchronize_is_active: false,
             os_api,
             send_app_instructions,
             send_pty_instructions,
@@ -599,6 +604,21 @@ impl Tab {
             terminal_output.handle_pty_bytes(bytes);
         }
     }
+    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
+        let pane_ids = self.get_pane_ids();
+        pane_ids.iter().for_each(|pane_id| match pane_id {
+            PaneId::Terminal(pid) => {
+                self.write_to_pane_id(input_bytes.clone(), *pid);
+            }
+            PaneId::Plugin(_) => {}
+        });
+    }
+    pub fn write_to_pane_id(&mut self, mut input_bytes: Vec<u8>, pid: RawFd) {
+        self.os_api
+            .write_to_tty_stdin(pid, &mut input_bytes)
+            .expect("failed to write to terminal");
+        self.os_api.tcdrain(pid).expect("failed to drain terminal");
+    }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
         match self.get_active_pane_id() {
             Some(PaneId::Terminal(active_terminal_id)) => {
@@ -684,11 +704,30 @@ impl Tab {
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
+    pub fn set_force_render(&mut self) {
+        for pane in self.panes.values_mut() {
+            pane.set_should_render(true);
+        }
+    }
+    pub fn is_sync_panes_active(&self) -> bool {
+        self.synchronize_is_active
+    }
+    pub fn toggle_sync_panes_is_active(&mut self) {
+        self.synchronize_is_active = !self.synchronize_is_active;
+    }
+    pub fn panes_contain_widechar(&self) -> bool {
+        self.panes.iter().any(|(_, p)| p.contains_widechar())
+    }
     pub fn render(&mut self) {
         if self.active_terminal.is_none() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
             return;
+        }
+        // if any pane contain widechar, all pane in the same row will messup. We should render them every time
+        // FIXME: remove this when we can handle widechars correctly
+        if self.panes_contain_widechar() {
+            self.set_force_render()
         }
         let mut stdout = self.os_api.get_stdout_writer();
         let mut boundaries = Boundaries::new(

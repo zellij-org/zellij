@@ -1,13 +1,13 @@
 [package]
 name = "zellij"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
 license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
-include = ["src/**/*", "assets/plugins/*", "assets/layouts/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
+include = ["src/**/*", "assets/plugins/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -38,7 +38,7 @@ wasmer-wasi = "1.0.0"
 interprocess = "1.0.1"
 xrdb = "0.1.1"
 colors-transform = "0.2.5"
-zellij-tile = { path = "zellij-tile/", version = "1.0.0" }
+zellij-tile = { path = "zellij-tile/", version = "1.1.0" }
 
 [dependencies.async-std]
 version = "1.3.0"

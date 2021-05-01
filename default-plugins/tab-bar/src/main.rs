@@ -54,7 +54,13 @@ impl ZellijPlugin for State {
             } else if t.active {
                 active_tab_index = t.position;
             }
-            let tab = tab_style(tabname, t.active, t.position, self.mode_info.palette);
+            let tab = tab_style(
+                tabname,
+                t.active,
+                t.position,
+                t.is_sync_panes_active,
+                self.mode_info.palette
+            );
             all_tabs.push(tab);
         }
         let tab_line = tab_line(all_tabs, active_tab_index, cols, self.mode_info.palette);

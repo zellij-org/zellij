@@ -44,12 +44,21 @@ pub fn non_active_tab(text: String, palette: Palette) -> LinePart {
     }
 }
 
-pub fn tab_style(text: String, is_active_tab: bool, position: usize, palette: Palette) -> LinePart {
-    let tab_text = if text.is_empty() {
+pub fn tab_style(
+    text: String,
+    is_active_tab: bool,
+    position: usize,
+    is_sync_panes_active: bool,
+    palette: Palette
+) -> LinePart {
+    let mut tab_text = if text.is_empty() {
         format!("Tab #{}", position + 1)
     } else {
         text
     };
+    if is_sync_panes_active {
+        tab_text.push_str(" (Sync)");
+    }
     if is_active_tab {
         active_tab(tab_text, palette)
     } else {

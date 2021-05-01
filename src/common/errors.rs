@@ -200,6 +200,7 @@ pub enum ScreenContext {
     PageScrollDown,
     ClearScroll,
     CloseFocusedPane,
+    ToggleActiveSyncPanes,
     ToggleActiveTerminalFullscreen,
     SetSelectable,
     SetInvisibleBorders,
@@ -260,6 +261,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
             ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
+            ScreenInstruction::ToggleActiveSyncPanes => ScreenContext::ToggleActiveSyncPanes,
         }
     }
 }

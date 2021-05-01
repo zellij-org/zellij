@@ -40,8 +40,7 @@ use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::{consts::ZELLIJ_IPC_PIPE, shared::load_palette};
-use wasm_vm::PluginEnv;
-use wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginInstruction};
+use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_tile::data::{EventType, InputMode, ModeInfo};
@@ -131,7 +130,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     env::set_var(&"ZELLIJ", "0");
 
-    let config = Config::from_cli_config(opts.config, opts.option)
+    let config_dir = opts.config_dir.or_else(install::default_config_dir);
+
+    let config = Config::from_cli_config(opts.config, opts.option, config_dir)
         .map_err(|e| {
             eprintln!("There was an error in the config file:\n{}", e);
             std::process::exit(1);
@@ -185,8 +186,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let default_layout = None;
     let maybe_layout = opts
         .layout
-        .or(default_layout)
-        .map(|p| Layout::new(&p, &data_dir));
+        .map(|p| Layout::new(&p, &data_dir))
+        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -325,10 +326,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             command_is_executing.done_opening_new_pane();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .write_to_active_terminal(bytes);
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            match active_tab.is_sync_panes_active() {
+                                true => active_tab.write_to_terminals_on_current_tab(bytes),
+                                false => active_tab.write_to_active_terminal(bytes),
+                            }
                         }
                         ScreenInstruction::ResizeLeft => {
                             screen.get_active_tab_mut().unwrap().resize_left();
@@ -449,6 +451,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
                         }
+                        ScreenInstruction::ToggleActiveSyncPanes => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .toggle_sync_panes_is_active();
+                            screen.update_tabs();
+                        }
                         ScreenInstruction::Quit => {
                             break;
                         }
@@ -464,6 +473,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_pty_instructions = send_pty_instructions.clone();
             let send_screen_instructions = send_screen_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -508,16 +518,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             send_pty_instructions: send_pty_instructions.clone(),
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_app_instructions: send_app_instructions.clone(),
+                            send_plugin_instructions: send_plugin_instructions.clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
 
-                        let zellij = zellij_imports(&store, &plugin_env);
+                        let zellij = zellij_exports(&store, &plugin_env);
                         let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
                         let start = instance.exports.get_function("_start").unwrap();
 
-                        // This eventually calls the `.init()` method
+                        // This eventually calls the `.load()` method
                         start.call(&[]).unwrap();
 
                         plugin_map.insert(plugin_id, (instance, plugin_env));
@@ -531,10 +542,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             let event_type = EventType::from_str(&event.to_string()).unwrap();
                             if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
                                 let update = instance.exports.get_function("update").unwrap();
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&event).unwrap(),
-                                );
+                                wasi_write_object(&plugin_env.wasi_env, &event);
                                 update.call(&[]).unwrap();
                             }
                         }
@@ -549,7 +557,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
                             .unwrap();
 
-                        buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                        buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Quit => break,
