@@ -1,7 +1,7 @@
 mod first_line;
 mod second_line;
 
-use ansi_term::{Color::RGB, Style};
+use ansi_term::Style;
 
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::*;
@@ -66,6 +66,7 @@ pub struct ColoredElements {
 }
 
 impl ColoredElements {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         selected_prefix_separator: Style,
         selected_char_left_separator: Style,

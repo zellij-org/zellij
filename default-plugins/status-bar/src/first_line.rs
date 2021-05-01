@@ -1,10 +1,7 @@
-use ansi_term::{ANSIStrings, Color::RGB, Style};
+use ansi_term::ANSIStrings;
 use zellij_tile::prelude::*;
 
-use crate::{
-    color_elements,
-    colors::{BLACK, BRIGHT_GRAY, GRAY, GREEN, RED, WHITE},
-};
+use crate::color_elements;
 use crate::{ColoredElements, LinePart, ARROW_SEPARATOR};
 
 struct CtrlKeyShortcut {
@@ -89,9 +86,9 @@ fn unselected_mode_shortcut(letter: char, text: &str, palette: ColoredElements) 
 
 fn selected_mode_shortcut(letter: char, text: &str, palette: ColoredElements) -> LinePart {
     let prefix_separator = palette.selected_prefix_separator.paint(ARROW_SEPARATOR);
-    let char_left_separator = palette.selected_char_left_separator.paint(format!(" <"));
+    let char_left_separator = palette.selected_char_left_separator.paint(" <".to_string());
     let char_shortcut = palette.selected_char_shortcut.paint(format!("{}", letter));
-    let char_right_separator = palette.selected_char_right_separator.paint(format!(">"));
+    let char_right_separator = palette.selected_char_right_separator.paint(">".to_string());
     let styled_text = palette.selected_styled_text.paint(format!("{} ", text));
     let suffix_separator = palette.selected_suffix_separator.paint(ARROW_SEPARATOR);
     LinePart {
