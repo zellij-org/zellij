@@ -1,4 +1,4 @@
-use crate::{common::SenderWithContext, pty_bus::VteBytes, tab::Pane, wasm_vm::PluginInstruction};
+use crate::{common::SenderWithContext, common::pty::VteBytes, tab::Pane, wasm_vm::PluginInstruction};
 
 use crate::panes::{PaneId, PositionAndSize};
 
