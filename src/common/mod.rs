@@ -119,6 +119,34 @@ pub enum AppInstruction {
 }
 
 pub struct Bus<T> {
+    receiver: mpsc::Receiver<(T, ErrorContext)>,
+    to_screen: Option<SenderWithContext<ScreenInstruction>>,
+    to_pty: Option<SenderWithContext<PtyInstruction>>,
+    to_plugin: Option<SenderWithContext<PluginInstruction>>,
+    to_app: Option<SenderWithContext<AppInstruction>>,
+    os_input: Option<Box<dyn OsApi>>,
+}
+
+impl<T> Bus<T> {
+    fn new(
+        receiver: mpsc::Receiver<(T, ErrorContext)>,
+        to_screen: Option<&SenderWithContext<ScreenInstruction>>,
+        to_pty: Option<&SenderWithContext<PtyInstruction>>,
+        to_plugin: Option<&SenderWithContext<PluginInstruction>>,
+        to_app: Option<&SenderWithContext<AppInstruction>>,
+        os_input: Option<&Box<dyn OsApi>>,
+    ) -> Self {
+        Bus {
+            receiver,
+            to_screen: to_screen.cloned(),
+            to_pty: to_pty.cloned(),
+            to_plugin: to_plugin.cloned(),
+            to_app: to_app.cloned(),
+            os_input: os_input.cloned(),
+        }
+    }
+}
+
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
@@ -263,25 +291,26 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("screen".to_string())
         .spawn({
             let mut command_is_executing = command_is_executing.clone();
-            let os_input = os_input.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_plugin_instructions = send_plugin_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
+            let screen_bus = Bus::new(
+                receive_screen_instructions,
+                None,
+                Some(&send_pty_instructions),
+                Some(&send_plugin_instructions),
+                Some(&send_app_instructions),
+                Some(&os_input),
+            );
             let max_panes = opts.max_panes;
 
             move || {
                 let mut screen = Screen::new(
-                    receive_screen_instructions,
-                    send_pty_instructions,
-                    send_plugin_instructions,
-                    send_app_instructions,
+                    screen_bus,
                     &full_screen_ws,
-                    os_input,
                     max_panes,
                     ModeInfo::default(),
                 );
                 loop {
                     let (event, mut err_ctx) = screen
+                        .bus
                         .receiver
                         .recv()
                         .expect("failed to receive event on channel");
