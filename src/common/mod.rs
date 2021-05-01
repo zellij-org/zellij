@@ -550,18 +550,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let plugin_env = PluginEnv {
                             plugin_id,
-                            send_pty_instructions: plugin_bus.to_pty.as_ref().unwrap().clone(),
-                            send_screen_instructions: plugin_bus
-                                .to_screen
-                                .as_ref()
-                                .unwrap()
-                                .clone(),
-                            send_app_instructions: plugin_bus.to_app.as_ref().unwrap().clone(),
-                            send_plugin_instructions: plugin_bus
-                                .to_plugin
-                                .as_ref()
-                                .unwrap()
-                                .clone(),
+                            to_pty: plugin_bus.to_pty.as_ref().unwrap().clone(),
+                            to_screen: plugin_bus.to_screen.as_ref().unwrap().clone(),
+                            to_app: plugin_bus.to_app.as_ref().unwrap().clone(),
+                            to_plugin: plugin_bus.to_plugin.as_ref().unwrap().clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
