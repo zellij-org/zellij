@@ -2,7 +2,7 @@
 
 use super::actions::Action;
 use super::keybinds::Keybinds;
-use crate::common::{input::config::Config};
+use crate::common::input::config::Config;
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;

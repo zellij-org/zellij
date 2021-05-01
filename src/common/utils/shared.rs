@@ -5,7 +5,7 @@ use std::{iter, str::from_utf8};
 use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
-use zellij_tile::data::{Theme};
+use zellij_tile::data::Theme;
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
