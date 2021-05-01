@@ -119,7 +119,7 @@ pub enum AppInstruction {
 }
 
 pub struct Bus<T> {
-    receiver: mpsc::Receiver<(T, ErrorContext)>,
+    receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
     to_screen: Option<SenderWithContext<ScreenInstruction>>,
     to_pty: Option<SenderWithContext<PtyInstruction>>,
     to_plugin: Option<SenderWithContext<PluginInstruction>>,
@@ -129,7 +129,7 @@ pub struct Bus<T> {
 
 impl<T> Bus<T> {
     fn new(
-        receiver: mpsc::Receiver<(T, ErrorContext)>,
+        receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
         to_screen: Option<&SenderWithContext<ScreenInstruction>>,
         to_pty: Option<&SenderWithContext<PtyInstruction>>,
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
@@ -172,39 +172,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.set_raw_mode(0);
-    let (send_screen_instructions, receive_screen_instructions): ChannelWithContext<
-        ScreenInstruction,
-    > = mpsc::channel();
-    let send_screen_instructions =
-        SenderWithContext::new(SenderType::Sender(send_screen_instructions));
+    let (to_screen, from_screen): ChannelWithContext<ScreenInstruction> = mpsc::channel();
+    let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
 
-    let (send_pty_instructions, receive_pty_instructions): ChannelWithContext<PtyInstruction> =
-        mpsc::channel();
-    let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
+    let (to_pty, from_pty): ChannelWithContext<PtyInstruction> = mpsc::channel();
+    let to_pty = SenderWithContext::new(SenderType::Sender(to_pty));
 
-    let (send_plugin_instructions, receive_plugin_instructions): ChannelWithContext<
-        PluginInstruction,
-    > = mpsc::channel();
-    let send_plugin_instructions =
-        SenderWithContext::new(SenderType::Sender(send_plugin_instructions));
+    let (to_plugin, from_plugin): ChannelWithContext<PluginInstruction> = mpsc::channel();
+    let to_plugin = SenderWithContext::new(SenderType::Sender(to_plugin));
 
-    let (send_app_instructions, receive_app_instructions): SyncChannelWithContext<AppInstruction> =
-        mpsc::sync_channel(0);
-    let send_app_instructions =
-        SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
-
-    let pty_bus = Bus::new(
-        receive_pty_instructions,
-        Some(&send_screen_instructions),
-        None,
-        Some(&send_plugin_instructions),
-        None,
-        Some(&os_input),
-    );
-    let mut pty = Pty::new(
-        pty_bus,
-        opts.debug,
-    );
+    let (to_app, from_app): SyncChannelWithContext<AppInstruction> = mpsc::sync_channel(0);
+    let to_app = SenderWithContext::new(SenderType::SyncSender(to_app));
 
     // Determine and initialize the data directory
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
@@ -226,21 +204,35 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     #[cfg(not(test))]
     std::panic::set_hook({
         use crate::errors::handle_panic;
-        let send_app_instructions = send_app_instructions.clone();
+        let to_app = to_app.clone();
         Box::new(move |info| {
-            handle_panic(info, &send_app_instructions);
+            handle_panic(info, &to_app);
         })
     });
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
+            let mut pty = Pty::new(
+                Bus::new(
+                    Some(from_pty),
+                    Some(&to_screen),
+                    None,
+                    Some(&to_plugin),
+                    None,
+                    Some(&os_input),
+                ),
+                opts.debug,
+            );
+
             let mut command_is_executing = command_is_executing.clone();
-            send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
+            to_pty.send(PtyInstruction::NewTab).unwrap();
             move || loop {
                 let (event, mut err_ctx) = pty
                     .bus
                     .receiver
+                    .as_ref()
+                    .unwrap()
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
@@ -306,11 +298,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let mut command_is_executing = command_is_executing.clone();
             let screen_bus = Bus::new(
-                receive_screen_instructions,
+                Some(from_screen),
                 None,
-                Some(&send_pty_instructions),
-                Some(&send_plugin_instructions),
-                Some(&send_app_instructions),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_app),
                 Some(&os_input),
             );
             let max_panes = opts.max_panes;
@@ -322,6 +314,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     let (event, mut err_ctx) = screen
                         .bus
                         .receiver
+                        .as_ref()
+                        .unwrap()
                         .recv()
                         .expect("failed to receive event on channel");
                     err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
@@ -504,16 +498,23 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let wasm_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
-            let send_app_instructions = send_app_instructions.clone();
-            let send_plugin_instructions = send_plugin_instructions.clone();
+            let plugin_bus = Bus::new(
+                Some(from_plugin),
+                Some(&to_screen),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_app),
+                None,
+            );
 
             let store = Store::default();
             let mut plugin_id = 0;
             let mut plugin_map = HashMap::new();
             move || loop {
-                let (event, mut err_ctx) = receive_plugin_instructions
+                let (event, mut err_ctx) = plugin_bus
+                    .receiver
+                    .as_ref()
+                    .unwrap()
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
@@ -549,10 +550,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
                         let plugin_env = PluginEnv {
                             plugin_id,
-                            send_pty_instructions: send_pty_instructions.clone(),
-                            send_screen_instructions: send_screen_instructions.clone(),
-                            send_app_instructions: send_app_instructions.clone(),
-                            send_plugin_instructions: send_plugin_instructions.clone(),
+                            send_pty_instructions: plugin_bus.to_pty.as_ref().unwrap().clone(),
+                            send_screen_instructions: plugin_bus
+                                .to_screen
+                                .as_ref()
+                                .unwrap()
+                                .clone(),
+                            send_app_instructions: plugin_bus.to_app.as_ref().unwrap().clone(),
+                            send_plugin_instructions: plugin_bus
+                                .to_plugin
+                                .as_ref()
+                                .unwrap()
+                                .clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
@@ -580,7 +589,13 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                                 update.call(&[]).unwrap();
                             }
                         }
-                        drop(send_screen_instructions.send(ScreenInstruction::Render));
+                        drop(
+                            plugin_bus
+                                .to_screen
+                                .as_ref()
+                                .unwrap()
+                                .send(ScreenInstruction::Render),
+                        );
                     }
                     PluginInstruction::Render(buf_tx, pid, rows, cols) => {
                         let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
@@ -604,10 +619,10 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
+            let to_screen = to_screen.clone();
             move || {
                 os_input.receive_sigwinch(Box::new(move || {
-                    let _ = send_screen_instructions.send(ScreenInstruction::TerminalResize);
+                    let _ = to_screen.send(ScreenInstruction::TerminalResize);
                 }));
             }
         })
@@ -621,8 +636,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("ipc_server".to_string())
         .spawn({
             use std::io::Read;
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_screen_instructions = send_screen_instructions.clone();
+            let to_pty = to_pty.clone();
+            let to_screen = to_screen.clone();
             move || {
                 std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
@@ -642,24 +657,22 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             match &decoded {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
-                                    send_pty_instructions
+                                    to_pty
                                         .send(PtyInstruction::SpawnTerminal(Some(path)))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
-                                    send_pty_instructions
+                                    to_pty
                                         .send(PtyInstruction::SpawnTerminalHorizontally(None))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitVertically => {
-                                    send_pty_instructions
+                                    to_pty
                                         .send(PtyInstruction::SpawnTerminalVertically(None))
                                         .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
-                                    send_screen_instructions
-                                        .send(ScreenInstruction::FocusNextPane)
-                                        .unwrap();
+                                    to_screen.send(ScreenInstruction::FocusNextPane).unwrap();
                                 }
                             }
                         }
@@ -675,9 +688,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
-            let send_screen_instructions = send_screen_instructions.clone();
-            let send_pty_instructions = send_pty_instructions.clone();
-            let send_plugin_instructions = send_plugin_instructions.clone();
+            let to_screen = to_screen.clone();
+            let to_pty = to_pty.clone();
+            let to_plugin = to_plugin.clone();
             let os_input = os_input.clone();
             let config = config;
             move || {
@@ -685,17 +698,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     os_input,
                     config,
                     command_is_executing,
-                    send_screen_instructions,
-                    send_pty_instructions,
-                    send_plugin_instructions,
-                    send_app_instructions,
+                    to_screen,
+                    to_pty,
+                    to_plugin,
+                    to_app,
                 )
             }
         });
 
     #[warn(clippy::never_loop)]
     loop {
-        let (app_instruction, mut err_ctx) = receive_app_instructions
+        let (app_instruction, mut err_ctx) = from_app
             .recv()
             .expect("failed to receive app instruction on channel");
 
@@ -705,11 +718,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 break;
             }
             AppInstruction::Error(backtrace) => {
-                let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+                let _ = to_screen.send(ScreenInstruction::Quit);
                 let _ = screen_thread.join();
-                let _ = send_pty_instructions.send(PtyInstruction::Quit);
+                let _ = to_pty.send(PtyInstruction::Quit);
                 let _ = pty_thread.join();
-                let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+                let _ = to_plugin.send(PluginInstruction::Quit);
                 let _ = wasm_thread.join();
                 os_input.unset_raw_mode(0);
                 let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
@@ -727,11 +740,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         }
     }
 
-    let _ = send_pty_instructions.send(PtyInstruction::Quit);
+    let _ = to_pty.send(PtyInstruction::Quit);
     pty_thread.join().unwrap();
-    let _ = send_screen_instructions.send(ScreenInstruction::Quit);
+    let _ = to_screen.send(ScreenInstruction::Quit);
     screen_thread.join().unwrap();
-    let _ = send_plugin_instructions.send(PluginInstruction::Quit);
+    let _ = to_plugin.send(PluginInstruction::Quit);
     wasm_thread.join().unwrap();
 
     // cleanup();
