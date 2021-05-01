@@ -1,6 +1,7 @@
 mod first_line;
 mod mode_info;
 mod second_line;
+mod styled_text;
 
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::*;

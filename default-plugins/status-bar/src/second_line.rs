@@ -2,8 +2,12 @@
 use ansi_term::{ANSIStrings, Style};
 use zellij_tile::prelude::*;
 
-use crate::colors::{GREEN, ORANGE, WHITE};
 use crate::mode_info::get_mode_info;
+use crate::{
+    colors::{GREEN, ORANGE, WHITE},
+    mode_info::pick_key_from_keybinds,
+    styled_text::{Prefix, StyledText},
+};
 use crate::{LinePart, MORE_MSG};
 
 fn full_length_shortcut(is_first_shortcut: bool, letter: &str, description: &str) -> LinePart {
@@ -56,120 +60,122 @@ fn first_word_shortcut(is_first_shortcut: bool, letter: &str, description: &str)
         len,
     }
 }
-fn quicknav_full() -> LinePart {
-    let text_first_part = " Tip: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "n";
-    let text_third_part = " => open new pane. ";
-    let second_alt = "Alt";
-    let text_fourth_part = " + ";
-    let brackets_navigation = "[]";
-    let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl";
-    let text_sixths_part = " => navigate between panes.";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + second_alt.chars().count()
-        + text_fourth_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count();
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new().fg(ORANGE).bold().paint(second_alt),
-            text_fourth_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
-            text_sixths_part,
-        ),
-        len,
+
+// Represent a key group, e.g. Move Focus (Alt + hljk)
+// a quick nav may contains multiple keygroupes
+struct KeyGroup {
+    prefix: Prefix,
+    keys: Vec<Key>,
+}
+
+impl KeyGroup {
+    fn new() -> Self {
+        KeyGroup {
+            prefix: Prefix::None,
+            keys: Vec::new(),
+        }
+    }
+
+    fn push_key(mut self, k: Key) -> Self {
+        self.keys.push(k);
+        self
+    }
+
+    fn done(mut self) -> Self {
+        if self.keys.iter().all(|c| matches!(c, Key::Ctrl(_))) {
+            self.prefix = Prefix::Ctrl;
+        } else if self.keys.iter().all(|c| matches!(c, Key::Alt(_))) {
+            self.prefix = Prefix::Alt;
+        } else {
+            self.prefix = Prefix::None;
+        }
+        self
+    }
+
+    fn fill_style_text(&self, mut st: StyledText, description: &str) -> StyledText {
+        if !self.keys.is_empty() {
+            match self.prefix {
+                Prefix::Alt => {
+                    st = st.push_nav_prefix("Alt + ");
+                }
+                Prefix::Ctrl => {
+                    st = st.push_nav_prefix("Ctrl + ");
+                }
+                Prefix::None => {}
+            };
+            for (i, k) in self.keys.iter().enumerate() {
+                if i > 0 {
+                    st = st.push_nav_text("/");
+                }
+                st = st.push_nav_key(&letter_shortcut_key(&self.prefix, k));
+            }
+            st = st.push_nav_text(&description);
+        }
+        st
     }
 }
 
-fn quicknav_medium() -> LinePart {
-    let text_first_part = " Tip: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "n";
-    let text_third_part = " => new pane. ";
-    let second_alt = "Alt";
-    let text_fourth_part = " + ";
-    let brackets_navigation = "[]";
-    let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl";
-    let text_sixths_part = " => navigate.";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + second_alt.chars().count()
-        + text_fourth_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count();
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new().fg(ORANGE).bold().paint(second_alt),
-            text_fourth_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
-            text_sixths_part,
-        ),
-        len,
+fn letter_shortcut_key(prefix: &Prefix, key: &Key) -> String {
+    match (key, prefix) {
+        (Key::Ctrl(c), Prefix::Ctrl) | (Key::Alt(c), Prefix::Alt) => c.to_string(),
+        (Key::Char(c), _) => c.to_string(),
+        (key, _) => key.to_string(),
     }
 }
 
-fn quicknav_short() -> LinePart {
-    let text_first_part = " QuickNav: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "n";
-    let text_third_part = "/";
-    let brackets_navigation = "[]";
-    let text_fifth_part = "/";
-    let hjkl_navigation = "hjkl";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count();
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(ORANGE).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(GREEN).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new().fg(GREEN).bold().paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(GREEN).bold().paint(hjkl_navigation),
-        ),
-        len,
+struct QuickNavbar {
+    open_pane: KeyGroup,
+    move_focus: KeyGroup,
+}
+
+impl QuickNavbar {
+    fn from_keybinds(help: &ModeInfo) -> Self {
+        const MOVE_FOCUS: &[Action] = &[
+            Action::MoveFocus(Direction::Left),
+            Action::MoveFocus(Direction::Up),
+            Action::MoveFocus(Direction::Down),
+            Action::MoveFocus(Direction::Right),
+        ];
+        let open_pane = match pick_key_from_keybinds(Action::NewPane(None), &help.keybinds) {
+            Some(k) => KeyGroup::new().push_key(k).done(),
+            None => KeyGroup::new(),
+        };
+        let mut move_focus = KeyGroup::new();
+        for k in MOVE_FOCUS
+            .iter()
+            .filter_map(|action| pick_key_from_keybinds(action.clone(), &help.keybinds))
+        {
+            move_focus = move_focus.push_key(k);
+        }
+        move_focus = move_focus.done();
+        QuickNavbar {
+            open_pane,
+            move_focus,
+        }
+    }
+
+    fn full_text(&self) -> StyledText {
+        let mut st = StyledText::new().push_nav_text(" Tip: ");
+        st = self.open_pane.fill_style_text(st, " => open new pane. ");
+        st = self
+            .move_focus
+            .fill_style_text(st, " => navigate between panes.");
+        st.done()
+    }
+
+    fn medium_text(&self) -> StyledText {
+        let mut st = StyledText::new().push_nav_text(" Tip: ");
+        st = self.open_pane.fill_style_text(st, " => new pane. ");
+        st = self.move_focus.fill_style_text(st, " => navigate.");
+        st.done()
+    }
+
+    fn short_text(&self) -> StyledText {
+        let mut st = StyledText::new().push_nav_text(" QuickNav: ");
+        st = self.open_pane.fill_style_text(st, "");
+        st = st.push_nav_text(",");
+        st = self.move_focus.fill_style_text(st, "");
+        st.done()
     }
 }
 
@@ -212,7 +218,9 @@ fn select_pane_shortcut(is_first_shortcut: bool) -> LinePart {
 
 fn full_shortcut_list(help: &ModeInfo, keybinds: &[(String, String)]) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_full(),
+        InputMode::Normal => QuickNavbar::from_keybinds(help)
+            .full_text()
+            .to_styled_text(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
@@ -231,7 +239,9 @@ fn full_shortcut_list(help: &ModeInfo, keybinds: &[(String, String)]) -> LinePar
 
 fn shortened_shortcut_list(help: &ModeInfo, keybinds: &[(String, String)]) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_medium(),
+        InputMode::Normal => QuickNavbar::from_keybinds(help)
+            .medium_text()
+            .to_styled_text(),
         InputMode::Locked => locked_interface_indication(),
         _ => {
             let mut line_part = LinePart::default();
@@ -255,7 +265,9 @@ fn best_effort_shortcut_list(
 ) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = quicknav_short();
+            let line_part = QuickNavbar::from_keybinds(help)
+                .short_text()
+                .to_styled_text();
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -275,7 +287,6 @@ fn best_effort_shortcut_list(
             for (i, (letter, description)) in keybinds.iter().enumerate() {
                 let shortcut = first_word_shortcut(i == 0, &letter, &description);
                 if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
-                    // TODO: better
                     line_part.part = format!("{}{}", line_part.part, MORE_MSG);
                     line_part.len += MORE_MSG.chars().count();
                     break;
