@@ -5,8 +5,10 @@ use std::os::unix::io::RawFd;
 use std::str;
 
 use super::AppInstruction;
+use crate::command_is_executing::CommandIsExecuting;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::Bus;
+use crate::errors::{ContextType, ScreenContext};
 use crate::panes::PositionAndSize;
 use crate::tab::Tab;
 use crate::wasm_vm::PluginInstruction;
@@ -325,6 +327,194 @@ impl Screen {
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();
+        }
+    }
+}
+
+pub fn screen_thread_main(
+    bus: Bus<ScreenInstruction>,
+    mut command_is_executing: CommandIsExecuting,
+    max_panes: Option<usize>,
+    full_screen_ws: PositionAndSize,
+) {
+    let mut screen = Screen::new(bus, &full_screen_ws, max_panes, ModeInfo::default());
+    loop {
+        let (event, mut err_ctx) = screen
+            .bus
+            .receiver
+            .as_ref()
+            .unwrap()
+            .recv()
+            .expect("failed to receive event on channel");
+        err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
+        match event {
+            ScreenInstruction::PtyBytes(pid, vte_bytes) => {
+                let active_tab = screen.get_active_tab_mut().unwrap();
+                if active_tab.has_terminal_pid(pid) {
+                    // it's most likely that this event is directed at the active tab
+                    // look there first
+                    active_tab.handle_pty_bytes(pid, vte_bytes);
+                } else {
+                    // if this event wasn't directed at the active tab, start looking
+                    // in other tabs
+                    let all_tabs = screen.get_tabs_mut();
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_terminal_pid(pid) {
+                            tab.handle_pty_bytes(pid, vte_bytes);
+                            break;
+                        }
+                    }
+                }
+            }
+            ScreenInstruction::Render => {
+                screen.render();
+            }
+            ScreenInstruction::NewPane(pid) => {
+                screen.get_active_tab_mut().unwrap().new_pane(pid);
+                command_is_executing.done_opening_new_pane();
+            }
+            ScreenInstruction::HorizontalSplit(pid) => {
+                screen.get_active_tab_mut().unwrap().horizontal_split(pid);
+                command_is_executing.done_opening_new_pane();
+            }
+            ScreenInstruction::VerticalSplit(pid) => {
+                screen.get_active_tab_mut().unwrap().vertical_split(pid);
+                command_is_executing.done_opening_new_pane();
+            }
+            ScreenInstruction::WriteCharacter(bytes) => {
+                let active_tab = screen.get_active_tab_mut().unwrap();
+                match active_tab.is_sync_panes_active() {
+                    true => active_tab.write_to_terminals_on_current_tab(bytes),
+                    false => active_tab.write_to_active_terminal(bytes),
+                }
+            }
+            ScreenInstruction::ResizeLeft => {
+                screen.get_active_tab_mut().unwrap().resize_left();
+            }
+            ScreenInstruction::ResizeRight => {
+                screen.get_active_tab_mut().unwrap().resize_right();
+            }
+            ScreenInstruction::ResizeDown => {
+                screen.get_active_tab_mut().unwrap().resize_down();
+            }
+            ScreenInstruction::ResizeUp => {
+                screen.get_active_tab_mut().unwrap().resize_up();
+            }
+            ScreenInstruction::SwitchFocus => {
+                screen.get_active_tab_mut().unwrap().move_focus();
+            }
+            ScreenInstruction::FocusNextPane => {
+                screen.get_active_tab_mut().unwrap().focus_next_pane();
+            }
+            ScreenInstruction::FocusPreviousPane => {
+                screen.get_active_tab_mut().unwrap().focus_previous_pane();
+            }
+            ScreenInstruction::MoveFocusLeft => {
+                screen.get_active_tab_mut().unwrap().move_focus_left();
+            }
+            ScreenInstruction::MoveFocusDown => {
+                screen.get_active_tab_mut().unwrap().move_focus_down();
+            }
+            ScreenInstruction::MoveFocusRight => {
+                screen.get_active_tab_mut().unwrap().move_focus_right();
+            }
+            ScreenInstruction::MoveFocusUp => {
+                screen.get_active_tab_mut().unwrap().move_focus_up();
+            }
+            ScreenInstruction::ScrollUp => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_active_terminal_up();
+            }
+            ScreenInstruction::ScrollDown => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_active_terminal_down();
+            }
+            ScreenInstruction::PageScrollUp => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_active_terminal_up_page();
+            }
+            ScreenInstruction::PageScrollDown => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_active_terminal_down_page();
+            }
+            ScreenInstruction::ClearScroll => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .clear_active_terminal_scroll();
+            }
+            ScreenInstruction::CloseFocusedPane => {
+                screen.get_active_tab_mut().unwrap().close_focused_pane();
+                screen.render();
+            }
+            ScreenInstruction::SetSelectable(id, selectable) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .set_pane_selectable(id, selectable);
+            }
+            ScreenInstruction::SetMaxHeight(id, max_height) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .set_pane_max_height(id, max_height);
+            }
+            ScreenInstruction::SetInvisibleBorders(id, invisible_borders) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .set_pane_invisible_borders(id, invisible_borders);
+                screen.render();
+            }
+            ScreenInstruction::ClosePane(id) => {
+                screen.get_active_tab_mut().unwrap().close_pane(id);
+                screen.render();
+            }
+            ScreenInstruction::ToggleActiveTerminalFullscreen => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .toggle_active_pane_fullscreen();
+            }
+            ScreenInstruction::NewTab(pane_id) => {
+                screen.new_tab(pane_id);
+                command_is_executing.done_opening_new_pane();
+            }
+            ScreenInstruction::SwitchTabNext => screen.switch_tab_next(),
+            ScreenInstruction::SwitchTabPrev => screen.switch_tab_prev(),
+            ScreenInstruction::CloseTab => screen.close_tab(),
+            ScreenInstruction::ApplyLayout((layout, new_pane_pids)) => {
+                screen.apply_layout(layout, new_pane_pids);
+                command_is_executing.done_opening_new_pane();
+            }
+            ScreenInstruction::GoToTab(tab_index) => screen.go_to_tab(tab_index as usize),
+            ScreenInstruction::UpdateTabName(c) => {
+                screen.update_active_tab_name(c);
+            }
+            ScreenInstruction::TerminalResize => {
+                screen.resize_to_screen();
+            }
+            ScreenInstruction::ChangeMode(mode_info) => {
+                screen.change_mode(mode_info);
+            }
+            ScreenInstruction::ToggleActiveSyncPanes => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .toggle_sync_panes_is_active();
+                screen.update_tabs();
+            }
+            ScreenInstruction::Quit => {
+                break;
+            }
         }
     }
 }

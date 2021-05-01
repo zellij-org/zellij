@@ -11,9 +11,7 @@ use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use super::{
-    pty::PtyInstruction, screen::ScreenInstruction, PaneId, ThreadSenders,
-};
+use super::{pty::PtyInstruction, screen::ScreenInstruction, PaneId, ThreadSenders};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
