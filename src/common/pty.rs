@@ -4,7 +4,6 @@ use ::async_std::task::*;
 use ::std::collections::HashMap;
 use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
-use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use std::path::PathBuf;
 
@@ -12,7 +11,8 @@ use super::{ScreenInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
-    errors::{get_current_ctx, ContextType, ErrorContext},
+    common::Bus,
+    errors::{get_current_ctx, ContextType},
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
@@ -77,12 +77,9 @@ pub enum PtyInstruction {
     Quit,
 }
 
-pub struct PtyBus {
-    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
+pub struct Pty {
+    pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
-    os_input: Box<dyn OsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -156,31 +153,29 @@ fn stream_terminal_bytes(
     })
 }
 
-impl PtyBus {
+impl Pty {
     pub fn new(
-        receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
-        send_screen_instructions: SenderWithContext<ScreenInstruction>,
-        send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        os_input: Box<dyn OsApi>,
+        bus: Bus<PtyInstruction>,
         debug_to_file: bool,
     ) -> Self {
-        PtyBus {
-            send_screen_instructions,
-            send_plugin_instructions,
-            receive_pty_instructions,
-            os_input,
+        Pty {
+            bus,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
             task_handles: HashMap::new(),
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open);
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self
+            .bus
+            .os_input
+            .as_mut()
+            .unwrap()
+            .spawn_terminal(file_to_open);
         let task_handle = stream_terminal_bytes(
             pid_primary,
-            self.send_screen_instructions.clone(),
-            self.os_input.clone(),
+            self.bus.to_screen.as_ref().unwrap().clone(),
+            self.bus.os_input.as_ref().unwrap().clone(),
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
@@ -191,11 +186,15 @@ impl PtyBus {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
+            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+                self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        self.send_screen_instructions
+        self.bus
+            .to_screen
+            .as_ref()
+            .unwrap()
             .send(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
@@ -204,8 +203,8 @@ impl PtyBus {
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
                 id,
-                self.send_screen_instructions.clone(),
-                self.os_input.clone(),
+                self.bus.to_screen.as_ref().unwrap().clone(),
+                self.bus.os_input.as_ref().unwrap().clone(),
                 self.debug_to_file,
             );
             self.task_handles.insert(id, task_handle);
@@ -216,13 +215,16 @@ impl PtyBus {
             PaneId::Terminal(id) => {
                 let child_pid = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
-                self.os_input.kill(child_pid).unwrap();
+                self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
                 task::block_on(async {
                     handle.cancel().await;
                 });
             }
             PaneId::Plugin(pid) => drop(
-                self.send_plugin_instructions
+                self.bus
+                    .to_plugin
+                    .as_ref()
+                    .unwrap()
                     .send(PluginInstruction::Unload(pid)),
             ),
         }
@@ -234,7 +236,7 @@ impl PtyBus {
     }
 }
 
-impl Drop for PtyBus {
+impl Drop for Pty {
     fn drop(&mut self) {
         let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {

@@ -12,7 +12,7 @@ use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, PluginIds};
 
 use super::{
-    pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
+    pty::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
 };
 
 #[derive(Clone, Debug)]

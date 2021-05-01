@@ -4,7 +4,7 @@ pub mod input;
 pub mod install;
 pub mod ipc;
 pub mod os_input_output;
-pub mod pty_bus;
+pub mod pty;
 pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
@@ -36,7 +36,7 @@ use errors::{
 use input::handler::input_loop;
 use install::populate_data_dir;
 use os_input_output::OsApi;
-use pty_bus::{PtyBus, PtyInstruction};
+use pty::{Pty, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::consts::ZELLIJ_IPC_PIPE;
@@ -193,11 +193,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let send_app_instructions =
         SenderWithContext::new(SenderType::SyncSender(send_app_instructions));
 
-    let mut pty_bus = PtyBus::new(
+    let pty_bus = Bus::new(
         receive_pty_instructions,
-        send_screen_instructions.clone(),
-        send_plugin_instructions.clone(),
-        os_input.clone(),
+        Some(&send_screen_instructions),
+        None,
+        Some(&send_plugin_instructions),
+        None,
+        Some(&os_input),
+    );
+    let mut pty = Pty::new(
+        pty_bus,
         opts.debug,
     );
 
@@ -233,50 +238,59 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let mut command_is_executing = command_is_executing.clone();
             send_pty_instructions.send(PtyInstruction::NewTab).unwrap();
             move || loop {
-                let (event, mut err_ctx) = pty_bus
-                    .receive_pty_instructions
+                let (event, mut err_ctx) = pty
+                    .bus
+                    .receiver
                     .recv()
                     .expect("failed to receive event on channel");
                 err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
                 match event {
                     PtyInstruction::SpawnTerminal(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
+                        let pid = pty.spawn_terminal(file_to_open);
+                        pty.bus
+                            .to_screen
+                            .as_ref()
+                            .unwrap()
                             .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                             .unwrap();
                     }
                     PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
+                        let pid = pty.spawn_terminal(file_to_open);
+                        pty.bus
+                            .to_screen
+                            .as_ref()
+                            .unwrap()
                             .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                             .unwrap();
                     }
                     PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                        let pid = pty_bus.spawn_terminal(file_to_open);
-                        pty_bus
-                            .send_screen_instructions
+                        let pid = pty.spawn_terminal(file_to_open);
+                        pty.bus
+                            .to_screen
+                            .as_ref()
+                            .unwrap()
                             .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                             .unwrap();
                     }
                     PtyInstruction::NewTab => {
                         if let Some(layout) = maybe_layout.clone() {
-                            pty_bus.spawn_terminals_for_layout(layout);
+                            pty.spawn_terminals_for_layout(layout);
                         } else {
-                            let pid = pty_bus.spawn_terminal(None);
-                            pty_bus
-                                .send_screen_instructions
+                            let pid = pty.spawn_terminal(None);
+                            pty.bus
+                                .to_screen
+                                .as_ref()
+                                .unwrap()
                                 .send(ScreenInstruction::NewTab(pid))
                                 .unwrap();
                         }
                     }
                     PtyInstruction::ClosePane(id) => {
-                        pty_bus.close_pane(id);
+                        pty.close_pane(id);
                         command_is_executing.done_closing_pane();
                     }
                     PtyInstruction::CloseTab(ids) => {
-                        pty_bus.close_tab(ids);
+                        pty.close_tab(ids);
                         command_is_executing.done_closing_pane();
                     }
                     PtyInstruction::Quit => {
@@ -302,12 +316,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let max_panes = opts.max_panes;
 
             move || {
-                let mut screen = Screen::new(
-                    screen_bus,
-                    &full_screen_ws,
-                    max_panes,
-                    ModeInfo::default(),
-                );
+                let mut screen =
+                    Screen::new(screen_bus, &full_screen_ws, max_panes, ModeInfo::default());
                 loop {
                     let (event, mut err_ctx) = screen
                         .bus

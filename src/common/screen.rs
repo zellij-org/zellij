@@ -3,15 +3,13 @@
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
-use std::sync::mpsc::Receiver;
 
-use super::{AppInstruction, SenderWithContext};
+use super::AppInstruction;
 use crate::common::Bus;
-use crate::os_input_output::OsApi;
 use crate::panes::PositionAndSize;
-use crate::pty_bus::{PtyInstruction, VteBytes};
+use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
-use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
+use crate::wasm_vm::PluginInstruction;
 use crate::{layout::Layout, panes::PaneId};
 
 use zellij_tile::data::{Event, ModeInfo, TabInfo};
