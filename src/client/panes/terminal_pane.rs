@@ -4,11 +4,11 @@ use ::std::os::unix::io::RawFd;
 use std::fmt::Debug;
 use std::time::Instant;
 
+use crate::common::pty::VteBytes;
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-use crate::common::pty::VteBytes;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {

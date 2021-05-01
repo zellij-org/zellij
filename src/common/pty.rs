@@ -154,10 +154,7 @@ fn stream_terminal_bytes(
 }
 
 impl Pty {
-    pub fn new(
-        bus: Bus<PtyInstruction>,
-        debug_to_file: bool,
-    ) -> Self {
+    pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
         Pty {
             bus,
             id_to_child_pid: HashMap::new(),

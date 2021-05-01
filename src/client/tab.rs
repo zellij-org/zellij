@@ -3,11 +3,11 @@
 
 use crate::boundaries::colors;
 use crate::client::pane_resizer::PaneResizer;
+use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};

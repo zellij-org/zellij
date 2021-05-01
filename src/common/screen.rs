@@ -5,9 +5,9 @@ use std::os::unix::io::RawFd;
 use std::str;
 
 use super::AppInstruction;
+use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::Bus;
 use crate::panes::PositionAndSize;
-use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::tab::Tab;
 use crate::wasm_vm::PluginInstruction;
 use crate::{layout::Layout, panes::PaneId};
@@ -195,7 +195,10 @@ impl Screen {
             .send(PtyInstruction::CloseTab(pane_ids));
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.bus.to_app.as_ref().unwrap()
+            self.bus
+                .to_app
+                .as_ref()
+                .unwrap()
                 .send(AppInstruction::Exit)
                 .unwrap();
         } else {
@@ -209,7 +212,12 @@ impl Screen {
     }
 
     pub fn resize_to_screen(&mut self) {
-        let new_screen_size = self.bus.os_input.as_ref().unwrap().get_terminal_size_using_fd(0);
+        let new_screen_size = self
+            .bus
+            .os_input
+            .as_ref()
+            .unwrap()
+            .get_terminal_size_using_fd(0);
         self.full_screen_ws = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
@@ -285,7 +293,10 @@ impl Screen {
                 is_sync_panes_active: tab.is_sync_panes_active(),
             });
         }
-        self.bus.to_plugin.as_ref().unwrap()
+        self.bus
+            .to_plugin
+            .as_ref()
+            .unwrap()
             .send(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
             .unwrap();
     }

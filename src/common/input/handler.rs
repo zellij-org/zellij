@@ -3,10 +3,10 @@
 use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::common::input::config::Config;
+use crate::common::pty::PtyInstruction;
 use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
-use crate::common::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;

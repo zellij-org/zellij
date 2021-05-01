@@ -134,7 +134,7 @@ impl<T> Bus<T> {
         to_pty: Option<&SenderWithContext<PtyInstruction>>,
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
         to_app: Option<&SenderWithContext<AppInstruction>>,
-        os_input: Option<&Box<dyn OsApi>>,
+        os_input: Option<Box<dyn OsApi>>,
     ) -> Self {
         Bus {
             receiver,
@@ -142,7 +142,7 @@ impl<T> Bus<T> {
             to_pty: to_pty.cloned(),
             to_plugin: to_plugin.cloned(),
             to_app: to_app.cloned(),
-            os_input: os_input.cloned(),
+            os_input: os_input.clone(),
         }
     }
 }
@@ -220,7 +220,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     None,
                     Some(&to_plugin),
                     None,
-                    Some(&os_input),
+                    Some(os_input.clone()),
                 ),
                 opts.debug,
             );
@@ -303,7 +303,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_app),
-                Some(&os_input),
+                Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
 
