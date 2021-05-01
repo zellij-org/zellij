@@ -118,6 +118,7 @@ pub enum AppInstruction {
     Error(String),
 }
 
+pub struct Bus<T> {
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
