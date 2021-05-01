@@ -30,13 +30,12 @@ use async_std::task_local;
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
 use errors::{
-    get_current_ctx, AppContext, ContextType, ErrorContext, PluginContext, PtyContext,
-    ScreenContext,
+    get_current_ctx, AppContext, ContextType, ErrorContext, PluginContext, ScreenContext,
 };
 use input::handler::input_loop;
 use install::populate_data_dir;
 use os_input_output::OsApi;
-use pty::{Pty, PtyInstruction};
+use pty::{pty_thread_main, Pty, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::consts::ZELLIJ_IPC_PIPE;
@@ -145,9 +144,9 @@ impl<T> Bus<T> {
             receiver,
             senders: ThreadSenders {
                 to_screen: to_screen.cloned(),
-            to_pty: to_pty.cloned(),
-            to_plugin: to_plugin.cloned(),
-            to_app: to_app.cloned(),
+                to_pty: to_pty.cloned(),
+                to_plugin: to_plugin.cloned(),
+                to_app: to_app.cloned(),
             },
             os_input: os_input.clone(),
         }
@@ -220,7 +219,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
-            let mut pty = Pty::new(
+            let pty = Pty::new(
                 Bus::new(
                     Some(from_pty),
                     Some(&to_screen),
@@ -232,75 +231,8 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 opts.debug,
             );
 
-            let mut command_is_executing = command_is_executing.clone();
-            to_pty.send(PtyInstruction::NewTab).unwrap();
-            move || loop {
-                let (event, mut err_ctx) = pty
-                    .bus
-                    .receiver
-                    .as_ref()
-                    .unwrap()
-                    .recv()
-                    .expect("failed to receive event on channel");
-                err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
-                match event {
-                    PtyInstruction::SpawnTerminal(file_to_open) => {
-                        let pid = pty.spawn_terminal(file_to_open);
-                        pty.bus
-                            .senders
-                            .to_screen
-                            .as_ref()
-                            .unwrap()
-                            .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                        let pid = pty.spawn_terminal(file_to_open);
-                        pty.bus
-                            .senders
-                            .to_screen
-                            .as_ref()
-                            .unwrap()
-                            .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                        let pid = pty.spawn_terminal(file_to_open);
-                        pty.bus
-                            .senders
-                            .to_screen
-                            .as_ref()
-                            .unwrap()
-                            .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
-                            .unwrap();
-                    }
-                    PtyInstruction::NewTab => {
-                        if let Some(layout) = maybe_layout.clone() {
-                            pty.spawn_terminals_for_layout(layout);
-                        } else {
-                            let pid = pty.spawn_terminal(None);
-                            pty.bus
-                                .senders
-                                .to_screen
-                                .as_ref()
-                                .unwrap()
-                                .send(ScreenInstruction::NewTab(pid))
-                                .unwrap();
-                        }
-                    }
-                    PtyInstruction::ClosePane(id) => {
-                        pty.close_pane(id);
-                        command_is_executing.done_closing_pane();
-                    }
-                    PtyInstruction::CloseTab(ids) => {
-                        pty.close_tab(ids);
-                        command_is_executing.done_closing_pane();
-                    }
-                    PtyInstruction::Quit => {
-                        break;
-                    }
-                }
-            }
+            let command_is_executing = command_is_executing.clone();
+            move || pty_thread_main(pty, command_is_executing, maybe_layout)
         })
         .unwrap();
 

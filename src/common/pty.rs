@@ -7,12 +7,12 @@ use ::std::pin::*;
 use ::std::time::{Duration, Instant};
 use std::path::PathBuf;
 
-use super::{ScreenInstruction, SenderWithContext};
+use super::{command_is_executing::CommandIsExecuting, ScreenInstruction, SenderWithContext};
 use crate::os_input_output::OsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     common::Bus,
-    errors::{get_current_ctx, ContextType},
+    errors::{get_current_ctx, ContextType, PtyContext},
     panes::PaneId,
 };
 use crate::{layout::Layout, wasm_vm::PluginInstruction};
@@ -82,6 +82,101 @@ pub struct Pty {
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
+}
+
+fn handle_event(
+    event: PtyInstruction,
+    pty: &mut Pty,
+    command_is_executing: &mut CommandIsExecuting,
+    maybe_layout: &mut Option<Layout>,
+) -> bool {
+    match event {
+        PtyInstruction::SpawnTerminal(file_to_open) => {
+            let pid = pty.spawn_terminal(file_to_open);
+            pty.bus
+                .senders
+                .to_screen
+                .as_ref()
+                .unwrap()
+                .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
+                .unwrap();
+        }
+        PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+            let pid = pty.spawn_terminal(file_to_open);
+            pty.bus
+                .senders
+                .to_screen
+                .as_ref()
+                .unwrap()
+                .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                .unwrap();
+        }
+        PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+            let pid = pty.spawn_terminal(file_to_open);
+            pty.bus
+                .senders
+                .to_screen
+                .as_ref()
+                .unwrap()
+                .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                .unwrap();
+        }
+        PtyInstruction::NewTab => {
+            if let Some(layout) = maybe_layout.clone() {
+                pty.spawn_terminals_for_layout(layout);
+            } else {
+                let pid = pty.spawn_terminal(None);
+                pty.bus
+                    .senders
+                    .to_screen
+                    .as_ref()
+                    .unwrap()
+                    .send(ScreenInstruction::NewTab(pid))
+                    .unwrap();
+            }
+        }
+        PtyInstruction::ClosePane(id) => {
+            pty.close_pane(id);
+            command_is_executing.done_closing_pane();
+        }
+        PtyInstruction::CloseTab(ids) => {
+            pty.close_tab(ids);
+            command_is_executing.done_closing_pane();
+        }
+        PtyInstruction::Quit => return true,
+    }
+    false
+}
+
+pub fn pty_thread_main(
+    mut pty: Pty,
+    mut command_is_executing: CommandIsExecuting,
+    mut maybe_layout: Option<Layout>,
+) {
+    handle_event(
+        PtyInstruction::NewTab,
+        &mut pty,
+        &mut command_is_executing,
+        &mut maybe_layout,
+    );
+    loop {
+        let (event, mut err_ctx) = pty
+            .bus
+            .receiver
+            .as_ref()
+            .unwrap()
+            .recv()
+            .expect("failed to receive event on channel");
+        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+        if handle_event(
+            event,
+            &mut pty,
+            &mut command_is_executing,
+            &mut maybe_layout,
+        ) {
+            break;
+        }
+    }
 }
 
 fn stream_terminal_bytes(
