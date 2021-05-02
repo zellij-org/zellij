@@ -110,10 +110,7 @@ pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: Pat
                 }
                 drop(
                     bus.senders
-                        .to_screen
-                        .as_ref()
-                        .unwrap()
-                        .send(ScreenInstruction::Render),
+                        .send_to_screen(ScreenInstruction::Render),
                 );
             }
             PluginInstruction::Render(buf_tx, pid, rows, cols) => {
@@ -175,10 +172,7 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     let selectable = selectable != 0;
     plugin_env
         .senders
-        .to_screen
-        .as_ref()
-        .unwrap()
-        .send(ScreenInstruction::SetSelectable(
+        .send_to_screen(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
         ))
@@ -189,10 +183,7 @@ fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
     let max_height = max_height as usize;
     plugin_env
         .senders
-        .to_screen
-        .as_ref()
-        .unwrap()
-        .send(ScreenInstruction::SetMaxHeight(
+        .send_to_screen(ScreenInstruction::SetMaxHeight(
             PaneId::Plugin(plugin_env.plugin_id),
             max_height,
         ))
@@ -203,10 +194,7 @@ fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
     let invisible_borders = invisible_borders != 0;
     plugin_env
         .senders
-        .to_screen
-        .as_ref()
-        .unwrap()
-        .send(ScreenInstruction::SetInvisibleBorders(
+        .send_to_screen(ScreenInstruction::SetInvisibleBorders(
             PaneId::Plugin(plugin_env.plugin_id),
             invisible_borders,
         ))
@@ -225,10 +213,7 @@ fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
         .senders
-        .to_pty
-        .as_ref()
-        .unwrap()
-        .send(PtyInstruction::SpawnTerminal(Some(path)))
+        .send_to_pty(PtyInstruction::SpawnTerminal(Some(path)))
         .unwrap();
 }
 
