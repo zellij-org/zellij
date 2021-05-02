@@ -46,9 +46,7 @@ pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: Pat
     let mut plugin_id = 0;
     let mut plugin_map = HashMap::new();
     loop {
-        let (event, mut err_ctx) = bus
-            .recv()
-            .expect("failed to receive event on channel");
+        let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
         match event {
             PluginInstruction::Load(pid_tx, path) => {

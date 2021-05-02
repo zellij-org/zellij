@@ -148,10 +148,7 @@ pub fn pty_thread_main(
         &mut maybe_layout,
     );
     loop {
-        let (event, mut err_ctx) = pty
-            .bus
-            .recv()
-            .expect("failed to receive event on channel");
+        let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
         if handle_event(
             event,

@@ -9,10 +9,10 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::{cell::RefCell, sync::mpsc::RecvError};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use std::{cell::RefCell, sync::mpsc::RecvError};
 use std::{env, io::Write};
 
 use crate::cli::CliArgs;
