@@ -148,10 +148,7 @@ impl QuickNavbar {
             Action::MoveFocus(Direction::Down),
             Action::MoveFocus(Direction::Right),
         ];
-        const SWITCH_FOCUS: &[Action] = &[
-            Action::FocusPreviousPane,
-            Action::FocusNextPane,
-        ];
+        const SWITCH_FOCUS: &[Action] = &[Action::FocusPreviousPane, Action::FocusNextPane];
         let open_pane = match pick_key_from_keybinds(Action::NewPane(None), &help.keybinds) {
             Some(k) => KeyGroup::new().push_key(k).done(),
             None => KeyGroup::new(),
@@ -164,12 +161,12 @@ impl QuickNavbar {
             move_focus = move_focus.push_key(k);
         }
         move_focus = move_focus.done();
-        let mut switch_focus= KeyGroup::new();
+        let mut switch_focus = KeyGroup::new();
         for k in SWITCH_FOCUS
             .iter()
             .filter_map(|action| pick_key_from_keybinds(action.clone(), &help.keybinds))
         {
-            switch_focus= switch_focus.push_key(k);
+            switch_focus = switch_focus.push_key(k);
         }
         switch_focus = switch_focus.done();
         QuickNavbar {
@@ -195,24 +192,22 @@ impl QuickNavbar {
                     }
                     st = st.push_nav_text(" => navigate between panes.");
                 }
-            },
+            }
             _ => {
                 // Switch focus and move focus have different prefix
                 // e.g. Ctrl + [/] or Alt + h/j/l/k => ...
                 // notice both switch_focus and move_focus may be empty
-                st = self
-                    .switch_focus
-                    .fill_style_text(st, 
-                        if self.move_focus.keys.is_empty() {
-                            " => navigate between panes."
-                        } else {
-                            " or "
-                        }
-                    );
+                st = self.switch_focus.fill_style_text(
+                    st,
+                    if self.move_focus.keys.is_empty() {
+                        " => navigate between panes."
+                    } else {
+                        " or "
+                    },
+                );
                 st = self
                     .move_focus
                     .fill_style_text(st, " => navigate between panes.");
-
             }
         }
         st.done()
@@ -234,21 +229,17 @@ impl QuickNavbar {
                     }
                     st = st.push_nav_text(" => navigate.");
                 }
-            },
+            }
             _ => {
-                st = self
-                    .switch_focus
-                    .fill_style_text(st, 
-                        if self.move_focus.keys.is_empty() {
-                            " => navigate."
-                        } else {
-                            " or "
-                        }
-                    );
-                st = self
-                    .move_focus
-                    .fill_style_text(st, " => navigate.");
-
+                st = self.switch_focus.fill_style_text(
+                    st,
+                    if self.move_focus.keys.is_empty() {
+                        " => navigate."
+                    } else {
+                        " or "
+                    },
+                );
+                st = self.move_focus.fill_style_text(st, " => navigate.");
             }
         }
         st.done()
@@ -272,15 +263,10 @@ impl QuickNavbar {
                     }
                     st = st.push_nav_text(".");
                 }
-            },
+            }
             _ => {
-                st = self
-                    .switch_focus
-                    .fill_style_text(st, ", ");
-                st = self
-                    .move_focus
-                    .fill_style_text(st, ".");
-
+                st = self.switch_focus.fill_style_text(st, ", ");
+                st = self.move_focus.fill_style_text(st, ".");
             }
         }
         st.done()
