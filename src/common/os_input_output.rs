@@ -1,5 +1,5 @@
 use crate::panes::PositionAndSize;
-use crate::utils::shared::{colors, detect_theme, hex_to_rgb};
+use crate::utils::shared::{default_palette, detect_theme, hex_to_rgb};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 use xrdb::Colors;
-use zellij_tile::data::{Palette, PaletteSource, Theme};
+use zellij_tile::data::{Palette, PaletteSource};
 
 use signal_hook::{consts::signal::*, iterator::Signals};
 
@@ -268,10 +268,27 @@ impl OsApi for OsInputOutput {
     fn load_palette(&self) -> Palette {
         let palette = match Colors::new("xresources") {
             Some(palette) => {
-                let fg = hex_to_rgb(&palette.fg);
-                let bg = hex_to_rgb(&palette.bg);
-                let colors: Vec<(u8, u8, u8)> =
-                    palette.colors.iter().map(|c| hex_to_rgb(c)).collect();
+                let fg = if let Some(foreground) = palette.fg.as_deref().map(hex_to_rgb) {
+                    foreground
+                } else {
+                    return default_palette();
+                };
+
+                let bg = if let Some(background) = palette.bg.as_deref().map(hex_to_rgb) {
+                    background
+                } else {
+                    return default_palette();
+                };
+
+                // NOTE: `16` is the same as the length of `palette.colors`.
+                let mut colors: [(u8, u8, u8); 16] = [(0, 0, 0); 16];
+                for (idx, color) in palette.colors.iter().enumerate() {
+                    if let Some(c) = color {
+                        colors[idx] = hex_to_rgb(c);
+                    } else {
+                        return default_palette();
+                    }
+                }
                 let theme = detect_theme(bg);
                 Palette {
                     source: PaletteSource::Xresources,
@@ -289,21 +306,7 @@ impl OsApi for OsInputOutput {
                     orange: colors[9],
                 }
             }
-            None => Palette {
-                source: PaletteSource::Default,
-                theme: Theme::Dark,
-                fg: colors::BRIGHT_GRAY,
-                bg: colors::GRAY,
-                black: colors::BLACK,
-                red: colors::RED,
-                green: colors::GREEN,
-                yellow: colors::GRAY,
-                blue: colors::GRAY,
-                magenta: colors::GRAY,
-                cyan: colors::GRAY,
-                white: colors::WHITE,
-                orange: colors::ORANGE,
-            },
+            None => default_palette(),
         };
         palette
     }
