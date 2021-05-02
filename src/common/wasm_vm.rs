@@ -108,10 +108,7 @@ pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: Pat
                         update.call(&[]).unwrap();
                     }
                 }
-                drop(
-                    bus.senders
-                        .send_to_screen(ScreenInstruction::Render),
-                );
+                drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             }
             PluginInstruction::Render(buf_tx, pid, rows, cols) => {
                 let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
