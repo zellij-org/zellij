@@ -1,17 +1,27 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    fs,
     path::PathBuf,
     process,
+    str::FromStr,
     sync::{mpsc::Sender, Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
-use wasmer_wasi::WasiEnv;
+use wasmer::{
+    imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
+    WasmerEnv,
+};
+use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use super::{pty::PtyInstruction, screen::ScreenInstruction, PaneId, ThreadSenders};
+use super::{
+    errors::{ContextType, PluginContext},
+    pty::PtyInstruction,
+    screen::ScreenInstruction,
+    Bus, PaneId, ThreadSenders,
+};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -29,6 +39,103 @@ pub struct PluginEnv {
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+}
+
+// Thread main --------------------------------------------------------------------------------------------------------
+pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: PathBuf) {
+    let mut plugin_id = 0;
+    let mut plugin_map = HashMap::new();
+    loop {
+        let (event, mut err_ctx) = bus
+            .receiver
+            .as_ref()
+            .unwrap()
+            .recv()
+            .expect("failed to receive event on channel");
+        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+        match event {
+            PluginInstruction::Load(pid_tx, path) => {
+                let plugin_dir = data_dir.join("plugins/");
+                let wasm_bytes = fs::read(&path)
+                    .or_else(|_| fs::read(&path.with_extension("wasm")))
+                    .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
+                    .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
+
+                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                let module = Module::new(&store, &wasm_bytes).unwrap();
+
+                let output = Pipe::new();
+                let input = Pipe::new();
+                let mut wasi_env = WasiState::new("Zellij")
+                    .env("CLICOLOR_FORCE", "1")
+                    .preopen(|p| {
+                        p.directory(".") // FIXME: Change this to a more meaningful dir
+                            .alias(".")
+                            .read(true)
+                            .write(true)
+                            .create(true)
+                    })
+                    .unwrap()
+                    .stdin(Box::new(input))
+                    .stdout(Box::new(output))
+                    .finalize()
+                    .unwrap();
+
+                let wasi = wasi_env.import_object(&module).unwrap();
+
+                let plugin_env = PluginEnv {
+                    plugin_id,
+                    senders: bus.senders.clone(),
+                    wasi_env,
+                    subscriptions: Arc::new(Mutex::new(HashSet::new())),
+                };
+
+                let zellij = zellij_exports(&store, &plugin_env);
+                let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+
+                let start = instance.exports.get_function("_start").unwrap();
+
+                // This eventually calls the `.load()` method
+                start.call(&[]).unwrap();
+
+                plugin_map.insert(plugin_id, (instance, plugin_env));
+                pid_tx.send(plugin_id).unwrap();
+                plugin_id += 1;
+            }
+            PluginInstruction::Update(pid, event) => {
+                for (&i, (instance, plugin_env)) in &plugin_map {
+                    let subs = plugin_env.subscriptions.lock().unwrap();
+                    // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
+                    let event_type = EventType::from_str(&event.to_string()).unwrap();
+                    if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
+                        let update = instance.exports.get_function("update").unwrap();
+                        wasi_write_object(&plugin_env.wasi_env, &event);
+                        update.call(&[]).unwrap();
+                    }
+                }
+                drop(
+                    bus.senders
+                        .to_screen
+                        .as_ref()
+                        .unwrap()
+                        .send(ScreenInstruction::Render),
+                );
+            }
+            PluginInstruction::Render(buf_tx, pid, rows, cols) => {
+                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                let render = instance.exports.get_function("render").unwrap();
+
+                render
+                    .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                    .unwrap();
+
+                buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
+            }
+            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+            PluginInstruction::Quit => break,
+        }
+    }
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------

@@ -13,14 +13,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
-use std::{collections::HashMap, fs};
-use std::{
-    collections::HashSet,
-    env,
-    io::Write,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::{env, io::Write};
 
 use crate::cli::CliArgs;
 use crate::common::input::config::Config;
@@ -29,7 +22,7 @@ use crate::panes::PaneId;
 use async_std::task_local;
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
-use errors::{get_current_ctx, AppContext, ContextType, ErrorContext, PluginContext};
+use errors::{get_current_ctx, AppContext, ContextType, ErrorContext};
 use input::handler::input_loop;
 use install::populate_data_dir;
 use os_input_output::OsApi;
@@ -37,10 +30,8 @@ use pty::{pty_thread_main, Pty, PtyInstruction};
 use screen::{screen_thread_main, ScreenInstruction};
 use serde::{Deserialize, Serialize};
 use utils::consts::ZELLIJ_IPC_PIPE;
-use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
-use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
-use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::EventType;
+use wasm_vm::{wasm_thread_main, PluginInstruction};
+use wasmer::Store;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -121,6 +112,36 @@ pub struct ThreadSenders {
     to_pty: Option<SenderWithContext<PtyInstruction>>,
     to_plugin: Option<SenderWithContext<PluginInstruction>>,
     to_app: Option<SenderWithContext<AppInstruction>>,
+}
+
+impl ThreadSenders {
+    fn send_to_screen(
+        &mut self,
+        instruction: ScreenInstruction,
+    ) -> Result<(), mpsc::SendError<(ScreenInstruction, ErrorContext)>> {
+        self.to_screen.as_ref().unwrap().send(instruction)
+    }
+
+    fn send_to_pty(
+        &mut self,
+        instruction: PtyInstruction,
+    ) -> Result<(), mpsc::SendError<(PtyInstruction, ErrorContext)>> {
+        self.to_pty.as_ref().unwrap().send(instruction)
+    }
+
+    fn send_to_plugin(
+        &mut self,
+        instruction: PluginInstruction,
+    ) -> Result<(), mpsc::SendError<(PluginInstruction, ErrorContext)>> {
+        self.to_plugin.as_ref().unwrap().send(instruction)
+    }
+
+    fn send_to_app(
+        &mut self,
+        instruction: AppInstruction,
+    ) -> Result<(), mpsc::SendError<(AppInstruction, ErrorContext)>> {
+        self.to_app.as_ref().unwrap().send(instruction)
+    }
 }
 
 pub struct Bus<T> {
@@ -263,102 +284,9 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                 Some(&to_app),
                 None,
             );
-
             let store = Store::default();
-            let mut plugin_id = 0;
-            let mut plugin_map = HashMap::new();
-            move || loop {
-                let (event, mut err_ctx) = plugin_bus
-                    .receiver
-                    .as_ref()
-                    .unwrap()
-                    .recv()
-                    .expect("failed to receive event on channel");
-                err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
-                match event {
-                    PluginInstruction::Load(pid_tx, path) => {
-                        let plugin_dir = data_dir.join("plugins/");
-                        let wasm_bytes = fs::read(&path)
-                            .or_else(|_| fs::read(&path.with_extension("wasm")))
-                            .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
-                            .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
 
-                        // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                        let module = Module::new(&store, &wasm_bytes).unwrap();
-
-                        let output = Pipe::new();
-                        let input = Pipe::new();
-                        let mut wasi_env = WasiState::new("Zellij")
-                            .env("CLICOLOR_FORCE", "1")
-                            .preopen(|p| {
-                                p.directory(".") // FIXME: Change this to a more meaningful dir
-                                    .alias(".")
-                                    .read(true)
-                                    .write(true)
-                                    .create(true)
-                            })
-                            .unwrap()
-                            .stdin(Box::new(input))
-                            .stdout(Box::new(output))
-                            .finalize()
-                            .unwrap();
-
-                        let wasi = wasi_env.import_object(&module).unwrap();
-
-                        let plugin_env = PluginEnv {
-                            plugin_id,
-                            senders: plugin_bus.senders.clone(),
-                            wasi_env,
-                            subscriptions: Arc::new(Mutex::new(HashSet::new())),
-                        };
-
-                        let zellij = zellij_exports(&store, &plugin_env);
-                        let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
-
-                        let start = instance.exports.get_function("_start").unwrap();
-
-                        // This eventually calls the `.load()` method
-                        start.call(&[]).unwrap();
-
-                        plugin_map.insert(plugin_id, (instance, plugin_env));
-                        pid_tx.send(plugin_id).unwrap();
-                        plugin_id += 1;
-                    }
-                    PluginInstruction::Update(pid, event) => {
-                        for (&i, (instance, plugin_env)) in &plugin_map {
-                            let subs = plugin_env.subscriptions.lock().unwrap();
-                            // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                            let event_type = EventType::from_str(&event.to_string()).unwrap();
-                            if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
-                                let update = instance.exports.get_function("update").unwrap();
-                                wasi_write_object(&plugin_env.wasi_env, &event);
-                                update.call(&[]).unwrap();
-                            }
-                        }
-                        drop(
-                            plugin_bus
-                                .senders
-                                .to_screen
-                                .as_ref()
-                                .unwrap()
-                                .send(ScreenInstruction::Render),
-                        );
-                    }
-                    PluginInstruction::Render(buf_tx, pid, rows, cols) => {
-                        let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
-                        let render = instance.exports.get_function("render").unwrap();
-
-                        render
-                            .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                            .unwrap();
-
-                        buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
-                    }
-                    PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
-                    PluginInstruction::Quit => break,
-                }
-            }
+            move || wasm_thread_main(plugin_bus, store, data_dir)
         })
         .unwrap();
 
@@ -435,22 +363,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
-            let to_screen = to_screen.clone();
-            let to_pty = to_pty.clone();
-            let to_plugin = to_plugin.clone();
+            let senders = ThreadSenders {
+                to_pty: Some(to_pty.clone()),
+                to_screen: Some(to_screen.clone()),
+                to_plugin: Some(to_plugin.clone()),
+                to_app: Some(to_app),
+            };
             let os_input = os_input.clone();
             let config = config;
-            move || {
-                input_loop(
-                    os_input,
-                    config,
-                    command_is_executing,
-                    to_screen,
-                    to_pty,
-                    to_plugin,
-                    to_app,
-                )
-            }
+
+            move || input_loop(os_input, config, command_is_executing, senders)
         });
 
     #[warn(clippy::never_loop)]

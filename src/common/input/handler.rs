@@ -4,7 +4,7 @@ use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::common::input::config::Config;
 use crate::common::pty::PtyInstruction;
-use crate::common::{AppInstruction, SenderWithContext, OPENCALLS};
+use crate::common::{AppInstruction, ThreadSenders, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::OsApi;
 use crate::screen::ScreenInstruction;
@@ -22,10 +22,7 @@ struct InputHandler {
     os_input: Box<dyn OsApi>,
     config: Config,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_pty_instructions: SenderWithContext<PtyInstruction>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    send_app_instructions: SenderWithContext<AppInstruction>,
+    senders: ThreadSenders,
     should_exit: bool,
 }
 
@@ -35,20 +32,14 @@ impl InputHandler {
         os_input: Box<dyn OsApi>,
         command_is_executing: CommandIsExecuting,
         config: Config,
-        send_screen_instructions: SenderWithContext<ScreenInstruction>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
-        send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
+        senders: ThreadSenders,
     ) -> Self {
         InputHandler {
             mode: InputMode::Normal,
             os_input,
             config,
             command_is_executing,
-            send_screen_instructions,
-            send_pty_instructions,
-            send_plugin_instructions,
-            send_app_instructions,
+            senders,
             should_exit: false,
         }
     }
@@ -115,11 +106,11 @@ impl InputHandler {
 
         match action {
             Action::Write(val) => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ClearScroll)
+                self.senders
+                    .send_to_screen(ScreenInstruction::ClearScroll)
                     .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::WriteCharacter(val))
+                self.senders
+                    .send_to_screen(ScreenInstruction::WriteCharacter(val))
                     .unwrap();
             }
             Action::Quit => {
@@ -128,17 +119,17 @@ impl InputHandler {
             }
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Update(
+                self.senders
+                    .send_to_plugin(PluginInstruction::Update(
                         None,
                         Event::ModeUpdate(get_mode_info(mode)),
                     ))
                     .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
+                self.senders
+                    .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(mode)))
                     .unwrap();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::Render)
+                self.senders
+                    .send_to_screen(ScreenInstruction::Render)
                     .unwrap();
             }
             Action::Resize(direction) => {
@@ -148,21 +139,21 @@ impl InputHandler {
                     super::actions::Direction::Up => ScreenInstruction::ResizeUp,
                     super::actions::Direction::Down => ScreenInstruction::ResizeDown,
                 };
-                self.send_screen_instructions.send(screen_instr).unwrap();
+                self.senders.send_to_screen(screen_instr).unwrap();
             }
             Action::SwitchFocus => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchFocus)
+                self.senders
+                    .send_to_screen(ScreenInstruction::SwitchFocus)
                     .unwrap();
             }
             Action::FocusNextPane => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::FocusNextPane)
+                self.senders
+                    .send_to_screen(ScreenInstruction::FocusNextPane)
                     .unwrap();
             }
             Action::FocusPreviousPane => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::FocusPreviousPane)
+                self.senders
+                    .send_to_screen(ScreenInstruction::FocusPreviousPane)
                     .unwrap();
             }
             Action::MoveFocus(direction) => {
@@ -172,31 +163,31 @@ impl InputHandler {
                     super::actions::Direction::Up => ScreenInstruction::MoveFocusUp,
                     super::actions::Direction::Down => ScreenInstruction::MoveFocusDown,
                 };
-                self.send_screen_instructions.send(screen_instr).unwrap();
+                self.senders.send_to_screen(screen_instr).unwrap();
             }
             Action::ScrollUp => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ScrollUp)
+                self.senders
+                    .send_to_screen(ScreenInstruction::ScrollUp)
                     .unwrap();
             }
             Action::ScrollDown => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ScrollDown)
+                self.senders
+                    .send_to_screen(ScreenInstruction::ScrollDown)
                     .unwrap();
             }
             Action::PageScrollUp => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::PageScrollUp)
+                self.senders
+                    .send_to_screen(ScreenInstruction::PageScrollUp)
                     .unwrap();
             }
             Action::PageScrollDown => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::PageScrollDown)
+                self.senders
+                    .send_to_screen(ScreenInstruction::PageScrollDown)
                     .unwrap();
             }
             Action::ToggleFocusFullscreen => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                self.senders
+                    .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen)
                     .unwrap();
             }
             Action::NewPane(direction) => {
@@ -217,53 +208,51 @@ impl InputHandler {
                     None => PtyInstruction::SpawnTerminal(None),
                 };
                 self.command_is_executing.opening_new_pane();
-                self.send_pty_instructions.send(pty_instr).unwrap();
+                self.senders.send_to_pty(pty_instr).unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
             Action::CloseFocus => {
                 self.command_is_executing.closing_pane();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::CloseFocusedPane)
+                self.senders
+                    .send_to_screen(ScreenInstruction::CloseFocusedPane)
                     .unwrap();
                 self.command_is_executing.wait_until_pane_is_closed();
             }
             Action::NewTab => {
                 self.command_is_executing.opening_new_pane();
-                self.send_pty_instructions
-                    .send(PtyInstruction::NewTab)
-                    .unwrap();
+                self.senders.send_to_pty(PtyInstruction::NewTab).unwrap();
                 self.command_is_executing.wait_until_new_pane_is_opened();
             }
             Action::GoToNextTab => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchTabNext)
+                self.senders
+                    .send_to_screen(ScreenInstruction::SwitchTabNext)
                     .unwrap();
             }
             Action::GoToPreviousTab => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::SwitchTabPrev)
+                self.senders
+                    .send_to_screen(ScreenInstruction::SwitchTabPrev)
                     .unwrap();
             }
             Action::ToggleActiveSyncPanes => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::ToggleActiveSyncPanes)
+                self.senders
+                    .send_to_screen(ScreenInstruction::ToggleActiveSyncPanes)
                     .unwrap();
             }
             Action::CloseTab => {
                 self.command_is_executing.closing_pane();
-                self.send_screen_instructions
-                    .send(ScreenInstruction::CloseTab)
+                self.senders
+                    .send_to_screen(ScreenInstruction::CloseTab)
                     .unwrap();
                 self.command_is_executing.wait_until_pane_is_closed();
             }
             Action::GoToTab(i) => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::GoToTab(i))
+                self.senders
+                    .send_to_screen(ScreenInstruction::GoToTab(i))
                     .unwrap();
             }
             Action::TabNameInput(c) => {
-                self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabName(c))
+                self.senders
+                    .send_to_screen(ScreenInstruction::UpdateTabName(c))
                     .unwrap();
             }
             Action::NoOp => {}
@@ -275,9 +264,7 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting Zellij).
     fn exit(&mut self) {
-        self.send_app_instructions
-            .send(AppInstruction::Exit)
-            .unwrap();
+        self.senders.send_to_app(AppInstruction::Exit).unwrap();
     }
 }
 
@@ -324,21 +311,10 @@ pub fn input_loop(
     os_input: Box<dyn OsApi>,
     config: Config,
     command_is_executing: CommandIsExecuting,
-    send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_pty_instructions: SenderWithContext<PtyInstruction>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    send_app_instructions: SenderWithContext<AppInstruction>,
+    senders: ThreadSenders,
 ) {
-    let _handler = InputHandler::new(
-        os_input,
-        command_is_executing,
-        config,
-        send_screen_instructions,
-        send_pty_instructions,
-        send_plugin_instructions,
-        send_app_instructions,
-    )
-    .handle_input();
+    let _handler =
+        InputHandler::new(os_input, command_is_executing, config, senders).handle_input();
 }
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
