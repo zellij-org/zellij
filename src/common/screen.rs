@@ -192,19 +192,10 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .to_pty
-            .as_ref()
-            .unwrap()
-            .send(PtyInstruction::CloseTab(pane_ids));
+            .send_to_pty(PtyInstruction::CloseTab(pane_ids));
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.bus
-                .senders
-                .to_app
-                .as_ref()
-                .unwrap()
-                .send(AppInstruction::Exit)
-                .unwrap();
+            self.bus.senders.send_to_app(AppInstruction::Exit).unwrap();
         } else {
             for t in self.tabs.values_mut() {
                 if t.position > active_tab.position {
@@ -299,10 +290,7 @@ impl Screen {
         }
         self.bus
             .senders
-            .to_plugin
-            .as_ref()
-            .unwrap()
-            .send(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
+            .send_to_plugin(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
             .unwrap();
     }
 
@@ -341,9 +329,6 @@ pub fn screen_thread_main(
     loop {
         let (event, mut err_ctx) = screen
             .bus
-            .receiver
-            .as_ref()
-            .unwrap()
             .recv()
             .expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));

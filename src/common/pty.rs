@@ -95,30 +95,21 @@ fn handle_event(
             let pid = pty.spawn_terminal(file_to_open);
             pty.bus
                 .senders
-                .to_screen
-                .as_ref()
-                .unwrap()
-                .send(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
+                .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                 .unwrap();
         }
         PtyInstruction::SpawnTerminalVertically(file_to_open) => {
             let pid = pty.spawn_terminal(file_to_open);
             pty.bus
                 .senders
-                .to_screen
-                .as_ref()
-                .unwrap()
-                .send(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                 .unwrap();
         }
         PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
             let pid = pty.spawn_terminal(file_to_open);
             pty.bus
                 .senders
-                .to_screen
-                .as_ref()
-                .unwrap()
-                .send(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                 .unwrap();
         }
         PtyInstruction::NewTab => {
@@ -128,10 +119,7 @@ fn handle_event(
                 let pid = pty.spawn_terminal(None);
                 pty.bus
                     .senders
-                    .to_screen
-                    .as_ref()
-                    .unwrap()
-                    .send(ScreenInstruction::NewTab(pid))
+                    .send_to_screen(ScreenInstruction::NewTab(pid))
                     .unwrap();
             }
         }
@@ -162,9 +150,6 @@ pub fn pty_thread_main(
     loop {
         let (event, mut err_ctx) = pty
             .bus
-            .receiver
-            .as_ref()
-            .unwrap()
             .recv()
             .expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
@@ -285,10 +270,7 @@ impl Pty {
         }
         self.bus
             .senders
-            .to_screen
-            .as_ref()
-            .unwrap()
-            .send(ScreenInstruction::ApplyLayout((
+            .send_to_screen(ScreenInstruction::ApplyLayout((
                 layout,
                 new_pane_pids.clone(),
             )))
@@ -316,10 +298,7 @@ impl Pty {
             PaneId::Plugin(pid) => drop(
                 self.bus
                     .senders
-                    .to_plugin
-                    .as_ref()
-                    .unwrap()
-                    .send(PluginInstruction::Unload(pid)),
+                    .send_to_plugin(PluginInstruction::Unload(pid)),
             ),
         }
     }

@@ -9,7 +9,7 @@ pub mod screen;
 pub mod utils;
 pub mod wasm_vm;
 
-use std::cell::RefCell;
+use std::{cell::RefCell, sync::mpsc::RecvError};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
@@ -116,28 +116,28 @@ pub struct ThreadSenders {
 
 impl ThreadSenders {
     fn send_to_screen(
-        &mut self,
+        &self,
         instruction: ScreenInstruction,
     ) -> Result<(), mpsc::SendError<(ScreenInstruction, ErrorContext)>> {
         self.to_screen.as_ref().unwrap().send(instruction)
     }
 
     fn send_to_pty(
-        &mut self,
+        &self,
         instruction: PtyInstruction,
     ) -> Result<(), mpsc::SendError<(PtyInstruction, ErrorContext)>> {
         self.to_pty.as_ref().unwrap().send(instruction)
     }
 
     fn send_to_plugin(
-        &mut self,
+        &self,
         instruction: PluginInstruction,
     ) -> Result<(), mpsc::SendError<(PluginInstruction, ErrorContext)>> {
         self.to_plugin.as_ref().unwrap().send(instruction)
     }
 
     fn send_to_app(
-        &mut self,
+        &self,
         instruction: AppInstruction,
     ) -> Result<(), mpsc::SendError<(AppInstruction, ErrorContext)>> {
         self.to_app.as_ref().unwrap().send(instruction)
@@ -169,6 +169,10 @@ impl<T> Bus<T> {
             },
             os_input: os_input.clone(),
         }
+    }
+
+    fn recv(&self) -> Result<(T, ErrorContext), RecvError> {
+        self.receiver.as_ref().unwrap().recv()
     }
 }
 
@@ -306,13 +310,18 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     // TODO: currently we don't wait for this to quit
     // because otherwise the app will hang. Need to fix this so it both
     // listens to the ipc-bus and is able to quit cleanly
+    // TODO: This will also be rearranged by the client-server model changes
     #[cfg(not(test))]
     let _ipc_thread = thread::Builder::new()
         .name("ipc_server".to_string())
         .spawn({
             use std::io::Read;
-            let to_pty = to_pty.clone();
-            let to_screen = to_screen.clone();
+            let senders = ThreadSenders {
+                to_pty: Some(to_pty.clone()),
+                to_screen: Some(to_screen.clone()),
+                to_app: None,
+                to_plugin: None,
+            };
             move || {
                 std::fs::remove_file(ZELLIJ_IPC_PIPE).ok();
                 let listener = std::os::unix::net::UnixListener::bind(ZELLIJ_IPC_PIPE)
@@ -332,22 +341,26 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                             match &decoded {
                                 ApiCommand::OpenFile(file_name) => {
                                     let path = PathBuf::from(file_name);
-                                    to_pty
-                                        .send(PtyInstruction::SpawnTerminal(Some(path)))
+                                    senders
+                                        .send_to_pty(PtyInstruction::SpawnTerminal(Some(path)))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitHorizontally => {
-                                    to_pty
-                                        .send(PtyInstruction::SpawnTerminalHorizontally(None))
+                                    senders
+                                        .send_to_pty(PtyInstruction::SpawnTerminalHorizontally(
+                                            None,
+                                        ))
                                         .unwrap();
                                 }
                                 ApiCommand::SplitVertically => {
-                                    to_pty
-                                        .send(PtyInstruction::SpawnTerminalVertically(None))
+                                    senders
+                                        .send_to_pty(PtyInstruction::SpawnTerminalVertically(None))
                                         .unwrap();
                                 }
                                 ApiCommand::MoveFocus => {
-                                    to_screen.send(ScreenInstruction::FocusNextPane).unwrap();
+                                    senders
+                                        .send_to_screen(ScreenInstruction::FocusNextPane)
+                                        .unwrap();
                                 }
                             }
                         }
