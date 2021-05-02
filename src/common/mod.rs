@@ -119,7 +119,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let pty = Pty::new(
                 Bus::new(
-                    Some(pty_receiver),
+                    pty_receiver,
                     Some(&to_screen),
                     None,
                     Some(&to_plugin),
@@ -138,7 +138,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("screen".to_string())
         .spawn({
             let screen_bus = Bus::new(
-                Some(screen_receiver),
+                screen_receiver,
                 None,
                 Some(&to_pty),
                 Some(&to_plugin),
@@ -156,7 +156,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("wasm".to_string())
         .spawn({
             let plugin_bus = Bus::new(
-                Some(plugin_receiver),
+                plugin_receiver,
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),

@@ -110,14 +110,14 @@ impl ThreadSenders {
 
 /// A container for a receiver, OS input and the senders to a given thread
 pub struct Bus<T> {
-    pub receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
+    pub receiver: mpsc::Receiver<(T, ErrorContext)>,
     pub senders: ThreadSenders,
     pub os_input: Option<Box<dyn OsApi>>,
 }
 
 impl<T> Bus<T> {
     pub fn new(
-        receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
+        receiver: mpsc::Receiver<(T, ErrorContext)>,
         to_screen: Option<&SenderWithContext<ScreenInstruction>>,
         to_pty: Option<&SenderWithContext<PtyInstruction>>,
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
@@ -137,6 +137,6 @@ impl<T> Bus<T> {
     }
 
     pub fn recv(&self) -> Result<(T, ErrorContext), mpsc::RecvError> {
-        self.receiver.as_ref().unwrap().recv()
+        self.receiver.recv()
     }
 }
