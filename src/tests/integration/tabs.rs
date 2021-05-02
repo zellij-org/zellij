@@ -5,6 +5,7 @@ use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots}
 use crate::{panes::PositionAndSize, tests::utils::commands::CLOSE_PANE_IN_PANE_MODE};
 use crate::{start, CliArgs};
 
+use crate::common::input::config::Config;
 use crate::tests::utils::commands::{
     CLOSE_TAB_IN_TAB_MODE, NEW_TAB_IN_TAB_MODE, PANE_MODE, QUIT, SPLIT_DOWN_IN_PANE_MODE,
     SWITCH_NEXT_TAB_IN_TAB_MODE, SWITCH_PREV_TAB_IN_TAB_MODE, TAB_MODE,
@@ -32,7 +33,11 @@ pub fn open_new_tab() {
         &NEW_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -63,7 +68,11 @@ pub fn switch_to_prev_tab() {
         &SWITCH_PREV_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -94,7 +103,11 @@ pub fn switch_to_next_tab() {
         &SWITCH_NEXT_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -125,7 +138,11 @@ pub fn close_tab() {
         &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -157,7 +174,11 @@ pub fn close_last_pane_in_a_tab() {
         &CLOSE_PANE_IN_PANE_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -191,7 +212,11 @@ pub fn close_the_middle_tab() {
         &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -230,7 +255,11 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         &CLOSE_TAB_IN_TAB_MODE,
         &QUIT,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer
@@ -261,7 +290,11 @@ pub fn closing_last_tab_exits_the_app() {
         &CLOSE_TAB_IN_TAB_MODE,
         &CLOSE_TAB_IN_TAB_MODE,
     ]);
-    start(Box::new(fake_input_output.clone()), CliArgs::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        CliArgs::default(),
+        Config::default(),
+    );
 
     let output_frames = fake_input_output
         .stdout_writer

@@ -53,7 +53,7 @@ pub enum AppInstruction {
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME: Still some modularisation left to be done, but better than it was
-pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
+pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
     let _ = os_input
@@ -62,15 +62,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .unwrap();
 
     env::set_var(&"ZELLIJ", "0");
-
-    let config_dir = opts.config_dir.or_else(install::default_config_dir);
-
-    let config = Config::from_cli_config(opts.config, opts.option, config_dir)
-        .map_err(|e| {
-            eprintln!("There was an error in the config file:\n{}", e);
-            std::process::exit(1);
-        })
-        .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
 
