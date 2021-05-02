@@ -106,11 +106,17 @@ impl KeyGroup {
     }
 
     fn fill_keys(&self, mut st: StyledText) -> StyledText {
-        for (i, k) in self.keys.iter().enumerate() {
-            if i > 0 {
+        let key_text = self
+            .keys
+            .iter()
+            .map(|c| letter_shortcut_key(&self.prefix, c))
+            .collect::<Vec<_>>();
+        let ignore_sep = key_text.iter().all(|c| c.chars().count() == 1);
+        for (i, k) in key_text.iter().enumerate() {
+            if i > 0 && !ignore_sep {
                 st = st.push_nav_text("/");
             }
-            st = st.push_nav_key(&letter_shortcut_key(&self.prefix, k));
+            st = st.push_nav_key(k);
         }
         st
     }
@@ -255,7 +261,7 @@ impl QuickNavbar {
                     if !self.switch_focus.keys.is_empty() {
                         st = self.switch_focus.fill_keys(st);
                         if !self.move_focus.keys.is_empty() {
-                            st = st.push_nav_text("/");
+                            st = st.push_nav_text(" / ");
                         }
                     }
                     if !self.move_focus.keys.is_empty() {
@@ -265,7 +271,14 @@ impl QuickNavbar {
                 }
             }
             _ => {
-                st = self.switch_focus.fill_style_text(st, ", ");
+                st = self.switch_focus.fill_style_text(
+                    st,
+                    if self.move_focus.keys.is_empty() {
+                        "."
+                    } else {
+                        ", "
+                    },
+                );
                 st = self.move_focus.fill_style_text(st, ".");
             }
         }
