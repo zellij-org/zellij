@@ -108,35 +108,35 @@ pub enum AppInstruction {
 
 #[derive(Clone)]
 pub struct ThreadSenders {
-    to_screen: Option<SenderWithContext<ScreenInstruction>>,
-    to_pty: Option<SenderWithContext<PtyInstruction>>,
-    to_plugin: Option<SenderWithContext<PluginInstruction>>,
-    to_app: Option<SenderWithContext<AppInstruction>>,
+    pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
+    pub to_pty: Option<SenderWithContext<PtyInstruction>>,
+    pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
+    pub to_app: Option<SenderWithContext<AppInstruction>>,
 }
 
 impl ThreadSenders {
-    fn send_to_screen(
+    pub fn send_to_screen(
         &self,
         instruction: ScreenInstruction,
     ) -> Result<(), mpsc::SendError<(ScreenInstruction, ErrorContext)>> {
         self.to_screen.as_ref().unwrap().send(instruction)
     }
 
-    fn send_to_pty(
+    pub fn send_to_pty(
         &self,
         instruction: PtyInstruction,
     ) -> Result<(), mpsc::SendError<(PtyInstruction, ErrorContext)>> {
         self.to_pty.as_ref().unwrap().send(instruction)
     }
 
-    fn send_to_plugin(
+    pub fn send_to_plugin(
         &self,
         instruction: PluginInstruction,
     ) -> Result<(), mpsc::SendError<(PluginInstruction, ErrorContext)>> {
         self.to_plugin.as_ref().unwrap().send(instruction)
     }
 
-    fn send_to_app(
+    pub fn send_to_app(
         &self,
         instruction: AppInstruction,
     ) -> Result<(), mpsc::SendError<(AppInstruction, ErrorContext)>> {
@@ -171,7 +171,7 @@ impl<T> Bus<T> {
         }
     }
 
-    fn recv(&self) -> Result<(T, ErrorContext), RecvError> {
+    pub fn recv(&self) -> Result<(T, ErrorContext), RecvError> {
         self.receiver.as_ref().unwrap().recv()
     }
 }
