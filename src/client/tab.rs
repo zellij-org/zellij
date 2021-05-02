@@ -214,7 +214,7 @@ pub trait Pane {
 }
 
 impl Tab {
-    // FIXME: Too many arguments here! Maybe bundle all of the senders for the whole program in a struct?
+    // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         index: usize,

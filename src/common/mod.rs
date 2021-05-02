@@ -52,7 +52,7 @@ pub enum AppInstruction {
 }
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
-// FIXME this should definitely be modularized and split into different functions.
+// FIXME: Still some modularisation left to be done, but better than it was
 pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);

@@ -35,7 +35,6 @@ pub enum PluginInstruction {
 #[derive(WasmerEnv, Clone)]
 pub struct PluginEnv {
     pub plugin_id: u32,
-    // FIXME: This should be a big bundle of all of the channels
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
