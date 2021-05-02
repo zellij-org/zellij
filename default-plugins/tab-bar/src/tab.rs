@@ -1,6 +1,7 @@
 use crate::{LinePart, ARROW_SEPARATOR};
 use ansi_term::ANSIStrings;
 use zellij_tile::prelude::*;
+use zellij_tile_extra::*;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {
     let left_separator = style!(palette.bg, palette.green).paint(ARROW_SEPARATOR);

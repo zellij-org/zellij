@@ -9,3 +9,4 @@ license = "MIT"
 colored = "2"
 ansi_term = "0.12"
 zellij-tile = { path = "../../zellij-tile" }
+zellij-tile-extra = { path = "../../zellij-tile-extra" }

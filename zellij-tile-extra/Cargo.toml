@@ -1,0 +1,12 @@
+[package]
+name = "zellij-tile-extra"
+version = "1.0.0"
+authors = ["denis <denismaximov98@gmail.com>"]
+edition = "2018"
+description = "A utility library for Zellij plugins"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ansi_term = "0.12.1"
