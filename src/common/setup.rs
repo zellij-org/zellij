@@ -48,6 +48,7 @@ pub mod install {
     }
 }
 
+#[cfg(not(test))]
 pub fn find_default_config_dir() -> Option<PathBuf> {
     vec![
         Some(xdg_config_dir()),
@@ -58,6 +59,11 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
     .filter(|p| p.is_some())
     .find(|p| p.clone().unwrap().exists())
     .flatten()
+}
+
+#[cfg(test)]
+pub fn find_default_config_dir() -> Option<PathBuf> {
+    None
 }
 
 pub fn xdg_config_dir() -> PathBuf {
