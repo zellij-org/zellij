@@ -43,7 +43,7 @@ use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, ModeInfo};
+use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -258,7 +258,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
-
+            let colors = os_input.load_palette();
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
@@ -268,7 +268,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    ModeInfo::default(),
+                    ModeInfo {
+                        palette: colors,
+                        ..ModeInfo::default()
+                    },
+                    InputMode::Normal,
+                    colors,
                 );
                 loop {
                     let (event, mut err_ctx) = screen

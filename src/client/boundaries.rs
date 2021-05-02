@@ -1,10 +1,10 @@
 use crate::tab::Pane;
-use ansi_term::Colour;
+use crate::utils::shared::colors;
+use ansi_term::Colour::RGB;
 use std::collections::HashMap;
-use zellij_tile::data::InputMode;
+use zellij_tile::data::{InputMode, Palette};
 
 use std::fmt::{Display, Error, Formatter};
-
 pub mod boundary_type {
     pub const TOP_RIGHT: &str = "┐";
     pub const VERTICAL: &str = "│";
@@ -19,12 +19,12 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
-pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const GREEN: Colour = Fixed(154);
-    pub const GRAY: Colour = Fixed(238);
-    pub const ORANGE: Colour = Fixed(166);
-}
+// pub mod colors {
+//     use ansi_term::Colour::{self, Fixed};
+//     pub const GREEN: Colour = Fixed(154);
+//     pub const GRAY: Colour = Fixed(238);
+//     pub const ORANGE: Colour = Fixed(166);
+// }
 
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
@@ -32,7 +32,7 @@ pub type BoundaryType = &'static str; // easy way to refer to boundary_type abov
 pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
-    color: Option<Colour>,
+    color: Option<(u8, u8, u8)>,
 }
 
 impl BoundarySymbol {
@@ -47,7 +47,7 @@ impl BoundarySymbol {
         self.invisible = true;
         self
     }
-    pub fn color(&mut self, color: Option<Colour>) -> Self {
+    pub fn color(&mut self, color: Option<(u8, u8, u8)>) -> Self {
         self.color = color;
         *self
     }
@@ -58,7 +58,11 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => write!(f, "{}", color.paint(self.boundary_type)),
+                Some(color) => write!(
+                    f,
+                    "{}",
+                    RGB(color.0, color.1, color.2).paint(self.boundary_type)
+                ),
                 None => write!(f, "{}", self.boundary_type),
             },
         }
@@ -764,11 +768,11 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, color: Option<Colour>) {
-        let color = match color.is_some() {
+    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, palette: Option<Palette>) {
+        let color = match palette.is_some() {
             true => match input_mode {
-                InputMode::Normal | InputMode::Locked => Some(colors::GREEN),
-                _ => Some(colors::ORANGE),
+                InputMode::Normal | InputMode::Locked => Some(palette.unwrap().green),
+                _ => Some(palette.unwrap().orange),
             },
             false => None,
         };

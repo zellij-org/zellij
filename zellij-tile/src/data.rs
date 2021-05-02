@@ -67,6 +67,44 @@ impl Default for InputMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum Theme {
+    Light,
+    Dark,
+}
+impl Default for Theme {
+    fn default() -> Theme {
+        Theme::Dark
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum PaletteSource {
+    Default,
+    Xresources,
+}
+impl Default for PaletteSource {
+    fn default() -> PaletteSource {
+        PaletteSource::Default
+    }
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub struct Palette {
+    pub source: PaletteSource,
+    pub theme: Theme,
+    pub fg: (u8, u8, u8),
+    pub bg: (u8, u8, u8),
+    pub black: (u8, u8, u8),
+    pub red: (u8, u8, u8),
+    pub green: (u8, u8, u8),
+    pub yellow: (u8, u8, u8),
+    pub blue: (u8, u8, u8),
+    pub magenta: (u8, u8, u8),
+    pub cyan: (u8, u8, u8),
+    pub white: (u8, u8, u8),
+    pub orange: (u8, u8, u8),
+}
+
 /// Represents the contents of the help message that is printed in the status bar,
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
@@ -75,6 +113,7 @@ pub struct ModeInfo {
     pub mode: InputMode,
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
+    pub palette: Palette,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

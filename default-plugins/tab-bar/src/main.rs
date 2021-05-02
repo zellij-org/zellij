@@ -15,21 +15,10 @@ pub struct LinePart {
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
-    mode: InputMode,
+    mode_info: ModeInfo,
 }
 
 static ARROW_SEPARATOR: &str = "";
-
-pub mod colors {
-    use ansi_term::Colour::{self, Fixed};
-    pub const WHITE: Colour = Fixed(255);
-    pub const BLACK: Colour = Fixed(16);
-    pub const GREEN: Colour = Fixed(154);
-    pub const ORANGE: Colour = Fixed(166);
-    pub const GRAY: Colour = Fixed(238);
-    pub const BRIGHT_GRAY: Colour = Fixed(245);
-    pub const RED: Colour = Fixed(88);
-}
 
 register_plugin!(State);
 
@@ -43,7 +32,7 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) {
         match event {
-            Event::ModeUpdate(mode_info) => self.mode = mode_info.mode,
+            Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
@@ -57,7 +46,7 @@ impl ZellijPlugin for State {
         let mut active_tab_index = 0;
         for t in self.tabs.iter_mut() {
             let mut tabname = t.name.clone();
-            if t.active && self.mode == InputMode::RenameTab {
+            if t.active && self.mode_info.mode == InputMode::RenameTab {
                 if tabname.is_empty() {
                     tabname = String::from("Enter name...");
                 }
@@ -65,14 +54,26 @@ impl ZellijPlugin for State {
             } else if t.active {
                 active_tab_index = t.position;
             }
-            let tab = tab_style(tabname, t.active, t.position, t.is_sync_panes_active);
+            let tab = tab_style(
+                tabname,
+                t.active,
+                t.position,
+                t.is_sync_panes_active,
+                self.mode_info.palette,
+            );
             all_tabs.push(tab);
         }
-        let tab_line = tab_line(all_tabs, active_tab_index, cols);
+        let tab_line = tab_line(all_tabs, active_tab_index, cols, self.mode_info.palette);
         let mut s = String::new();
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        println!("{}\u{1b}[48;5;238m\u{1b}[0K", s);
+        println!(
+            "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
+            s,
+            self.mode_info.palette.bg.0,
+            self.mode_info.palette.bg.1,
+            self.mode_info.palette.bg.2
+        );
     }
 }

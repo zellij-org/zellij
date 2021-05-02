@@ -1,4 +1,5 @@
 use crate::panes::PositionAndSize;
+use crate::utils::shared::{colors, detect_theme, hex_to_rgb};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -12,6 +13,8 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use xrdb::Colors;
+use zellij_tile::data::{Palette, PaletteSource, Theme};
 
 use signal_hook::{consts::signal::*, iterator::Signals};
 
@@ -191,6 +194,7 @@ pub trait OsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`OsApi`] struct.
     fn box_clone(&self) -> Box<dyn OsApi>;
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    fn load_palette(&self) -> Palette;
 }
 
 impl OsApi for OsInputOutput {
@@ -260,6 +264,48 @@ impl OsApi for OsInputOutput {
                 _ => unreachable!(),
             }
         }
+    }
+    fn load_palette(&self) -> Palette {
+        let palette = match Colors::new("xresources") {
+            Some(palette) => {
+                let fg = hex_to_rgb(&palette.fg);
+                let bg = hex_to_rgb(&palette.bg);
+                let colors: Vec<(u8, u8, u8)> =
+                    palette.colors.iter().map(|c| hex_to_rgb(c)).collect();
+                let theme = detect_theme(bg);
+                Palette {
+                    source: PaletteSource::Xresources,
+                    theme,
+                    fg,
+                    bg,
+                    black: colors[0],
+                    red: colors[1],
+                    green: colors[2],
+                    yellow: colors[3],
+                    blue: colors[4],
+                    magenta: colors[5],
+                    cyan: colors[6],
+                    white: colors[7],
+                    orange: colors[9],
+                }
+            }
+            None => Palette {
+                source: PaletteSource::Default,
+                theme: Theme::Dark,
+                fg: colors::BRIGHT_GRAY,
+                bg: colors::GRAY,
+                black: colors::BLACK,
+                red: colors::RED,
+                green: colors::GREEN,
+                yellow: colors::GRAY,
+                blue: colors::GRAY,
+                magenta: colors::GRAY,
+                cyan: colors::GRAY,
+                white: colors::WHITE,
+                orange: colors::ORANGE,
+            },
+        };
+        palette
     }
 }
 

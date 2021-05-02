@@ -13,7 +13,7 @@ use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
 
-use zellij_tile::data::{Event, ModeInfo, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -81,6 +81,8 @@ pub struct Screen {
     /// The [`OsApi`] this [`Screen`] uses.
     os_api: Box<dyn OsApi>,
     mode_info: ModeInfo,
+    input_mode: InputMode,
+    colors: Palette,
 }
 
 impl Screen {
@@ -96,6 +98,8 @@ impl Screen {
         os_api: Box<dyn OsApi>,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
+        input_mode: InputMode,
+        colors: Palette,
     ) -> Self {
         Screen {
             receiver: receive_screen_instructions,
@@ -108,6 +112,8 @@ impl Screen {
             tabs: BTreeMap::new(),
             os_api,
             mode_info,
+            input_mode,
+            colors,
         }
     }
 
@@ -128,6 +134,8 @@ impl Screen {
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.mode_info.clone(),
+            self.input_mode,
+            self.colors,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -283,6 +291,8 @@ impl Screen {
             self.max_panes,
             None,
             self.mode_info.clone(),
+            self.input_mode,
+            self.colors,
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
