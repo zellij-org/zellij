@@ -76,16 +76,16 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.set_raw_mode(0);
-    let (to_screen, from_screen): ChannelWithContext<ScreenInstruction> = mpsc::channel();
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = mpsc::channel();
     let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
 
-    let (to_pty, from_pty): ChannelWithContext<PtyInstruction> = mpsc::channel();
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = mpsc::channel();
     let to_pty = SenderWithContext::new(SenderType::Sender(to_pty));
 
-    let (to_plugin, from_plugin): ChannelWithContext<PluginInstruction> = mpsc::channel();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = mpsc::channel();
     let to_plugin = SenderWithContext::new(SenderType::Sender(to_plugin));
 
-    let (to_app, from_app): SyncChannelWithContext<AppInstruction> = mpsc::sync_channel(0);
+    let (to_app, app_receiver): SyncChannelWithContext<AppInstruction> = mpsc::sync_channel(0);
     let to_app = SenderWithContext::new(SenderType::SyncSender(to_app));
 
     // Determine and initialize the data directory
@@ -119,7 +119,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .spawn({
             let pty = Pty::new(
                 Bus::new(
-                    Some(from_pty),
+                    Some(pty_receiver),
                     Some(&to_screen),
                     None,
                     Some(&to_plugin),
@@ -138,7 +138,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("screen".to_string())
         .spawn({
             let screen_bus = Bus::new(
-                Some(from_screen),
+                Some(screen_receiver),
                 None,
                 Some(&to_pty),
                 Some(&to_plugin),
@@ -156,7 +156,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .name("wasm".to_string())
         .spawn({
             let plugin_bus = Bus::new(
-                Some(from_plugin),
+                Some(plugin_receiver),
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),
@@ -265,7 +265,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
 
     #[warn(clippy::never_loop)]
     loop {
-        let (app_instruction, mut err_ctx) = from_app
+        let (app_instruction, mut err_ctx) = app_receiver
             .recv()
             .expect("failed to receive app instruction on channel");
 
