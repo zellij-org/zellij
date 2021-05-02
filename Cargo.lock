@@ -2258,7 +2258,6 @@ dependencies = [
 name = "zellij-tile"
 version = "1.1.0"
 dependencies = [
- "ansi_term 0.12.1",
  "serde",
  "serde_json",
  "strum",
