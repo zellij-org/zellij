@@ -1,5 +1,5 @@
 use crate::{LinePart, ARROW_SEPARATOR};
-use ansi_term::{ANSIStrings, Color::RGB, Style};
+use ansi_term::ANSIStrings;
 use zellij_tile::prelude::*;
 
 pub fn active_tab(text: String, palette: Palette) -> LinePart {

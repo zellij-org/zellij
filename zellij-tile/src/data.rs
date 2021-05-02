@@ -72,23 +72,23 @@ pub enum Theme {
     Light,
     Dark,
 }
+impl Default for Theme {
+    fn default() -> Theme {
+        Theme::Dark
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PaletteSource {
     Default,
     Xresources,
 }
-pub mod colors {
-    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
-    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
-    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
-    pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
-    pub const RED: (u8, u8, u8) = (135, 0, 0);
-    pub const ORANGE: (u8, u8, u8) = (215, 95, 0);
-    pub const BLACK: (u8, u8, u8) = (0, 0, 0);
+impl Default for PaletteSource {
+    fn default() -> PaletteSource {
+        PaletteSource::Default
+    }
 }
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct Palette {
     pub source: PaletteSource,
     pub theme: Theme,
@@ -103,26 +103,6 @@ pub struct Palette {
     pub cyan: (u8, u8, u8),
     pub white: (u8, u8, u8),
     pub orange: (u8, u8, u8),
-}
-
-impl Default for Palette {
-    fn default() -> Palette {
-        Palette {
-            source: PaletteSource::Default,
-            theme: Theme::Dark,
-            fg: colors::BRIGHT_GRAY,
-            bg: colors::BLACK,
-            black: colors::BLACK,
-            red: colors::RED,
-            green: colors::GREEN,
-            yellow: colors::GRAY,
-            blue: colors::GRAY,
-            magenta: colors::GRAY,
-            cyan: colors::GRAY,
-            white: colors::WHITE,
-            orange: colors::ORANGE,
-        }
-    }
 }
 
 /// Represents the contents of the help message that is printed in the status bar,

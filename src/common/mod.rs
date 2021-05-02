@@ -259,7 +259,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
             let colors = os_input.load_palette();
-            // debug_log_to_file(format!("{:?}", colors));
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
