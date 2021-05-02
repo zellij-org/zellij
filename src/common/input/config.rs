@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use crate::cli::{CliArgs, ConfigCli};
-use crate::common::install;
+use crate::common::setup;
 
 use serde::Deserialize;
 use std::convert::TryFrom;
@@ -61,7 +61,10 @@ impl TryFrom<&CliArgs> for Config {
             }
         }
 
-        let config_dir = opts.config_dir.clone().or_else(install::default_config_dir);
+        let config_dir = opts
+            .config_dir
+            .clone()
+            .or_else(setup::find_default_config_dir);
 
         if let Some(ref config) = config_dir {
             let path = config.join(DEFAULT_CONFIG_FILE_NAME);
@@ -101,7 +104,7 @@ impl Config {
     // TODO Deserialize the Configuration from bytes &[u8],
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
-        Self::from_yaml(String::from_utf8(install::DEFAULT_CONFIG.to_vec())?.as_str())
+        Self::from_yaml(String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?.as_str())
     }
 }
 

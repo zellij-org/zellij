@@ -1,11 +1,11 @@
 pub mod command_is_executing;
 pub mod errors;
 pub mod input;
-pub mod install;
 pub mod ipc;
 pub mod os_input_output;
 pub mod pty_bus;
 pub mod screen;
+pub mod setup;
 pub mod utils;
 pub mod wasm_vm;
 
@@ -34,11 +34,11 @@ use errors::{
     ScreenContext,
 };
 use input::handler::input_loop;
-use install::populate_data_dir;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
+use setup::install;
 use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
@@ -168,7 +168,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let data_dir = opts
         .data_dir
         .unwrap_or_else(|| project_dirs.data_dir().to_path_buf());
-    populate_data_dir(&data_dir);
+    install::populate_data_dir(&data_dir);
 
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
