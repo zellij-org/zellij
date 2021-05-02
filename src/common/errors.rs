@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
+use super::{thread_bus::ASYNCOPENCALLS, thread_bus::OPENCALLS, AppInstruction};
 use crate::common::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 

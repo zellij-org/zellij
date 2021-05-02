@@ -6,29 +6,32 @@ pub mod ipc;
 pub mod os_input_output;
 pub mod pty;
 pub mod screen;
+pub mod thread_bus;
 pub mod utils;
 pub mod wasm_vm;
 
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
-use std::{cell::RefCell, sync::mpsc::RecvError};
 use std::{env, io::Write};
 
 use crate::cli::CliArgs;
 use crate::common::input::config::Config;
+use crate::common::thread_bus::{
+    Bus, ChannelWithContext, SenderType, SenderWithContext, ThreadSenders, OPENCALLS,
+};
 use crate::layout::Layout;
 use crate::panes::PaneId;
-use async_std::task_local;
 use command_is_executing::CommandIsExecuting;
 use directories_next::ProjectDirs;
-use errors::{get_current_ctx, AppContext, ContextType, ErrorContext};
+use errors::{AppContext, ContextType};
 use input::handler::input_loop;
 use install::populate_data_dir;
 use os_input_output::OsApi;
 use pty::{pty_thread_main, Pty, PtyInstruction};
 use screen::{screen_thread_main, ScreenInstruction};
 use serde::{Deserialize, Serialize};
+use thread_bus::SyncChannelWithContext;
 use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasm_thread_main, PluginInstruction};
 use wasmer::Store;
@@ -41,139 +44,11 @@ pub enum ApiCommand {
     MoveFocus,
 }
 
-/// An [MPSC](mpsc) asynchronous channel with added error context.
-pub type ChannelWithContext<T> = (
-    mpsc::Sender<(T, ErrorContext)>,
-    mpsc::Receiver<(T, ErrorContext)>,
-);
-/// An [MPSC](mpsc) synchronous channel with added error context.
-pub type SyncChannelWithContext<T> = (
-    mpsc::SyncSender<(T, ErrorContext)>,
-    mpsc::Receiver<(T, ErrorContext)>,
-);
-
-/// Wrappers around the two standard [MPSC](mpsc) sender types, [`mpsc::Sender`] and [`mpsc::SyncSender`], with an additional [`ErrorContext`].
-#[derive(Clone)]
-enum SenderType<T: Clone> {
-    /// A wrapper around an [`mpsc::Sender`], adding an [`ErrorContext`].
-    Sender(mpsc::Sender<(T, ErrorContext)>),
-    /// A wrapper around an [`mpsc::SyncSender`], adding an [`ErrorContext`].
-    SyncSender(mpsc::SyncSender<(T, ErrorContext)>),
-}
-
-/// Sends messages on an [MPSC](std::sync::mpsc) channel, along with an [`ErrorContext`],
-/// synchronously or asynchronously depending on the underlying [`SenderType`].
-#[derive(Clone)]
-pub struct SenderWithContext<T: Clone> {
-    sender: SenderType<T>,
-}
-
-impl<T: Clone> SenderWithContext<T> {
-    fn new(sender: SenderType<T>) -> Self {
-        Self { sender }
-    }
-
-    /// Sends an event, along with the current [`ErrorContext`], on this
-    /// [`SenderWithContext`]'s channel.
-    pub fn send(&self, event: T) -> Result<(), mpsc::SendError<(T, ErrorContext)>> {
-        let err_ctx = get_current_ctx();
-        match self.sender {
-            SenderType::Sender(ref s) => s.send((event, err_ctx)),
-            SenderType::SyncSender(ref s) => s.send((event, err_ctx)),
-        }
-    }
-}
-
-unsafe impl<T: Clone> Send for SenderWithContext<T> {}
-unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
-
-thread_local!(
-    /// A key to some thread local storage (TLS) that holds a representation of the thread's call
-    /// stack in the form of an [`ErrorContext`].
-    static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
-);
-
-task_local! {
-    /// A key to some task local storage that holds a representation of the task's call
-    /// stack in the form of an [`ErrorContext`].
-    static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
-}
-
 /// Instructions related to the entire application.
 #[derive(Clone)]
 pub enum AppInstruction {
     Exit,
     Error(String),
-}
-
-#[derive(Clone)]
-pub struct ThreadSenders {
-    pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
-    pub to_pty: Option<SenderWithContext<PtyInstruction>>,
-    pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
-    pub to_app: Option<SenderWithContext<AppInstruction>>,
-}
-
-impl ThreadSenders {
-    pub fn send_to_screen(
-        &self,
-        instruction: ScreenInstruction,
-    ) -> Result<(), mpsc::SendError<(ScreenInstruction, ErrorContext)>> {
-        self.to_screen.as_ref().unwrap().send(instruction)
-    }
-
-    pub fn send_to_pty(
-        &self,
-        instruction: PtyInstruction,
-    ) -> Result<(), mpsc::SendError<(PtyInstruction, ErrorContext)>> {
-        self.to_pty.as_ref().unwrap().send(instruction)
-    }
-
-    pub fn send_to_plugin(
-        &self,
-        instruction: PluginInstruction,
-    ) -> Result<(), mpsc::SendError<(PluginInstruction, ErrorContext)>> {
-        self.to_plugin.as_ref().unwrap().send(instruction)
-    }
-
-    pub fn send_to_app(
-        &self,
-        instruction: AppInstruction,
-    ) -> Result<(), mpsc::SendError<(AppInstruction, ErrorContext)>> {
-        self.to_app.as_ref().unwrap().send(instruction)
-    }
-}
-
-pub struct Bus<T> {
-    receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
-    senders: ThreadSenders,
-    os_input: Option<Box<dyn OsApi>>,
-}
-
-impl<T> Bus<T> {
-    fn new(
-        receiver: Option<mpsc::Receiver<(T, ErrorContext)>>,
-        to_screen: Option<&SenderWithContext<ScreenInstruction>>,
-        to_pty: Option<&SenderWithContext<PtyInstruction>>,
-        to_plugin: Option<&SenderWithContext<PluginInstruction>>,
-        to_app: Option<&SenderWithContext<AppInstruction>>,
-        os_input: Option<Box<dyn OsApi>>,
-    ) -> Self {
-        Bus {
-            receiver,
-            senders: ThreadSenders {
-                to_screen: to_screen.cloned(),
-                to_pty: to_pty.cloned(),
-                to_plugin: to_plugin.cloned(),
-                to_app: to_app.cloned(),
-            },
-            os_input: os_input.clone(),
-        }
-    }
-
-    pub fn recv(&self) -> Result<(T, ErrorContext), RecvError> {
-        self.receiver.as_ref().unwrap().recv()
-    }
 }
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.

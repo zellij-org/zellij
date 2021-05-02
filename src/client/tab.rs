@@ -5,7 +5,7 @@ use crate::boundaries::colors;
 use crate::client::pane_resizer::PaneResizer;
 use crate::common::input::handler::parse_keys;
 use crate::common::pty::{PtyInstruction, VteBytes};
-use crate::common::ThreadSenders;
+use crate::common::thread_bus::ThreadSenders;
 use crate::layout::Layout;
 use crate::os_input_output::OsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
