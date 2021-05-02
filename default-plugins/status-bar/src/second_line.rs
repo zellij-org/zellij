@@ -92,26 +92,37 @@ impl KeyGroup {
         self
     }
 
-    fn fill_style_text(&self, mut st: StyledText, description: &str) -> StyledText {
-        if !self.keys.is_empty() {
-            match self.prefix {
-                Prefix::Alt => {
-                    st = st.push_nav_prefix("Alt + ");
-                }
-                Prefix::Ctrl => {
-                    st = st.push_nav_prefix("Ctrl + ");
-                }
-                Prefix::None => {}
-            };
-            for (i, k) in self.keys.iter().enumerate() {
-                if i > 0 {
-                    st = st.push_nav_text("/");
-                }
-                st = st.push_nav_key(&letter_shortcut_key(&self.prefix, k));
+    fn fill_prefix(&self, mut st: StyledText) -> StyledText {
+        match self.prefix {
+            Prefix::Alt => {
+                st = st.push_nav_prefix("Alt + ");
             }
-            st = st.push_nav_text(&description);
+            Prefix::Ctrl => {
+                st = st.push_nav_prefix("Ctrl + ");
+            }
+            Prefix::None => {}
+        };
+        st
+    }
+
+    fn fill_keys(&self, mut st: StyledText) -> StyledText {
+        for (i, k) in self.keys.iter().enumerate() {
+            if i > 0 {
+                st = st.push_nav_text("/");
+            }
+            st = st.push_nav_key(&letter_shortcut_key(&self.prefix, k));
         }
         st
+    }
+
+    fn fill_style_text(&self, mut st: StyledText, description: &str) -> StyledText {
+        if !self.keys.is_empty() {
+            st = self.fill_prefix(st);
+            st = self.fill_keys(st);
+            st.push_nav_text(description)
+        } else {
+            st
+        }
     }
 }
 
@@ -126,6 +137,7 @@ fn letter_shortcut_key(prefix: &Prefix, key: &Key) -> String {
 struct QuickNavbar {
     open_pane: KeyGroup,
     move_focus: KeyGroup,
+    switch_focus: KeyGroup,
 }
 
 impl QuickNavbar {
@@ -135,6 +147,10 @@ impl QuickNavbar {
             Action::MoveFocus(Direction::Up),
             Action::MoveFocus(Direction::Down),
             Action::MoveFocus(Direction::Right),
+        ];
+        const SWITCH_FOCUS: &[Action] = &[
+            Action::FocusPreviousPane,
+            Action::FocusNextPane,
         ];
         let open_pane = match pick_key_from_keybinds(Action::NewPane(None), &help.keybinds) {
             Some(k) => KeyGroup::new().push_key(k).done(),
@@ -148,33 +164,125 @@ impl QuickNavbar {
             move_focus = move_focus.push_key(k);
         }
         move_focus = move_focus.done();
+        let mut switch_focus= KeyGroup::new();
+        for k in SWITCH_FOCUS
+            .iter()
+            .filter_map(|action| pick_key_from_keybinds(action.clone(), &help.keybinds))
+        {
+            switch_focus= switch_focus.push_key(k);
+        }
+        switch_focus = switch_focus.done();
         QuickNavbar {
             open_pane,
             move_focus,
+            switch_focus,
         }
     }
 
     fn full_text(&self) -> StyledText {
         let mut st = StyledText::new().push_nav_text(" Tip: ");
         st = self.open_pane.fill_style_text(st, " => open new pane. ");
-        st = self
-            .move_focus
-            .fill_style_text(st, " => navigate between panes.");
+        match (self.move_focus.prefix, self.switch_focus.prefix) {
+            (Prefix::Alt, Prefix::Alt) | (Prefix::Ctrl, Prefix::Ctrl) => {
+                if !self.switch_focus.keys.is_empty() && !self.move_focus.keys.is_empty() {
+                    st = self.switch_focus.fill_prefix(st);
+                    if !self.switch_focus.keys.is_empty() {
+                        st = self.switch_focus.fill_keys(st);
+                        st = st.push_nav_text(" or ");
+                    }
+                    if !self.move_focus.keys.is_empty() {
+                        st = self.move_focus.fill_keys(st);
+                    }
+                    st = st.push_nav_text(" => navigate between panes.");
+                }
+            },
+            _ => {
+                // Switch focus and move focus have different prefix
+                // e.g. Ctrl + [/] or Alt + h/j/l/k => ...
+                // notice both switch_focus and move_focus may be empty
+                st = self
+                    .switch_focus
+                    .fill_style_text(st, 
+                        if self.move_focus.keys.is_empty() {
+                            " => navigate between panes."
+                        } else {
+                            " or "
+                        }
+                    );
+                st = self
+                    .move_focus
+                    .fill_style_text(st, " => navigate between panes.");
+
+            }
+        }
         st.done()
     }
 
     fn medium_text(&self) -> StyledText {
         let mut st = StyledText::new().push_nav_text(" Tip: ");
         st = self.open_pane.fill_style_text(st, " => new pane. ");
-        st = self.move_focus.fill_style_text(st, " => navigate.");
+        match (self.move_focus.prefix, self.switch_focus.prefix) {
+            (Prefix::Alt, Prefix::Alt) | (Prefix::Ctrl, Prefix::Ctrl) => {
+                if !self.switch_focus.keys.is_empty() && !self.move_focus.keys.is_empty() {
+                    st = self.switch_focus.fill_prefix(st);
+                    if !self.switch_focus.keys.is_empty() {
+                        st = self.switch_focus.fill_keys(st);
+                        st = st.push_nav_text(" or ");
+                    }
+                    if !self.move_focus.keys.is_empty() {
+                        st = self.move_focus.fill_keys(st);
+                    }
+                    st = st.push_nav_text(" => navigate.");
+                }
+            },
+            _ => {
+                st = self
+                    .switch_focus
+                    .fill_style_text(st, 
+                        if self.move_focus.keys.is_empty() {
+                            " => navigate."
+                        } else {
+                            " or "
+                        }
+                    );
+                st = self
+                    .move_focus
+                    .fill_style_text(st, " => navigate.");
+
+            }
+        }
         st.done()
     }
 
     fn short_text(&self) -> StyledText {
         let mut st = StyledText::new().push_nav_text(" QuickNav: ");
-        st = self.open_pane.fill_style_text(st, "");
-        st = st.push_nav_text(",");
-        st = self.move_focus.fill_style_text(st, "");
+        st = self.open_pane.fill_style_text(st, ", ");
+        match (self.move_focus.prefix, self.switch_focus.prefix) {
+            (Prefix::Alt, Prefix::Alt) | (Prefix::Ctrl, Prefix::Ctrl) => {
+                if !self.switch_focus.keys.is_empty() && !self.move_focus.keys.is_empty() {
+                    st = self.switch_focus.fill_prefix(st);
+                    if !self.switch_focus.keys.is_empty() {
+                        st = self.switch_focus.fill_keys(st);
+                        if !self.move_focus.keys.is_empty() {
+                            st = st.push_nav_text("/");
+                        }
+                    }
+                    if !self.move_focus.keys.is_empty() {
+                        st = self.move_focus.fill_keys(st);
+                    }
+                    st = st.push_nav_text(".");
+                }
+            },
+            _ => {
+                st = self
+                    .switch_focus
+                    .fill_style_text(st, ", ");
+                st = self
+                    .move_focus
+                    .fill_style_text(st, ".");
+
+            }
+        }
         st.done()
     }
 }

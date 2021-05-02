@@ -13,8 +13,8 @@ pub enum Prefix {
 impl Prefix {
     pub fn text(&self) -> StyledText {
         match self {
-            Prefix::Ctrl => StyledText::new().push_superkey("Ctrl + ").done(),
-            Prefix::Alt => StyledText::new().push_superkey("Alt + ").done(),
+            Prefix::Ctrl => StyledText::new().push_superkey(" Ctrl + ").done(),
+            Prefix::Alt => StyledText::new().push_superkey(" Alt + ").done(),
             Prefix::None => StyledText::new(),
         }
     }

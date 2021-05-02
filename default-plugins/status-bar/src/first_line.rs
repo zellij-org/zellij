@@ -88,6 +88,7 @@ impl KeyShortcut {
                 .push_right_sep()
                 .push_text(" ")
                 .push_text(&self.action.to_string())
+                .push_text(" ")
                 .push_suffix()
                 .done()
         }
@@ -108,11 +109,13 @@ impl KeyShortcut {
                             Some((a, b)) => StyledText::new()
                                 .style(self.mode.clone())
                                 .push_prefix()
+                                .push_text(" ")
                                 .push_text(&capitalize_str(a))
                                 .push_left_sep()
                                 .push_shortcut(&c.to_string())
                                 .push_right_sep()
                                 .push_text(&b.to_lowercase())
+                                .push_text(" ")
                                 .push_suffix()
                                 .done(),
                             None => self.full_text(),
@@ -132,7 +135,9 @@ impl KeyShortcut {
             StyledText::new()
                 .style(self.mode.clone())
                 .push_prefix()
+                .push_text(" ")
                 .push_shortcut(&self.letter_shortcut_key())
+                .push_text(" ")
                 .push_suffix()
                 .done()
         }
