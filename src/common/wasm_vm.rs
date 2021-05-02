@@ -54,7 +54,8 @@ pub fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
         host_subscribe,
         host_unsubscribe,
         host_set_invisible_borders,
-        host_set_max_height,
+        host_set_fixed_height,
+        host_set_fixed_width,
         host_set_selectable,
         host_get_plugin_ids,
         host_open_file,
@@ -85,13 +86,22 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         .unwrap()
 }
 
-fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
-    let max_height = max_height as usize;
+fn host_set_fixed_height(plugin_env: &PluginEnv, fixed_height: i32) {
     plugin_env
         .send_screen_instructions
-        .send(ScreenInstruction::SetMaxHeight(
+        .send(ScreenInstruction::SetFixedHeight(
             PaneId::Plugin(plugin_env.plugin_id),
-            max_height,
+            fixed_height as usize,
+        ))
+        .unwrap()
+}
+
+fn host_set_fixed_width(plugin_env: &PluginEnv, fixed_width: i32) {
+    plugin_env
+        .send_screen_instructions
+        .send(ScreenInstruction::SetFixedWidth(
+            PaneId::Plugin(plugin_env.plugin_id),
+            fixed_width as usize,
         ))
         .unwrap()
 }

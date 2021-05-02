@@ -19,7 +19,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 #[test]
 pub fn open_new_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -53,7 +53,7 @@ pub fn open_new_tab() {
 #[test]
 pub fn switch_to_prev_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -88,7 +88,7 @@ pub fn switch_to_prev_tab() {
 #[test]
 pub fn switch_to_next_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -123,7 +123,7 @@ pub fn switch_to_next_tab() {
 #[test]
 pub fn close_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -158,7 +158,7 @@ pub fn close_tab() {
 #[test]
 pub fn close_last_pane_in_a_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -194,7 +194,7 @@ pub fn close_last_pane_in_a_tab() {
 #[test]
 pub fn close_the_middle_tab() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -232,7 +232,7 @@ pub fn close_the_middle_tab() {
 #[test]
 pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -275,7 +275,7 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
 #[test]
 pub fn closing_last_tab_exits_the_app() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,

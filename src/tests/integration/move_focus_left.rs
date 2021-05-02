@@ -18,7 +18,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 #[test]
 pub fn move_focus_left() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -51,7 +51,7 @@ pub fn move_focus_left() {
 #[test]
 pub fn move_focus_left_to_the_most_recently_used_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,

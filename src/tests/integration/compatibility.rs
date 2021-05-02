@@ -26,14 +26,14 @@ use crate::tests::utils::commands::QUIT;
 fn get_fake_os_input(fake_win_size: &PositionAndSize, fixture_name: &str) -> FakeInputOutput {
     let mut tty_inputs = HashMap::new();
     let fixture_bytes = Bytes::from_file_in_fixtures(&fixture_name);
-    tty_inputs.insert(fake_win_size.columns as u16, fixture_bytes);
+    tty_inputs.insert(fake_win_size.cols as u16, fixture_bytes);
     FakeInputOutput::new(fake_win_size.clone()).with_tty_inputs(tty_inputs)
 }
 
 #[test]
 pub fn run_bandwhich_from_fish_shell() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -61,7 +61,7 @@ pub fn run_bandwhich_from_fish_shell() {
 #[test]
 pub fn fish_tab_completion_options() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -94,7 +94,7 @@ pub fn fish_select_tab_completion_options() {
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -131,7 +131,7 @@ pub fn vim_scroll_region_down() {
     // file
     // experience appear to the user
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -165,7 +165,7 @@ pub fn vim_ctrl_d() {
     // end of the scroll region
     // vim makes sure to fill these empty lines with the rest of the file
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -198,7 +198,7 @@ pub fn vim_ctrl_u() {
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -226,7 +226,7 @@ pub fn vim_ctrl_u() {
 #[test]
 pub fn htop() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -254,7 +254,7 @@ pub fn htop() {
 #[test]
 pub fn htop_scrolling() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -282,7 +282,7 @@ pub fn htop_scrolling() {
 #[test]
 pub fn htop_right_scrolling() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -318,7 +318,7 @@ pub fn vim_overwrite() {
     // * confirm you would like to change the file by pressing 'y' and then ENTER
     // * if everything looks fine, this test passed :)
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -349,7 +349,7 @@ pub fn clear_scroll_region() {
     // this means that when vim exits, we get back the previous scroll
     // buffer
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -377,7 +377,7 @@ pub fn clear_scroll_region() {
 #[test]
 pub fn display_tab_characters_properly() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -405,7 +405,7 @@ pub fn display_tab_characters_properly() {
 #[test]
 pub fn neovim_insert_mode() {
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -435,7 +435,7 @@ pub fn bash_cursor_linewrap() {
     // this test makes sure that when we enter a command that is beyond the screen border, that it
     // immediately goes down one line
     let fake_win_size = PositionAndSize {
-        columns: 116,
+        cols: 116,
         rows: 28,
         x: 0,
         y: 0,
@@ -465,7 +465,7 @@ pub fn fish_paste_multiline() {
     // here we paste a multiline command in fish shell, making sure we support it
     // going up and changing the colors of our line-wrapped pasted text
     let fake_win_size = PositionAndSize {
-        columns: 149,
+        cols: 149,
         rows: 28,
         x: 0,
         y: 0,
@@ -493,7 +493,7 @@ pub fn fish_paste_multiline() {
 #[test]
 pub fn git_log() {
     let fake_win_size = PositionAndSize {
-        columns: 149,
+        cols: 149,
         rows: 28,
         x: 0,
         y: 0,
@@ -523,7 +523,7 @@ pub fn git_diff_scrollup() {
     // this tests makes sure that when we have a git diff that exceeds the screen size
     // we are able to scroll up
     let fake_win_size = PositionAndSize {
-        columns: 149,
+        cols: 149,
         rows: 28,
         x: 0,
         y: 0,
@@ -551,7 +551,7 @@ pub fn git_diff_scrollup() {
 #[test]
 pub fn emacs_longbuf() {
     let fake_win_size = PositionAndSize {
-        columns: 284,
+        cols: 284,
         rows: 60,
         x: 0,
         y: 0,
@@ -579,7 +579,7 @@ pub fn emacs_longbuf() {
 #[test]
 pub fn top_and_quit() {
     let fake_win_size = PositionAndSize {
-        columns: 235,
+        cols: 235,
         rows: 56,
         x: 0,
         y: 0,
@@ -613,7 +613,7 @@ pub fn exa_plus_omf_theme() {
     // over existing on-screen content without deleting it, so we must
     // convert it to spaces
     let fake_win_size = PositionAndSize {
-        columns: 235,
+        cols: 235,
         rows: 56,
         x: 0,
         y: 0,

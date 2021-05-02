@@ -28,7 +28,7 @@ pub fn resize_down_with_pane_above() {
     // └───────────┘                  └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -71,7 +71,7 @@ pub fn resize_down_with_pane_below() {
     // └───────────┘                  └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -119,7 +119,7 @@ pub fn resize_down_with_panes_above_and_below() {
     // └───────────┘                  └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 25,
         x: 0,
         y: 0,
@@ -165,7 +165,7 @@ pub fn resize_down_with_multiple_panes_above() {
     // └───────────┘                    └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -214,7 +214,7 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -265,7 +265,7 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -315,7 +315,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -363,7 +363,7 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -412,7 +412,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -464,7 +464,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -518,7 +518,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     // └─┴─┴───┴─┴─┘                    └─┴─┴───┴─┴─┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 40,
         x: 0,
         y: 0,
@@ -589,7 +589,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // └─┴───────┴─┘                    └─┴───────┴─┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 40,
         x: 0,
         y: 0,
@@ -660,7 +660,7 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     // └───────────┘                  └───────────┘
     // █ == focused pane
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 7,
         x: 0,
         y: 0,

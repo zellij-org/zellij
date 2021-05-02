@@ -183,10 +183,6 @@ fn shortened_ctrl_key(key: &CtrlKeyShortcut, palette: ColoredElements) -> LinePa
             &format!(" <{}>{}", letter_shortcut, shortened_text),
             palette,
         ),
-        CtrlKeyMode::Disabled => disabled_mode_shortcut(
-            &format!(" <{}>{}", letter_shortcut, shortened_text),
-            palette,
-        ),
     }
 }
 

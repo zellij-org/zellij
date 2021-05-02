@@ -174,11 +174,11 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
     #[cfg(test)]
-    let default_layout = None;
+    let default_layout: Option<PathBuf> = None;
     let maybe_layout = opts
         .layout
-        .map(|p| Layout::new(&p, &data_dir))
-        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
+        .map(|p| Layout::new(&p.as_path(), &data_dir))
+        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p.as_path(), &data_dir)));
 
     #[cfg(not(test))]
     std::panic::set_hook({
@@ -395,11 +395,17 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
                                 .unwrap()
                                 .set_pane_selectable(id, selectable);
                         }
-                        ScreenInstruction::SetMaxHeight(id, max_height) => {
+                        ScreenInstruction::SetFixedHeight(id, fixed_height) => {
                             screen
                                 .get_active_tab_mut()
                                 .unwrap()
-                                .set_pane_max_height(id, max_height);
+                                .set_pane_fixed_height(id, fixed_height);
+                        }
+                        ScreenInstruction::SetFixedWidth(id, fixed_width) => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .set_pane_fixed_width(id, fixed_width);
                         }
                         ScreenInstruction::SetInvisibleBorders(id, invisible_borders) => {
                             screen
