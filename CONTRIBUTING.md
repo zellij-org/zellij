@@ -16,6 +16,8 @@ all contributors are expected to adhere to.
 ## Building
 To build Zellij, we're using cargo-make – you can install it by running `cargo install --force cargo-make`.
 
+Zellij has a hard dependency on a package from `x11` most likely called `libX11`, or similarly on your system.
+
 Here are some of the commands currently supported by the build system:
 
 ```sh
