@@ -32,6 +32,7 @@ pub enum Event {
     TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
     Timer(f64),
+    InputStringUpdate(String),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
@@ -116,6 +117,7 @@ pub struct ModeInfo {
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
     pub palette: Palette,
+    pub input_prompt: String, // input_prompt is used by modes that require input displays, e.g. tab search or rename
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
