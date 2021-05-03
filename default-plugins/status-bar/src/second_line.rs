@@ -371,21 +371,39 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
             let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
             if line_part.len + select_pane_shortcut.len <= max_len {
                 line_part.len += select_pane_shortcut.len;
-                line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+                line_part.part = format!("{}{}", line_part.part, select_pane_shortcut);
             }
             line_part
         }
     }
 }
 
-pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
-    let full_shortcut_list = full_shortcut_list(help);
-    if full_shortcut_list.len <= max_width {
-        return full_shortcut_list;
+pub fn keybinds(help: &ModeInfo, max_width: usize, input_str: String) -> LinePart {
+    let mut shortcut_list = full_shortcut_list(help);
+    let shortened_list: LinePart;
+    if shortcut_list.len >= max_width {
+        shortened_list = shortened_shortcut_list(help);
+        if shortened_list.len <= max_width {
+            shortcut_list = shortened_list;
+        } else {
+            shortcut_list = best_effort_shortcut_list(help, max_width)
+        }
+    } 
+    if !help.input_prompt.is_empty() {
+        let mut in_str = input_str.clone();
+        if in_str.len() < 20 {
+            for _i in 0..(20-in_str.len()) {
+                in_str.push(' ')
+            }
+        }
+        let prompt = Style::new().bold().paint(help.input_prompt.as_str());
+        let in_str_str = Style::new().fg(palette.fg.0, palette.fg.1, palette.fg.2)
+            .bold()
+            .on(palette.orange.0, palette.orange.1, palette.orange.2)
+            .paint(in_str.as_str());
+        shortcut_list.len += help.input_prompt.len();
+        shortcut_list.len += in_str.len() + 10; // +10 for spaces/ ':'
+        shortcut_list.part = format!("{} /       {}: {}", shortcut_list.part, prompt, in_str_str);
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help);
-    if shortened_shortcut_list.len <= max_width {
-        return shortened_shortcut_list;
-    }
-    best_effort_shortcut_list(help, max_width)
+    shortcut_list
 }

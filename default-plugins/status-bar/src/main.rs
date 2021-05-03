@@ -17,6 +17,7 @@ static MORE_MSG: &str = " ... ";
 #[derive(Default)]
 struct State {
     mode_info: ModeInfo,
+    input_str: String,
 }
 
 register_plugin!(State);
@@ -130,12 +131,14 @@ impl ZellijPlugin for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_max_height(2);
-        subscribe(&[EventType::ModeUpdate]);
+        subscribe(&[EventType::ModeUpdate, EventType::InputStringUpdate]);
     }
 
     fn update(&mut self, event: Event) {
         if let Event::ModeUpdate(mode_info) = event {
             self.mode_info = mode_info;
+        } else if let Event::InputStringUpdate(input_string) = event {
+            self.input_str = input_string.clone();
         }
     }
 
@@ -145,7 +148,7 @@ impl ZellijPlugin for State {
         let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = keybinds(&self.mode_info, cols);
+        let second_line = keybinds(&self.mode_info, cols, self.input_str.clone());
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
