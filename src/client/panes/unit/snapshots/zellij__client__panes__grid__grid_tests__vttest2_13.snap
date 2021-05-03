@@ -1,0 +1,30 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (W):                    Graphic rendition test pattern:                                                            
+01 (W):                                                                                                               
+02 (W):                                                                                                               
+03 (W): vanilla                                bold                                                                   
+04 (W):                                                                                                               
+05 (W):      underline                              bold underline                                                    
+06 (W):                                                                                                               
+07 (W): blink                                  bold blink                                                             
+08 (W):                                                                                                               
+09 (W):      underline blink                        bold underline blink                                              
+10 (W):                                                                                                               
+11 (W): negative                               bold negative                                                          
+12 (W):                                                                                                               
+13 (W):      underline negative                     bold underline negative                                           
+14 (W):                                                                                                               
+15 (W): blink negative                         bold blink negative                                                    
+16 (W):                                                                                                               
+17 (W):      underline blink negative               bold underline blink negative                                     
+18 (W):                                                                                                               
+19 (W):                                                                                                               
+20 (W):                                                                                                               
+21 (W):                                                                                                               
+22 (W): Light background. Push <RETURN>                                                                               
+23 (W):                                                                                                               
+
