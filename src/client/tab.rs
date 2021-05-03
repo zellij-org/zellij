@@ -96,12 +96,12 @@ pub trait Pane {
     fn rows(&self) -> usize;
     fn columns(&self) -> usize;
     fn reset_size_and_position_override(&mut self);
+    fn position_and_size(&self) -> PositionAndSize;
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize);
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
-
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
@@ -174,15 +174,6 @@ pub trait Pane {
     fn get_vertical_overlap_with(&self, other: &dyn Pane) -> usize {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
-    }
-    fn position_and_size(&self) -> PositionAndSize {
-        PositionAndSize {
-            x: self.x(),
-            y: self.y(),
-            cols: self.columns(),
-            rows: self.rows(),
-            ..Default::default()
-        }
     }
     fn can_increase_height_by(&self, increase_by: usize) -> bool {
         self.max_height()

@@ -68,9 +68,11 @@ impl Pane for TerminalPane {
         self.position_and_size_override = None;
         self.reflow_lines();
     }
+    fn position_and_size(&self) -> PositionAndSize {
+        self.position_and_size
+    }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
-        self.position_and_size.cols = position_and_size.cols;
-        self.position_and_size.rows = position_and_size.rows;
+        self.position_and_size = *position_and_size;
         self.reflow_lines();
     }
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {

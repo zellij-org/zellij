@@ -63,6 +63,9 @@ impl Pane for PluginPane {
         self.position_and_size_override = None;
         self.should_render = true;
     }
+    fn position_and_size(&self) -> PositionAndSize {
+        self.position_and_size
+    }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
         self.should_render = true;
