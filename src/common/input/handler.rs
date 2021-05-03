@@ -27,6 +27,7 @@ struct InputHandler {
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_app_instructions: SenderWithContext<AppInstruction>,
     should_exit: bool,
+    input_buf: String,
 }
 
 impl InputHandler {
@@ -50,6 +51,7 @@ impl InputHandler {
             send_plugin_instructions,
             send_app_instructions,
             should_exit: false,
+            input_buf: String::new(),
         }
     }
 
@@ -270,14 +272,34 @@ impl InputHandler {
                     .unwrap();
             }
             Action::SearchTabInput(c) => {
+                self.update_input_buf(c);
                 self.send_screen_instructions
-                    .send(ScreenInstruction::UpdateTabSearch(c))
+                    .send(ScreenInstruction::SearchTab(self.input_buf.clone()))
                     .unwrap();
+                self.send_plugin_instructions
+                .send(PluginInstruction::Update(None, Event::InputStringUpdate(self.input_buf.clone())))
+                .unwrap();
             }
             Action::NoOp => {}
         }
 
         should_break
+    }
+
+    fn update_input_buf(&mut self, c: Vec<u8>) {
+        let s = std::str::from_utf8(&c).unwrap();
+        match s {
+            "\0" => {
+                self.input_buf = String::new();
+            }
+            "\u{007f}" | "\u{0008}" => {
+                //delete and backspace
+                self.input_buf.pop();
+            }
+            c => {
+                self.input_buf.push_str(c);
+            }
+        }
     }
 
     /// Routine to be called when the input handler exits (at the moment this is the
@@ -326,12 +348,14 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
         }
         InputMode::SearchTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
+            input_prompt.push_str("Name")
         }
     }
     ModeInfo {
         mode,
         keybinds,
         palette,
+        input_prompt,
     }
 }
 
