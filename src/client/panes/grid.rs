@@ -209,7 +209,6 @@ impl Grid {
             scroll_region: None,
             width: columns,
             height: rows,
-            // pending_styles: CharacterStyles::new(),
             should_render: true,
             cursor_key_mode: false,
             erasure_mode: false,
