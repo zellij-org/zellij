@@ -730,7 +730,7 @@ impl Cursor {
             y,
             is_hidden: false,
             pending_styles: CharacterStyles::new(),
-            charsets: Default::default()
+            charsets: Default::default(),
         }
     }
 }

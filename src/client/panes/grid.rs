@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{VecDeque, BTreeSet},
+    collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
 };
 
@@ -10,7 +10,8 @@ const SCROLL_BACK: usize = 10_000;
 use crate::utils::logging::debug_log_to_file;
 
 use crate::panes::terminal_character::{
-    Cursor, CharsetIndex, StandardCharset, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    CharacterStyles, CharsetIndex, Cursor, StandardCharset, TerminalCharacter,
+    EMPTY_TERMINAL_CHARACTER,
 };
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
@@ -232,7 +233,7 @@ impl Grid {
         match next_tabstop {
             Some(tabstop) => {
                 self.cursor.x = *tabstop;
-            },
+            }
             None => {
                 self.cursor.x = self.width.saturating_sub(1);
             }
@@ -734,7 +735,8 @@ impl Grid {
     pub fn move_cursor_up(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
-                self.cursor.y = std::cmp::max(self.cursor.y.saturating_sub(count), scroll_region_top);
+                self.cursor.y =
+                    std::cmp::max(self.cursor.y.saturating_sub(count), scroll_region_top);
                 return;
             }
         }
@@ -975,7 +977,9 @@ impl vte::Perform for Grid {
 
     fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
         if c == 'm' {
-            self.cursor.pending_styles.add_style_from_ansi_params(params);
+            self.cursor
+                .pending_styles
+                .add_style_from_ansi_params(params);
         } else if c == 'C' {
             // move cursor forward
             let move_by = if params[0] == 0 {
@@ -1276,7 +1280,10 @@ impl vte::Perform for Grid {
                         return;
                     }
                 };
-                self.configure_charset(StandardCharset::SpecialCharacterAndLineDrawing, charset_index);
+                self.configure_charset(
+                    StandardCharset::SpecialCharacterAndLineDrawing,
+                    charset_index,
+                );
             }
             (b'D', None) => {
                 self.add_newline();
