@@ -5,7 +5,7 @@ use std::{iter, str::from_utf8};
 use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
-use zellij_tile::data::Theme;
+use zellij_tile::data::{Palette, PaletteSource, Theme};
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
@@ -43,12 +43,29 @@ pub mod colors {
     pub const BLACK: (u8, u8, u8) = (0, 0, 0);
 }
 
-pub fn hex_to_rgb(hex: &Option<String>) -> (u8, u8, u8) {
-    let c = hex.clone();
-    let imm_str = &c.unwrap();
-    let hex_str: &str = &imm_str;
-    let rgb = Rgb::from_hex_str(hex_str).unwrap().as_tuple();
+pub fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
+    let rgb = Rgb::from_hex_str(hex)
+        .expect("The passed argument must be a valid hex color")
+        .as_tuple();
     (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
+}
+
+pub fn default_palette() -> Palette {
+    Palette {
+        source: PaletteSource::Default,
+        theme: Theme::Dark,
+        fg: colors::BRIGHT_GRAY,
+        bg: colors::GRAY,
+        black: colors::BLACK,
+        red: colors::RED,
+        green: colors::GREEN,
+        yellow: colors::GRAY,
+        blue: colors::GRAY,
+        magenta: colors::GRAY,
+        cyan: colors::GRAY,
+        white: colors::WHITE,
+        orange: colors::ORANGE,
+    }
 }
 
 // Dark magic
