@@ -32,6 +32,7 @@ pub fn accepts_basic_layout() {
         Box::new(fake_input_output.clone()),
         opts,
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer

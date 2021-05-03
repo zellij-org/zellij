@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
-use std::path::PathBuf;
 use std::str;
 use std::sync::mpsc::Receiver;
 
@@ -49,7 +48,7 @@ pub enum ScreenInstruction {
     SetMaxHeight(PaneId, usize),
     SetInvisibleBorders(PaneId, bool),
     ClosePane(PaneId),
-    ApplyLayout(PathBuf, Vec<RawFd>),
+    ApplyLayout(Layout, Vec<RawFd>),
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
@@ -83,6 +82,8 @@ pub struct Screen {
     /// The [`ClientOsApi`] this [`Screen`] uses.
     os_api: Box<dyn ServerOsApi>,
     mode_info: ModeInfo,
+    input_mode: InputMode,
+    colors: Palette,
 }
 
 impl Screen {

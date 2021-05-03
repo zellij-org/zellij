@@ -44,6 +44,7 @@ pub fn close_pane_with_another_pane_above_it() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -86,6 +87,7 @@ pub fn close_pane_with_another_pane_below_it() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -125,6 +127,7 @@ pub fn close_pane_with_another_pane_to_the_left() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -165,6 +168,7 @@ pub fn close_pane_with_another_pane_to_the_right() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -210,6 +214,7 @@ pub fn close_pane_with_multiple_panes_above_it() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -253,6 +258,7 @@ pub fn close_pane_with_multiple_panes_below_it() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -298,6 +304,7 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -341,6 +348,7 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -406,6 +414,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -467,6 +476,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -530,6 +540,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -593,6 +604,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -629,6 +641,7 @@ pub fn closing_last_pane_exits_app() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output

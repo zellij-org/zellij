@@ -1,7 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::boundaries::colors;
 use crate::client::pane_resizer::PaneResizer;
 use crate::common::{input::handler::parse_keys, SenderWithContext};
 use crate::layout::Layout;
@@ -15,11 +14,12 @@ use crate::{boundaries::Boundaries, panes::PluginPane};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::channel;
+use std::time::Instant;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
-use zellij_tile::data::{Event, ModeInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -72,7 +72,7 @@ pub struct Tab {
     send_plugin_instructions: SenderWithContext<PluginInstruction>,
     send_pty_instructions: SenderWithContext<PtyInstruction>,
     send_server_instructions: SenderWithContext<ServerInstruction>,
-    expansion_boundary: Option<PositionAndSize>,
+    synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
@@ -264,7 +264,6 @@ impl Tab {
             send_plugin_instructions,
             send_pty_instructions,
             send_server_instructions,
-            expansion_boundary: None,
             should_clear_display_before_rendering: false,
             mode_info,
             input_mode,
@@ -492,6 +491,7 @@ impl Tab {
                 y: active_pane.y(),
                 rows: active_pane.rows(),
                 columns: active_pane.columns(),
+                ..Default::default()
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
 
@@ -548,6 +548,7 @@ impl Tab {
                 y: active_pane.y(),
                 rows: active_pane.rows(),
                 columns: active_pane.columns(),
+                ..Default::default()
             };
             let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
 
@@ -723,6 +724,11 @@ impl Tab {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
             return;
+        }
+        // if any pane contain widechar, all pane in the same row will messup. We should render them every time
+        // FIXME: remove this when we can handle widechars correctly
+        if self.panes_contain_widechar() {
+            self.set_force_render()
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(

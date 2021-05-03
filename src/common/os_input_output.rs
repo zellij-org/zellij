@@ -1,3 +1,12 @@
+use crate::client::ClientInstruction;
+use crate::common::{
+    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
+    utils::consts::ZELLIJ_IPC_PIPE,
+};
+use crate::errors::ErrorContext;
+use crate::panes::PositionAndSize;
+use crate::server::ServerInstruction;
+use crate::utils::shared::{default_palette, detect_theme, hex_to_rgb};
 use interprocess::local_socket::LocalSocketStream;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
@@ -13,15 +22,8 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-
-use crate::client::ClientInstruction;
-use crate::common::{
-    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
-    utils::consts::ZELLIJ_IPC_PIPE,
-};
-use crate::errors::ErrorContext;
-use crate::panes::PositionAndSize;
-use crate::server::ServerInstruction;
+use xrdb::Colors;
+use zellij_tile::data::{Palette, PaletteSource};
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -194,6 +196,7 @@ pub trait ServerOsApi: Send + Sync {
     fn add_client_sender(&mut self);
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
+    fn load_palette(&self) -> Palette;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -257,6 +260,51 @@ impl ServerOsApi for ServerOsInputOutput {
     fn update_receiver(&mut self, stream: LocalSocketStream) {
         self.receive_instructions_from_client =
             Some(Arc::new(Mutex::new(IpcReceiverWithContext::new(stream))));
+    }
+    fn load_palette(&self) -> Palette {
+        let palette = match Colors::new("xresources") {
+            Some(palette) => {
+                let fg = if let Some(foreground) = palette.fg.as_deref().map(hex_to_rgb) {
+                    foreground
+                } else {
+                    return default_palette();
+                };
+
+                let bg = if let Some(background) = palette.bg.as_deref().map(hex_to_rgb) {
+                    background
+                } else {
+                    return default_palette();
+                };
+
+                // NOTE: `16` is the same as the length of `palette.colors`.
+                let mut colors: [(u8, u8, u8); 16] = [(0, 0, 0); 16];
+                for (idx, color) in palette.colors.iter().enumerate() {
+                    if let Some(c) = color {
+                        colors[idx] = hex_to_rgb(c);
+                    } else {
+                        return default_palette();
+                    }
+                }
+                let theme = detect_theme(bg);
+                Palette {
+                    source: PaletteSource::Xresources,
+                    theme,
+                    fg,
+                    bg,
+                    black: colors[0],
+                    red: colors[1],
+                    green: colors[2],
+                    yellow: colors[3],
+                    blue: colors[4],
+                    magenta: colors[5],
+                    cyan: colors[6],
+                    white: colors[7],
+                    orange: colors[9],
+                }
+            }
+            None => default_palette(),
+        };
+        palette
     }
 }
 

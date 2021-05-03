@@ -165,9 +165,9 @@ fn stream_terminal_bytes(
 impl PtyBus {
     pub fn new(
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
-        os_input: Box<dyn ServerOsApi>,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
+        os_input: Box<dyn ServerOsApi>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
@@ -193,8 +193,7 @@ impl PtyBus {
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout_path: PathBuf) {
-        let layout = Layout::new(layout_path.clone());
+    pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
@@ -204,7 +203,7 @@ impl PtyBus {
         }
         self.send_screen_instructions
             .send(ScreenInstruction::ApplyLayout(
-                layout_path,
+                layout,
                 new_pane_pids.clone(),
             ))
             .unwrap();

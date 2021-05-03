@@ -1,8 +1,9 @@
 use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Default, Debug, Clone)]
+#[derive(StructOpt, Default, Debug, Clone, Serialize, Deserialize)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
@@ -32,7 +33,7 @@ pub struct CliArgs {
     pub debug: bool,
 }
 
-#[derive(Debug, StructOpt, Clone)]
+#[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
 pub enum ConfigCli {
     /// Change the behaviour of zellij
     #[structopt(name = "option")]

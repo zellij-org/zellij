@@ -36,6 +36,7 @@ pub fn adding_new_terminal_in_fullscreen() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output
@@ -70,6 +71,7 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
+        Config::default(),
     );
 
     let output_frames = fake_input_output

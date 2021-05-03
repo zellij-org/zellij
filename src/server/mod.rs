@@ -1,4 +1,3 @@
-use directories_next::ProjectDirs;
 use interprocess::local_socket::LocalSocketListener;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -12,7 +11,7 @@ use std::{
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{Event, EventType, ModeInfo};
+use zellij_tile::data::{Event, EventType, InputMode, ModeInfo};
 
 use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
@@ -23,8 +22,9 @@ use crate::common::{
     os_input_output::ServerOsApi,
     pty_bus::{PtyBus, PtyInstruction},
     screen::{Screen, ScreenInstruction},
-    utils::consts::ZELLIJ_IPC_PIPE,
-    wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginEnv, PluginInstruction},
+    setup::install::populate_data_dir,
+    utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_PROJ_DIR},
+    wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction},
     ChannelWithContext, SenderType, SenderWithContext,
 };
 use crate::layout::Layout;
@@ -36,7 +36,7 @@ use crate::panes::PositionAndSize;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize),
+    NewClient(PositionAndSize, CliArgs),
     Action(Action),
     Render(Option<String>),
     UnblockInputThread,
@@ -63,7 +63,7 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::JoinHandle<()> {
+pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
     let (send_server_instructions, receive_server_instructions): ChannelWithContext<
         ServerInstruction,
     > = channel();
@@ -111,10 +111,10 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, opts: CliArgs) -> thread::Jo
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
-                    ServerInstruction::NewClient(full_screen_ws) => {
+                    ServerInstruction::NewClient(full_screen_ws, opts) => {
                         let session_data = init_session(
                             os_input.clone(),
-                            opts.clone(),
+                            opts,
                             send_server_instructions.clone(),
                             full_screen_ws,
                         );
@@ -164,7 +164,7 @@ fn handle_client(
                     break;
                 }
                 ServerInstruction::Action(action) => {
-                    route_action(action, rlocked_sessions.as_ref().unwrap());
+                    route_action(action, rlocked_sessions.as_ref().unwrap(), &*os_input);
                 }
                 ServerInstruction::TerminalResize(new_size) => {
                     rlocked_sessions
@@ -174,7 +174,7 @@ fn handle_client(
                         .send(ScreenInstruction::TerminalResize(new_size))
                         .unwrap();
                 }
-                ServerInstruction::NewClient(_) => {
+                ServerInstruction::NewClient(..) => {
                     os_input.add_client_sender();
                     send_server_instructions.send(instruction).unwrap();
                 }
@@ -207,18 +207,27 @@ fn init_session(
         channel();
     let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
 
+    // Determine and initialize the data directory
+    let data_dir = opts
+        .data_dir
+        .unwrap_or_else(|| ZELLIJ_PROJ_DIR.data_dir().to_path_buf());
+    populate_data_dir(&data_dir);
+
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
     #[cfg(test)]
     let default_layout = None;
-    let maybe_layout = opts.layout.or(default_layout);
+    let maybe_layout = opts
+        .layout
+        .map(|p| Layout::new(&p, &data_dir))
+        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
 
     let mut pty_bus = PtyBus::new(
         receive_pty_instructions,
-        os_input.clone(),
         send_screen_instructions.clone(),
         send_plugin_instructions.clone(),
+        os_input.clone(),
         opts.debug,
     );
 
@@ -293,6 +302,7 @@ fn init_session(
             let send_pty_instructions = send_pty_instructions.clone();
             let send_server_instructions = send_server_instructions;
             let max_panes = opts.max_panes;
+            let colors = os_input.load_palette();
 
             move || {
                 let mut screen = Screen::new(
@@ -303,7 +313,12 @@ fn init_session(
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    ModeInfo::default(),
+                    ModeInfo {
+                        palette: colors,
+                        ..ModeInfo::default()
+                    },
+                    InputMode::Normal,
+                    colors,
                 );
                 loop {
                     let (event, mut err_ctx) = screen
@@ -355,10 +370,11 @@ fn init_session(
                                 .unwrap();
                         }
                         ScreenInstruction::WriteCharacter(bytes) => {
-                            screen
-                                .get_active_tab_mut()
-                                .unwrap()
-                                .write_to_active_terminal(bytes);
+                            let active_tab = screen.get_active_tab_mut().unwrap();
+                            match active_tab.is_sync_panes_active() {
+                                true => active_tab.write_to_terminals_on_current_tab(bytes),
+                                false => active_tab.write_to_active_terminal(bytes),
+                            }
                         }
                         ScreenInstruction::ResizeLeft => {
                             screen.get_active_tab_mut().unwrap().resize_left();
@@ -404,6 +420,18 @@ fn init_session(
                                 .get_active_tab_mut()
                                 .unwrap()
                                 .scroll_active_terminal_down();
+                        }
+                        ScreenInstruction::PageScrollUp => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_up_page();
+                        }
+                        ScreenInstruction::PageScrollDown => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .scroll_active_terminal_down_page();
                         }
                         ScreenInstruction::ClearScroll => {
                             screen
@@ -473,7 +501,7 @@ fn init_session(
                                 .unwrap();
                         }
                         ScreenInstruction::ApplyLayout(layout, new_pane_pids) => {
-                            screen.apply_layout(Layout::new(layout), new_pane_pids);
+                            screen.apply_layout(layout, new_pane_pids);
                             screen
                                 .send_server_instructions
                                 .send(ServerInstruction::UnblockInputThread)
@@ -493,11 +521,18 @@ fn init_session(
                                 .send(ServerInstruction::UnblockInputThread)
                                 .unwrap();
                         }
+                        ScreenInstruction::TerminalResize(new_size) => {
+                            screen.resize_to_screen(new_size);
+                        }
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
                         }
-                        ScreenInstruction::TerminalResize(new_size) => {
-                            screen.resize_to_screen(new_size);
+                        ScreenInstruction::ToggleActiveSyncPanes => {
+                            screen
+                                .get_active_tab_mut()
+                                .unwrap()
+                                .toggle_sync_panes_is_active();
+                            screen.update_tabs();
                         }
                         ScreenInstruction::Exit => {
                             break;
@@ -513,6 +548,7 @@ fn init_session(
         .spawn({
             let send_screen_instructions = send_screen_instructions.clone();
             let send_pty_instructions = send_pty_instructions.clone();
+            let send_plugin_instructions = send_plugin_instructions.clone();
 
             let store = Store::default();
             let mut plugin_id = 0;
@@ -524,9 +560,7 @@ fn init_session(
                 err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
                 match event {
                     PluginInstruction::Load(pid_tx, path) => {
-                        let project_dirs =
-                            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-                        let plugin_dir = project_dirs.data_dir().join("plugins/");
+                        let plugin_dir = data_dir.join("plugins/");
                         let wasm_bytes = fs::read(&path)
                             .or_else(|_| fs::read(&path.with_extension("wasm")))
                             .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
@@ -558,11 +592,12 @@ fn init_session(
                             plugin_id,
                             send_screen_instructions: send_screen_instructions.clone(),
                             send_pty_instructions: send_pty_instructions.clone(),
+                            send_plugin_instructions: send_plugin_instructions.clone(),
                             wasi_env,
                             subscriptions: Arc::new(Mutex::new(HashSet::new())),
                         };
 
-                        let zellij = zellij_imports(&store, &plugin_env);
+                        let zellij = zellij_exports(&store, &plugin_env);
                         let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
                         let start = instance.exports.get_function("_start").unwrap();
@@ -581,10 +616,7 @@ fn init_session(
                             let event_type = EventType::from_str(&event.to_string()).unwrap();
                             if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
                                 let update = instance.exports.get_function("update").unwrap();
-                                wasi_write_string(
-                                    &plugin_env.wasi_env,
-                                    &serde_json::to_string(&event).unwrap(),
-                                );
+                                wasi_write_object(&plugin_env.wasi_env, &event);
                                 update.call(&[]).unwrap();
                             }
                         }
@@ -599,7 +631,7 @@ fn init_session(
                             .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
                             .unwrap();
 
-                        buf_tx.send(wasi_stdout(&plugin_env.wasi_env)).unwrap();
+                        buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                     }
                     PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
                     PluginInstruction::Exit => break,
@@ -617,7 +649,7 @@ fn init_session(
     }
 }
 
-fn route_action(action: Action, session: &SessionMetaData) {
+fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn ServerOsApi) {
     match action {
         Action::Write(val) => {
             session
@@ -630,16 +662,17 @@ fn route_action(action: Action, session: &SessionMetaData) {
                 .unwrap();
         }
         Action::SwitchToMode(mode) => {
+            let palette = os_input.load_palette();
             session
                 .send_plugin_instructions
                 .send(PluginInstruction::Update(
                     None,
-                    Event::ModeUpdate(get_mode_info(mode)),
+                    Event::ModeUpdate(get_mode_info(mode, palette)),
                 ))
                 .unwrap();
             session
                 .send_screen_instructions
-                .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
+                .send(ScreenInstruction::ChangeMode(get_mode_info(mode, palette)))
                 .unwrap();
             session
                 .send_screen_instructions
@@ -694,6 +727,18 @@ fn route_action(action: Action, session: &SessionMetaData) {
                 .send(ScreenInstruction::ScrollDown)
                 .unwrap();
         }
+        Action::PageScrollUp => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::PageScrollUp)
+                .unwrap();
+        }
+        Action::PageScrollDown => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::PageScrollDown)
+                .unwrap();
+        }
         Action::ToggleFocusFullscreen => {
             session
                 .send_screen_instructions
@@ -733,6 +778,12 @@ fn route_action(action: Action, session: &SessionMetaData) {
             session
                 .send_screen_instructions
                 .send(ScreenInstruction::SwitchTabPrev)
+                .unwrap();
+        }
+        Action::ToggleActiveSyncPanes => {
+            session
+                .send_screen_instructions
+                .send(ScreenInstruction::ToggleActiveSyncPanes)
                 .unwrap();
         }
         Action::CloseTab => {

@@ -37,7 +37,10 @@ wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 interprocess = "1.1.1"
 names = "0.11.0"
-zellij-tile = { path = "zellij-tile/", version = "0.5.0" }
+xrdb = "0.1.1"
+colors-transform = "0.2.5"
+zellij-tile = { path = "zellij-tile/", version = "1.1.0" }
+zellij-tile-extra = { path = "zellij-tile-extra/", version="1.0.0" }
 
 [dependencies.async-std]
 version = "1.3.0"
