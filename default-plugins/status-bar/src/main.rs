@@ -148,7 +148,12 @@ impl ZellijPlugin for State {
         let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = keybinds(&self.mode_info, cols, self.input_str.clone());
+        let second_line = keybinds(
+            &self.mode_info, 
+            cols, 
+            self.input_str.clone(), 
+            self.mode_info.palette
+        );
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line

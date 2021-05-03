@@ -378,7 +378,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     }
 }
 
-pub fn keybinds(help: &ModeInfo, max_width: usize, input_str: String) -> LinePart {
+pub fn keybinds(help: &ModeInfo, max_width: usize, input_str: String, palette: Palette) -> LinePart {
     let mut shortcut_list = full_shortcut_list(help);
     let shortened_list: LinePart;
     if shortcut_list.len >= max_width {
@@ -397,9 +397,9 @@ pub fn keybinds(help: &ModeInfo, max_width: usize, input_str: String) -> LinePar
             }
         }
         let prompt = Style::new().bold().paint(help.input_prompt.as_str());
-        let in_str_str = Style::new().fg(palette.fg.0, palette.fg.1, palette.fg.2)
+        let in_str_str = Style::new().fg(RGB(palette.fg.0, palette.fg.1, palette.fg.2))
             .bold()
-            .on(palette.orange.0, palette.orange.1, palette.orange.2)
+            .on(RGB(palette.orange.0, palette.orange.1, palette.orange.2))
             .paint(in_str.as_str());
         shortcut_list.len += help.input_prompt.len();
         shortcut_list.len += in_str.len() + 10; // +10 for spaces/ ':'
