@@ -54,6 +54,10 @@ impl InputHandler {
         let alt_left_bracket = vec![27, 91];
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
+
+        // should add a way to disable this, and store it somewhere (os_input_output?)
+        // mouse support goes away if it's dropped
+        let stdout = termion::input::MouseTerminal::from(self.os_input.get_stdout_writer());
         loop {
             if self.should_exit {
                 break;
@@ -65,6 +69,20 @@ impl InputHandler {
                         termion::event::Event::Key(key) => {
                             let key = cast_termion_key(key);
                             self.handle_key(&key, raw_bytes);
+                        }
+                        termion::event::Event::Mouse(me) => {
+                            // only handle mouse wheel scrolling for now
+                            if let termion::event::MouseEvent::Press(button, _, _) = me {
+                                match button {
+                                    termion::event::MouseButton::WheelUp => {
+                                        self.dispatch_action(Action::ScrollUp);
+                                    }
+                                    termion::event::MouseButton::WheelDown => {
+                                        self.dispatch_action(Action::ScrollDown);
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         termion::event::Event::Unsupported(unsupported_key) => {
                             // we have to do this because of a bug in termion
@@ -81,10 +99,6 @@ impl InputHandler {
                                 // in this case we just forward it to the terminal
                                 self.handle_unknown_key(raw_bytes);
                             }
-                        }
-                        termion::event::Event::Mouse(_) => {
-                            // Mouse events aren't implemented yet,
-                            // use a NoOp untill then.
                         }
                     },
                     Err(err) => panic!("Encountered read error: {:?}", err),
