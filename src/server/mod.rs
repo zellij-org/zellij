@@ -16,7 +16,6 @@ use zellij_tile::data::{Event, EventType, ModeInfo};
 
 use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
-use crate::common::ZELLIJ_IPC_PIPE;
 use crate::common::{
     errors::{ContextType, PluginContext, PtyContext, ScreenContext, ServerContext},
     input::actions::{Action, Direction},
@@ -24,6 +23,7 @@ use crate::common::{
     os_input_output::ServerOsApi,
     pty_bus::{PtyBus, PtyInstruction},
     screen::{Screen, ScreenInstruction},
+    utils::consts::ZELLIJ_IPC_PIPE,
     wasm_vm::{wasi_stdout, wasi_write_string, zellij_imports, PluginEnv, PluginInstruction},
     ChannelWithContext, SenderType, SenderWithContext,
 };

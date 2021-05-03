@@ -5,20 +5,21 @@ use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult, Pid};
-use serde::Serialize;
 use signal_hook::{consts::signal::*, iterator::Signals};
 use std::env;
 use std::io;
 use std::io::prelude::*;
-use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 use crate::client::ClientInstruction;
-use crate::common::ZELLIJ_IPC_PIPE;
-use crate::errors::{get_current_ctx, ErrorContext};
+use crate::common::{
+    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
+    utils::consts::ZELLIJ_IPC_PIPE,
+};
+use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
 
@@ -158,35 +159,10 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
     (pid_primary, pid_secondary)
 }
 
-/// Sends messages on an [ipmpsc](ipmpsc) channel, along with an [`ErrorContext`].
-struct IpcSenderWithContext<T: Serialize> {
-    sender: io::BufWriter<LocalSocketStream>,
-    _phantom: PhantomData<T>,
-}
-
-impl<T: Serialize> IpcSenderWithContext<T> {
-    /// Returns a sender to the given [SharedRingBuffer](ipmpsc::SharedRingBuffer).
-    fn new(sender: LocalSocketStream) -> Self {
-        Self {
-            sender: io::BufWriter::new(sender),
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Sends an event, along with the current [`ErrorContext`], on this
-    /// [`IpcSenderWithContext`]'s channel.
-    fn send(&mut self, msg: T) -> Result<(), std::io::Error> {
-        let err_ctx = get_current_ctx();
-        self.sender
-            .write_all(&bincode::serialize(&(msg, err_ctx)).unwrap())?;
-        self.sender.flush()
-    }
-}
-
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    receive_instructions_from_client: Option<Arc<Mutex<io::BufReader<LocalSocketStream>>>>,
+    receive_instructions_from_client: Option<Arc<Mutex<IpcReceiverWithContext<ServerInstruction>>>>,
     send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
 }
 
@@ -252,15 +228,12 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
-        bincode::deserialize_from(
-            &mut *self
-                .receive_instructions_from_client
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap(),
-        )
-        .unwrap()
+        self.receive_instructions_from_client
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .recv()
     }
     fn send_to_client(&self, msg: ClientInstruction) {
         self.send_instructions_to_client
@@ -268,27 +241,22 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap()
             .as_mut()
             .unwrap()
-            .send(msg)
-            .unwrap();
+            .send(msg);
     }
     fn add_client_sender(&mut self) {
         assert!(self.send_instructions_to_client.lock().unwrap().is_none());
-        let sock_fd = self
+        let sender = self
             .receive_instructions_from_client
             .as_ref()
             .unwrap()
             .lock()
             .unwrap()
-            .get_ref()
-            .as_raw_fd();
-        let dup_fd = unistd::dup(sock_fd).unwrap();
-        let dup_sock = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
-        *self.send_instructions_to_client.lock().unwrap() =
-            Some(IpcSenderWithContext::new(dup_sock));
+            .get_sender();
+        *self.send_instructions_to_client.lock().unwrap() = Some(sender);
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
         self.receive_instructions_from_client =
-            Some(Arc::new(Mutex::new(io::BufReader::new(stream))));
+            Some(Arc::new(Mutex::new(IpcReceiverWithContext::new(stream))));
     }
 }
 
@@ -312,7 +280,7 @@ pub fn get_server_os_input() -> ServerOsInputOutput {
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
-    receive_instructions_from_server: Arc<Mutex<Option<io::BufReader<LocalSocketStream>>>>,
+    receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ClientInstruction>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -375,19 +343,15 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .as_mut()
             .unwrap()
-            .send(msg)
-            .unwrap();
+            .send(msg);
     }
     fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
-        bincode::deserialize_from(
-            &mut self
-                .receive_instructions_from_server
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap(),
-        )
-        .unwrap()
+        self.receive_instructions_from_server
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .recv()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
@@ -411,12 +375,10 @@ impl ClientOsApi for ClientOsInputOutput {
                 LocalSocketStream::connect(ZELLIJ_IPC_PIPE.clone()).unwrap()
             }
         };
-        let sock_fd = socket.as_raw_fd();
-        let dup_fd = unistd::dup(sock_fd).unwrap();
-        let receiver = unsafe { LocalSocketStream::from_raw_fd(dup_fd) };
         let sender = IpcSenderWithContext::new(socket);
+        let receiver = sender.get_receiver();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-        *self.receive_instructions_from_server.lock().unwrap() = Some(io::BufReader::new(receiver));
+        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
 }
 
