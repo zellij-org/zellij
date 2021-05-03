@@ -1,0 +1,30 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (W): This line should be at the top of the screen. Push <RETURN>                                                   
+01 (W):                                                                                                               
+02 (W):                                                                                                               
+03 (W):                                                                                                               
+04 (W):                                                                                                               
+05 (W):                                                                                                               
+06 (W):                                                                                                               
+07 (W):                                                                                                               
+08 (W):                                                                                                               
+09 (W):                                                                                                               
+10 (W):                                                                                                               
+11 (W):                                                                                                               
+12 (W):                                                                                                               
+13 (W):                                                                                                               
+14 (W):                                                                                                               
+15 (W):                                                                                                               
+16 (W):                                                                                                               
+17 (W):                                                                                                               
+18 (W):                                                                                                               
+19 (W):                                                                                                               
+20 (W):                                                                                                               
+21 (W):                                                                                                               
+22 (W):                                                                                                               
+23 (W): Origin mode test. This line should be at the bottom of the screen.                                            
+

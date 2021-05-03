@@ -1,7 +1,8 @@
 use unicode_width::UnicodeWidthChar;
 
 use crate::utils::logging::debug_log_to_file;
-use ::std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
+use std::ops::{Index, IndexMut};
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -622,6 +623,115 @@ impl Display for CharacterStyles {
             }
         };
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum CharsetIndex {
+    G0,
+    G1,
+    G2,
+    G3,
+}
+
+impl Default for CharsetIndex {
+    fn default() -> Self {
+        CharsetIndex::G0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StandardCharset {
+    Ascii,
+    SpecialCharacterAndLineDrawing,
+}
+
+impl Default for StandardCharset {
+    fn default() -> Self {
+        StandardCharset::Ascii
+    }
+}
+
+impl StandardCharset {
+    /// Switch/Map character to the active charset. Ascii is the common case and
+    /// for that we want to do as little as possible.
+    #[inline]
+    pub fn map(self, c: char) -> char {
+        match self {
+            StandardCharset::Ascii => c,
+            StandardCharset::SpecialCharacterAndLineDrawing => match c {
+                '`' => '◆',
+                'a' => '▒',
+                'b' => '␉',
+                'c' => '␌',
+                'd' => '␍',
+                'e' => '␊',
+                'f' => '°',
+                'g' => '±',
+                'h' => '␤',
+                'i' => '␋',
+                'j' => '┘',
+                'k' => '┐',
+                'l' => '┌',
+                'm' => '└',
+                'n' => '┼',
+                'o' => '⎺',
+                'p' => '⎻',
+                'q' => '─',
+                'r' => '⎼',
+                's' => '⎽',
+                't' => '├',
+                'u' => '┤',
+                'v' => '┴',
+                'w' => '┬',
+                'x' => '│',
+                'y' => '≤',
+                'z' => '≥',
+                '{' => 'π',
+                '|' => '≠',
+                '}' => '£',
+                '~' => '·',
+                _ => c,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct Charsets([StandardCharset; 4]);
+
+impl Index<CharsetIndex> for Charsets {
+    type Output = StandardCharset;
+
+    fn index(&self, index: CharsetIndex) -> &StandardCharset {
+        &self.0[index as usize]
+    }
+}
+
+impl IndexMut<CharsetIndex> for Charsets {
+    fn index_mut(&mut self, index: CharsetIndex) -> &mut StandardCharset {
+        &mut self.0[index as usize]
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Cursor {
+    pub x: usize,
+    pub y: usize,
+    pub is_hidden: bool,
+    pub pending_styles: CharacterStyles,
+    pub charsets: Charsets,
+}
+
+impl Cursor {
+    pub fn new(x: usize, y: usize) -> Self {
+        Cursor {
+            x,
+            y,
+            is_hidden: false,
+            pending_styles: CharacterStyles::new(),
+            charsets: Default::default(),
+        }
     }
 }
 

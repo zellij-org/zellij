@@ -1,0 +1,28 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): 12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+01 (C): 123456789012345678901                                                                                         
+02 (C):   This is 132 column mode, light background.                                                                  
+03 (C):    This is 132 column mode, light background.                                                                 
+04 (C):     This is 132 column mode, light background.                                                                
+05 (C):      This is 132 column mode, light background.                                                               
+06 (C):       This is 132 column mode, light background.                                                              
+07 (C):        This is 132 column mode, light background.                                                             
+08 (C):         This is 132 column mode, light background.                                                            
+09 (C):          This is 132 column mode, light background.                                                           
+10 (C):           This is 132 column mode, light background.                                                          
+11 (C):            This is 132 column mode, light background.                                                         
+12 (C):             This is 132 column mode, light background.                                                        
+13 (C):              This is 132 column mode, light background.                                                       
+14 (C):               This is 132 column mode, light background.                                                      
+15 (C):                This is 132 column mode, light background.                                                     
+16 (C):                 This is 132 column mode, light background.                                                    
+17 (C):                  This is 132 column mode, light background.                                                   
+18 (C):                   This is 132 column mode, light background.                                                  
+19 (C):                    This is 132 column mode, light background.Push <RETURN>                                    
+20 (C):                                                                                                               
+21 (C):                                                                                                               
+

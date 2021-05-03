@@ -1,0 +1,28 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C):       *     *     *     *     *     *     *     *     *     *     *     *     *                               
+01 (C):       *     *     *     *     *     *     *     *     *     *     *     *     *                               
+02 (C):                                                                                                               
+03 (C): Test of TAB setting/resetting. These two lines                                                                
+04 (C): should look the same. Push <RETURN>                                                                           
+05 (C):                                                                                                               
+06 (C):                                                                                                               
+07 (C):                                                                                                               
+08 (C):                                                                                                               
+09 (C):                                                                                                               
+10 (C):                                                                                                               
+11 (C):                                                                                                               
+12 (C):                                                                                                               
+13 (C):                                                                                                               
+14 (C):                                                                                                               
+15 (C):                                                                                                               
+16 (C):                                                                                                               
+17 (C):                                                                                                               
+18 (C):                                                                                                               
+19 (C):                                                                                                               
+20 (C):                                                                                                               
+21 (C):                                                                                                               
+

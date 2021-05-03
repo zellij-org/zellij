@@ -1,0 +1,23 @@
+[2m⏎(B[m                                                                               ⏎ [KWelcome to fish, the friendly interactive shell
+[?2004h]0;fish /home/aram/code/zellij[30m(B[m[97m[46m⋊>(B[m [33m~/c/zellij(B[m on [32mvttest-2(B[m ⨯ [K[44C[38;2;85;85;85m17:24:04(B[m[72C[28C[28Cv[J[67C[38;2;85;85;85m17:24:04(B[m[96C[29C[91mv[67C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[29C[38;2;85;85;85mttest[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[29C[91mt[38;2;85;85;85mtest[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[30C[91mt[38;2;85;85;85mest[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[31C[91me[38;2;85;85;85mst[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[32C[91ms[38;2;85;85;85mt[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[33C[91mt[62C[30m(B[m[38;2;85;85;85m17:24:04(B[m[96C[34C[1mvttest[62C(B[m[38;2;85;85;85m17:24:04(B[m[96C[34C[62C[38;2;85;85;85m17:24:04(B[m[96C[34C
+[30m(B[m[?2004l]0;vttest /home/aram/code/zellij[30m(B[m[0c[?1l[?3l[?4l[?5l[?6l[?7h[?8l[?40h[?45l[r[0m[2J[3;10HVT100 test program, version 2.7 (20210210)[4;10HLine speed 38400bd [5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Test of cursor movements
+          2. Test of screen features
+          3. Test of character sets
+          4. Test of double-sized characters
+          5. Test of keyboard
+          6. Test of terminal reports
+          7. Test of VT52 mode
+          8. Test of VT102 features (Insert/Delete Char/Line)
+          9. Test of known bugs
+          10. Test of reset and self-test
+          11. Test non-VT100 (e.g., VT220, XTERM) terminals
+          12. Modify test-parameters
+
+          Enter choice number (0 - 12): 2
+[2J[1;1H[?7h****************************************************************************************************************************************************************[?7l[3;1H****************************************************************************************************************************************************************[?7h[5;1HThis should be three identical lines of *'s completely filling
+the top of the screen without any empty lines between.
+(Test of WRAP AROUND mode setting.)
+Push <RETURN>

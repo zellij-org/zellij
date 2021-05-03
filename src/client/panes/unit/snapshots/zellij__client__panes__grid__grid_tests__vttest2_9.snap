@@ -1,0 +1,30 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (W): Push <RETURN>
+01 (W): Jump scroll down region [1..24] size 24 Line 29
+02 (W): Jump scroll down region [1..24] size 24 Line 28
+03 (W): Jump scroll down region [1..24] size 24 Line 27
+04 (W): Jump scroll down region [1..24] size 24 Line 26
+05 (W): Jump scroll down region [1..24] size 24 Line 25
+06 (W): Jump scroll down region [1..24] size 24 Line 24
+07 (W): Jump scroll down region [1..24] size 24 Line 23
+08 (W): Jump scroll down region [1..24] size 24 Line 22
+09 (W): Jump scroll down region [1..24] size 24 Line 21
+10 (W): Jump scroll down region [1..24] size 24 Line 20
+11 (W): Jump scroll down region [1..24] size 24 Line 19
+12 (W): Jump scroll down region [1..24] size 24 Line 18
+13 (W): Jump scroll down region [1..24] size 24 Line 17
+14 (W): Jump scroll down region [1..24] size 24 Line 16
+15 (W): Jump scroll down region [1..24] size 24 Line 15
+16 (W): Jump scroll down region [1..24] size 24 Line 14
+17 (W): Jump scroll down region [1..24] size 24 Line 13
+18 (W): Jump scroll down region [1..24] size 24 Line 12
+19 (W): Jump scroll down region [1..24] size 24 Line 11
+20 (W): Jump scroll down region [1..24] size 24 Line 10
+21 (W): Jump scroll down region [1..24] size 24 Line 9
+22 (W): Jump scroll down region [1..24] size 24 Line 8
+23 (W): Jump scroll down region [1..24] size 24 Line 7
+
