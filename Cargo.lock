@@ -311,6 +311,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "colors-transform"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9226dbc05df4fb986f48d730b001532580883c4c06c5d1c213f4b34c1c157178"
+
+[[package]]
 name = "concurrent-queue"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1107,6 +1113,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
+name = "pkg-config"
+version = "0.3.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
+
+[[package]]
 name = "polling"
 version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1471,6 +1483,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "colored",
  "zellij-tile",
+ "zellij-tile-extra",
 ]
 
 [[package]]
@@ -1563,6 +1576,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "colored",
  "zellij-tile",
+ "zellij-tile-extra",
 ]
 
 [[package]]
@@ -2174,6 +2188,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
+name = "x11"
+version = "2.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ecd092546cb16f25783a5451538e73afc8d32e242648d54f4ae5459ba1e773"
+dependencies = [
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
+name = "xrdb"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc2dd91a21c92e87678e22f95956a03bfd314ce3232f39dbedd49dddb50f0c6d"
+dependencies = [
+ "libc",
+ "scopeguard",
+ "x11",
+]
+
+[[package]]
 name = "yaml-rust"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2190,6 +2225,7 @@ dependencies = [
  "async-std",
  "backtrace",
  "bincode",
+ "colors-transform",
  "directories-next",
  "futures",
  "insta",
@@ -2205,6 +2241,7 @@ dependencies = [
  "strip-ansi-escapes",
  "structopt",
  "strum",
+ "tempfile",
  "termion",
  "termios",
  "unicode-truncate",
@@ -2212,7 +2249,9 @@ dependencies = [
  "vte 0.8.0",
  "wasmer",
  "wasmer-wasi",
+ "xrdb",
  "zellij-tile",
+ "zellij-tile-extra",
 ]
 
 [[package]]
@@ -2223,4 +2262,11 @@ dependencies = [
  "serde_json",
  "strum",
  "strum_macros",
+]
+
+[[package]]
+name = "zellij-tile-extra"
+version = "1.0.0"
+dependencies = [
+ "ansi_term 0.12.1",
 ]

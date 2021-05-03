@@ -108,12 +108,18 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "publish-zellij-tile"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "publish-zellij-tile", "publish-zellij-tile-extra"]
 run_task = "publish-zellij"
 
 [tasks.publish-zellij-tile]
 ignore_errors = true
 cwd = "zellij-tile"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij-tile-extra]
+ignore_errors = true
+cwd = "zellij-tile-extra"
 command = "cargo"
 args = ["publish"]
 

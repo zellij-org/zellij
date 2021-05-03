@@ -1,11 +1,11 @@
 pub mod command_is_executing;
 pub mod errors;
 pub mod input;
-pub mod install;
 pub mod ipc;
 pub mod os_input_output;
 pub mod pty_bus;
 pub mod screen;
+pub mod setup;
 pub mod utils;
 pub mod wasm_vm;
 
@@ -34,16 +34,16 @@ use errors::{
     ScreenContext,
 };
 use input::handler::input_loop;
-use install::populate_data_dir;
 use os_input_output::OsApi;
 use pty_bus::{PtyBus, PtyInstruction};
 use screen::{Screen, ScreenInstruction};
 use serde::{Deserialize, Serialize};
+use setup::install;
 use utils::consts::ZELLIJ_IPC_PIPE;
 use wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction};
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{EventType, ModeInfo};
+use zellij_tile::data::{EventType, InputMode, ModeInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ApiCommand {
@@ -120,7 +120,7 @@ pub enum AppInstruction {
 
 /// Start Zellij with the specified [`OsApi`] and command-line arguments.
 // FIXME this should definitely be modularized and split into different functions.
-pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
+pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs, config: Config) {
     let take_snapshot = "\u{1b}[?1049h";
     os_input.unset_raw_mode(0);
     let _ = os_input
@@ -129,15 +129,6 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
         .unwrap();
 
     env::set_var(&"ZELLIJ", "0");
-
-    let config_dir = opts.config_dir.or_else(install::default_config_dir);
-
-    let config = Config::from_cli_config(opts.config, opts.option, config_dir)
-        .map_err(|e| {
-            eprintln!("There was an error in the config file:\n{}", e);
-            std::process::exit(1);
-        })
-        .unwrap();
 
     let command_is_executing = CommandIsExecuting::new();
 
@@ -177,7 +168,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
     let data_dir = opts
         .data_dir
         .unwrap_or_else(|| project_dirs.data_dir().to_path_buf());
-    populate_data_dir(&data_dir);
+    install::populate_data_dir(&data_dir);
 
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
@@ -267,7 +258,7 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
             let send_plugin_instructions = send_plugin_instructions.clone();
             let send_app_instructions = send_app_instructions.clone();
             let max_panes = opts.max_panes;
-
+            let colors = os_input.load_palette();
             move || {
                 let mut screen = Screen::new(
                     receive_screen_instructions,
@@ -277,7 +268,12 @@ pub fn start(mut os_input: Box<dyn OsApi>, opts: CliArgs) {
                     &full_screen_ws,
                     os_input,
                     max_panes,
-                    ModeInfo::default(),
+                    ModeInfo {
+                        palette: colors,
+                        ..ModeInfo::default()
+                    },
+                    InputMode::Normal,
+                    colors,
                 );
                 loop {
                     let (event, mut err_ctx) = screen

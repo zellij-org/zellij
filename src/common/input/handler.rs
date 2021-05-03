@@ -12,7 +12,7 @@ use crate::wasm_vm::PluginInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{Event, InputMode, Key, ModeInfo};
+use zellij_tile::data::{Event, InputMode, Key, ModeInfo, Palette};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -131,11 +131,14 @@ impl InputHandler {
                 self.send_plugin_instructions
                     .send(PluginInstruction::Update(
                         None,
-                        Event::ModeUpdate(get_mode_info(mode)),
+                        Event::ModeUpdate(get_mode_info(mode, self.os_input.load_palette())),
                     ))
                     .unwrap();
                 self.send_screen_instructions
-                    .send(ScreenInstruction::ChangeMode(get_mode_info(mode)))
+                    .send(ScreenInstruction::ChangeMode(get_mode_info(
+                        mode,
+                        self.os_input.load_palette(),
+                    )))
                     .unwrap();
                 self.send_screen_instructions
                     .send(ScreenInstruction::Render)
@@ -284,7 +287,7 @@ impl InputHandler {
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_mode_info(mode: InputMode) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
     match mode {
         InputMode::Normal | InputMode::Locked => {}
@@ -315,7 +318,11 @@ pub fn get_mode_info(mode: InputMode) -> ModeInfo {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
     }
-    ModeInfo { mode, keybinds }
+    ModeInfo {
+        mode,
+        keybinds,
+        palette,
+    }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts

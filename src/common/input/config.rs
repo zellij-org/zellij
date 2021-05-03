@@ -6,14 +6,17 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
-use crate::cli::ConfigCli;
-use crate::common::install;
+use crate::cli::{CliArgs, ConfigCli};
+use crate::common::setup;
 
 use serde::Deserialize;
+use std::convert::TryFrom;
+
+const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
 type ConfigResult = Result<Config, ConfigError>;
 
-/// Intermediate deserialisation config struct
+/// Intermediate deserialization config struct
 #[derive(Debug, Deserialize)]
 pub struct ConfigFromYaml {
     pub keybinds: Option<KeybindsFromYaml>,
@@ -27,13 +30,13 @@ pub struct Config {
 
 #[derive(Debug)]
 pub enum ConfigError {
-    // Deserialisation error
+    // Deserialization error
     Serde(serde_yaml::Error),
     // Io error
     Io(io::Error),
     // Io error with path context
     IoPath(io::Error, PathBuf),
-    // Internal Deserialisation Error
+    // Internal Deserialization Error
     FromUtf8(std::string::FromUtf8Error),
 }
 
@@ -41,6 +44,38 @@ impl Default for Config {
     fn default() -> Self {
         let keybinds = Keybinds::default();
         Config { keybinds }
+    }
+}
+
+impl TryFrom<&CliArgs> for Config {
+    type Error = ConfigError;
+
+    fn try_from(opts: &CliArgs) -> ConfigResult {
+        if let Some(ref path) = opts.config {
+            return Config::new(&path);
+        }
+
+        if let Some(ConfigCli::Config { clean, .. }) = opts.option {
+            if clean {
+                return Config::from_default_assets();
+            }
+        }
+
+        let config_dir = opts
+            .config_dir
+            .clone()
+            .or_else(setup::find_default_config_dir);
+
+        if let Some(ref config) = config_dir {
+            let path = config.join(DEFAULT_CONFIG_FILE_NAME);
+            if path.exists() {
+                Config::new(&path)
+            } else {
+                Config::from_default_assets()
+            }
+        } else {
+            Config::from_default_assets()
+        }
     }
 }
 
@@ -69,46 +104,7 @@ impl Config {
     // TODO Deserialize the Configuration from bytes &[u8],
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
-        Self::from_yaml(String::from_utf8(install::DEFAULT_CONFIG.to_vec())?.as_str())
-    }
-
-    /// Entry point of the configuration
-    #[cfg(not(test))]
-    pub fn from_cli_config(
-        location: Option<PathBuf>,
-        cli_config: Option<ConfigCli>,
-        config_dir: Option<PathBuf>,
-    ) -> ConfigResult {
-        if let Some(path) = location {
-            return Config::new(&path);
-        }
-
-        if let Some(ConfigCli::Config { clean, .. }) = cli_config {
-            if clean {
-                return Config::from_default_assets();
-            }
-        }
-
-        if let Some(config) = config_dir {
-            let path = config.join("config.yaml");
-            if path.exists() {
-                Config::new(&path)
-            } else {
-                Config::from_default_assets()
-            }
-        } else {
-            Config::from_default_assets()
-        }
-    }
-
-    /// In order not to mess up tests from changing configurations
-    #[cfg(test)]
-    pub fn from_cli_config(
-        _: Option<PathBuf>,
-        _: Option<ConfigCli>,
-        _: Option<PathBuf>,
-    ) -> ConfigResult {
-        Ok(Config::default())
+        Self::from_yaml(String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?.as_str())
     }
 }
 
@@ -119,7 +115,7 @@ impl Display for ConfigError {
             ConfigError::IoPath(ref err, ref path) => {
                 write!(formatter, "IoError: {}, File: {}", err, path.display(),)
             }
-            ConfigError::Serde(ref err) => write!(formatter, "Deserialisation error: {}", err),
+            ConfigError::Serde(ref err) => write!(formatter, "Deserialization error: {}", err),
             ConfigError::FromUtf8(ref err) => write!(formatter, "FromUtf8Error: {}", err),
         }
     }
@@ -157,20 +153,56 @@ impl From<std::string::FromUtf8Error> for ConfigError {
 // The unit test location.
 #[cfg(test)]
 mod config_test {
+    use std::io::Write;
+
+    use tempfile::tempdir;
+
     use super::*;
 
     #[test]
-    fn clean_option_equals_default_config() {
-        let cli_config = ConfigCli::Config { clean: true };
-        let config = Config::from_cli_config(None, Some(cli_config), None).unwrap();
-        let default = Config::default();
-        assert_eq!(config, default);
+    fn try_from_cli_args_with_config() {
+        let arbitrary_config = PathBuf::from("nonexistent.yaml");
+        let mut opts = CliArgs::default();
+        opts.config = Some(arbitrary_config);
+        println!("OPTS= {:?}", opts);
+        let result = Config::try_from(&opts);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn no_config_option_file_equals_default_config() {
-        let config = Config::from_cli_config(None, None, None).unwrap();
-        let default = Config::default();
-        assert_eq!(config, default);
+    fn try_from_cli_args_with_option_clean() {
+        let mut opts = CliArgs::default();
+        opts.option = Some(ConfigCli::Config { clean: true });
+        let result = Config::try_from(&opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn try_from_cli_args_with_config_dir() {
+        let mut opts = CliArgs::default();
+        let tmp = tempdir().unwrap();
+        File::create(tmp.path().join(DEFAULT_CONFIG_FILE_NAME))
+            .unwrap()
+            .write_all(b"keybinds: invalid\n")
+            .unwrap();
+        opts.config_dir = Some(tmp.path().to_path_buf());
+        let result = Config::try_from(&opts);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_from_cli_args_with_config_dir_without_config() {
+        let mut opts = CliArgs::default();
+        let tmp = tempdir().unwrap();
+        opts.config_dir = Some(tmp.path().to_path_buf());
+        let result = Config::try_from(&opts);
+        assert_eq!(result.unwrap(), Config::default());
+    }
+
+    #[test]
+    fn try_from_cli_args_default() {
+        let opts = CliArgs::default();
+        let result = Config::try_from(&opts);
+        assert_eq!(result.unwrap(), Config::default());
     }
 }

@@ -1,7 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use crate::boundaries::colors;
 use crate::client::pane_resizer::PaneResizer;
 use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
 use crate::layout::Layout;
@@ -19,7 +18,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use std::{io::Write, sync::mpsc::channel};
-use zellij_tile::data::{Event, ModeInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -75,6 +74,8 @@ pub struct Tab {
     pub send_app_instructions: SenderWithContext<AppInstruction>,
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
+    pub input_mode: InputMode,
+    pub colors: Palette,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -84,6 +85,8 @@ pub struct TabData {
     pub name: String,
     pub active: bool,
     pub mode_info: ModeInfo,
+    pub input_mode: InputMode,
+    pub colors: Palette,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -229,6 +232,8 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
+        input_mode: InputMode,
+        colors: Palette,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws);
@@ -260,6 +265,8 @@ impl Tab {
             send_plugin_instructions,
             should_clear_display_before_rendering: false,
             mode_info,
+            input_mode,
+            colors,
         }
     }
 
@@ -743,7 +750,7 @@ impl Tab {
                 match self.active_terminal.unwrap() == pane.pid() {
                     true => {
                         pane.set_active_at(Instant::now());
-                        boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(colors::GREEN))
+                        boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(self.colors))
                     }
                     false => boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None),
                 }

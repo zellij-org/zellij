@@ -7,6 +7,7 @@ mod client;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
+use crate::common::input::config::Config;
 use crate::os_input_output::get_os_input;
 use crate::utils::{
     consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
@@ -14,15 +15,23 @@ use crate::utils::{
 };
 use client::{boundaries, layout, panes, tab};
 use common::{
-    command_is_executing, errors, install, os_input_output, pty_bus, screen, start, utils, wasm_vm,
+    command_is_executing, errors, os_input_output, pty_bus, screen, setup, start, utils, wasm_vm,
     ApiCommand,
 };
+use std::convert::TryFrom;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use structopt::StructOpt;
 
 pub fn main() {
     let opts = CliArgs::from_args();
+    let config = match Config::try_from(&opts) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("There was an error in the config file:\n{}", e);
+            std::process::exit(1);
+        }
+    };
     if let Some(split_dir) = opts.split {
         match split_dir {
             'h' => {
@@ -60,12 +69,12 @@ pub fn main() {
         let mut out = std::io::stdout();
         CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
     } else if let Some(crate::cli::ConfigCli::Setup { .. }) = opts.option {
-        install::dump_default_config().expect("Failed to print to stdout");
+        setup::dump_default_config().expect("Failed to print to stdout");
         std::process::exit(1);
     } else {
         let os_input = get_os_input();
         atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
-        start(Box::new(os_input), opts);
+        start(Box::new(os_input), opts, config);
     }
 }

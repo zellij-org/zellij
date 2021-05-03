@@ -4,6 +4,7 @@ use std::io::Write;
 use std::{fs, path::Path, path::PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const CONFIG_LOCATION: &str = "/.config/zellij";
 
 #[macro_export]
 macro_rules! asset_map {
@@ -18,32 +19,37 @@ macro_rules! asset_map {
     }
 }
 
-pub fn populate_data_dir(data_dir: &Path) {
-    // First run installation of default plugins & layouts
-    let mut assets = asset_map! {
-        "assets/layouts/default.yaml" => "layouts/default.yaml",
-        "assets/layouts/strider.yaml" => "layouts/strider.yaml",
-    };
-    assets.extend(asset_map! {
-        "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",
-        "assets/plugins/tab-bar.wasm" => "plugins/tab-bar.wasm",
-        "assets/plugins/strider.wasm" => "plugins/strider.wasm",
-    });
-    assets.insert("VERSION", VERSION.as_bytes().to_vec());
+pub mod install {
+    use super::*;
 
-    let last_version = fs::read_to_string(data_dir.join("VERSION")).unwrap_or_default();
-    let out_of_date = VERSION != last_version;
+    pub fn populate_data_dir(data_dir: &Path) {
+        // First run installation of default plugins & layouts
+        let mut assets = asset_map! {
+            "assets/layouts/default.yaml" => "layouts/default.yaml",
+            "assets/layouts/strider.yaml" => "layouts/strider.yaml",
+        };
+        assets.extend(asset_map! {
+            "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",
+            "assets/plugins/tab-bar.wasm" => "plugins/tab-bar.wasm",
+            "assets/plugins/strider.wasm" => "plugins/strider.wasm",
+        });
+        assets.insert("VERSION", VERSION.as_bytes().to_vec());
 
-    for (path, bytes) in assets {
-        let path = data_dir.join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        if out_of_date || !path.exists() {
-            fs::write(path, bytes).expect("Failed to install default assets!");
+        let last_version = fs::read_to_string(data_dir.join("VERSION")).unwrap_or_default();
+        let out_of_date = VERSION != last_version;
+
+        for (path, bytes) in assets {
+            let path = data_dir.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            if out_of_date || !path.exists() {
+                fs::write(path, bytes).expect("Failed to install default assets!");
+            }
         }
     }
 }
 
-pub fn default_config_dir() -> Option<PathBuf> {
+#[cfg(not(test))]
+pub fn find_default_config_dir() -> Option<PathBuf> {
     vec![
         Some(xdg_config_dir()),
         home_config_dir(),
@@ -55,6 +61,11 @@ pub fn default_config_dir() -> Option<PathBuf> {
     .flatten()
 }
 
+#[cfg(test)]
+pub fn find_default_config_dir() -> Option<PathBuf> {
+    None
+}
+
 pub fn xdg_config_dir() -> PathBuf {
     let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     project_dirs.config_dir().to_owned()
@@ -62,7 +73,7 @@ pub fn xdg_config_dir() -> PathBuf {
 
 pub fn home_config_dir() -> Option<PathBuf> {
     if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join("/.config/zellij");
+        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
         Some(config_dir)
     } else {
         None
