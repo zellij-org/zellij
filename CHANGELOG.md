@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Improve error reporting and tests of configuration (https://github.com/zellij-org/zellij/pull/423)
 * Refactor install module to setup module (https://github.com/zellij-org/zellij/pull/431)
 * Add theme support through xrdb (https://github.com/zellij-org/zellij/pull/239)
+* Fix default keybindings in resize mode and add arrow parity in tab and scroll mode (https://github.com/zellij-org/zellij/pull/441)
 
 ## [0.6.0] - 2021-04-29
 * Doesn't quit anymore on single `q` press while in tab mode  (https://github.com/zellij-org/zellij/pull/342)
