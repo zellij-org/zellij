@@ -150,21 +150,11 @@ impl ZellijPlugin for State {
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
         match self.mode_info.palette.bg {
-            PaletteColor::RGB((r, g, b)) => {
-                println!(
-                    "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
-                    first_line,
-                    r,
-                    g,
-                    b
-                );
-            },
+            PaletteColor::Rgb((r, g, b)) => {
+                println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+            }
             PaletteColor::EightBit(color) => {
-                println!(
-                    "{}\u{1b}[48;5;{}m\u{1b}[0K",
-                    first_line,
-                    color
-                );
+                println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
             }
         }
         println!("\u{1b}[m{}\u{1b}[0K", second_line);

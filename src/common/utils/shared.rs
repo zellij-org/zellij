@@ -5,7 +5,7 @@ use std::{iter, str::from_utf8};
 use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
-use zellij_tile::data::{Palette, PaletteSource, PaletteColor, Theme};
+use zellij_tile::data::{Palette, PaletteColor, PaletteSource, Theme};
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
@@ -71,7 +71,7 @@ pub fn default_palette() -> Palette {
 // Dark magic
 pub fn detect_theme(bg: PaletteColor) -> Theme {
     match bg {
-        PaletteColor::RGB((r, g, b)) => {
+        PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness
             let hsp: f64 = (0.299 * (r as f64 * r as f64)
                 + 0.587 * (g as f64 * g as f64)

@@ -63,7 +63,9 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
     let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
-    let more_styled_text = style!(palette.black, palette.orange).bold().paint(more_text);
+    let more_styled_text = style!(palette.black, palette.orange)
+        .bold()
+        .paint(more_text);
     let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
@@ -89,7 +91,9 @@ fn right_more_message(tab_count_to_the_right: usize, palette: Palette) -> LinePa
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
     let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
-    let more_styled_text = style!(palette.black, palette.orange).bold().paint(more_text);
+    let more_styled_text = style!(palette.black, palette.orange)
+        .bold()
+        .paint(more_text);
     let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",

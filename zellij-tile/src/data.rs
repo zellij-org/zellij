@@ -80,7 +80,7 @@ impl Default for Theme {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PaletteColor {
-    RGB((u8, u8, u8)),
+    Rgb((u8, u8, u8)),
     EightBit(u8),
 }
 impl Default for PaletteColor {

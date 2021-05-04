@@ -69,21 +69,11 @@ impl ZellijPlugin for State {
             s = format!("{}{}", s, bar_part.part);
         }
         match self.mode_info.palette.bg {
-            PaletteColor::RGB((r, g, b)) => {
-                println!(
-                    "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
-                    s,
-                    r,
-                    g,
-                    b
-                );
-            },
+            PaletteColor::Rgb((r, g, b)) => {
+                println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
+            }
             PaletteColor::EightBit(color) => {
-                println!(
-                    "{}\u{1b}[48;5;{}m\u{1b}[0K",
-                    s,
-                    color
-                );
+                println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
             }
         }
     }

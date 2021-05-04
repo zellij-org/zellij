@@ -1,6 +1,6 @@
 use crate::tab::Pane;
 use crate::utils::shared::colors;
-use ansi_term::Colour::{RGB, Fixed};
+use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use zellij_tile::data::{InputMode, Palette, PaletteColor};
 
@@ -51,18 +51,12 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => {
-                    match color {
-                        PaletteColor::RGB((r, g, b)) => {
-                            write!(
-                                f,
-                                "{}",
-                                RGB(r, g, b).paint(self.boundary_type)
-                            )
-                        },
-                        PaletteColor::EightBit(color) => {
-                            write!(f, "{}", Fixed(color).paint(self.boundary_type))
-                        }
+                Some(color) => match color {
+                    PaletteColor::Rgb((r, g, b)) => {
+                        write!(f, "{}", RGB(r, g, b).paint(self.boundary_type))
+                    }
+                    PaletteColor::EightBit(color) => {
+                        write!(f, "{}", Fixed(color).paint(self.boundary_type))
                     }
                 },
                 None => write!(f, "{}", self.boundary_type),
