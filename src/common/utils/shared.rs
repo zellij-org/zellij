@@ -43,7 +43,7 @@ pub mod colors {
     pub const BLACK: u8 = 16;
 }
 
-pub fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
+pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     let rgb = Rgb::from_hex_str(hex)
         .expect("The passed argument must be a valid hex color")
         .as_tuple();
@@ -69,7 +69,7 @@ pub fn default_palette() -> Palette {
 }
 
 // Dark magic
-pub fn detect_theme(bg: PaletteColor) -> Theme {
+pub fn _detect_theme(bg: PaletteColor) -> Theme {
     match bg {
         PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness
