@@ -49,8 +49,8 @@ pub fn main() {
         setup::dump_default_config().expect("Failed to print to stdout");
         std::process::exit(1);
     } else {
-        atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
-        atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
+        atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
+        atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
         let server_os_input = get_server_os_input();
         let os_input = get_client_os_input();
         start(Box::new(os_input), opts, Box::new(server_os_input), config);
