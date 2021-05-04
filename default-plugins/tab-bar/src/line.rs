@@ -2,7 +2,7 @@ use ansi_term::ANSIStrings;
 
 use crate::{LinePart, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
-use zellij_tile_extra::*;
+use zellij_tile_utils::style;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title

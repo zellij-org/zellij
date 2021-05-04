@@ -1477,7 +1477,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "colored",
  "zellij-tile",
- "zellij-tile-extra",
+ "zellij-tile-utils",
 ]
 
 [[package]]
@@ -1570,7 +1570,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "colored",
  "zellij-tile",
- "zellij-tile-extra",
+ "zellij-tile-utils",
 ]
 
 [[package]]
@@ -2223,12 +2223,11 @@ dependencies = [
  "wasmer",
  "wasmer-wasi",
  "zellij-tile",
- "zellij-tile-extra",
 ]
 
 [[package]]
 name = "zellij-tile"
-version = "1.2.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2237,8 +2236,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "zellij-tile-extra"
-version = "1.1.0"
+name = "zellij-tile-utils"
+version = "0.7.0"
 dependencies = [
  "ansi_term 0.12.1",
 ]

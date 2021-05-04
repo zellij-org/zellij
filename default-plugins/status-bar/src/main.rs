@@ -5,7 +5,7 @@ use ansi_term::Style;
 
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::*;
-use zellij_tile_extra::*;
+use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
 use second_line::keybinds;
