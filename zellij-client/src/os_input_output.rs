@@ -1,4 +1,4 @@
-use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
 use nix::pty::Winsize;
@@ -60,6 +60,7 @@ pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
+    mouse_term: Arc<Mutex<Option<termion::input::MouseTerminal<std::io::Stdout>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -88,6 +89,8 @@ pub trait ClientOsApi: Send + Sync {
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
     fn load_palette(&self) -> Palette;
+    fn enable_mouse(&self);
+    fn disable_mouse(&self);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -180,6 +183,19 @@ impl ClientOsApi for ClientOsInputOutput {
         // };
         default_palette()
     }
+    fn enable_mouse(&self) {
+        let mut mouse_term = self.mouse_term.lock().unwrap();
+        if mouse_term.is_none() {
+            *mouse_term = Some(termion::input::MouseTerminal::from(std::io::stdout()));
+        }
+    }
+
+    fn disable_mouse(&self) {
+        let mut mouse_term = self.mouse_term.lock().unwrap();
+        if mouse_term.is_some() {
+            *mouse_term = None;
+        }
+    }
 }
 
 impl Clone for Box<dyn ClientOsApi> {
@@ -191,9 +207,11 @@ impl Clone for Box<dyn ClientOsApi> {
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
+    let mouse_term = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
+        mouse_term,
     })
 }

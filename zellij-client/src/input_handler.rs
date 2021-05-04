@@ -57,7 +57,7 @@ impl InputHandler {
 
         // should add a way to disable this, and store it somewhere (os_input_output?)
         // mouse support goes away if it's dropped
-        let stdout = termion::input::MouseTerminal::from(self.os_input.get_stdout_writer());
+        self.os_input.enable_mouse();
         loop {
             if self.should_exit {
                 break;

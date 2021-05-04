@@ -137,6 +137,8 @@ impl ClientOsApi for FakeClientOsApi {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
+    fn enable_mouse(&self) {}
+    fn disable_mouse(&self) {}
 }
 
 fn extract_actions_sent_to_server(
