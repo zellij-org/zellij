@@ -7,9 +7,23 @@ macro_rules! rgb {
 
 #[macro_export]
 macro_rules! style {
-    ($a:expr, $b:expr) => {
+    ($fg:expr, $bg:expr) => {
         ansi_term::Style::new()
-            .fg(ansi_term::Color::RGB($a.0, $a.1, $a.2))
-            .on(ansi_term::Color::RGB($b.0, $b.1, $b.2))
+            .fg(match $fg {
+                PaletteColor::RGB((r, g, b)) => {
+                    ansi_term::Color::RGB(r, g, b)
+                }
+                PaletteColor::EightBit(color) => {
+                    ansi_term::Color::Fixed(color)
+                }
+            })
+            .on(match $bg {
+                PaletteColor::RGB((r, g, b)) => {
+                    ansi_term::Color::RGB(r, g, b)
+                }
+                PaletteColor::EightBit(color) => {
+                    ansi_term::Color::Fixed(color)
+                }
+            })
     };
 }

@@ -79,6 +79,17 @@ impl Default for Theme {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum PaletteColor {
+    RGB((u8, u8, u8)),
+    EightBit(u8),
+}
+impl Default for PaletteColor {
+    fn default() -> PaletteColor {
+        PaletteColor::EightBit(0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PaletteSource {
     Default,
     Xresources,
@@ -92,17 +103,17 @@ impl Default for PaletteSource {
 pub struct Palette {
     pub source: PaletteSource,
     pub theme: Theme,
-    pub fg: (u8, u8, u8),
-    pub bg: (u8, u8, u8),
-    pub black: (u8, u8, u8),
-    pub red: (u8, u8, u8),
-    pub green: (u8, u8, u8),
-    pub yellow: (u8, u8, u8),
-    pub blue: (u8, u8, u8),
-    pub magenta: (u8, u8, u8),
-    pub cyan: (u8, u8, u8),
-    pub white: (u8, u8, u8),
-    pub orange: (u8, u8, u8),
+    pub fg: PaletteColor,
+    pub bg: PaletteColor,
+    pub black: PaletteColor,
+    pub red: PaletteColor,
+    pub green: PaletteColor,
+    pub yellow: PaletteColor,
+    pub blue: PaletteColor,
+    pub magenta: PaletteColor,
+    pub cyan: PaletteColor,
+    pub white: PaletteColor,
+    pub orange: PaletteColor,
 }
 
 /// Represents the contents of the help message that is printed in the status bar,

@@ -62,8 +62,8 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart
     };
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
-    let left_separator = style!(palette.fg, palette.orange).paint(ARROW_SEPARATOR);
-    let more_styled_text = style!(palette.fg, palette.orange).bold().paint(more_text);
+    let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
+    let more_styled_text = style!(palette.black, palette.orange).bold().paint(more_text);
     let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
@@ -88,8 +88,8 @@ fn right_more_message(tab_count_to_the_right: usize, palette: Palette) -> LinePa
         " +many → ".to_string()
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
-    let left_separator = style!(palette.fg, palette.orange).paint(ARROW_SEPARATOR);
-    let more_styled_text = style!(palette.fg, palette.orange).bold().paint(more_text);
+    let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
+    let more_styled_text = style!(palette.black, palette.orange).bold().paint(more_text);
     let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
     let more_styled_text = format!(
         "{}",
@@ -137,7 +137,7 @@ fn add_next_tabs_msg(
 fn tab_line_prefix(palette: Palette) -> LinePart {
     let prefix_text = " Zellij ".to_string();
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = style!(palette.fg, palette.bg).bold().paint(prefix_text);
+    let prefix_styled_text = style!(palette.white, palette.bg).bold().paint(prefix_text);
     LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
