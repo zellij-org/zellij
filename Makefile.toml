@@ -6,7 +6,6 @@ SKIP_TEST = false
 
 # Add clippy to the default flow
 [tasks.dev-test-flow]
-description = "Defines the default developer build flow with tests."
 dependencies = [
   "format-flow",
   "format-toml-conditioned-flow",
