@@ -64,7 +64,7 @@ args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 # Release building and installing Zellij
 [tasks.install]
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "manpages-install"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "manpage-install"]
 script_runner = "@duckscript"
 script = '''
 if is_dir ${CARGO_MAKE_TASK_ARGS}
