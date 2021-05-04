@@ -80,18 +80,18 @@ fn color_elements(palette: Palette) -> ColoredElements {
             selected_styled_text: style!(palette.black, palette.green).bold(),
             selected_suffix_separator: style!(palette.green, palette.bg).bold(),
             unselected_prefix_separator: style!(palette.bg, palette.fg),
-            unselected_char_left_separator: style!(palette.bg, palette.fg).bold(),
+            unselected_char_left_separator: style!(palette.black, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(palette.bg, palette.fg).bold(),
+            unselected_char_right_separator: style!(palette.black, palette.fg).bold(),
             unselected_styled_text: style!(palette.black, palette.fg).bold(),
             unselected_suffix_separator: style!(palette.fg, palette.bg),
             disabled_prefix_separator: style!(palette.bg, palette.fg),
             disabled_styled_text: style!(palette.bg, palette.fg).dimmed(),
             disabled_suffix_separator: style!(palette.fg, palette.bg),
-            selected_single_letter_prefix_separator: style!(palette.fg, palette.green),
+            selected_single_letter_prefix_separator: style!(palette.bg, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_single_letter_suffix_separator: style!(palette.green, palette.fg),
-            unselected_single_letter_prefix_separator: style!(palette.fg, palette.bg),
+            selected_single_letter_suffix_separator: style!(palette.green, palette.bg),
+            unselected_single_letter_prefix_separator: style!(palette.bg, palette.fg),
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
             unselected_single_letter_suffix_separator: style!(palette.fg, palette.bg),
             superkey_prefix: style!(palette.white, palette.bg).bold(),
@@ -149,13 +149,14 @@ impl ZellijPlugin for State {
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
-        println!(
-            "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
-            first_line,
-            self.mode_info.palette.bg.0,
-            self.mode_info.palette.bg.1,
-            self.mode_info.palette.bg.2
-        );
+        match self.mode_info.palette.bg {
+            PaletteColor::Rgb((r, g, b)) => {
+                println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+            }
+            PaletteColor::EightBit(color) => {
+                println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+            }
+        }
         println!("\u{1b}[m{}\u{1b}[0K", second_line);
     }
 }

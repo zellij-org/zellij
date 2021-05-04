@@ -1,15 +1,21 @@
 #[macro_export]
 macro_rules! rgb {
     ($a:expr) => {
-        ansi_term::Color::RGB($a.0, $a.1, $a.2)
+        ansi_term::Color::Rgb($a.0, $a.1, $a.2)
     };
 }
 
 #[macro_export]
 macro_rules! style {
-    ($a:expr, $b:expr) => {
+    ($fg:expr, $bg:expr) => {
         ansi_term::Style::new()
-            .fg(ansi_term::Color::RGB($a.0, $a.1, $a.2))
-            .on(ansi_term::Color::RGB($b.0, $b.1, $b.2))
+            .fg(match $fg {
+                PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+                PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+            })
+            .on(match $bg {
+                PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+                PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+            })
     };
 }

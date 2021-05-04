@@ -1,8 +1,8 @@
 use crate::tab::Pane;
 use crate::utils::shared::colors;
-use ansi_term::Colour::RGB;
+use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
-use zellij_tile::data::{InputMode, Palette};
+use zellij_tile::data::{InputMode, Palette, PaletteColor};
 
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {
@@ -19,20 +19,13 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
-// pub mod colors {
-//     use ansi_term::Colour::{self, Fixed};
-//     pub const GREEN: Colour = Fixed(154);
-//     pub const GRAY: Colour = Fixed(238);
-//     pub const ORANGE: Colour = Fixed(166);
-// }
-
 pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
 #[derive(Clone, Copy, Debug)]
 pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
-    color: Option<(u8, u8, u8)>,
+    color: Option<PaletteColor>,
 }
 
 impl BoundarySymbol {
@@ -40,14 +33,14 @@ impl BoundarySymbol {
         BoundarySymbol {
             boundary_type,
             invisible: false,
-            color: Some(colors::GRAY),
+            color: Some(PaletteColor::EightBit(colors::GRAY)),
         }
     }
     pub fn invisible(mut self) -> Self {
         self.invisible = true;
         self
     }
-    pub fn color(&mut self, color: Option<(u8, u8, u8)>) -> Self {
+    pub fn color(&mut self, color: Option<PaletteColor>) -> Self {
         self.color = color;
         *self
     }
@@ -58,11 +51,14 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => write!(
-                    f,
-                    "{}",
-                    RGB(color.0, color.1, color.2).paint(self.boundary_type)
-                ),
+                Some(color) => match color {
+                    PaletteColor::Rgb((r, g, b)) => {
+                        write!(f, "{}", RGB(r, g, b).paint(self.boundary_type))
+                    }
+                    PaletteColor::EightBit(color) => {
+                        write!(f, "{}", Fixed(color).paint(self.boundary_type))
+                    }
+                },
                 None => write!(f, "{}", self.boundary_type),
             },
         }

@@ -5,7 +5,7 @@ use std::{iter, str::from_utf8};
 use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
-use zellij_tile::data::{Palette, PaletteSource, Theme};
+use zellij_tile::data::{Palette, PaletteColor, PaletteSource, Theme};
 
 fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
@@ -34,13 +34,13 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
 
 // Colors
 pub mod colors {
-    pub const WHITE: (u8, u8, u8) = (238, 238, 238);
-    pub const GREEN: (u8, u8, u8) = (175, 255, 0);
-    pub const GRAY: (u8, u8, u8) = (68, 68, 68);
-    pub const BRIGHT_GRAY: (u8, u8, u8) = (138, 138, 138);
-    pub const RED: (u8, u8, u8) = (135, 0, 0);
-    pub const ORANGE: (u8, u8, u8) = (215, 95, 0);
-    pub const BLACK: (u8, u8, u8) = (0, 0, 0);
+    pub const WHITE: u8 = 255;
+    pub const GREEN: u8 = 154;
+    pub const GRAY: u8 = 238;
+    pub const BRIGHT_GRAY: u8 = 245;
+    pub const RED: u8 = 88;
+    pub const ORANGE: u8 = 166;
+    pub const BLACK: u8 = 16;
 }
 
 pub fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
@@ -54,30 +54,34 @@ pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
         theme: Theme::Dark,
-        fg: colors::BRIGHT_GRAY,
-        bg: colors::GRAY,
-        black: colors::BLACK,
-        red: colors::RED,
-        green: colors::GREEN,
-        yellow: colors::GRAY,
-        blue: colors::GRAY,
-        magenta: colors::GRAY,
-        cyan: colors::GRAY,
-        white: colors::WHITE,
-        orange: colors::ORANGE,
+        fg: PaletteColor::EightBit(colors::BRIGHT_GRAY),
+        bg: PaletteColor::EightBit(colors::GRAY),
+        black: PaletteColor::EightBit(colors::BLACK),
+        red: PaletteColor::EightBit(colors::RED),
+        green: PaletteColor::EightBit(colors::GREEN),
+        yellow: PaletteColor::EightBit(colors::GRAY),
+        blue: PaletteColor::EightBit(colors::GRAY),
+        magenta: PaletteColor::EightBit(colors::GRAY),
+        cyan: PaletteColor::EightBit(colors::GRAY),
+        white: PaletteColor::EightBit(colors::WHITE),
+        orange: PaletteColor::EightBit(colors::ORANGE),
     }
 }
 
 // Dark magic
-pub fn detect_theme(bg: (u8, u8, u8)) -> Theme {
-    let (r, g, b) = bg;
-    // HSP, P stands for perceived brightness
-    let hsp: f64 = (0.299 * (r as f64 * r as f64)
-        + 0.587 * (g as f64 * g as f64)
-        + 0.114 * (b as f64 * b as f64))
-        .sqrt();
-    match hsp > 127.5 {
-        true => Theme::Light,
-        false => Theme::Dark,
+pub fn detect_theme(bg: PaletteColor) -> Theme {
+    match bg {
+        PaletteColor::Rgb((r, g, b)) => {
+            // HSP, P stands for perceived brightness
+            let hsp: f64 = (0.299 * (r as f64 * r as f64)
+                + 0.587 * (g as f64 * g as f64)
+                + 0.114 * (b as f64 * b as f64))
+                .sqrt();
+            match hsp > 127.5 {
+                true => Theme::Light,
+                false => Theme::Dark,
+            }
+        }
+        _ => Theme::Dark,
     }
 }

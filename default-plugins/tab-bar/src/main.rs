@@ -68,12 +68,13 @@ impl ZellijPlugin for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        println!(
-            "{}\u{1b}[48;2;{};{};{}m\u{1b}[0K",
-            s,
-            self.mode_info.palette.bg.0,
-            self.mode_info.palette.bg.1,
-            self.mode_info.palette.bg.2
-        );
+        match self.mode_info.palette.bg {
+            PaletteColor::Rgb((r, g, b)) => {
+                println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
+            }
+            PaletteColor::EightBit(color) => {
+                println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
+            }
+        }
     }
 }
