@@ -1,0 +1,339 @@
+.TH "ZELLIJ" 1
+
+.SH "NAME"
+.PP
+\fBzellij\fP \- run zellij
+
+.SH "DESCRIPTION"
+.PP
+Zellij is a workspace aimed at developers, ops\-oriented people and anyone who
+loves the terminal\. At its core, it is a terminal multiplexer (similar to tmux
+and screen), but this is merely its infrastructure layer\.
+.PP
+Zellij includes a layout system, and a plugin system allowing one to create
+plugins in any language that compiles to WebAssembly\.
+
+.SH "OPTIONS"
+.PP
+Run `\f[CR]zellij \-\-help\fP` to see available flags and subcommamds\.
+
+.SH "CONFIGURATION"
+.PP
+Zellij looks for configuration file in the following order:
+.RS
+.Bl
+.IP 1. 4
+the file provided with \fI\-\-config\fP
+.El
+.Bl
+.IP 2. 4
+under the path provided in \fIZELLIJ_CONFIG\fP environment variable
+.El
+.Bl
+.IP 3. 4
+the default location (see FILES section)
+.El
+.RE
+
+.SH "LAYOUTS"
+.PP
+Layouts are yaml files which Zellij can load on startup when \fI\-\-layout\fP flag is
+provided\.
+.PP
+For example a file like this:
+.RS
+.PP
+.nf
+\-\-\-
+direction: Vertical
+parts:
+    \- direction: Horizontal
+      split_size:
+        Percent: 50
+      parts:
+        \- direction: Vertical
+          split_size:
+            Percent: 50
+        \- direction: Vertical
+          split_size:
+            Percent: 50
+    \- direction: Horizontal
+      split_size:
+        Percent: 50
+.fi
+.RE
+.PP
+will tell Zellij to create this layout:
+.RS
+.PP
+.nf
++\-\-\-\-\-+\-\-\-\-\-+
+|     |     |
++\-\-\-\-\-+     |
+|     |     |
++\-\-\-\-\-+\-\-\-\-\-+
+.fi
+.RE
+
+.SS "CREATING LAYOUTS"
+.PP
+A layout file is a nested tree structure\. Each node describes either a pane
+(leaf), or a space in which its parts (children) will be created\.
+.PP
+Each node has following fields:
+.RS
+.Bl
+.IP \(bu 4
+\fBdirection: <Horizontal / Vertical>\fP \- node's children will be created by a
+split in given direction\.
+.El
+.Bl
+.IP \(bu 4
+\fBsplit_size:\fP \- this indicates either a percentage of the node's parent's
+space or a fixed size of columns/rows from its parent's space\.
+.RS
+.Bl
+.IP \(bu 4
+\fBPercent: <1\-100>\fP
+.El
+.Bl
+.IP \(bu 4
+\fBFixed: <lines_number/columns_number>\fP
+.El
+.RE
+.El
+.Bl
+.IP \(bu 4
+\fBplugin: /path/to/plugin\.wasm\fP \- optional path to a compiled Zellij plugin\.
+If indicated loads a plugin into the created space\. For more information see
+PLUGINS section\.
+.El
+.RE
+
+.SH "KEYBINDINGS"
+.PP
+Zellij comes with a default set of keybindings which aims to fit as many users
+as possible but that behaviour can be overidden or modified in user
+configuration files\. The information about bindings is available in the
+\fIkeybinds\fP section of configuration\. For example, to introduce a keybinding that
+will create a new tab and go to tab 1 after pressing 'c' one can write:
+.RS
+.PP
+.nf
+keybinds:
+    normal:
+        \- action: [ NewTab, GoToTab: 1,]
+          key: [ Char: 'c',]
+.fi
+.RE
+.PP
+where "normal" stands for a mode name (see MODES section), "action" part
+specifies the actions to be executed by Zellij (see ACTIONS section) and "key"
+is used to list  keys or key combinations bound to given actions (see KEYS)\. 
+
+.SS "ACTIONS"
+.RS
+.Bl
+.IP \(bu 4
+\fBQuit\fP \- quits Zellij
+.El
+.Bl
+.IP \(bu 4
+\fBSwitchToMode: <InputMode>\fP \- switches to the specified input mode\. See
+MODES section for possible values\.
+.El
+.Bl
+.IP \(bu 4
+\fBResize: <Direction>\fP \- resizes focused pane in the specified direction
+(one of: Left, Right, Up, Down)\.
+.El
+.Bl
+.IP \(bu 4
+\fBFocusNextPane\fP \- switches focus to the next pane to the right or below if
+on  screen edge\.
+.El
+.Bl
+.IP \(bu 4
+\fBFocusPreviousPane\fP \- switches focus to the next pane to the left or above
+if on  screen edge\.
+.El
+.Bl
+.IP \(bu 4
+\fBSwitchFocus\fP \- left for legacy support\. Switches focus to a pane with the
+next ID\.
+.El
+.Bl
+.IP \(bu 4
+\fBMoveFocus: <Direction>\fP \-  moves focus in the specified direction (Left,
+Right, Up, Down)\.
+.El
+.Bl
+.IP \(bu 4
+\fBScrollUp\fP \- scrolls up 1 line in the focused pane\.
+.El
+.Bl
+.IP \(bu 4
+\fBScrollDown\fP \- scrolls down 1 line in the focused pane\.
+.El
+.Bl
+.IP \(bu 4
+\fBToggleFocusFullscreen\fP \- toggles between fullscreen focus pane and normal
+layout\.
+.El
+.Bl
+.IP \(bu 4
+\fBNewPane: <Direction>\fP \- opens a new pane in the specified direction (Left,
+Right, Up, Down) relative to focus\. 
+.El
+.Bl
+.IP \(bu 4
+\fBCloseFocus\fP \- closes focused pane\.
+.El
+.Bl
+.IP \(bu 4
+\fBNewTab\fP \- creates a new tab\.
+.El
+.Bl
+.IP \(bu 4
+\fBGoToNextTab\fP \- goes to the next tab\.
+.El
+.Bl
+.IP \(bu 4
+\fBGoToPreviousTab\fP \- goes to previous tab\.
+.El
+.Bl
+.IP \(bu 4
+\fBCloseTab\fP \- closes current tab\.
+.El
+.Bl
+.IP \(bu 4
+\fBGoToTab: <Index>\fP \- goes to the tab with the specified index number\.
+.El
+.RE
+
+.SS "KEYS"
+.RS
+.Bl
+.IP \(bu 4
+\fBChar: <character>\fP \- a single character with no modifier\.
+.El
+.Bl
+.IP \(bu 4
+\fBAlt: <character>\fP \- a single character with `\f[CR]Alt\fP` key as modifier\.
+.El
+.Bl
+.IP \(bu 4
+\fBCtrl: <character>\fP \- a single character with `\f[CR]Ctrl\fP` key as modifier\.
+.El
+.Bl
+.IP \(bu 4
+\fBF: <1\-12>\fP \- one of `\f[CR]F\fP` keys (usually at the top of the keyboard)\.
+.El
+.Bl
+.IP \(bu 4
+\fBBackspace\fP
+.El
+.Bl
+.IP \(bu 4
+\fBLeft / Right / Up / Down\fP \- arrow keys on the keyboard\.
+.El
+.Bl
+.IP \(bu 4
+\fBHome\fP
+.El
+.Bl
+.IP \(bu 4
+\fBEnd\fP
+.El
+.Bl
+.IP \(bu 4
+\fBPageUp / PageDown\fP
+.El
+.Bl
+.IP \(bu 4
+\fBBackTab\fP \- a backward Tab key\.
+.El
+.Bl
+.IP \(bu 4
+\fBDelete\fP
+.El
+.Bl
+.IP \(bu 4
+\fBInsert\fP
+.El
+.Bl
+.IP \(bu 4
+\fBEsc\fP
+.El
+.RE
+
+.SS "MODES"
+.RS
+.Bl
+.IP \(bu 4
+\fBnormal\fP \- the default startup mode of Zellij\. Provides the ability to
+switch to different modes, as well as some quick navigation shortcuts\.
+.El
+.Bl
+.IP \(bu 4
+\fBlocked\fP \- disables all keybindings except the one that would switch the
+mode to normal (\fIctrl\-g\fP by default)\. Useful when Zellij's keybindings
+conflict with those of a chosen terminal app\. 
+.El
+.Bl
+.IP \(bu 4
+\fBpane\fP \- includes instructions that manipulate the panes (adding new panes,
+moving, closing)\.
+.El
+.Bl
+.IP \(bu 4
+\fBtab\fP \- includes instructions that manipulate the tabs (adding new tabs,
+moving, closing)\.
+.El
+.Bl
+.IP \(bu 4
+\fBresize\fP \- allows resizing of the focused pane\.
+.El
+.Bl
+.IP \(bu 4
+\fBscroll\fP \- allows scrolling within the focused pane\.
+.El
+.Bl
+.IP \(bu 4
+\fBRenameTab\fP \- is a "hidden" mode that can be passed to \fISwitchToMode\fP
+action\. It will trigger renaming of a tab\.
+.El
+.RE
+
+.SH "PLUGINS"
+.PP
+Zellij has a plugin system based on WebAssembly\. Any language that can run on
+WASI can be used to develop a plugin\. To load a plugin include it in a layout
+file\. Zellij comes with default plugins included: \fIstatus\-bar\fP, \fIstrider\fP,
+\fItab\-bar\fP\.
+
+.SH "FILES"
+.PP
+Default user configuration file location:
+.RS
+.Bl
+.IP \(bu 4
+Linux: \fI/home/alice/\.config/zellij\fP
+.El
+.Bl
+.IP \(bu 4
+macOS: \fI/Users/Alice/Library/Application Support/com\.Zellij\-Contributors\.zellij\fP
+.El
+.RE
+
+.SH "ENVIRONMENT"
+.PP
+ZELLIJ_CONFIG
+Path of Zellij config to load\. 
+
+.SH "NOTES"
+.PP
+The manpage is meant to provide concise offline reference\. For more detailed
+instructions please visit: 
+.PP
+https://zellij\.dev/documentation

@@ -48,6 +48,7 @@ features = ["unstable"]
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"
+mandown = "0.1.2"
 
 [build-dependencies]
 structopt = "0.3"
@@ -69,8 +70,7 @@ lto = true
 depends = "$auto"
 license-file = ["LICENSE.md", "4"]
 assets = [
-  # TODO?
-  # ["assets/man/zellij.1", "usr/share/man/man1/zellij.1", "644"],
+  ["assets/man/zellij.1", "usr/share/man/man1/zellij.1", "644"],
   ["target/release/zellij", "usr/bin/zellij", "755"],
   ["GOVERNANCE.md", "usr/share/doc/zellij/GOVERNANCE.md", "644"],
   ["README.md", "usr/share/doc/zellij/README.md", "644"],
