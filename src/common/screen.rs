@@ -79,7 +79,7 @@ pub struct Screen {
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
-    /// The [`ClientOsApi`] this [`Screen`] uses.
+    /// The [`ServerOsApi`] this [`Screen`] uses.
     os_api: Box<dyn ServerOsApi>,
     mode_info: ModeInfo,
     input_mode: InputMode,

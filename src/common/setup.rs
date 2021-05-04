@@ -1,9 +1,9 @@
-use crate::common::utils::consts::SYSTEM_DEFAULT_CONFIG_DIR;
+use crate::common::utils::consts::{SYSTEM_DEFAULT_CONFIG_DIR, VERSION};
+use crate::os_input_output::set_permissions;
 use directories_next::{BaseDirs, ProjectDirs};
 use std::io::Write;
 use std::{fs, path::Path, path::PathBuf};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG_LOCATION: &str = "/.config/zellij";
 
 #[macro_export]
@@ -40,7 +40,9 @@ pub mod install {
 
         for (path, bytes) in assets {
             let path = data_dir.join(path);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let parent_path = path.parent().unwrap();
+            fs::create_dir_all(parent_path).unwrap();
+            set_permissions(parent_path);
             if out_of_date || !path.exists() {
                 fs::write(path, bytes).expect("Failed to install default assets!");
             }

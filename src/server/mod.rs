@@ -19,7 +19,7 @@ use crate::common::{
     errors::{ContextType, PluginContext, PtyContext, ScreenContext, ServerContext},
     input::actions::{Action, Direction},
     input::handler::get_mode_info,
-    os_input_output::ServerOsApi,
+    os_input_output::{set_permissions, ServerOsApi},
     pty_bus::{PtyBus, PtyInstruction},
     screen::{Screen, ScreenInstruction},
     setup::install::populate_data_dir,
@@ -85,8 +85,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             let sessions = sessions.clone();
             let send_server_instructions = send_server_instructions.clone();
             move || {
-                drop(std::fs::remove_file(ZELLIJ_IPC_PIPE.clone()));
-                let listener = LocalSocketListener::bind(ZELLIJ_IPC_PIPE.clone()).unwrap();
+                drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
+                let listener = LocalSocketListener::bind(&**ZELLIJ_IPC_PIPE).unwrap();
+                set_permissions(&*ZELLIJ_IPC_PIPE);
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
@@ -134,7 +135,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
                     ServerInstruction::ClientExit => {
                         *sessions.write().unwrap() = None;
                         os_input.send_to_client(ClientInstruction::Exit);
-                        drop(std::fs::remove_file(ZELLIJ_IPC_PIPE.clone()));
+                        drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
                         break;
                     }
                     ServerInstruction::Render(output) => {

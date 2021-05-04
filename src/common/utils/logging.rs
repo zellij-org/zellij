@@ -7,14 +7,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::os_input_output::set_permissions;
 use crate::utils::consts::{ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 
 pub fn atomic_create_file(file_name: &Path) {
     let _ = fs::OpenOptions::new().create(true).open(file_name);
+    #[cfg(not(test))]
+    set_permissions(file_name);
 }
 
 pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
-    if let Err(e) = fs::create_dir(dir_name) {
+    let result = if let Err(e) = fs::create_dir(dir_name) {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             Ok(())
         } else {
@@ -22,7 +25,11 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
         }
     } else {
         Ok(())
+    };
+    if result.is_ok() {
+        set_permissions(dir_name);
     }
+    result
 }
 
 pub fn debug_log_to_file(mut message: String) -> io::Result<()> {

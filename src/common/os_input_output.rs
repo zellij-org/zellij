@@ -15,14 +15,21 @@ use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult, Pid};
 use signal_hook::{consts::signal::*, iterator::Signals};
-use std::env;
-use std::io;
 use std::io::prelude::*;
-use std::os::unix::io::RawFd;
-use std::path::PathBuf;
+use std::os::unix::{fs::PermissionsExt, io::RawFd};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use std::{env, fs, io};
 use zellij_tile::data::Palette;
+
+const UNIX_PERMISSIONS: u32 = 0o700;
+
+pub fn set_permissions(path: &Path) {
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(UNIX_PERMISSIONS);
+    fs::set_permissions(path, permissions).unwrap();
+}
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -373,11 +380,11 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self) {
-        let socket = match LocalSocketStream::connect(ZELLIJ_IPC_PIPE.clone()) {
+        let socket = match LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE) {
             Ok(sock) => sock,
             Err(_) => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
-                LocalSocketStream::connect(ZELLIJ_IPC_PIPE.clone()).unwrap()
+                LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE).unwrap()
             }
         };
         let sender = IpcSenderWithContext::new(socket);

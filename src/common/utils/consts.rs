@@ -1,5 +1,6 @@
 //! Zellij program-wide constants.
 
+use crate::os_input_output::set_permissions;
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
 use nix::unistd::Uid;
@@ -8,6 +9,7 @@ use std::{env, fs};
 
 pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
 pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // TODO: ${PREFIX} argument in makefile
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
@@ -18,7 +20,6 @@ lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
-        let version = env::var("CARGO_PKG_VERSION").unwrap();
         let mut ipc_dir = env::var("ZELLIJ_SOCKET_DIR").map_or_else(
             |_| {
                 ZELLIJ_PROJ_DIR
@@ -27,8 +28,9 @@ lazy_static! {
             },
             PathBuf::from,
         );
-        ipc_dir.push(&version);
+        ipc_dir.push(VERSION);
         fs::create_dir_all(&ipc_dir).unwrap();
+        set_permissions(&ipc_dir);
         ipc_dir.push(&*SESSION_NAME);
         ipc_dir
     };
