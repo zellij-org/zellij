@@ -21,10 +21,12 @@ lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
+        let version = std::env::var("CARGO_PKG_VERSION").unwrap();
         let mut ipc_dir = ZELLIJ_PROJ_DIR
             .runtime_dir()
             .map(|p| p.to_owned())
             .unwrap_or_else(|| PathBuf::from("/tmp/zellij-".to_string() + &format!("{}", *UID)));
+        ipc_dir.push(&version);
         std::fs::create_dir_all(&ipc_dir).unwrap();
         ipc_dir.push(&*SESSION_NAME);
         ipc_dir
