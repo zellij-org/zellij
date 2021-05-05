@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.7.0] - 2021-05-04
 * Fix the tab '(Sync)' suffix in named tabs (https://github.com/zellij-org/zellij/pull/410)
 * Improve performance when multiple panes are open (https://github.com/zellij-org/zellij/pull/318)
 * Improve error reporting and tests of configuration (https://github.com/zellij-org/zellij/pull/423)
 * Refactor install module to setup module (https://github.com/zellij-org/zellij/pull/431)
 * Add theme support through xrdb (https://github.com/zellij-org/zellij/pull/239)
+* Fix default keybindings in resize mode and add arrow parity in tab and scroll mode (https://github.com/zellij-org/zellij/pull/441)
+* Terminal compatibility: pass vttest 2 and 3 (https://github.com/zellij-org/zellij/pull/447)
+* Stabilize colors (https://github.com/zellij-org/zellij/pull/453)
 
 ## [0.6.0] - 2021-04-29
 * Doesn't quit anymore on single `q` press while in tab mode  (https://github.com/zellij-org/zellij/pull/342)

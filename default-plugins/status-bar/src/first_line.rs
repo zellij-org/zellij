@@ -228,7 +228,7 @@ fn key_indicators(max_len: usize, keys: &[CtrlKeyShortcut], palette: ColoredElem
 }
 
 pub fn superkey(palette: ColoredElements) -> LinePart {
-    let prefix_text = " Ctrl + ";
+    let prefix_text = " Ctrl +";
     let prefix = palette.superkey_prefix.paint(prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(ARROW_SEPARATOR);
     LinePart {

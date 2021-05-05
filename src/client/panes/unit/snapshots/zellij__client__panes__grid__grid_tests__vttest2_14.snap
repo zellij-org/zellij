@@ -1,0 +1,30 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (W): AAAAA                                                                                                         
+01 (W): AAAAA                                                                                                         
+02 (W): AAAAA                                                                                                         
+03 (W): AAAAA                                                                                                         
+04 (W):                                                                                                               
+05 (W):                                                                                                               
+06 (W):                                                                                                               
+07 (W):            normal      bold        underscored blinking    reversed                                           
+08 (W):                                                                                                               
+09 (W): stars:     **********  **********  **********  **********  **********                                         
+10 (W):                                                                                                               
+11 (W): line:      ──────────  ──────────  ──────────  ──────────  ──────────                                         
+12 (W):                                                                                                               
+13 (W): x'es:      xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx                                         
+14 (W):                                                                                                               
+15 (W): diamonds:  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆                                         
+16 (W):                                                                                                               
+17 (W):                                                                                                               
+18 (W):                                                                                                               
+19 (W):                                                                                                               
+20 (W): Test of the SAVE/RESTORE CURSOR feature. There should                                                         
+21 (W): be ten characters of each flavour, and a rectangle                                                            
+22 (W): of 5 x 4 A's filling the top left of the screen.                                                              
+23 (W): Push <RETURN>                                                                                                 
+

@@ -1,0 +1,28 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): 1234567890123456789012345678901234567890123456789012345678901234567890123456789                               
+01 (C):                                                                                                               
+02 (C):   This is 80 column mode, dark background.                                                                    
+03 (C):    This is 80 column mode, dark background.                                                                   
+04 (C):     This is 80 column mode, dark background.                                                                  
+05 (C):      This is 80 column mode, dark background.                                                                 
+06 (C):       This is 80 column mode, dark background.                                                                
+07 (C):        This is 80 column mode, dark background.                                                               
+08 (C):         This is 80 column mode, dark background.                                                              
+09 (C):          This is 80 column mode, dark background.                                                             
+10 (C):           This is 80 column mode, dark background.                                                            
+11 (C):            This is 80 column mode, dark background.                                                           
+12 (C):             This is 80 column mode, dark background.                                                          
+13 (C):              This is 80 column mode, dark background.                                                         
+14 (C):               This is 80 column mode, dark background.                                                        
+15 (C):                This is 80 column mode, dark background.                                                       
+16 (C):                 This is 80 column mode, dark background.                                                      
+17 (C):                  This is 80 column mode, dark background.                                                     
+18 (C):                   This is 80 column mode, dark background.                                                    
+19 (C):                    This is 80 column mode, dark background.Push <RETURN>                                      
+20 (C):                                                                                                               
+21 (C):                                                                                                               
+

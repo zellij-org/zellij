@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 
 use crate::os_input_output::OsApi;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
-use crate::utils::shared::colors;
-use zellij_tile::data::{Palette, PaletteSource, Theme};
+use crate::utils::shared::default_palette;
+use zellij_tile::data::Palette;
 
 use crate::tests::utils::commands::{QUIT, SLEEP};
 
@@ -75,7 +75,6 @@ pub struct FakeInputOutput {
     last_snapshot_time: Arc<Mutex<Instant>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
-    palette: Arc<Mutex<Palette>>,
 }
 
 impl FakeInputOutput {
@@ -84,21 +83,6 @@ impl FakeInputOutput {
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         win_sizes.insert(0, winsize); // 0 is the current terminal
-        let palette: Palette = Palette {
-            source: PaletteSource::Default,
-            theme: Theme::Dark,
-            fg: colors::BRIGHT_GRAY,
-            bg: colors::GRAY,
-            black: colors::BLACK,
-            red: colors::RED,
-            green: colors::GREEN,
-            yellow: colors::GRAY,
-            blue: colors::GRAY,
-            magenta: colors::GRAY,
-            cyan: colors::GRAY,
-            white: colors::WHITE,
-            orange: colors::ORANGE,
-        };
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
             stdin_writes: Arc::new(Mutex::new(HashMap::new())),
@@ -111,7 +95,6 @@ impl FakeInputOutput {
             possible_tty_inputs: get_possible_tty_inputs(),
             should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
             sigwinch_event: None,
-            palette: Arc::new(Mutex::new(palette)),
         }
     }
     pub fn with_tty_inputs(mut self, tty_inputs: HashMap<u16, Bytes>) -> Self {
@@ -255,21 +238,6 @@ impl OsApi for FakeInputOutput {
         }
     }
     fn load_palette(&self) -> Palette {
-        let palette: Palette = Palette {
-            source: PaletteSource::Default,
-            theme: Theme::Dark,
-            fg: colors::BRIGHT_GRAY,
-            bg: colors::GRAY,
-            black: colors::BLACK,
-            red: colors::RED,
-            green: colors::GREEN,
-            yellow: colors::GRAY,
-            blue: colors::GRAY,
-            magenta: colors::GRAY,
-            cyan: colors::GRAY,
-            white: colors::WHITE,
-            orange: colors::ORANGE,
-        };
-        palette
+        default_palette()
     }
 }
