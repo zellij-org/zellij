@@ -51,6 +51,15 @@ struct Span {
 // TODO: currently there are some functions here duplicated with Tab
 // all resizing functions should move here
 
+// FIXME:
+// 1. Rounding causes a loss of ratios, I need to store an internal f64 for
+//    each pane as well as the displayed usize and add custom rounding logic.
+// 2. Vertical resizing doesn't seem to respect the space consumed by the tab
+//    and status bars?
+// 3. A 2x2 layout and simultaneous vertical + horizontal resizing sometimes
+//    leads to unsolvable constraints? Maybe related to 2 (and possibly 1).
+//    I should sanity-check the `spans_in_boundary()` here!
+
 impl<'a> PaneResizer<'a> {
     pub fn new(
         panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
@@ -76,12 +85,12 @@ impl<'a> PaneResizer<'a> {
         let col_delta = new_size.cols as isize - current_size.cols as isize;
         let row_delta = new_size.rows as isize - current_size.rows as isize;
         if col_delta != 0 {
-            let spans = self.solve_direction(Direction::Horizontal, new_size.cols).unwrap();
+            let spans = self.solve_direction(Direction::Horizontal, new_size.cols)?;
             self.collapse_spans(&spans);
         }
+        self.solver.reset();
         if row_delta != 0 {
-            dbg!("RRRRRRRRRRRRRROOOOOOOOOOOOOOOOOOOOOOOOOWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSSSSSSSSSS");
-            let spans = self.solve_direction(Direction::Vertical, new_size.rows).unwrap();
+            let spans = self.solve_direction(Direction::Vertical, new_size.rows)?;
             self.collapse_spans(&spans);
         }
         Some((col_delta, row_delta))
@@ -98,7 +107,9 @@ impl<'a> PaneResizer<'a> {
             .flat_map(|s| constrain_spans(space, s))
             .collect();
 
-        self.solver.add_constraints(&constraints).ok()?;
+        // FIXME: This line needs to be restored before merging!
+        //self.solver.add_constraints(&constraints).ok()?;
+        self.solver.add_constraints(&constraints).unwrap();
         Some(grid.into_iter().flatten().collect())
     }
 
@@ -129,7 +140,7 @@ impl<'a> PaneResizer<'a> {
 
     fn spans_in_boundary(&self, direction: Direction, boundary: (usize, usize)) -> Vec<Span> {
         let (start, end) = boundary;
-        let bwn = |v| start <= v && v <= end;
+        let bwn = |v| start <= v && v < end;
         let mut spans: Vec<_> = self
             .panes
             .values()
@@ -169,12 +180,10 @@ impl<'a> PaneResizer<'a> {
     }
 
     fn collapse_spans(&mut self, spans: &[Span]) {
-        dbg!("Collapse");
         for span in spans {
             let solver = &self.solver; // Hand-holding the borrow-checker
             let pane = self.panes.get_mut(&span.pid).unwrap();
             let fetch_usize = |v| solver.get_value(v).round() as usize;
-            dbg!(span.pid, fetch_usize(span.pos_var), fetch_usize(span.size_var));
             match span.direction {
                 Direction::Horizontal => pane.change_pos_and_size(&PositionAndSize {
                     x: fetch_usize(span.pos_var),
@@ -216,7 +225,7 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
 
     // Keep spans stuck together
     for pair in spans.windows(2) {
-        let (ls, rs) = dbg!((pair[0], pair[1]));
+        let (ls, rs) = (pair[0], pair[1]);
         constraints
             .insert((ls.pos_var + ls.size_var + GAP_SIZE as f64) | EQ(REQUIRED) | rs.pos_var);
     }
@@ -233,7 +242,6 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
 
     // The last pane needs to end at the end of the space
     let last = spans.last().unwrap();
-    //dbg!("Fun times!", spans, last, space as f64, "No more fun!");
     constraints.insert((last.pos_var + last.size_var) | EQ(REQUIRED) | space as f64);
 
     constraints
