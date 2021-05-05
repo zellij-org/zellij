@@ -131,9 +131,3 @@ args = ["publish"]
 description = "Use mandown crate to create or update man entry from docs/MANPAGES.md"
 workspace = false
 script = "mandown docs/MANPAGE.md ZELLIJ 1 > assets/man/zellij.1"
-
-[tasks.manpage-install]
-description = "Install manpage from assets"
-workspace = false
-command = "sudo"
-args = ["cp", "assets/man/zellij.1", "/usr/share/man/man1/"]

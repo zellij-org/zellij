@@ -48,7 +48,6 @@ features = ["unstable"]
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"
-mandown = "0.1.2"
 
 [build-dependencies]
 structopt = "0.3"

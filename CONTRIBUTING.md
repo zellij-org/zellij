@@ -14,7 +14,7 @@ Before contributing please read our [Code of Conduct](CODE_OF_CONDUCT.md) which
 all contributors are expected to adhere to.
 
 ## Building
-To build Zellij, we're using cargo-make – you can install it by running `cargo install --force cargo-make`.
+To build Zellij, we're using cargo-make – you can install it by running `cargo install --force cargo-make`. To edit a manpage mandown crate (`cargo install mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
 Zellij has a hard dependency on a package from `x11` most likely called `libX11`, or similarly on your system.
 
@@ -37,6 +37,8 @@ cargo make clippy -W clippy::pedantic
 cargo make install /path/of/zellij/binary
 # Publish the zellij and zellij-tile crates
 cargo make publish
+# Update manpage
+cargo make manpage
 ```
 
 To run `install` or `publish`, you'll need `binaryen --version` > 97, for it's command `wasm-opt`.
