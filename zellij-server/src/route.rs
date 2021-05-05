@@ -85,6 +85,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::FocusPreviousPane)
                 .unwrap();
         }
+        Action::FocusPaneAt((x, y)) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::FocusPaneAt((x, y)))
+                .unwrap();
+        }
         Action::MoveFocus(direction) => {
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeft,

@@ -39,6 +39,7 @@ pub(crate) enum ScreenInstruction {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
+    FocusPaneAt((u16, u16)),
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
     MoveFocusDown,
@@ -86,6 +87,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchFocus => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
+            ScreenInstruction::FocusPaneAt(_) => ScreenContext::FocusPaneAt,
             ScreenInstruction::MoveFocusLeft => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusLeftOrPreviousTab => {
                 ScreenContext::MoveFocusLeftOrPreviousTab
@@ -512,6 +514,9 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::FocusPreviousPane => {
                 screen.get_active_tab_mut().unwrap().focus_previous_pane();
+            }
+            ScreenInstruction::FocusPaneAt((x, y)) => {
+                screen.get_active_tab_mut().unwrap().focus_pane_at(x, y);
             }
             ScreenInstruction::MoveFocusLeft => {
                 screen.get_active_tab_mut().unwrap().move_focus_left();

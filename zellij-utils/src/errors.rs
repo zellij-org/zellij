@@ -190,6 +190,7 @@ pub enum ScreenContext {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
+    FocusPaneAt,
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
     MoveFocusDown,

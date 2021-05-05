@@ -30,6 +30,7 @@ pub enum Action {
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
+    FocusPaneAt((u16, u16)),
     /// Move the focus pane in specified direction.
     SwitchFocus,
     MoveFocus(Direction),

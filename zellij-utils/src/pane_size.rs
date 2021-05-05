@@ -25,3 +25,9 @@ impl From<Winsize> for PositionAndSize {
         }
     }
 }
+
+impl PositionAndSize {
+    pub fn contains(&self, x: usize, y: usize) -> bool {
+        self.x <= x && x <= self.x + self.columns && self.y <= y && y <= self.y + self.rows
+    }
+}

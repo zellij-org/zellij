@@ -789,6 +789,29 @@ impl Tab {
             .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
     }
+    pub fn focus_pane_at(&mut self, x: u16, y: u16) {
+        // find the pane at x and y, and focus it
+        let x = x as usize;
+        let y = y as usize;
+        let mut pane_id: Option<PaneId> = self.get_active_pane_id();
+        dbg!(format!("\nchecking for panes at ({},{})", x, y));
+        for (&id, pane) in self.get_panes() {
+            let pos = pane.position_and_size();
+            dbg!(format!(
+                "pane {:?} at ({},{}) with size ({},{})",
+                id, pos.x, pos.y, pos.rows, pos.columns
+            ));
+
+            if pos.contains(x, y) {
+                dbg!(format!("({},{}) is inside pane {:?}", x, y, id));
+                pane_id = Some(id);
+                break;
+            }
+        }
+        self.active_terminal = pane_id;
+        dbg!(format!("focused pane {:?} at ({}, {})", pane_id, x, y));
+        self.render();
+    }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }

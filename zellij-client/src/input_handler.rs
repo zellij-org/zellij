@@ -72,13 +72,16 @@ impl InputHandler {
                         }
                         termion::event::Event::Mouse(me) => {
                             // only handle mouse wheel scrolling for now
-                            if let termion::event::MouseEvent::Press(button, _, _) = me {
+                            if let termion::event::MouseEvent::Press(button, x, y) = me {
                                 match button {
                                     termion::event::MouseButton::WheelUp => {
                                         self.dispatch_action(Action::ScrollUp);
                                     }
                                     termion::event::MouseButton::WheelDown => {
                                         self.dispatch_action(Action::ScrollDown);
+                                    }
+                                    termion::event::MouseButton::Left => {
+                                        self.dispatch_action(Action::FocusPaneAt((x, y)));
                                     }
                                     _ => {}
                                 }
