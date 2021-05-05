@@ -64,7 +64,7 @@ args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 # Release building and installing Zellij
 [tasks.install]
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "manpage-install"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "manpage"]
 script_runner = "@duckscript"
 script = '''
 if is_dir ${CARGO_MAKE_TASK_ARGS}
@@ -96,13 +96,17 @@ end
 # CI Releasing Zellij
 [tasks.ci-build-release]
 workspace = false
-dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-plugins"]
+dependencies = ["setup-cross-compilation", "install-mandown", "build-plugins-release", "wasm-opt-plugins", "manpage"]
 command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
 
 [tasks.setup-cross-compilation]
 command = "cargo"
 args = ["install", "cross"]
+
+[tasks.install-mandown]
+command = "cargo"
+args = ["install", "mandown"]
 
 # Publishing Zellij
 [tasks.publish]
