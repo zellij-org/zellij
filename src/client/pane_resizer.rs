@@ -118,7 +118,7 @@ impl<'a> PaneResizer<'a> {
         let spans: Vec<Span> = self
             .panes
             .values()
-            .map(|p| self.get_span(!direction, p))
+            .map(|p| self.get_span(!direction, p.as_ref()))
             .collect();
 
         let mut last_edge = 0;
@@ -145,16 +145,16 @@ impl<'a> PaneResizer<'a> {
             .panes
             .values()
             .filter(|p| {
-                let s = self.get_span(!direction, p);
+                let s = self.get_span(!direction, p.as_ref());
                 bwn(s.pos) || bwn(s.pos + s.size)
             })
-            .map(|p| self.get_span(direction, p))
+            .map(|p| self.get_span(direction, p.as_ref()))
             .collect();
         spans.sort_unstable_by_key(|s| s.pos);
         spans
     }
 
-    fn get_span(&self, direction: Direction, pane: &Box<dyn Pane>) -> Span {
+    fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
         let pas = pane.position_and_size();
         let (pos_var, size_var) = self.vars[&pane.pid()];
         match direction {
