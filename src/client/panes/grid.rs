@@ -178,7 +178,7 @@ pub struct Grid {
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
-    pub insert_mode: bool,    // ERM
+    pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
