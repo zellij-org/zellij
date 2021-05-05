@@ -1,0 +1,30 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA                                                          
+01 (C): BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB                                                           
+02 (C): CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC                                                            
+03 (C): The right column should be staggered                                                             
+04 (C): by one.  Push <RETURN>EEEEEEEEEEEEE                                                              
+05 (C): FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF                                                               
+06 (C): GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG                                                                
+07 (C): HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH                                                                 
+08 (C): IIIIIIIIIIIIIIIIIIIIIIIIIIIIIII                                                                  
+09 (C): JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ                                                                   
+10 (C): KKKKKKKKKKKKKKKKKKKKKKKKKKKKK                                                                    
+11 (C): LLLLLLLLLLLLLLLLLLLLLLLLLLLL                                                                     
+12 (C): MMMMMMMMMMMMMMMMMMMMMMMMMMM                                                                      
+13 (C): NNNNNNNNNNNNNNNNNNNNNNNNNN                                                                       
+14 (C): OOOOOOOOOOOOOOOOOOOOOOOOO                                                                        
+15 (C): PPPPPPPPPPPPPPPPPPPPPPPP                                                                         
+16 (C): QQQQQQQQQQQQQQQQQQQQQQQ                                                                          
+17 (C): RRRRRRRRRRRRRRRRRRRRRR                                                                           
+18 (C): SSSSSSSSSSSSSSSSSSSSS                                                                            
+19 (C): TTTTTTTTTTTTTTTTTTTT                                                                             
+20 (C): UUUUUUUUUUUUUUUUUUU                                                                              
+21 (C): VVVVVVVVVVVVVVVVVV                                                                               
+22 (C): WWWWWWWWWWWWWWWWW                                                                                
+23 (C): XXXXXXXXXXXXXXXX                                                                                 
+

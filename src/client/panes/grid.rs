@@ -178,6 +178,7 @@ pub struct Grid {
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
+    pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
@@ -212,6 +213,7 @@ impl Grid {
             should_render: true,
             cursor_key_mode: false,
             erasure_mode: false,
+            insert_mode: false,
             disable_linewrap: false,
             alternative_lines_above_viewport_and_cursor: None,
             clear_viewport_before_rendering: false,
@@ -606,7 +608,13 @@ impl Grid {
     }
     pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
         match self.viewport.get_mut(self.cursor.y) {
-            Some(row) => row.add_character_at(terminal_character, self.cursor.x),
+            Some(row) => {
+                if self.insert_mode {
+                    row.insert_character_at(terminal_character, self.cursor.x);
+                } else {
+                    row.add_character_at(terminal_character, self.cursor.x);
+                }
+            }
             None => {
                 // pad lines until cursor if they do not exist
                 for _ in self.viewport.len()..self.cursor.y {
@@ -1095,6 +1103,8 @@ impl vte::Perform for Grid {
                     }
                     _ => {}
                 };
+            } else if let Some(&4) = params.get(0) {
+                self.insert_mode = false;
             }
         } else if c == 'h' {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
@@ -1138,6 +1148,8 @@ impl vte::Perform for Grid {
                     }
                     _ => {}
                 };
+            } else if let Some(&4) = params.get(0) {
+                self.insert_mode = true;
             }
         } else if c == 'r' {
             if params.len() > 1 {
