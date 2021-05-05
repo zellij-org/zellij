@@ -102,6 +102,7 @@ script = "mandown docs/MANPAGE.md ZELLIJ 1 > assets/man/zellij.1"
 [tasks.ci-build-release]
 workspace = false
 dependencies = ["setup-cross-compilation", "install-mandown", "build-plugins-release", "wasm-opt-plugins", "ci-manpage"]
+
 command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
 
