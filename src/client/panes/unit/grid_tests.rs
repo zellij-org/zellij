@@ -275,3 +275,75 @@ fn vttest3_0() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn vttest8_0() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-0";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn vttest8_1() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-1";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn vttest8_2() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-2";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn vttest8_3() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-3";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn vttest8_4() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-4";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn vttest8_5() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "vttest8-5";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
