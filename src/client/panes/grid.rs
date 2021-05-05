@@ -1103,13 +1103,8 @@ impl vte::Perform for Grid {
                     }
                     _ => {}
                 };
-            } else {
-                match params.get(0) {
-                    Some(&4) => {
-                        self.insert_mode = false;
-                    }
-                    _ => {}
-                }
+            } else if let Some(&4) = params.get(0) {
+                self.insert_mode = false;
             }
         } else if c == 'h' {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
@@ -1153,13 +1148,8 @@ impl vte::Perform for Grid {
                     }
                     _ => {}
                 };
-            } else {
-                match params.get(0) {
-                    Some(&4) => {
-                        self.insert_mode = true;
-                    }
-                    _ => {}
-                }
+            } else if let Some(&4) = params.get(0) {
+                self.insert_mode = true;
             }
         } else if c == 'r' {
             if params.len() > 1 {
