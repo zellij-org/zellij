@@ -95,28 +95,24 @@ end
 
 [tasks.manpage]
 description = "Use mandown crate to create or update man entry from docs/MANPAGES.md"
-workspace = false
 script = "mandown docs/MANPAGE.md ZELLIJ 1 > assets/man/zellij.1"
+dependencies = ["install-mandown"]
+
+[tasks.install-mandown]
+command = "cargo"
+args = ["install", "mandown"]
+
 
 # CI Releasing Zellij
 [tasks.ci-build-release]
 workspace = false
-dependencies = ["setup-cross-compilation", "install-mandown", "build-plugins-release", "wasm-opt-plugins", "ci-manpage"]
-
+dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-plugins", "manpage"]
 command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
 
 [tasks.setup-cross-compilation]
 command = "cargo"
 args = ["install", "cross"]
-
-[tasks.install-mandown]
-command = "cargo"
-args = ["install", "mandown"]
-
-[tasks.ci-manpage]
-script = "mandown docs/MANPAGE.md ZELLIJ 1 > assets/man/zellij.1"
-dependencies = ["install-mandown"]
 
 # Publishing Zellij
 [tasks.publish]
