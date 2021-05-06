@@ -11,8 +11,16 @@ pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
 pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// TODO: ${PREFIX} argument in makefile
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
+pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
+
+const fn system_default_data_dir() -> &'static str {
+    if let Some(data_dir) = std::option_env!("PREFIX") {
+        data_dir
+    } else {
+        &"/usr"
+    }
+}
 
 lazy_static! {
     static ref UID: Uid = Uid::current();

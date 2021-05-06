@@ -1,6 +1,8 @@
-use crate::common::utils::consts::{SYSTEM_DEFAULT_CONFIG_DIR, VERSION};
+use crate::common::utils::consts::{
+    SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION, ZELLIJ_PROJ_DIR,
+};
 use crate::os_input_output::set_permissions;
-use directories_next::{BaseDirs, ProjectDirs};
+use directories_next::BaseDirs;
 use std::io::Write;
 use std::{fs, path::Path, path::PathBuf};
 
@@ -51,6 +53,8 @@ pub mod install {
 }
 
 #[cfg(not(test))]
+/// Goes through a predefined list and checks for an already
+/// existing config directory, returns the first match
 pub fn find_default_config_dir() -> Option<PathBuf> {
     vec![
         Some(xdg_config_dir()),
@@ -68,9 +72,24 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
     None
 }
 
+/// Looks for an existing dir, uses that, else returns a
+/// dir matching the config spec.
+pub fn get_default_data_dir() -> PathBuf {
+    vec![
+        xdg_data_dir(),
+        Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .unwrap_or_else(xdg_data_dir)
+}
+
 pub fn xdg_config_dir() -> PathBuf {
-    let project_dirs = ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
-    project_dirs.config_dir().to_owned()
+    ZELLIJ_PROJ_DIR.config_dir().to_owned()
+}
+
+pub fn xdg_data_dir() -> PathBuf {
+    ZELLIJ_PROJ_DIR.data_dir().to_owned()
 }
 
 pub fn home_config_dir() -> Option<PathBuf> {

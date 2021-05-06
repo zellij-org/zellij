@@ -22,8 +22,8 @@ use crate::common::{
     os_input_output::{set_permissions, ServerOsApi},
     pty_bus::{PtyBus, PtyInstruction},
     screen::{Screen, ScreenInstruction},
-    setup::install::populate_data_dir,
-    utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_PROJ_DIR},
+    setup::{get_default_data_dir, install::populate_data_dir},
+    utils::consts::ZELLIJ_IPC_PIPE,
     wasm_vm::{wasi_read_string, wasi_write_object, zellij_exports, PluginEnv, PluginInstruction},
     ChannelWithContext, SenderType, SenderWithContext,
 };
@@ -209,9 +209,9 @@ fn init_session(
     let send_pty_instructions = SenderWithContext::new(SenderType::Sender(send_pty_instructions));
 
     // Determine and initialize the data directory
-    let data_dir = opts
-        .data_dir
-        .unwrap_or_else(|| ZELLIJ_PROJ_DIR.data_dir().to_path_buf());
+    let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
+
+    #[cfg(enable_automatic_assets_installation)]
     populate_data_dir(&data_dir);
 
     // Don't use default layouts in tests, but do everywhere else
