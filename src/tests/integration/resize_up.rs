@@ -44,6 +44,7 @@ pub fn resize_up_with_pane_above() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -88,6 +89,7 @@ pub fn resize_up_with_pane_below() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -137,6 +139,7 @@ pub fn resize_up_with_panes_above_and_below() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -185,6 +188,7 @@ pub fn resize_up_with_multiple_panes_above() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -234,6 +238,7 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -284,6 +289,7 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -332,6 +338,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -381,6 +388,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -433,6 +441,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -487,6 +496,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -558,6 +568,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -631,6 +642,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -672,6 +684,7 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 

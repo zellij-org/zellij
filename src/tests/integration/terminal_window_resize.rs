@@ -30,7 +30,12 @@ pub fn window_width_decrease_with_one_pane() {
         ..Default::default()
     });
     let opts = CliArgs::default();
-    start(Box::new(fake_input_output.clone()), opts, Config::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+        Config::default(),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -61,7 +66,12 @@ pub fn window_width_increase_with_one_pane() {
         ..Default::default()
     });
     let opts = CliArgs::default();
-    start(Box::new(fake_input_output.clone()), opts, Config::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+        Config::default(),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -92,7 +102,12 @@ pub fn window_height_increase_with_one_pane() {
         ..Default::default()
     });
     let opts = CliArgs::default();
-    start(Box::new(fake_input_output.clone()), opts, Config::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+        Config::default(),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames
@@ -123,7 +138,12 @@ pub fn window_width_and_height_decrease_with_one_pane() {
         ..Default::default()
     });
     let opts = CliArgs::default();
-    start(Box::new(fake_input_output.clone()), opts, Config::default());
+    start(
+        Box::new(fake_input_output.clone()),
+        opts,
+        Box::new(fake_input_output.clone()),
+        Config::default(),
+    );
     let output_frames = fake_input_output
         .stdout_writer
         .output_frames

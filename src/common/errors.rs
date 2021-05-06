@@ -1,9 +1,11 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{AppInstruction, ASYNCOPENCALLS, OPENCALLS};
+use super::{ServerInstruction, ASYNCOPENCALLS, OPENCALLS};
+use crate::client::ClientInstruction;
 use crate::pty_bus::PtyInstruction;
 use crate::screen::ScreenInstruction;
+use serde::{Deserialize, Serialize};
 
 use std::fmt::{Display, Error, Formatter};
 
@@ -19,7 +21,7 @@ use std::panic::PanicInfo;
 #[cfg(not(test))]
 pub fn handle_panic(
     info: &PanicInfo<'_>,
-    send_app_instructions: &SenderWithContext<AppInstruction>,
+    send_app_instructions: &SenderWithContext<ClientInstruction>,
 ) {
     use backtrace::Backtrace;
     use std::{process, thread};
@@ -66,9 +68,7 @@ pub fn handle_panic(
         println!("{}", backtrace);
         process::exit(1);
     } else {
-        send_app_instructions
-            .send(AppInstruction::Error(backtrace))
-            .unwrap();
+        let _ = send_app_instructions.send(ClientInstruction::Error(backtrace));
     }
 }
 
@@ -79,7 +79,7 @@ pub fn get_current_ctx() -> ErrorContext {
 }
 
 /// A representation of the call stack.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
@@ -130,8 +130,8 @@ impl Display for ErrorContext {
 ///
 /// Complex variants store a variant of a related enum, whose variants can be built from
 /// the corresponding Zellij MSPC instruction enum variants ([`ScreenInstruction`],
-/// [`PtyInstruction`], [`AppInstruction`], etc).
-#[derive(Copy, Clone, PartialEq)]
+/// [`PtyInstruction`], [`ClientInstruction`], etc).
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContextType {
     /// A screen-related call.
     Screen(ScreenContext),
@@ -140,8 +140,9 @@ pub enum ContextType {
     /// A plugin-related call.
     Plugin(PluginContext),
     /// An app-related call.
-    App(AppContext),
-    IpcServer,
+    Client(ClientContext),
+    /// A server-related call.
+    IPCServer(ServerContext),
     StdinHandler,
     AsyncTask,
     /// An empty, placeholder call. This should be thought of as representing no call at all.
@@ -157,10 +158,9 @@ impl Display for ContextType {
         match *self {
             ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
             ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
-
             ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
-            ContextType::App(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
-            ContextType::IpcServer => write!(f, "{}ipc_server: {}AcceptInput", purple, green),
+            ContextType::Client(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
+            ContextType::IPCServer(c) => write!(f, "{}ipc_server: {}{:?}", purple, green, c),
             ContextType::StdinHandler => {
                 write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
             }
@@ -174,7 +174,7 @@ impl Display for ContextType {
 
 // FIXME: Just deriving EnumDiscriminants from strum will remove the need for any of this!!!
 /// Stack call representations corresponding to the different types of [`ScreenInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyBytes,
     Render,
@@ -193,7 +193,7 @@ pub enum ScreenContext {
     MoveFocusDown,
     MoveFocusUp,
     MoveFocusRight,
-    Quit,
+    Exit,
     ScrollUp,
     ScrollDown,
     PageScrollUp,
@@ -238,7 +238,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusDown => ScreenContext::MoveFocusDown,
             ScreenInstruction::MoveFocusUp => ScreenContext::MoveFocusUp,
             ScreenInstruction::MoveFocusRight => ScreenContext::MoveFocusRight,
-            ScreenInstruction::Quit => ScreenContext::Quit,
+            ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown => ScreenContext::ScrollDown,
             ScreenInstruction::PageScrollUp => ScreenContext::PageScrollUp,
@@ -252,14 +252,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
             ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
-            ScreenInstruction::ApplyLayout(_) => ScreenContext::ApplyLayout,
+            ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(_) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
-            ScreenInstruction::TerminalResize => ScreenContext::TerminalResize,
+            ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncPanes => ScreenContext::ToggleActiveSyncPanes,
         }
@@ -267,7 +267,7 @@ impl From<&ScreenInstruction> for ScreenContext {
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
     SpawnTerminal,
     SpawnTerminalVertically,
@@ -275,7 +275,7 @@ pub enum PtyContext {
     NewTab,
     ClosePane,
     CloseTab,
-    Quit,
+    Exit,
 }
 
 impl From<&PtyInstruction> for PtyContext {
@@ -287,7 +287,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab => PtyContext::NewTab,
-            PtyInstruction::Quit => PtyContext::Quit,
+            PtyInstruction::Exit => PtyContext::Exit,
         }
     }
 }
@@ -297,13 +297,13 @@ impl From<&PtyInstruction> for PtyContext {
 use crate::wasm_vm::PluginInstruction;
 
 /// Stack call representations corresponding to the different types of [`PluginInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PluginContext {
     Load,
     Update,
     Render,
     Unload,
-    Quit,
+    Exit,
 }
 
 impl From<&PluginInstruction> for PluginContext {
@@ -313,23 +313,51 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(_) => PluginContext::Unload,
-            PluginInstruction::Quit => PluginContext::Quit,
+            PluginInstruction::Exit => PluginContext::Exit,
         }
     }
 }
 
-/// Stack call representations corresponding to the different types of [`AppInstruction`]s.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AppContext {
+/// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ClientContext {
     Exit,
     Error,
+    UnblockInputThread,
+    Render,
 }
 
-impl From<&AppInstruction> for AppContext {
-    fn from(app_instruction: &AppInstruction) -> Self {
-        match *app_instruction {
-            AppInstruction::Exit => AppContext::Exit,
-            AppInstruction::Error(_) => AppContext::Error,
+impl From<&ClientInstruction> for ClientContext {
+    fn from(client_instruction: &ClientInstruction) -> Self {
+        match *client_instruction {
+            ClientInstruction::Exit => ClientContext::Exit,
+            ClientInstruction::Error(_) => ClientContext::Error,
+            ClientInstruction::Render(_) => ClientContext::Render,
+            ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
+        }
+    }
+}
+
+/// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ServerContext {
+    NewClient,
+    Action,
+    Render,
+    TerminalResize,
+    UnblockInputThread,
+    ClientExit,
+}
+
+impl From<&ServerInstruction> for ServerContext {
+    fn from(server_instruction: &ServerInstruction) -> Self {
+        match *server_instruction {
+            ServerInstruction::NewClient(..) => ServerContext::NewClient,
+            ServerInstruction::Action(_) => ServerContext::Action,
+            ServerInstruction::TerminalResize(_) => ServerContext::TerminalResize,
+            ServerInstruction::Render(_) => ServerContext::Render,
+            ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
+            ServerInstruction::ClientExit => ServerContext::ClientExit,
         }
     }
 }

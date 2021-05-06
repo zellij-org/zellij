@@ -35,6 +35,7 @@ pub fn adding_new_terminal_in_fullscreen() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -69,6 +70,7 @@ pub fn move_focus_is_disabled_in_fullscreen() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 

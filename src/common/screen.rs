@@ -5,10 +5,11 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::mpsc::Receiver;
 
-use super::{AppInstruction, SenderWithContext};
-use crate::os_input_output::OsApi;
+use crate::common::SenderWithContext;
+use crate::os_input_output::ServerOsApi;
 use crate::panes::PositionAndSize;
 use crate::pty_bus::{PtyInstruction, VteBytes};
+use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::{errors::ErrorContext, wasm_vm::PluginInstruction};
 use crate::{layout::Layout, panes::PaneId};
@@ -35,7 +36,7 @@ pub enum ScreenInstruction {
     MoveFocusDown,
     MoveFocusUp,
     MoveFocusRight,
-    Quit,
+    Exit,
     ScrollUp,
     ScrollDown,
     PageScrollUp,
@@ -47,7 +48,7 @@ pub enum ScreenInstruction {
     SetMaxHeight(PaneId, usize),
     SetInvisibleBorders(PaneId, bool),
     ClosePane(PaneId),
-    ApplyLayout((Layout, Vec<RawFd>)),
+    ApplyLayout(Layout, Vec<RawFd>),
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
@@ -55,7 +56,7 @@ pub enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
-    TerminalResize,
+    TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
 }
 
@@ -68,18 +69,18 @@ pub struct Screen {
     max_panes: Option<usize>,
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
-    /// A [`PtyInstruction`] and [`ErrorContext`] sender.
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     /// A [`PluginInstruction`] and [`ErrorContext`] sender.
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    /// An [`AppInstruction`] and [`ErrorContext`] sender.
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
+    /// An [`PtyInstruction`] and [`ErrorContext`] sender.
+    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
+    /// An [`ServerInstruction`] and [`ErrorContext`] sender.
+    pub send_server_instructions: SenderWithContext<ServerInstruction>,
     /// The full size of this [`Screen`].
     full_screen_ws: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
-    /// The [`OsApi`] this [`Screen`] uses.
-    os_api: Box<dyn OsApi>,
+    /// The [`ServerOsApi`] this [`Screen`] uses.
+    os_api: Box<dyn ServerOsApi>,
     mode_info: ModeInfo,
     input_mode: InputMode,
     colors: Palette,
@@ -91,11 +92,11 @@ impl Screen {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receive_screen_instructions: Receiver<(ScreenInstruction, ErrorContext)>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_server_instructions: SenderWithContext<ServerInstruction>,
         full_screen_ws: &PositionAndSize,
-        os_api: Box<dyn OsApi>,
+        os_api: Box<dyn ServerOsApi>,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         input_mode: InputMode,
@@ -104,9 +105,9 @@ impl Screen {
         Screen {
             receiver: receive_screen_instructions,
             max_panes,
-            send_pty_instructions,
             send_plugin_instructions,
-            send_app_instructions,
+            send_pty_instructions,
+            send_server_instructions,
             full_screen_ws: *full_screen_ws,
             active_tab_index: None,
             tabs: BTreeMap::new(),
@@ -128,9 +129,9 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
-            self.send_pty_instructions.clone(),
             self.send_plugin_instructions.clone(),
-            self.send_app_instructions.clone(),
+            self.send_pty_instructions.clone(),
+            self.send_server_instructions.clone(),
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.mode_info.clone(),
@@ -214,13 +215,13 @@ impl Screen {
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
-        let _ = self
-            .send_pty_instructions
-            .send(PtyInstruction::CloseTab(pane_ids));
+        self.send_pty_instructions
+            .send(PtyInstruction::CloseTab(pane_ids))
+            .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.send_app_instructions
-                .send(AppInstruction::Exit)
+            self.send_server_instructions
+                .send(ServerInstruction::Render(None))
                 .unwrap();
         } else {
             for t in self.tabs.values_mut() {
@@ -232,8 +233,7 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self) {
-        let new_screen_size = self.os_api.get_terminal_size_using_fd(0);
+    pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
         self.full_screen_ws = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
@@ -285,9 +285,9 @@ impl Screen {
             String::new(),
             &self.full_screen_ws,
             self.os_api.clone(),
-            self.send_pty_instructions.clone(),
             self.send_plugin_instructions.clone(),
-            self.send_app_instructions.clone(),
+            self.send_pty_instructions.clone(),
+            self.send_server_instructions.clone(),
             self.max_panes,
             None,
             self.mode_info.clone(),

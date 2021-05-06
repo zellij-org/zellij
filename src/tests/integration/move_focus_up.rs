@@ -34,6 +34,7 @@ pub fn move_focus_up() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -71,6 +72,7 @@ pub fn move_focus_up_to_the_most_recently_used_pane() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
