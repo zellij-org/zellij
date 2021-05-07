@@ -9,13 +9,13 @@ You can erase any parts of this template not applicable to your issue.
 ## In Case of Graphical, or Performance Issues
 
 Please:
-1. Delete the contents of `/tmp/zellij/zellij-log`.
+1. Delete the contents of `/tmp/zellij-1000/zellij-log`.
 2. Run `zellij --debug` and then recreate your issue.
 3. Quit Zellij immediately with ctrl-q (your bug should ideally still be visible on screen)
 
 Please attach the files that were created in
 
-`/tmp/zellij/zellij-log/`
+`/tmp/zellij-1000/zellij-log/`
 
 To the extent you are comfortable with.
 
