@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
-use vte::{Perform, Params};
+use vte::{Params, Perform};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
@@ -986,10 +986,13 @@ impl Perform for Grid {
     }
 
     fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, c: char) {
-
-        let mut params_iter = params.iter(); 
+        let mut params_iter = params.iter();
         let mut next_param_or = |default: u16| {
-            params_iter.next().map(|param| param[0]).filter(|&param| param != 0).unwrap_or(default) as usize
+            params_iter
+                .next()
+                .map(|param| param[0])
+                .filter(|&param| param != 0)
+                .unwrap_or(default) as usize
         };
         if c == 'm' {
             self.cursor
@@ -1001,7 +1004,7 @@ impl Perform for Grid {
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
-            params_iter.next().map(|param| param[0]).map(|clear_type| {
+            if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
                     let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
                     char_to_replace.styles = self.cursor.pending_styles;
@@ -1013,13 +1016,13 @@ impl Perform for Grid {
                 } else if clear_type == 2 {
                     self.clear_cursor_line();
                 }
-            });
+            };
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
             char_to_replace.styles = self.cursor.pending_styles;
-            
-            params_iter.next().map(|param| param[0]).map(|clear_type| {
+
+            if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
                     self.clear_all_after_cursor(char_to_replace);
                 } else if clear_type == 1 {
@@ -1027,7 +1030,7 @@ impl Perform for Grid {
                 } else if clear_type == 2 {
                     self.clear_all(char_to_replace);
                 }
-            });
+            };
         // TODO: implement 1
         } else if c == 'H' || c == 'f' {
             // goto row/col
@@ -1145,8 +1148,11 @@ impl Perform for Grid {
         } else if c == 'r' {
             if params.len() > 1 {
                 let top = (next_param_or(1) as usize).saturating_sub(1);
-                let bottom =
-                    params_iter.next().map(|param| param[0] as usize).filter(|&param| param != 0).map(|bottom| bottom.saturating_sub(1));
+                let bottom = params_iter
+                    .next()
+                    .map(|param| param[0] as usize)
+                    .filter(|&param| param != 0)
+                    .map(|bottom| bottom.saturating_sub(1));
                 self.set_scroll_region(top, bottom);
                 if self.erasure_mode {
                     self.move_cursor_to_line(top, EMPTY_TERMINAL_CHARACTER);

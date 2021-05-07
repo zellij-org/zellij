@@ -1,9 +1,9 @@
 use unicode_width::UnicodeWidthChar;
 
 use crate::utils::logging::debug_log_to_file;
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
-use std::convert::TryFrom;
 use vte::ParamsIter;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
@@ -366,13 +366,17 @@ impl CharacterStyles {
                 [37] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
                 [38] => {
                     let mut iter = params.map(|param| param[0]);
-					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.foreground(Some(ansi_code)));
+                    if let Some(ansi_code) = parse_sgr_color(&mut iter) {
+                        *self = self.foreground(Some(ansi_code));
+                    }
                 }
-				[38, params @ ..] => {
-					let rgb_start = if params.len() > 4 { 2 } else { 1 };
-					let rgb_iter = params[rgb_start..].iter().copied();
-					let mut iter = std::iter::once(params[0]).chain(rgb_iter);
-					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.foreground(Some(ansi_code)));
+                [38, params @ ..] => {
+                    let rgb_start = if params.len() > 4 { 2 } else { 1 };
+                    let rgb_iter = params[rgb_start..].iter().copied();
+                    let mut iter = std::iter::once(params[0]).chain(rgb_iter);
+                    if let Some(ansi_code) = parse_sgr_color(&mut iter) {
+                        *self = self.foreground(Some(ansi_code));
+                    }
                 }
                 [39] => *self = self.foreground(Some(AnsiCode::Reset)),
                 [40] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
@@ -385,13 +389,17 @@ impl CharacterStyles {
                 [47] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
                 [48] => {
                     let mut iter = params.map(|param| param[0]);
-					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.background(Some(ansi_code)));
+                    if let Some(ansi_code) = parse_sgr_color(&mut iter) {
+                        *self = self.background(Some(ansi_code));
+                    }
                 }
-				[48, params @ ..] => {
-					let rgb_start = if params.len() > 4 { 2 } else { 1 };
-					let rgb_iter = params[rgb_start..].iter().copied();
-					let mut iter = std::iter::once(params[0]).chain(rgb_iter);
-					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.background(Some(ansi_code)));
+                [48, params @ ..] => {
+                    let rgb_start = if params.len() > 4 { 2 } else { 1 };
+                    let rgb_iter = params[rgb_start..].iter().copied();
+                    let mut iter = std::iter::once(params[0]).chain(rgb_iter);
+                    if let Some(ansi_code) = parse_sgr_color(&mut iter) {
+                        *self = self.background(Some(ansi_code));
+                    }
                 }
                 [49] => *self = self.background(Some(AnsiCode::Reset)),
                 [90] => {
@@ -735,7 +743,6 @@ impl TerminalCharacter {
         self.width() > 1
     }
 }
-
 
 fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
     match params.next() {
