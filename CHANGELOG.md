@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * Terminal compatibility: pass vttest 8 (https://github.com/zellij-org/zellij/pull/461)
 * Add a Manpage (https://github.com/zellij-org/zellij/pull/455)
+* Code infrastructure changes to support the upcoming session detach (https://github.com/zellij-org/zellij/pull/223)
 
 ## [0.7.0] - 2021-05-04
 * Fix the tab '(Sync)' suffix in named tabs (https://github.com/zellij-org/zellij/pull/410)
