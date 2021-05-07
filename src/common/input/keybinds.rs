@@ -30,7 +30,14 @@ pub struct KeybindsFromYaml {
 enum KeyActionUnbind {
     KeyAction(KeyActionFromYaml),
     // TODO: use the enum
-    //Unbind(UnbindFromYaml),
+    Unbind(UnbindFromYaml),
+}
+
+/// Intermediate struct used for deserialisation
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct KeyActionUnbindFromYaml {
+    keybinds: Vec<KeyActionFromYaml>,
+    unbind: Unbind,
 }
 
 /// Intermediate struct used for deserialisation
@@ -41,7 +48,7 @@ pub struct KeyActionFromYaml {
 }
 
 /// Intermediate struct used for deserialisation
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 struct UnbindFromYaml {
     unbind: Unbind,
 }
@@ -51,16 +58,19 @@ struct UnbindFromYaml {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(untagged)]
 enum Unbind {
+    // This is the correct order, don't rearrange!
+    // Suspected Bug in the untagged macro.
+    // 1. Keys
+    Keys(Vec<Key>),
+    // 2. All
     All(bool),
-    // TODO@a-kenji: use the enum
-    //Keys(Vec<Key>),
 }
 
 impl Default for Keybinds {
+    // Use once per codepath
+    // TODO investigate why
     fn default() -> Keybinds {
-        config::Config::from_default_assets()
-            .expect("Keybinds from default assets Error")
-            .keybinds
+        Self::from_default_assets()
     }
 }
 
@@ -69,11 +79,18 @@ impl Keybinds {
         Keybinds(HashMap::<InputMode, ModeKeybinds>::new())
     }
 
+    fn from_default_assets() -> Keybinds {
+        config::Config::from_default_assets()
+            .expect("Keybinds from default assets Error!")
+            .keybinds
+    }
+
+    /// Entrypoint from the config module
     pub fn get_default_keybinds_with_config(from_yaml: Option<KeybindsFromYaml>) -> Keybinds {
         let default_keybinds = match from_yaml.clone() {
             Some(keybinds) => match keybinds.unbind {
                 Unbind::All(true) => Keybinds::new(),
-                Unbind::All(false) => Keybinds::default(),
+                Unbind::All(false) | Unbind::Keys(_) => Keybinds::unbind(keybinds),
             },
             None => Keybinds::default(),
         };
@@ -83,6 +100,71 @@ impl Keybinds {
         } else {
             default_keybinds
         }
+    }
+
+    /// Unbinds the default keybindings in relation to their mode
+    fn unbind(from_yaml: KeybindsFromYaml) -> Keybinds {
+        let mut keybind_config = Self::new();
+        let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
+        let keybinds_from_yaml = from_yaml.keybinds;
+
+        for mode in InputMode::iter() {
+            if let Some(keybinds) = keybinds_from_yaml.get(&mode) {
+                for keybind in keybinds.iter() {
+                    match keybind {
+                        KeyActionUnbind::Unbind(unbind) => {
+                            unbind_config.insert(mode, unbind.unbind.clone());
+                        }
+                        KeyActionUnbind::KeyAction(key_action_from_yaml) => {
+                            keybind_config
+                                .0
+                                .insert(mode, ModeKeybinds::from(key_action_from_yaml.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut default = Self::default().unbind_mode(unbind_config);
+
+        // Toplevel Unbinds
+        if let Unbind::Keys(_) = from_yaml.unbind {
+            let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
+            for mode in InputMode::iter() {
+                unbind_config.insert(mode, from_yaml.unbind.clone());
+            }
+            default = default.unbind_mode(unbind_config);
+        };
+
+        default.merge_keybinds(keybind_config)
+    }
+
+    /// Unbind [`Key`] bindings respective to their mode
+    fn unbind_mode(&self, unbind: HashMap<InputMode, Unbind>) -> Keybinds {
+        let mut keybinds = Keybinds::new();
+
+        for mode in InputMode::iter() {
+            if let Some(unbind) = unbind.get(&mode) {
+                match unbind {
+                    Unbind::All(true) => {}
+                    Unbind::Keys(keys) => {
+                        if let Some(defaults) = self.0.get(&mode) {
+                            keybinds
+                                .0
+                                .insert(mode, defaults.clone().unbind_keys(keys.to_vec()));
+                        }
+                    }
+                    Unbind::All(false) => {
+                        if let Some(defaults) = self.0.get(&mode) {
+                            keybinds.0.insert(mode, defaults.clone());
+                        }
+                    }
+                }
+            } else if let Some(defaults) = self.0.get(&mode) {
+                keybinds.0.insert(mode, defaults.clone());
+            }
+        }
+        keybinds
     }
 
     /// Merges two Keybinds structs into one Keybinds struct
@@ -142,6 +224,15 @@ impl ModeKeybinds {
         merged.0.extend(other.0);
         merged
     }
+
+    /// Remove [`Key`]'s from [`ModeKeybinds`]
+    fn unbind_keys(self, unbind: Vec<Key>) -> Self {
+        let mut keymap = self;
+        for key in unbind {
+            keymap.0.remove(&key);
+        }
+        keymap
+    }
 }
 
 impl From<KeybindsFromYaml> for Keybinds {
@@ -161,27 +252,41 @@ impl From<KeybindsFromYaml> for Keybinds {
     }
 }
 
-/// For each `Key` assigned to `Action`s,
-/// map the `Action`s to the key
+/// For each [`Key`] assigned to [`Action`]s,
+/// map the [`Action`]s to the [`Key`]
 impl From<KeyActionFromYaml> for ModeKeybinds {
     fn from(key_action: KeyActionFromYaml) -> ModeKeybinds {
-        let keys = key_action.key;
         let actions = key_action.action;
 
         ModeKeybinds(
-            keys.into_iter()
+            key_action
+                .key
+                .into_iter()
                 .map(|k| (k, actions.clone()))
                 .collect::<HashMap<Key, Vec<Action>>>(),
         )
     }
 }
 
-// Currently an enum for future use
 impl From<KeyActionUnbind> for ModeKeybinds {
     fn from(key_action_unbind: KeyActionUnbind) -> ModeKeybinds {
         match key_action_unbind {
             KeyActionUnbind::KeyAction(key_action) => ModeKeybinds::from(key_action),
+            KeyActionUnbind::Unbind(_) => ModeKeybinds::new(),
         }
+    }
+}
+
+impl From<Vec<KeyActionFromYaml>> for ModeKeybinds {
+    fn from(key_action_from_yaml: Vec<KeyActionFromYaml>) -> ModeKeybinds {
+        let mut mode_keybinds = ModeKeybinds::new();
+
+        for keybind in key_action_from_yaml {
+            for key in keybind.key {
+                mode_keybinds.0.insert(key, keybind.action.clone());
+            }
+        }
+        mode_keybinds
     }
 }
 

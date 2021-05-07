@@ -101,6 +101,34 @@ where "normal" stands for a mode name (see MODES section), "action" part
 specifies the actions to be executed by Zellij (see ACTIONS section) and "key"
 is used to list  keys or key combinations bound to given actions (see KEYS). 
 
+The default keybinds can be unbound either for a specific mode, or for every mode.
+It supports either a list of `keybinds`, or a bool indicating that every keybind
+should be unbound:
+
+```
+keybinds:
+    unbind: true
+```
+Will unbind every default binding.
+
+```
+keybinds:
+    unbind: [ Ctrl: 'p']
+```
+Will unbind every default `^P` binding for each mode.
+```
+keybinds:
+    normal:
+        - unbind: true
+```
+Will unbind every default keybind for the `normal` mode.
+```
+keybinds:
+    normal:
+        - unbind: [ Alt: 'n', Ctrl: 'g']
+```
+Will unbind every default keybind for `n` and `^g` for the `normal` mode.
+
 ACTIONS
 -------
 
