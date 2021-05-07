@@ -3,6 +3,8 @@ use unicode_width::UnicodeWidthChar;
 use crate::utils::logging::debug_log_to_file;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+use std::convert::TryFrom;
+use vte::ParamsIter;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -327,138 +329,115 @@ impl CharacterStyles {
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
     }
-    pub fn add_style_from_ansi_params(&mut self, ansi_params: &[i64]) {
-        let mut params_used = 1; // if there's a parameter, it is always used
-        match ansi_params {
-            [] | [0, ..] => self.reset_all(),
-            [1, ..] => *self = self.bold(Some(AnsiCode::On)),
-            [2, ..] => *self = self.dim(Some(AnsiCode::On)),
-            [3, ..] => *self = self.italic(Some(AnsiCode::On)),
-            [4, ..] => *self = self.underline(Some(AnsiCode::On)),
-            [5, ..] => *self = self.blink_slow(Some(AnsiCode::On)),
-            [6, ..] => *self = self.blink_fast(Some(AnsiCode::On)),
-            [7, ..] => *self = self.reverse(Some(AnsiCode::On)),
-            [8, ..] => *self = self.hidden(Some(AnsiCode::On)),
-            [9, ..] => *self = self.strike(Some(AnsiCode::On)),
-            [21, ..] => *self = self.bold(Some(AnsiCode::Reset)),
-            [22, ..] => {
-                *self = self.bold(Some(AnsiCode::Reset));
-                *self = self.dim(Some(AnsiCode::Reset));
-            }
-            [23, ..] => *self = self.italic(Some(AnsiCode::Reset)),
-            [24, ..] => *self = self.underline(Some(AnsiCode::Reset)),
-            [25, ..] => {
-                *self = self.blink_slow(Some(AnsiCode::Reset));
-                *self = self.blink_fast(Some(AnsiCode::Reset));
-            }
-            [27, ..] => *self = self.reverse(Some(AnsiCode::Reset)),
-            [28, ..] => *self = self.hidden(Some(AnsiCode::Reset)),
-            [29, ..] => *self = self.strike(Some(AnsiCode::Reset)),
-            [30, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black))),
-            [31, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red))),
-            [32, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green))),
-            [33, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
-            [34, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue))),
-            [35, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
-            [36, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
-            [37, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
-            [38, 2, ..] => {
-                let ansi_code = AnsiCode::RgbCode((
-                    *ansi_params.get(2).unwrap() as u8,
-                    *ansi_params.get(3).unwrap() as u8,
-                    *ansi_params.get(4).unwrap() as u8,
-                ));
-                *self = self.foreground(Some(ansi_code));
-                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-            }
-            [38, 5, ..] => {
-                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-                *self = self.foreground(Some(ansi_code));
-                params_used += 2 // one for the indicator (5 in this case) and one for the color index
-            }
-            [38, ..] => {
-                // this is a bug
-                // it means we got a color encoding we don't know how to handle (or is invalid)
-                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-            }
-            [39, ..] => *self = self.foreground(Some(AnsiCode::Reset)),
-            [40, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
-            [41, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
-            [42, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green))),
-            [43, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
-            [44, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue))),
-            [45, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
-            [46, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
-            [47, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
-            [48, 2, ..] => {
-                let ansi_code = AnsiCode::RgbCode((
-                    *ansi_params.get(2).unwrap() as u8,
-                    *ansi_params.get(3).unwrap() as u8,
-                    *ansi_params.get(4).unwrap() as u8,
-                ));
-                *self = self.background(Some(ansi_code));
-                params_used += 4 // one for the indicator (2 in this case) and three for the rgb code
-            }
-            [48, 5, ..] => {
-                let ansi_code = AnsiCode::ColorIndex(*ansi_params.get(2).unwrap() as u8);
-                *self = self.background(Some(ansi_code));
-                params_used += 2 // one for the indicator (5 in this case) and one for the color index
-            }
-            [48, ..] => {
-                // this is a bug
-                // it means we got a color encoding we don't know how to handle (or is invalid)
-                params_used += 1; // even if it's a bug, let's not create an endless loop, eh?
-            }
-            [49, ..] => *self = self.background(Some(AnsiCode::Reset)),
-            [90, ..] => {
-                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
-            }
-            [91, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
-            [92, ..] => {
-                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
-            }
-            [93, ..] => {
-                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
-            }
-            [94, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
-            [95, ..] => {
-                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
-            }
-            [96, ..] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
-            [97, ..] => {
-                *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
-            }
-            [100, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
-            }
-            [101, ..] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
-            [102, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
-            }
-            [103, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
-            }
-            [104, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue)))
-            }
-            [105, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
-            }
-            [106, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan)))
-            }
-            [107, ..] => {
-                *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
-            }
-            _ => {
-                // if this happens, it's a bug
-                let _ = debug_log_to_file(format!("unhandled csi m code {:?}", ansi_params));
-                return;
-            }
-        }
-        if let Some(next_params) = ansi_params.get(params_used..) {
-            if !next_params.is_empty() {
-                self.add_style_from_ansi_params(next_params);
+    pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
+        while let Some(param) = params.next() {
+            match param {
+                [] | [0] => self.reset_all(),
+                [1] => *self = self.bold(Some(AnsiCode::On)),
+                [2] => *self = self.dim(Some(AnsiCode::On)),
+                [3] => *self = self.italic(Some(AnsiCode::On)),
+                [4] => *self = self.underline(Some(AnsiCode::On)),
+                [5] => *self = self.blink_slow(Some(AnsiCode::On)),
+                [6] => *self = self.blink_fast(Some(AnsiCode::On)),
+                [7] => *self = self.reverse(Some(AnsiCode::On)),
+                [8] => *self = self.hidden(Some(AnsiCode::On)),
+                [9] => *self = self.strike(Some(AnsiCode::On)),
+                [21] => *self = self.bold(Some(AnsiCode::Reset)),
+                [22] => {
+                    *self = self.bold(Some(AnsiCode::Reset));
+                    *self = self.dim(Some(AnsiCode::Reset));
+                }
+                [23] => *self = self.italic(Some(AnsiCode::Reset)),
+                [24] => *self = self.underline(Some(AnsiCode::Reset)),
+                [25] => {
+                    *self = self.blink_slow(Some(AnsiCode::Reset));
+                    *self = self.blink_fast(Some(AnsiCode::Reset));
+                }
+                [27] => *self = self.reverse(Some(AnsiCode::Reset)),
+                [28] => *self = self.hidden(Some(AnsiCode::Reset)),
+                [29] => *self = self.strike(Some(AnsiCode::Reset)),
+                [30] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Black))),
+                [31] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Red))),
+                [32] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Green))),
+                [33] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+                [34] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+                [35] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+                [36] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+                [37] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::White))),
+                [38] => {
+                    let mut iter = params.map(|param| param[0]);
+					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.foreground(Some(ansi_code)));
+                }
+				[38, params @ ..] => {
+					let rgb_start = if params.len() > 4 { 2 } else { 1 };
+					let rgb_iter = params[rgb_start..].iter().copied();
+					let mut iter = std::iter::once(params[0]).chain(rgb_iter);
+					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.foreground(Some(ansi_code)));
+                }
+                [39] => *self = self.foreground(Some(AnsiCode::Reset)),
+                [40] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
+                [41] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
+                [42] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Green))),
+                [43] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Yellow))),
+                [44] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Blue))),
+                [45] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Magenta))),
+                [46] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Cyan))),
+                [47] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::White))),
+                [48] => {
+                    let mut iter = params.map(|param| param[0]);
+					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.background(Some(ansi_code)));
+                }
+				[48, params @ ..] => {
+					let rgb_start = if params.len() > 4 { 2 } else { 1 };
+					let rgb_iter = params[rgb_start..].iter().copied();
+					let mut iter = std::iter::once(params[0]).chain(rgb_iter);
+					parse_sgr_color(&mut iter).map(|ansi_code| *self = self.background(Some(ansi_code)));
+                }
+                [49] => *self = self.background(Some(AnsiCode::Reset)),
+                [90] => {
+                    *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+                }
+                [91] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
+                [92] => {
+                    *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+                }
+                [93] => {
+                    *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+                }
+                [94] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
+                [95] => {
+                    *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+                }
+                [96] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
+                [97] => {
+                    *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+                }
+                [100] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
+                }
+                [101] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
+                [102] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
+                }
+                [103] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
+                }
+                [104] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue)))
+                }
+                [105] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
+                }
+                [106] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan)))
+                }
+                [107] => {
+                    *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
+                }
+                _ => {
+                    let _ = debug_log_to_file(format!("unhandled csi m code {:?}", param));
+                    return;
+                }
             }
         }
     }
@@ -754,5 +733,18 @@ impl TerminalCharacter {
 
     pub fn is_widechar(&self) -> bool {
         self.width() > 1
+    }
+}
+
+
+fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
+    match params.next() {
+        Some(2) => Some(AnsiCode::RgbCode((
+            u8::try_from(params.next()?).ok()?,
+            u8::try_from(params.next()?).ok()?,
+            u8::try_from(params.next()?).ok()?,
+        ))),
+        Some(5) => Some(AnsiCode::ColorIndex(u8::try_from(params.next()?).ok()?)),
+        _ => None,
     }
 }

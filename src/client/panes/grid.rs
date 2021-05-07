@@ -4,6 +4,8 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+use vte::{Perform, Params};
+
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
 
@@ -811,7 +813,8 @@ impl Grid {
     pub fn show_cursor(&mut self) {
         self.cursor.is_hidden = false;
     }
-    pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: usize) {
+    pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
+        let bottom_line_index = bottom_line_index.unwrap_or(self.height);
         self.scroll_region = Some((top_line_index, bottom_line_index));
     }
     pub fn clear_scroll_region(&mut self) {
@@ -925,7 +928,7 @@ impl Grid {
     }
 }
 
-impl vte::Perform for Grid {
+impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
         // apparently, building TerminalCharacter like this without a "new" method
@@ -966,7 +969,7 @@ impl vte::Perform for Grid {
         }
     }
 
-    fn hook(&mut self, _params: &[i64], _intermediates: &[u8], _ignore: bool, _c: char) {
+    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {
         // TBD
     }
 
@@ -982,80 +985,68 @@ impl vte::Perform for Grid {
         // TBD
     }
 
-    fn csi_dispatch(&mut self, params: &[i64], _intermediates: &[u8], _ignore: bool, c: char) {
+    fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, c: char) {
+
+        let mut params_iter = params.iter(); 
+        let mut next_param_or = |default: u16| {
+            params_iter.next().map(|param| param[0]).filter(|&param| param != 0).unwrap_or(default) as usize
+        };
         if c == 'm' {
             self.cursor
                 .pending_styles
-                .add_style_from_ansi_params(params);
+                .add_style_from_ansi_params(&mut params_iter);
         } else if c == 'C' {
             // move cursor forward
-            let move_by = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let move_by = next_param_or(1);
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
-            if params[0] == 0 {
-                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                char_to_replace.styles = self.cursor.pending_styles;
-                self.replace_characters_in_line_after_cursor(char_to_replace);
-            } else if params[0] == 1 {
-                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                char_to_replace.styles = self.cursor.pending_styles;
-                self.replace_characters_in_line_before_cursor(char_to_replace);
-            } else if params[0] == 2 {
-                self.clear_cursor_line();
-            }
+            params_iter.next().map(|param| param[0]).map(|clear_type| {
+                if clear_type == 0 {
+                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                    char_to_replace.styles = self.cursor.pending_styles;
+                    self.replace_characters_in_line_after_cursor(char_to_replace);
+                } else if clear_type == 1 {
+                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                    char_to_replace.styles = self.cursor.pending_styles;
+                    self.replace_characters_in_line_before_cursor(char_to_replace);
+                } else if clear_type == 2 {
+                    self.clear_cursor_line();
+                }
+            });
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
             char_to_replace.styles = self.cursor.pending_styles;
-            if params[0] == 0 {
-                self.clear_all_after_cursor(char_to_replace);
-            } else if params[0] == 1 {
-                self.clear_all_before_cursor(char_to_replace);
-            } else if params[0] == 2 {
-                self.clear_all(char_to_replace);
-            }
+            
+            params_iter.next().map(|param| param[0]).map(|clear_type| {
+                if clear_type == 0 {
+                    self.clear_all_after_cursor(char_to_replace);
+                } else if clear_type == 1 {
+                    self.clear_all_before_cursor(char_to_replace);
+                } else if clear_type == 2 {
+                    self.clear_all(char_to_replace);
+                }
+            });
         // TODO: implement 1
         } else if c == 'H' || c == 'f' {
             // goto row/col
             // we subtract 1 from the row/column because these are 1 indexed
-            // (except when they are 0, in which case they should be 1
-            // don't look at me, I don't make the rules)
-            let (row, col) = if params.len() == 1 {
-                if params[0] == 0 {
-                    (0, params[0] as usize)
-                } else {
-                    ((params[0] as usize).saturating_sub(1), params[0] as usize)
-                }
-            } else if params[0] == 0 {
-                (0, (params[1] as usize).saturating_sub(1))
-            } else {
-                (
-                    (params[0] as usize).saturating_sub(1),
-                    (params[1] as usize).saturating_sub(1),
-                )
-            };
+            let row = next_param_or(1).saturating_sub(1);
+            let col = next_param_or(1).saturating_sub(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to(col, row, pad_character);
         } else if c == 'A' {
             // move cursor up until edge of screen
-            let move_up_count = if params[0] == 0 { 1 } else { params[0] };
+            let move_up_count = next_param_or(1);
             self.move_cursor_up(move_up_count as usize);
         } else if c == 'B' {
             // move cursor down until edge of screen
-            let move_down_count = if params[0] == 0 { 1 } else { params[0] };
+            let move_down_count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down(move_down_count as usize, pad_character);
         } else if c == 'D' {
-            let move_back_count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let move_back_count = next_param_or(1);
             self.move_cursor_back(move_back_count);
         } else if c == 'l' {
             let first_intermediate_is_questionmark = match _intermediates.get(0) {
@@ -1064,8 +1055,8 @@ impl vte::Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(&1049) => {
+                match params_iter.next().map(|param| param[0]) {
+                    Some(1049) => {
                         if let Some((
                             alternative_lines_above,
                             alternative_viewport,
@@ -1081,29 +1072,29 @@ impl vte::Perform for Grid {
                         self.change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
                     }
-                    Some(&25) => {
+                    Some(25) => {
                         self.hide_cursor();
                         self.mark_for_rerender();
                     }
-                    Some(&1) => {
+                    Some(1) => {
                         self.cursor_key_mode = false;
                     }
-                    Some(&3) => {
+                    Some(3) => {
                         // DECCOLM - only side effects
                         self.scroll_region = None;
                         self.clear_all(EMPTY_TERMINAL_CHARACTER);
                         self.cursor.x = 0;
                         self.cursor.y = 0;
                     }
-                    Some(&6) => {
+                    Some(6) => {
                         self.erasure_mode = false;
                     }
-                    Some(&7) => {
+                    Some(7) => {
                         self.disable_linewrap = true;
                     }
                     _ => {}
                 };
-            } else if let Some(&4) = params.get(0) {
+            } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = false;
             }
         } else if c == 'h' {
@@ -1113,12 +1104,12 @@ impl vte::Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params.get(0) {
-                    Some(&25) => {
+                match params_iter.next().map(|param| param[0]) {
+                    Some(25) => {
                         self.show_cursor();
                         self.mark_for_rerender();
                     }
-                    Some(&1049) => {
+                    Some(1049) => {
                         let current_lines_above = std::mem::replace(
                             &mut self.lines_above,
                             VecDeque::with_capacity(SCROLL_BACK),
@@ -1130,99 +1121,72 @@ impl vte::Perform for Grid {
                             Some((current_lines_above, current_viewport, current_cursor));
                         self.clear_viewport_before_rendering = true;
                     }
-                    Some(&1) => {
+                    Some(1) => {
                         self.cursor_key_mode = true;
                     }
-                    Some(&3) => {
+                    Some(3) => {
                         // DECCOLM - only side effects
                         self.scroll_region = None;
                         self.clear_all(EMPTY_TERMINAL_CHARACTER);
                         self.cursor.x = 0;
                         self.cursor.y = 0;
                     }
-                    Some(&6) => {
+                    Some(6) => {
                         self.erasure_mode = true;
                     }
-                    Some(&7) => {
+                    Some(7) => {
                         self.disable_linewrap = false;
                     }
                     _ => {}
                 };
-            } else if let Some(&4) = params.get(0) {
+            } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = true;
             }
         } else if c == 'r' {
             if params.len() > 1 {
-                // minus 1 because these are 1 indexed
-                let top_line_index = (params[0] as usize).saturating_sub(1);
-                let bottom_line_index = (params[1] as usize).saturating_sub(1);
-                self.set_scroll_region(top_line_index, bottom_line_index);
+                let top = (next_param_or(1) as usize).saturating_sub(1);
+                let bottom =
+                    params_iter.next().map(|param| param[0] as usize).filter(|&param| param != 0).map(|bottom| bottom.saturating_sub(1));
+                self.set_scroll_region(top, bottom);
                 if self.erasure_mode {
-                    self.move_cursor_to_line(top_line_index, EMPTY_TERMINAL_CHARACTER);
+                    self.move_cursor_to_line(top, EMPTY_TERMINAL_CHARACTER);
                     self.move_cursor_to_beginning_of_line();
                 }
-                self.show_cursor();
             } else {
                 self.clear_scroll_region();
             }
         } else if c == 'M' {
             // delete lines if currently inside scroll region
-            let line_count_to_delete = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let line_count_to_delete = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
-            let line_count_to_add = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let line_count_to_add = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
-        } else if c == 'q' {
-            // ignore for now to run on mac
         } else if c == 'G' {
-            let column = if params[0] == 0 {
-                0
-            } else {
-                params[0] as usize - 1
-            };
+            let column = next_param_or(1).saturating_sub(1);
             self.move_cursor_to_column(column);
         } else if c == 'g' {
-            if params[0] == 0 {
+            let clear_type = next_param_or(0);
+            if clear_type == 0 {
                 self.clear_tabstop(self.cursor.x);
-            } else if params[0] == 3 {
+            } else if clear_type == 3 {
                 self.clear_all_tabstops();
             }
         } else if c == 'd' {
             // goto line
-            let line = if params[0] == 0 {
-                1
-            } else {
-                // minus 1 because this is 1 indexed
-                params[0] as usize - 1
-            };
+            let line = next_param_or(1).saturating_sub(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to_line(line, pad_character);
         } else if c == 'P' {
             // erase characters
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let count = next_param_or(1);
             self.erase_characters(count, self.cursor.pending_styles);
         } else if c == 'X' {
             // erase characters and replace with empty characters of current style
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let count = next_param_or(1);
             self.replace_with_empty_chars(count, self.cursor.pending_styles);
         } else if c == 'T' {
             /*
@@ -1230,32 +1194,18 @@ impl vte::Perform for Grid {
              * Scroll down, new lines inserted at top of screen
              * [4T = Scroll down 4, bring previous lines back into view
              */
-            let line_count: i64 = *params.get(0).expect("A number of lines was expected.");
-
-            if line_count >= 0 {
-                self.rotate_scroll_region_up(line_count as usize);
-            } else {
-                // TODO: can this actually happen?
-                self.rotate_scroll_region_down(line_count.abs() as usize);
-            }
+            let line_count = next_param_or(1);
+            self.rotate_scroll_region_up(line_count as usize);
         } else if c == 'S' {
             // move scroll up
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let count = next_param_or(1);
             self.rotate_scroll_region_down(count);
         } else if c == 's' {
             self.save_cursor_position();
         } else if c == 'u' {
             self.restore_cursor_position();
         } else if c == '@' {
-            let count = if params[0] == 0 {
-                1
-            } else {
-                params[0] as usize
-            };
+            let count = next_param_or(1);
             for _ in 0..count {
                 // TODO: should this be styled?
                 self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);

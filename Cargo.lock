@@ -1809,9 +1809,9 @@ dependencies = [
 
 [[package]]
 name = "vte"
-version = "0.8.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96cc8a191608603611e78c6ec11dafef37e3cca0775aeef1931824753e81711d"
+checksum = "6cbce692ab4ca2f1f3047fcf732430249c0e971bfdd2b234cf2c47ad93af5983"
 dependencies = [
  "arrayvec",
  "utf8parse 0.2.0",
@@ -2219,7 +2219,7 @@ dependencies = [
  "termios",
  "unicode-truncate",
  "unicode-width",
- "vte 0.8.0",
+ "vte 0.10.1",
  "wasmer",
  "wasmer-wasi",
  "zellij-tile",
