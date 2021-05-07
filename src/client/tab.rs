@@ -607,23 +607,17 @@ impl Tab {
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
         let pane_ids = self.get_pane_ids();
-        pane_ids.iter().for_each(|pane_id| match pane_id {
-            PaneId::Terminal(pid) => {
-                self.write_to_pane_id(input_bytes.clone(), *pid);
-            }
-            PaneId::Plugin(_) => {}
+        pane_ids.iter().for_each(|&pane_id| {
+            self.write_to_pane_id(input_bytes.clone(), pane_id);
         });
     }
-    pub fn write_to_pane_id(&mut self, mut input_bytes: Vec<u8>, pid: RawFd) {
-        self.os_api
-            .write_to_tty_stdin(pid, &mut input_bytes)
-            .expect("failed to write to terminal");
-        self.os_api.tcdrain(pid).expect("failed to drain terminal");
-    }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>) {
-        match self.get_active_pane_id() {
-            Some(PaneId::Terminal(active_terminal_id)) => {
-                let active_terminal = self.get_active_pane().unwrap();
+        self.write_to_pane_id(input_bytes, self.get_active_pane_id().unwrap());
+    }
+    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
+        match pane_id {
+            PaneId::Terminal(active_terminal_id) => {
+                let active_terminal = self.panes.get(&pane_id).unwrap();
                 let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
                 self.os_api
                     .write_to_tty_stdin(active_terminal_id, &mut adjusted_input)
@@ -632,14 +626,13 @@ impl Tab {
                     .tcdrain(active_terminal_id)
                     .expect("failed to drain terminal");
             }
-            Some(PaneId::Plugin(pid)) => {
+            PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.send_plugin_instructions
                         .send(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
                         .unwrap()
                 }
             }
-            _ => {}
         }
     }
     pub fn get_active_terminal_cursor_position(&self) -> Option<(usize, usize)> {
@@ -713,7 +706,7 @@ impl Tab {
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
-    pub fn toggle_sync_panes_is_active(&mut self) {
+    pub fn toggle_sync_tab_is_active(&mut self) {
         self.synchronize_is_active = !self.synchronize_is_active;
     }
     pub fn panes_contain_widechar(&self) -> bool {

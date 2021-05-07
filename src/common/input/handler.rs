@@ -160,7 +160,6 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
             keybinds.push(("d".to_string(), "Down split".to_string()));
             keybinds.push(("r".to_string(), "Right split".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("s".to_string(), "Sync".to_string()));
             keybinds.push(("f".to_string(), "Fullscreen".to_string()));
         }
         InputMode::Tab => {
@@ -168,6 +167,7 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
             keybinds.push(("n".to_string(), "New".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
             keybinds.push(("r".to_string(), "Rename".to_string()));
+            keybinds.push(("s".to_string(), "Sync".to_string()));
         }
         InputMode::Scroll => {
             keybinds.push(("↓↑".to_string(), "Scroll".to_string()));

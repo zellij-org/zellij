@@ -528,11 +528,11 @@ fn init_session(
                         ScreenInstruction::ChangeMode(mode_info) => {
                             screen.change_mode(mode_info);
                         }
-                        ScreenInstruction::ToggleActiveSyncPanes => {
+                        ScreenInstruction::ToggleActiveSyncTab => {
                             screen
                                 .get_active_tab_mut()
                                 .unwrap()
-                                .toggle_sync_panes_is_active();
+                                .toggle_sync_tab_is_active();
                             screen.update_tabs();
                         }
                         ScreenInstruction::Exit => {
@@ -781,10 +781,10 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .send(ScreenInstruction::SwitchTabPrev)
                 .unwrap();
         }
-        Action::ToggleActiveSyncPanes => {
+        Action::ToggleActiveSyncTab => {
             session
                 .send_screen_instructions
-                .send(ScreenInstruction::ToggleActiveSyncPanes)
+                .send(ScreenInstruction::ToggleActiveSyncTab)
                 .unwrap();
         }
         Action::CloseTab => {

@@ -52,7 +52,7 @@ pub enum ScreenInstruction {
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
-    ToggleActiveSyncPanes,
+    ToggleActiveSyncTab,
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
