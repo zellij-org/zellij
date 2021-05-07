@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
@@ -35,7 +35,8 @@ strum = "0.20.0"
 lazy_static = "1.4.0"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
-interprocess = "1.0.1"
+interprocess = "1.1.1"
+names = "0.11.0"
 colors-transform = "0.2.5"
 zellij-tile = { path = "zellij-tile/", version = "0.7.0" }
 
@@ -67,8 +68,7 @@ lto = true
 depends = "$auto"
 license-file = ["LICENSE.md", "4"]
 assets = [
-  # TODO?
-  # ["assets/man/zellij.1", "usr/share/man/man1/zellij.1", "644"],
+  ["assets/man/zellij.1", "usr/share/man/man1/zellij.1", "644"],
   ["target/release/zellij", "usr/bin/zellij", "755"],
   ["GOVERNANCE.md", "usr/share/doc/zellij/GOVERNANCE.md", "644"],
   ["README.md", "usr/share/doc/zellij/README.md", "644"],

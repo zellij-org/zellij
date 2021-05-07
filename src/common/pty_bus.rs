@@ -8,22 +8,24 @@ use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use std::path::PathBuf;
 
-use super::{ScreenInstruction, SenderWithContext};
-use crate::os_input_output::OsApi;
+use super::SenderWithContext;
+use crate::layout::Layout;
+use crate::os_input_output::ServerOsApi;
 use crate::utils::logging::debug_to_file;
 use crate::{
     errors::{get_current_ctx, ContextType, ErrorContext},
     panes::PaneId,
+    screen::ScreenInstruction,
+    wasm_vm::PluginInstruction,
 };
-use crate::{layout::Layout, wasm_vm::PluginInstruction};
 
 pub struct ReadFromPid {
     pid: RawFd,
-    os_input: Box<dyn OsApi>,
+    os_input: Box<dyn ServerOsApi>,
 }
 
 impl ReadFromPid {
-    pub fn new(pid: &RawFd, os_input: Box<dyn OsApi>) -> ReadFromPid {
+    pub fn new(pid: &RawFd, os_input: Box<dyn ServerOsApi>) -> ReadFromPid {
         ReadFromPid {
             pid: *pid,
             os_input,
@@ -74,15 +76,15 @@ pub enum PtyInstruction {
     NewTab,
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
-    Quit,
+    Exit,
 }
 
 pub struct PtyBus {
-    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
-    os_input: Box<dyn OsApi>,
+    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
+    os_input: Box<dyn ServerOsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -90,7 +92,7 @@ pub struct PtyBus {
 fn stream_terminal_bytes(
     pid: RawFd,
     send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    os_input: Box<dyn OsApi>,
+    os_input: Box<dyn ServerOsApi>,
     debug: bool,
 ) -> JoinHandle<()> {
     let mut err_ctx = get_current_ctx();
@@ -122,7 +124,9 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                                send_screen_instructions
+                                    .send(ScreenInstruction::Render)
+                                    .unwrap();
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -136,7 +140,9 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                        send_screen_instructions
+                            .send(ScreenInstruction::Render)
+                            .unwrap();
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
@@ -161,15 +167,15 @@ impl PtyBus {
         receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
         send_screen_instructions: SenderWithContext<ScreenInstruction>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        os_input: Box<dyn OsApi>,
+        os_input: Box<dyn ServerOsApi>,
         debug_to_file: bool,
     ) -> Self {
         PtyBus {
-            send_screen_instructions,
-            send_plugin_instructions,
             receive_pty_instructions,
             os_input,
             id_to_child_pid: HashMap::new(),
+            send_screen_instructions,
+            send_plugin_instructions,
             debug_to_file,
             task_handles: HashMap::new(),
         }
@@ -196,10 +202,10 @@ impl PtyBus {
             new_pane_pids.push(pid_primary);
         }
         self.send_screen_instructions
-            .send(ScreenInstruction::ApplyLayout((
+            .send(ScreenInstruction::ApplyLayout(
                 layout,
                 new_pane_pids.clone(),
-            )))
+            ))
             .unwrap();
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
@@ -221,10 +227,10 @@ impl PtyBus {
                     handle.cancel().await;
                 });
             }
-            PaneId::Plugin(pid) => drop(
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Unload(pid)),
-            ),
+            PaneId::Plugin(pid) => self
+                .send_plugin_instructions
+                .send(PluginInstruction::Unload(pid))
+                .unwrap(),
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) {

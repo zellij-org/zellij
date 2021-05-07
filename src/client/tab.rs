@@ -2,22 +2,23 @@
 //! as well as how they should be resized
 
 use crate::client::pane_resizer::PaneResizer;
-use crate::common::{input::handler::parse_keys, AppInstruction, SenderWithContext};
+use crate::common::{input::handler::parse_keys, SenderWithContext};
 use crate::layout::Layout;
-use crate::os_input_output::OsApi;
+use crate::os_input_output::ServerOsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
 use crate::pty_bus::{PtyInstruction, VteBytes};
+use crate::server::ServerInstruction;
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
 use crate::{boundaries::Boundaries, panes::PluginPane};
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
+use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
-use std::{io::Write, sync::mpsc::channel};
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
@@ -67,11 +68,11 @@ pub struct Tab {
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
+    os_api: Box<dyn ServerOsApi>,
+    send_plugin_instructions: SenderWithContext<PluginInstruction>,
+    send_pty_instructions: SenderWithContext<PtyInstruction>,
+    send_server_instructions: SenderWithContext<ServerInstruction>,
     synchronize_is_active: bool,
-    os_api: Box<dyn OsApi>,
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
-    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
@@ -225,10 +226,10 @@ impl Tab {
         position: usize,
         name: String,
         full_screen_ws: &PositionAndSize,
-        mut os_api: Box<dyn OsApi>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        mut os_api: Box<dyn ServerOsApi>,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_app_instructions: SenderWithContext<AppInstruction>,
+        send_pty_instructions: SenderWithContext<PtyInstruction>,
+        send_server_instructions: SenderWithContext<ServerInstruction>,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
@@ -260,9 +261,9 @@ impl Tab {
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
-            send_app_instructions,
-            send_pty_instructions,
             send_plugin_instructions,
+            send_pty_instructions,
+            send_server_instructions,
             should_clear_display_before_rendering: false,
             mode_info,
             input_mode,
@@ -400,8 +401,8 @@ impl Tab {
             );
             if terminal_id_to_split.is_none() {
                 self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
+                    .send(PtyInstruction::ClosePane(pid))
+                    .unwrap(); // we can't open this pane, close the pty
                 return; // likely no terminal large enough to split
             }
             let terminal_id_to_split = terminal_id_to_split.unwrap();
@@ -481,8 +482,8 @@ impl Tab {
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
                 self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
+                    .send(PtyInstruction::ClosePane(pid))
+                    .unwrap(); // we can't open this pane, close the pty
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -538,8 +539,8 @@ impl Tab {
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
                 self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
+                    .send(PtyInstruction::ClosePane(pid))
+                    .unwrap(); // we can't open this pane, close the pty
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -729,20 +730,16 @@ impl Tab {
         if self.panes_contain_widechar() {
             self.set_force_render()
         }
-        let mut stdout = self.os_api.get_stdout_writer();
+        let mut output = String::new();
         let mut boundaries = Boundaries::new(
             self.full_screen_ws.columns as u16,
             self.full_screen_ws.rows as u16,
         );
         let hide_cursor = "\u{1b}[?25l";
-        stdout
-            .write_all(&hide_cursor.as_bytes())
-            .expect("cannot write to stdout");
+        output.push_str(hide_cursor);
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
-            stdout
-                .write_all(&clear_display.as_bytes())
-                .expect("cannot write to stdout");
+            output.push_str(clear_display);
             self.should_clear_display_before_rendering = false;
         }
         for (kind, pane) in self.panes.iter_mut() {
@@ -761,48 +758,39 @@ impl Tab {
                         adjust_to_size(&vte_output, pane.rows(), pane.columns())
                     };
                     // FIXME: Use Termion for cursor and style clearing?
-                    write!(
-                        stdout,
+                    output.push_str(&format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         pane.y() + 1,
                         pane.x() + 1,
                         vte_output
-                    )
-                    .expect("cannot write to stdout");
+                    ));
                 }
             }
         }
 
         // TODO: only render (and calculate) boundaries if there was a resize
-        let vte_output = boundaries.vte_output();
-        stdout
-            .write_all(&vte_output.as_bytes())
-            .expect("cannot write to stdout");
+        output.push_str(&boundaries.vte_output());
 
         match self.get_active_terminal_cursor_position() {
             Some((cursor_position_x, cursor_position_y)) => {
                 let show_cursor = "\u{1b}[?25h";
-                let goto_cursor_position = format!(
+                let goto_cursor_position = &format!(
                     "\u{1b}[{};{}H\u{1b}[m",
                     cursor_position_y + 1,
                     cursor_position_x + 1
                 ); // goto row/col
-                stdout
-                    .write_all(&show_cursor.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout
-                    .write_all(&goto_cursor_position.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
+                output.push_str(show_cursor);
+                output.push_str(goto_cursor_position);
             }
             None => {
                 let hide_cursor = "\u{1b}[?25l";
-                stdout
-                    .write_all(&hide_cursor.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
+                output.push_str(hide_cursor);
             }
         }
+
+        self.send_server_instructions
+            .send(ServerInstruction::Render(Some(output)))
+            .unwrap();
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()

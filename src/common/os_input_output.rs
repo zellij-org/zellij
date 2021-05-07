@@ -1,23 +1,35 @@
+use crate::client::ClientInstruction;
+use crate::common::{
+    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
+    utils::consts::ZELLIJ_IPC_PIPE,
+};
+use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
+use crate::server::ServerInstruction;
 use crate::utils::shared::default_palette;
+use interprocess::local_socket::LocalSocketStream;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
-use nix::unistd;
-use nix::unistd::{ForkResult, Pid};
-use std::io;
+use nix::unistd::{self, ForkResult, Pid};
+use signal_hook::{consts::signal::*, iterator::Signals};
 use std::io::prelude::*;
-use std::os::unix::io::RawFd;
-use std::path::PathBuf;
+use std::os::unix::{fs::PermissionsExt, io::RawFd};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use std::{env, fs, io};
 use zellij_tile::data::Palette;
 
-use signal_hook::{consts::signal::*, iterator::Signals};
+const UNIX_PERMISSIONS: u32 = 0o700;
 
-use std::env;
+pub fn set_permissions(path: &Path) -> io::Result<()> {
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(UNIX_PERMISSIONS);
+    fs::set_permissions(path, permissions)
+}
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -156,23 +168,17 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 }
 
 #[derive(Clone)]
-pub struct OsInputOutput {
+pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
+    receive_instructions_from_client: Option<Arc<Mutex<IpcReceiverWithContext<ServerInstruction>>>>,
+    send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
 }
 
-/// The `OsApi` trait represents an abstract interface to the features of an operating system that
-/// Zellij requires.
-pub trait OsApi: Send + Sync {
-    /// Returns the size of the terminal associated to file descriptor `fd`.
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+/// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij server requires.
+pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
-    /// Set the terminal associated to file descriptor `fd` to
-    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn set_raw_mode(&mut self, fd: RawFd);
-    /// Set the terminal associated to file descriptor `fd` to
-    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&mut self, fd: RawFd);
     /// Spawn a new terminal, with an optional file to open in a terminal program.
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -186,29 +192,22 @@ pub trait OsApi: Send + Sync {
     // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
     // called `pid` and of type `pid_t`, and not `fd`)
     fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
-    /// Returns the raw contents of standard input.
-    fn read_from_stdin(&self) -> Vec<u8>;
-    /// Returns the writer that allows writing to standard output.
-    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
-    /// Returns a [`Box`] pointer to this [`OsApi`] struct.
-    fn box_clone(&self) -> Box<dyn OsApi>;
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
+    fn box_clone(&self) -> Box<dyn ServerOsApi>;
+    /// Receives a message on server-side IPC channel
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext);
+    /// Sends a message to client
+    fn send_to_client(&self, msg: ClientInstruction);
+    /// Adds a sender to client
+    fn add_client_sender(&mut self);
+    /// Update the receiver socket for the client
+    fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
 }
 
-impl OsApi for OsInputOutput {
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
-        get_terminal_size_using_fd(fd)
-    }
+impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(fd, cols, rows);
-    }
-    fn set_raw_mode(&mut self, fd: RawFd) {
-        into_raw_mode(fd);
-    }
-    fn unset_raw_mode(&mut self, fd: RawFd) {
-        let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(fd, orig_termios.clone());
     }
     fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
@@ -223,7 +222,118 @@ impl OsApi for OsInputOutput {
     fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error> {
         termios::tcdrain(fd)
     }
-    fn box_clone(&self) -> Box<dyn OsApi> {
+    fn box_clone(&self) -> Box<dyn ServerOsApi> {
+        Box::new((*self).clone())
+    }
+    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+        // TODO:
+        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
+        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
+        // that's why we're sending SIGKILL here
+        // A better solution would be to send SIGINT here and not wait for it, and then have
+        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
+        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
+        waitpid(Pid::from_raw(pid), None).unwrap();
+        Ok(())
+    }
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+        self.receive_instructions_from_client
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .recv()
+    }
+    fn send_to_client(&self, msg: ClientInstruction) {
+        self.send_instructions_to_client
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .send(msg);
+    }
+    fn add_client_sender(&mut self) {
+        assert!(self.send_instructions_to_client.lock().unwrap().is_none());
+        let sender = self
+            .receive_instructions_from_client
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .get_sender();
+        *self.send_instructions_to_client.lock().unwrap() = Some(sender);
+    }
+    fn update_receiver(&mut self, stream: LocalSocketStream) {
+        self.receive_instructions_from_client =
+            Some(Arc::new(Mutex::new(IpcReceiverWithContext::new(stream))));
+    }
+    fn load_palette(&self) -> Palette {
+        default_palette()
+    }
+}
+
+impl Clone for Box<dyn ServerOsApi> {
+    fn clone(&self) -> Box<dyn ServerOsApi> {
+        self.box_clone()
+    }
+}
+
+pub fn get_server_os_input() -> ServerOsInputOutput {
+    let current_termios = termios::tcgetattr(0).unwrap();
+    let orig_termios = Arc::new(Mutex::new(current_termios));
+    ServerOsInputOutput {
+        orig_termios,
+        receive_instructions_from_client: None,
+        send_instructions_to_client: Arc::new(Mutex::new(None)),
+    }
+}
+
+#[derive(Clone)]
+pub struct ClientOsInputOutput {
+    orig_termios: Arc<Mutex<termios::Termios>>,
+    send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
+    receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ClientInstruction>>>>,
+}
+
+/// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
+/// Zellij client requires.
+pub trait ClientOsApi: Send + Sync {
+    /// Returns the size of the terminal associated to file descriptor `fd`.
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn set_raw_mode(&mut self, fd: RawFd);
+    /// Set the terminal associated to file descriptor `fd` to
+    /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    fn unset_raw_mode(&mut self, fd: RawFd);
+    /// Returns the writer that allows writing to standard output.
+    fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    /// Returns the raw contents of standard input.
+    fn read_from_stdin(&self) -> Vec<u8>;
+    /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
+    fn box_clone(&self) -> Box<dyn ClientOsApi>;
+    /// Sends a message to the server.
+    fn send_to_server(&self, msg: ServerInstruction);
+    /// Receives a message on client-side IPC channel
+    // This should be called from the client-side router thread only.
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext);
+    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    /// Establish a connection with the server socket.
+    fn connect_to_server(&self);
+}
+
+impl ClientOsApi for ClientOsInputOutput {
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
+        get_terminal_size_using_fd(fd)
+    }
+    fn set_raw_mode(&mut self, fd: RawFd) {
+        into_raw_mode(fd);
+    }
+    fn unset_raw_mode(&mut self, fd: RawFd) {
+        let orig_termios = self.orig_termios.lock().unwrap();
+        unset_raw_mode(fd, orig_termios.clone());
+    }
+    fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {
@@ -239,16 +349,21 @@ impl OsApi for OsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        // TODO:
-        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
-        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
-        // that's why we're sending SIGKILL here
-        // A better solution would be to send SIGINT here and not wait for it, and then have
-        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
-        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
-        waitpid(Pid::from_raw(pid), None).unwrap();
-        Ok(())
+    fn send_to_server(&self, msg: ServerInstruction) {
+        self.send_instructions_to_server
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .send(msg);
+    }
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+        self.receive_instructions_from_server
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .recv()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
@@ -264,19 +379,33 @@ impl OsApi for OsInputOutput {
             }
         }
     }
-    fn load_palette(&self) -> Palette {
-        default_palette()
+    fn connect_to_server(&self) {
+        let socket = match LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE) {
+            Ok(sock) => sock,
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE).unwrap()
+            }
+        };
+        let sender = IpcSenderWithContext::new(socket);
+        let receiver = sender.get_receiver();
+        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
 }
 
-impl Clone for Box<dyn OsApi> {
-    fn clone(&self) -> Box<dyn OsApi> {
+impl Clone for Box<dyn ClientOsApi> {
+    fn clone(&self) -> Box<dyn ClientOsApi> {
         self.box_clone()
     }
 }
 
-pub fn get_os_input() -> OsInputOutput {
+pub fn get_client_os_input() -> ClientOsInputOutput {
     let current_termios = termios::tcgetattr(0).unwrap();
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    OsInputOutput { orig_termios }
+    ClientOsInputOutput {
+        orig_termios,
+        send_instructions_to_server: Arc::new(Mutex::new(None)),
+        receive_instructions_from_server: Arc::new(Mutex::new(None)),
+    }
 }

@@ -1,22 +1,11 @@
 use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Default, Debug)]
+#[derive(StructOpt, Default, Debug, Clone, Serialize, Deserialize)]
 #[structopt(name = "zellij")]
 pub struct CliArgs {
-    /// Send "split (direction h == horizontal / v == vertical)" to active zellij session
-    #[structopt(short, long)]
-    pub split: Option<char>,
-
-    /// Send "move focused pane" to active zellij session
-    #[structopt(short, long)]
-    pub move_focus: bool,
-
-    /// Send "open file in new pane" to active zellij session
-    #[structopt(short, long)]
-    pub open_file: Option<PathBuf>,
-
     /// Maximum panes on screen, caution: opening more panes will close old ones
     #[structopt(long)]
     pub max_panes: Option<usize>,
@@ -44,7 +33,7 @@ pub struct CliArgs {
     pub debug: bool,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
 pub enum ConfigCli {
     /// Change the behaviour of zellij
     #[structopt(name = "option")]

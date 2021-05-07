@@ -36,6 +36,7 @@ pub fn open_new_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -71,6 +72,7 @@ pub fn switch_to_prev_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -106,6 +108,7 @@ pub fn switch_to_next_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -141,6 +144,7 @@ pub fn close_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -177,6 +181,7 @@ pub fn close_last_pane_in_a_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -215,6 +220,7 @@ pub fn close_the_middle_tab() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -258,6 +264,7 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 
@@ -293,6 +300,7 @@ pub fn closing_last_tab_exits_the_app() {
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
+        Box::new(fake_input_output.clone()),
         Config::default(),
     );
 

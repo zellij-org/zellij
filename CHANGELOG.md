@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)
+
+## [0.8.0] - 2021-05-07
 * Terminal compatibility: pass vttest 8 (https://github.com/zellij-org/zellij/pull/461)
+* Add a Manpage (https://github.com/zellij-org/zellij/pull/455)
+* Code infrastructure changes to support the upcoming session detach (https://github.com/zellij-org/zellij/pull/223)
 
 ## [0.7.0] - 2021-05-04
 * Fix the tab '(Sync)' suffix in named tabs (https://github.com/zellij-org/zellij/pull/410)

@@ -1,27 +1,26 @@
 mod cli;
+mod client;
 mod common;
+mod server;
 #[cfg(test)]
 mod tests;
-// TODO mod server;
-mod client;
+
+use client::{boundaries, layout, panes, start_client, tab};
+use common::{
+    command_is_executing, errors, os_input_output, pty_bus, screen, setup, utils, wasm_vm,
+};
+use server::start_server;
+use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
 use crate::common::input::config::Config;
-use crate::os_input_output::get_os_input;
+use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi, ServerOsApi};
 use crate::utils::{
-    consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
+    consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
 };
-use client::{boundaries, layout, panes, tab};
-use common::{
-    command_is_executing, errors, os_input_output, pty_bus, screen, setup, start, utils, wasm_vm,
-    ApiCommand,
-};
 use std::convert::TryFrom;
-use std::io::Write;
-use std::os::unix::net::UnixStream;
-use structopt::StructOpt;
 
 pub fn main() {
     let opts = CliArgs::from_args();
@@ -32,29 +31,7 @@ pub fn main() {
             std::process::exit(1);
         }
     };
-    if let Some(split_dir) = opts.split {
-        match split_dir {
-            'h' => {
-                let mut stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
-                let api_command = bincode::serialize(&ApiCommand::SplitHorizontally).unwrap();
-                stream.write_all(&api_command).unwrap();
-            }
-            'v' => {
-                let mut stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
-                let api_command = bincode::serialize(&ApiCommand::SplitVertically).unwrap();
-                stream.write_all(&api_command).unwrap();
-            }
-            _ => {}
-        };
-    } else if opts.move_focus {
-        let mut stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
-        let api_command = bincode::serialize(&ApiCommand::MoveFocus).unwrap();
-        stream.write_all(&api_command).unwrap();
-    } else if let Some(file_to_open) = opts.open_file {
-        let mut stream = UnixStream::connect(ZELLIJ_IPC_PIPE).unwrap();
-        let api_command = bincode::serialize(&ApiCommand::OpenFile(file_to_open)).unwrap();
-        stream.write_all(&api_command).unwrap();
-    } else if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
+    if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
         let shell = match shell.as_ref() {
             "bash" => structopt::clap::Shell::Bash,
             "fish" => structopt::clap::Shell::Fish,
@@ -72,9 +49,20 @@ pub fn main() {
         setup::dump_default_config().expect("Failed to print to stdout");
         std::process::exit(1);
     } else {
-        let os_input = get_os_input();
-        atomic_create_dir(ZELLIJ_TMP_DIR).unwrap();
-        atomic_create_dir(ZELLIJ_TMP_LOG_DIR).unwrap();
-        start(Box::new(os_input), opts, config);
+        atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
+        atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
+        let server_os_input = get_server_os_input();
+        let os_input = get_client_os_input();
+        start(Box::new(os_input), opts, Box::new(server_os_input), config);
     }
+}
+pub fn start(
+    client_os_input: Box<dyn ClientOsApi>,
+    opts: CliArgs,
+    server_os_input: Box<dyn ServerOsApi>,
+    config: Config,
+) {
+    let ipc_thread = start_server(server_os_input);
+    start_client(client_os_input, opts, config);
+    drop(ipc_thread.join());
 }

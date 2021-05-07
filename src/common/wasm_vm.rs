@@ -11,9 +11,7 @@ use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use super::{
-    pty_bus::PtyInstruction, screen::ScreenInstruction, AppInstruction, PaneId, SenderWithContext,
-};
+use super::{pty_bus::PtyInstruction, screen::ScreenInstruction, PaneId, SenderWithContext};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -21,7 +19,7 @@ pub enum PluginInstruction {
     Update(Option<u32>, Event), // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
-    Quit,
+    Exit,
 }
 
 #[derive(WasmerEnv, Clone)]
@@ -29,7 +27,6 @@ pub struct PluginEnv {
     pub plugin_id: u32,
     // FIXME: This should be a big bundle of all of the channels
     pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub send_app_instructions: SenderWithContext<AppInstruction>,
     pub send_pty_instructions: SenderWithContext<PtyInstruction>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub wasi_env: WasiEnv,

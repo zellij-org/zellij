@@ -1,19 +1,23 @@
 use crate::panes::PositionAndSize;
+use interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::os_input_output::OsApi;
+use crate::client::ClientInstruction;
+use crate::common::{ChannelWithContext, SenderType, SenderWithContext};
+use crate::errors::ErrorContext;
+use crate::os_input_output::{ClientOsApi, ServerOsApi};
+use crate::server::ServerInstruction;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::{QUIT, SLEEP};
 use crate::utils::shared::default_palette;
 use zellij_tile::data::Palette;
 
-use crate::tests::utils::commands::{QUIT, SLEEP};
-
-const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(50);
+const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -73,6 +77,10 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
+    send_instructions_to_client: SenderWithContext<ClientInstruction>,
+    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
+    send_instructions_to_server: SenderWithContext<ServerInstruction>,
+    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
 }
@@ -82,6 +90,12 @@ impl FakeInputOutput {
         let mut win_sizes = HashMap::new();
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
+        let (client_sender, client_receiver): ChannelWithContext<ClientInstruction> =
+            mpsc::channel();
+        let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
+        let (server_sender, server_receiver): ChannelWithContext<ServerInstruction> =
+            mpsc::channel();
+        let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
@@ -93,6 +107,10 @@ impl FakeInputOutput {
             io_events: Arc::new(Mutex::new(vec![])),
             win_sizes: Arc::new(Mutex::new(win_sizes)),
             possible_tty_inputs: get_possible_tty_inputs(),
+            receive_instructions_from_client: Arc::new(Mutex::new(server_receiver)),
+            send_instructions_to_server,
+            receive_instructions_from_server: Arc::new(Mutex::new(client_receiver)),
+            send_instructions_to_client,
             should_trigger_sigwinch: Arc::new((Mutex::new(false), Condvar::new())),
             sigwinch_event: None,
         }
@@ -116,7 +134,7 @@ impl FakeInputOutput {
     }
 }
 
-impl OsApi for FakeInputOutput {
+impl ClientOsApi for FakeInputOutput {
     fn get_terminal_size_using_fd(&self, pid: RawFd) -> PositionAndSize {
         if let Some(new_position_and_size) = self.sigwinch_event {
             let (lock, _cvar) = &*self.should_trigger_sigwinch;
@@ -128,20 +146,6 @@ impl OsApi for FakeInputOutput {
         let win_sizes = self.win_sizes.lock().unwrap();
         let winsize = win_sizes.get(&pid).unwrap();
         *winsize
-    }
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
-        let terminal_input = self
-            .possible_tty_inputs
-            .get(&cols)
-            .expect(&format!("could not find input for size {:?}", cols));
-        self.read_buffers
-            .lock()
-            .unwrap()
-            .insert(pid, terminal_input.clone());
-        self.io_events
-            .lock()
-            .unwrap()
-            .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
     fn set_raw_mode(&mut self, pid: RawFd) {
         self.io_events
@@ -155,43 +159,7 @@ impl OsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::UnsetRawMode(pid));
     }
-    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
-        let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
-        self.add_terminal(next_terminal_id);
-        (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
-    }
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        let mut read_buffers = self.read_buffers.lock().unwrap();
-        let mut bytes_read = 0;
-        match read_buffers.get_mut(&pid) {
-            Some(bytes) => {
-                for i in bytes.read_position..bytes.content.len() {
-                    bytes_read += 1;
-                    buf[i] = bytes.content[i];
-                }
-                if bytes_read > bytes.read_position {
-                    bytes.set_read_position(bytes_read);
-                }
-                return Ok(bytes_read);
-            }
-            None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
-        }
-    }
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        let mut stdin_writes = self.stdin_writes.lock().unwrap();
-        let write_buffer = stdin_writes.get_mut(&pid).unwrap();
-        let mut bytes_written = 0;
-        for byte in buf {
-            bytes_written += 1;
-            write_buffer.push(*byte);
-        }
-        Ok(bytes_written)
-    }
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
-        self.io_events.lock().unwrap().push(IoEvent::TcDrain(pid));
-        Ok(())
-    }
-    fn box_clone(&self) -> Box<dyn OsApi> {
+    fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
     }
     fn read_from_stdin(&self) -> Vec<u8> {
@@ -213,30 +181,115 @@ impl OsApi for FakeInputOutput {
             std::thread::sleep(std::time::Duration::from_millis(200));
         } else if command == QUIT && self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            *should_trigger_sigwinch = true;
+            {
+                let mut should_trigger_sigwinch = lock.lock().unwrap();
+                *should_trigger_sigwinch = true;
+            }
             cvar.notify_one();
             ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS); // give some time for the app to resize before quitting
+        } else if command == QUIT {
+            ::std::thread::sleep(MIN_TIME_BETWEEN_SNAPSHOTS);
         }
         command
     }
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
     }
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
-        Ok(())
+    fn send_to_server(&self, msg: ServerInstruction) {
+        self.send_instructions_to_server.send(msg).unwrap();
+    }
+    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+        self.receive_instructions_from_server
+            .lock()
+            .unwrap()
+            .recv()
+            .unwrap()
     }
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
         if self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
-            let mut should_trigger_sigwinch = lock.lock().unwrap();
-            while !*should_trigger_sigwinch {
-                should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+            {
+                let mut should_trigger_sigwinch = lock.lock().unwrap();
+                while !*should_trigger_sigwinch {
+                    should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
+                }
             }
             cb();
         }
     }
+    fn connect_to_server(&self) {}
+}
+
+impl ServerOsApi for FakeInputOutput {
+    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
+        let terminal_input = self
+            .possible_tty_inputs
+            .get(&cols)
+            .expect(&format!("could not find input for size {:?}", cols));
+        self.read_buffers
+            .lock()
+            .unwrap()
+            .insert(pid, terminal_input.clone());
+        self.io_events
+            .lock()
+            .unwrap()
+            .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
+    }
+    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+        let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
+        self.add_terminal(next_terminal_id);
+        (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
+    }
+    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        let mut stdin_writes = self.stdin_writes.lock().unwrap();
+        let write_buffer = stdin_writes.get_mut(&pid).unwrap();
+        let mut bytes_written = 0;
+        for byte in buf {
+            bytes_written += 1;
+            write_buffer.push(*byte);
+        }
+        Ok(bytes_written)
+    }
+    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+        let mut read_buffers = self.read_buffers.lock().unwrap();
+        let mut bytes_read = 0;
+        match read_buffers.get_mut(&pid) {
+            Some(bytes) => {
+                for i in bytes.read_position..bytes.content.len() {
+                    bytes_read += 1;
+                    buf[i] = bytes.content[i];
+                }
+                if bytes_read > bytes.read_position {
+                    bytes.set_read_position(bytes_read);
+                }
+                return Ok(bytes_read);
+            }
+            None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
+        }
+    }
+    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+        self.io_events.lock().unwrap().push(IoEvent::TcDrain(pid));
+        Ok(())
+    }
+    fn box_clone(&self) -> Box<dyn ServerOsApi> {
+        Box::new((*self).clone())
+    }
+    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
+        self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
+        Ok(())
+    }
+    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+        self.receive_instructions_from_client
+            .lock()
+            .unwrap()
+            .recv()
+            .unwrap()
+    }
+    fn send_to_client(&self, msg: ClientInstruction) {
+        self.send_instructions_to_client.send(msg).unwrap();
+    }
+    fn add_client_sender(&mut self) {}
+    fn update_receiver(&mut self, _stream: LocalSocketStream) {}
     fn load_palette(&self) -> Palette {
         default_palette()
     }
