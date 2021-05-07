@@ -29,7 +29,6 @@ pub struct KeybindsFromYaml {
 #[serde(untagged)]
 enum KeyActionUnbind {
     KeyAction(KeyActionFromYaml),
-    // TODO: use the enum
     Unbind(UnbindFromYaml),
 }
 
