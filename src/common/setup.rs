@@ -42,7 +42,7 @@ pub mod install {
             let path = data_dir.join(path);
             let parent_path = path.parent().unwrap();
             fs::create_dir_all(parent_path).unwrap();
-            set_permissions(parent_path);
+            set_permissions(parent_path).unwrap();
             if out_of_date || !path.exists() {
                 fs::write(path, bytes).expect("Failed to install default assets!");
             }

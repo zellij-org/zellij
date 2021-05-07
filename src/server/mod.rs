@@ -87,7 +87,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             move || {
                 drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
                 let listener = LocalSocketListener::bind(&**ZELLIJ_IPC_PIPE).unwrap();
-                set_permissions(&*ZELLIJ_IPC_PIPE);
+                set_permissions(&*ZELLIJ_IPC_PIPE).unwrap();
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {

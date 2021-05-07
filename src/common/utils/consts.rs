@@ -30,7 +30,7 @@ lazy_static! {
         );
         ipc_dir.push(VERSION);
         fs::create_dir_all(&ipc_dir).unwrap();
-        set_permissions(&ipc_dir);
+        set_permissions(&ipc_dir).unwrap();
         ipc_dir.push(&*SESSION_NAME);
         ipc_dir
     };

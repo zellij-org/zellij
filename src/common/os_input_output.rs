@@ -25,10 +25,10 @@ use zellij_tile::data::Palette;
 
 const UNIX_PERMISSIONS: u32 = 0o700;
 
-pub fn set_permissions(path: &Path) {
-    let mut permissions = fs::metadata(path).unwrap().permissions();
+pub fn set_permissions(path: &Path) -> io::Result<()> {
+    let mut permissions = fs::metadata(path)?.permissions();
     permissions.set_mode(UNIX_PERMISSIONS);
-    fs::set_permissions(path, permissions).unwrap();
+    fs::set_permissions(path, permissions)
 }
 
 fn into_raw_mode(pid: RawFd) {
