@@ -206,7 +206,7 @@ impl Layout {
     }
 
     // It wants to use Path here, but that doesn't compile.
-    #[warn(clippy::ptr_arg)]
+    #[allow(clippy::ptr_arg)]
     pub fn from_defaults(layout_path: &PathBuf, data_dir: &Path) -> Self {
         Self::new(
             &data_dir
