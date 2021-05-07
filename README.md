@@ -36,7 +36,7 @@ cargo install zellij
 
 Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
-## How do I hack on it? (contributing)
+## How do I hack on it? (Contributing)
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
 * In the project folder, for debug builds run: `cargo make run`
