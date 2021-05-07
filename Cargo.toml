@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
