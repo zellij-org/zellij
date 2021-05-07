@@ -10,14 +10,12 @@ use std::{
 use crate::os_input_output::set_permissions;
 use crate::utils::consts::{ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 
-pub fn atomic_create_file(file_name: &Path) {
+pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
     let _ = fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(file_name)
-        .unwrap();
-    #[cfg(not(test))]
-    set_permissions(file_name).unwrap();
+        .open(file_name)?;
+    set_permissions(file_name)
 }
 
 pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
@@ -42,7 +40,7 @@ pub fn debug_log_to_file(mut message: String) -> io::Result<()> {
 }
 
 pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
-    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE);
+    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE)?;
     let mut file = fs::OpenOptions::new()
         .append(true)
         .open(&*ZELLIJ_TMP_LOG_FILE)?;

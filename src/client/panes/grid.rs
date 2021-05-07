@@ -1261,7 +1261,9 @@ impl vte::Perform for Grid {
                 self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);
             }
         } else {
-            let _ = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
+            let result = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
+            #[cfg(not(test))]
+            result.unwrap();
         }
     }
 
