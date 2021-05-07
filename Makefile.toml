@@ -94,14 +94,18 @@ end
 '''
 
 [tasks.manpage]
+workspace = false
 description = "Use mandown crate to create or update man entry from docs/MANPAGES.md"
-script = "mandown docs/MANPAGE.md ZELLIJ 1 > assets/man/zellij.1"
+script = '''
+root_dir=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+mkdir -p ${root_dir}/assets/man
+mandown ${root_dir}/docs/MANPAGE.md ZELLIJ 1 > ${root_dir}/assets/man/zellij.1
+'''
 dependencies = ["install-mandown"]
 
 [tasks.install-mandown]
 command = "cargo"
 args = ["install", "mandown"]
-
 
 # CI Releasing Zellij
 [tasks.ci-build-release]
