@@ -1848,12 +1848,13 @@ impl Tab {
         }
         self.render();
     }
-    pub fn move_focus_left(&mut self) {
+    // returns a boolean to allow the caller to know if the move happened or not
+    pub fn move_focus_left(&mut self) -> bool {
         if !self.has_selectable_panes() {
-            return;
+            return false;
         }
         if self.fullscreen_is_active {
-            return;
+            return false;
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
@@ -1868,6 +1869,8 @@ impl Tab {
             match next_index {
                 Some(&p) => {
                     self.active_terminal = Some(p);
+                    self.render();
+                    return true;
                 }
                 None => {
                     self.active_terminal = Some(active.pid());
@@ -1876,7 +1879,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render();
+        false
     }
     pub fn move_focus_down(&mut self) {
         if !self.has_selectable_panes() {
@@ -1938,12 +1941,13 @@ impl Tab {
         }
         self.render();
     }
-    pub fn move_focus_right(&mut self) {
+    // returns a boolean to allow the caller to know if the move happened or not
+    pub fn move_focus_right(&mut self) -> bool {
         if !self.has_selectable_panes() {
-            return;
+            return false;
         }
         if self.fullscreen_is_active {
-            return;
+            return false;
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
@@ -1958,6 +1962,8 @@ impl Tab {
             match next_index {
                 Some(&p) => {
                     self.active_terminal = Some(p);
+                    self.render();
+                    return true;
                 }
                 None => {
                     self.active_terminal = Some(active.pid());
@@ -1966,7 +1972,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render();
+        false
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
