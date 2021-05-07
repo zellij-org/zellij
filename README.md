@@ -36,12 +36,12 @@ cargo install zellij
 
 Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
-## How do I hack on it?
+## How do I hack on it? (Contributing)
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
-* In the project folder, run: `cargo make run`
+* In the project folder, for debug builds run: `cargo make run`
 
-For more build commands, take a look at [`Contributing.md`](CONTRIBUTING.md).
+For more build commands, see [`Contributing.md`](CONTRIBUTING.md).
 
 ## Configuration
 For configuring Zellij, please see the [Configuration documentation](https://zellij.dev/documentation/configuration.html).
@@ -67,11 +67,6 @@ This section contains an ever-changing list of the major features that are eithe
   * **Share sessions with others** - See the focused window and cursor of other users, work on a problem or a code base together in real time.
   * **Support for multiple terminal windows across screens** - Transfer panes across different windows and screens by having them all belong to the same session.
   * **Smart layouts** - expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed.
-
-
-## Contributing
-
-Take a look at [`Contributing.md`](CONTRIBUTING.md) guide.
 
 ## License
 
