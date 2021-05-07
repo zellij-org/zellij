@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)
+* Terminal compatibility: fix support for CSI subparameters (https://github.com/zellij-org/zellij/pull/469)
 
 ## [0.8.0] - 2021-05-07
 * Terminal compatibility: pass vttest 8 (https://github.com/zellij-org/zellij/pull/461)
