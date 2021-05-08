@@ -6,9 +6,7 @@ mod server;
 mod tests;
 
 use client::{boundaries, layout, panes, start_client, tab};
-use common::{
-    command_is_executing, errors, os_input_output, pty_bus, screen, setup, utils, wasm_vm,
-};
+use common::{command_is_executing, errors, os_input_output, pty, screen, setup, utils, wasm_vm};
 use server::start_server;
 use structopt::StructOpt;
 

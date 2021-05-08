@@ -4,20 +4,19 @@ use ::async_std::task::*;
 use ::std::collections::HashMap;
 use ::std::os::unix::io::RawFd;
 use ::std::pin::*;
-use ::std::sync::mpsc::Receiver;
 use ::std::time::{Duration, Instant};
 use std::path::PathBuf;
 
-use super::SenderWithContext;
-use crate::layout::Layout;
+use super::{screen::ScreenInstruction, thread_bus::SenderWithContext};
 use crate::os_input_output::ServerOsApi;
 use crate::utils::logging::debug_to_file;
+use crate::wasm_vm::PluginInstruction;
 use crate::{
-    errors::{get_current_ctx, ContextType, ErrorContext},
+    common::thread_bus::Bus,
+    errors::{get_current_ctx, ContextType, PtyContext},
     panes::PaneId,
-    screen::ScreenInstruction,
-    wasm_vm::PluginInstruction,
 };
+use crate::{layout::Layout, server::ServerInstruction};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -79,14 +78,67 @@ pub enum PtyInstruction {
     Exit,
 }
 
-pub struct PtyBus {
-    pub receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
+pub struct Pty {
+    pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<RawFd, RawFd>,
-    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    os_input: Box<dyn ServerOsApi>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
+}
+
+pub fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
+    loop {
+        let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
+        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+        match event {
+            PtyInstruction::SpawnTerminal(file_to_open) => {
+                let pid = pty.spawn_terminal(file_to_open);
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
+                    .unwrap();
+            }
+            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
+                let pid = pty.spawn_terminal(file_to_open);
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                    .unwrap();
+            }
+            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
+                let pid = pty.spawn_terminal(file_to_open);
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                    .unwrap();
+            }
+            PtyInstruction::NewTab => {
+                if let Some(layout) = maybe_layout.clone() {
+                    pty.spawn_terminals_for_layout(layout);
+                } else {
+                    let pid = pty.spawn_terminal(None);
+                    pty.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::NewTab(pid))
+                        .unwrap();
+                }
+            }
+            PtyInstruction::ClosePane(id) => {
+                pty.close_pane(id);
+                pty.bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            PtyInstruction::CloseTab(ids) => {
+                pty.close_tab(ids);
+                pty.bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            PtyInstruction::Exit => break,
+        }
+    }
 }
 
 fn stream_terminal_bytes(
@@ -124,9 +176,7 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                send_screen_instructions
-                                    .send(ScreenInstruction::Render)
-                                    .unwrap();
+                                let _ = send_screen_instructions.send(ScreenInstruction::Render);
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -140,9 +190,7 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        send_screen_instructions
-                            .send(ScreenInstruction::Render)
-                            .unwrap();
+                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
@@ -162,31 +210,26 @@ fn stream_terminal_bytes(
     })
 }
 
-impl PtyBus {
-    pub fn new(
-        receive_pty_instructions: Receiver<(PtyInstruction, ErrorContext)>,
-        send_screen_instructions: SenderWithContext<ScreenInstruction>,
-        send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        os_input: Box<dyn ServerOsApi>,
-        debug_to_file: bool,
-    ) -> Self {
-        PtyBus {
-            receive_pty_instructions,
-            os_input,
+impl Pty {
+    pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
+        Pty {
+            bus,
             id_to_child_pid: HashMap::new(),
-            send_screen_instructions,
-            send_plugin_instructions,
             debug_to_file,
             task_handles: HashMap::new(),
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) =
-            self.os_input.spawn_terminal(file_to_open);
+        let (pid_primary, pid_secondary): (RawFd, RawFd) = self
+            .bus
+            .os_input
+            .as_mut()
+            .unwrap()
+            .spawn_terminal(file_to_open);
         let task_handle = stream_terminal_bytes(
             pid_primary,
-            self.send_screen_instructions.clone(),
-            self.os_input.clone(),
+            self.bus.senders.to_screen.as_ref().unwrap().clone(),
+            self.bus.os_input.as_ref().unwrap().clone(),
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
@@ -197,12 +240,14 @@ impl PtyBus {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) = self.os_input.spawn_terminal(None);
+            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+                self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
-        self.send_screen_instructions
-            .send(ScreenInstruction::ApplyLayout(
+        self.bus
+            .senders
+            .send_to_screen(ScreenInstruction::ApplyLayout(
                 layout,
                 new_pane_pids.clone(),
             ))
@@ -210,8 +255,8 @@ impl PtyBus {
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
                 id,
-                self.send_screen_instructions.clone(),
-                self.os_input.clone(),
+                self.bus.senders.to_screen.as_ref().unwrap().clone(),
+                self.bus.os_input.as_ref().unwrap().clone(),
                 self.debug_to_file,
             );
             self.task_handles.insert(id, task_handle);
@@ -222,15 +267,16 @@ impl PtyBus {
             PaneId::Terminal(id) => {
                 let child_pid = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
-                self.os_input.kill(child_pid).unwrap();
+                self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
                 task::block_on(async {
                     handle.cancel().await;
                 });
             }
-            PaneId::Plugin(pid) => self
-                .send_plugin_instructions
-                .send(PluginInstruction::Unload(pid))
-                .unwrap(),
+            PaneId::Plugin(pid) => drop(
+                self.bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Unload(pid)),
+            ),
         }
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) {
@@ -240,7 +286,7 @@ impl PtyBus {
     }
 }
 
-impl Drop for PtyBus {
+impl Drop for Pty {
     fn drop(&mut self) {
         let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {

@@ -1,17 +1,28 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    fs,
     path::PathBuf,
     process,
+    str::FromStr,
     sync::{mpsc::Sender, Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
-use wasmer_wasi::WasiEnv;
+use wasmer::{
+    imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
+    WasmerEnv,
+};
+use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use super::{pty_bus::PtyInstruction, screen::ScreenInstruction, PaneId, SenderWithContext};
+use super::{
+    errors::{ContextType, PluginContext},
+    pty::PtyInstruction,
+    screen::ScreenInstruction,
+    thread_bus::{Bus, ThreadSenders},
+    PaneId,
+};
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -25,12 +36,95 @@ pub enum PluginInstruction {
 #[derive(WasmerEnv, Clone)]
 pub struct PluginEnv {
     pub plugin_id: u32,
-    // FIXME: This should be a big bundle of all of the channels
-    pub send_screen_instructions: SenderWithContext<ScreenInstruction>,
-    pub send_pty_instructions: SenderWithContext<PtyInstruction>,
-    pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
+    pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+}
+
+// Thread main --------------------------------------------------------------------------------------------------------
+pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: PathBuf) {
+    let mut plugin_id = 0;
+    let mut plugin_map = HashMap::new();
+    loop {
+        let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
+        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+        match event {
+            PluginInstruction::Load(pid_tx, path) => {
+                let plugin_dir = data_dir.join("plugins/");
+                let wasm_bytes = fs::read(&path)
+                    .or_else(|_| fs::read(&path.with_extension("wasm")))
+                    .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
+                    .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
+
+                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+                let module = Module::new(&store, &wasm_bytes).unwrap();
+
+                let output = Pipe::new();
+                let input = Pipe::new();
+                let mut wasi_env = WasiState::new("Zellij")
+                    .env("CLICOLOR_FORCE", "1")
+                    .preopen(|p| {
+                        p.directory(".") // FIXME: Change this to a more meaningful dir
+                            .alias(".")
+                            .read(true)
+                            .write(true)
+                            .create(true)
+                    })
+                    .unwrap()
+                    .stdin(Box::new(input))
+                    .stdout(Box::new(output))
+                    .finalize()
+                    .unwrap();
+
+                let wasi = wasi_env.import_object(&module).unwrap();
+
+                let plugin_env = PluginEnv {
+                    plugin_id,
+                    senders: bus.senders.clone(),
+                    wasi_env,
+                    subscriptions: Arc::new(Mutex::new(HashSet::new())),
+                };
+
+                let zellij = zellij_exports(&store, &plugin_env);
+                let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+
+                let start = instance.exports.get_function("_start").unwrap();
+
+                // This eventually calls the `.load()` method
+                start.call(&[]).unwrap();
+
+                plugin_map.insert(plugin_id, (instance, plugin_env));
+                pid_tx.send(plugin_id).unwrap();
+                plugin_id += 1;
+            }
+            PluginInstruction::Update(pid, event) => {
+                for (&i, (instance, plugin_env)) in &plugin_map {
+                    let subs = plugin_env.subscriptions.lock().unwrap();
+                    // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
+                    let event_type = EventType::from_str(&event.to_string()).unwrap();
+                    if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
+                        let update = instance.exports.get_function("update").unwrap();
+                        wasi_write_object(&plugin_env.wasi_env, &event);
+                        update.call(&[]).unwrap();
+                    }
+                }
+                drop(bus.senders.send_to_screen(ScreenInstruction::Render));
+            }
+            PluginInstruction::Render(buf_tx, pid, rows, cols) => {
+                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+
+                let render = instance.exports.get_function("render").unwrap();
+
+                render
+                    .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                    .unwrap();
+
+                buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
+            }
+            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+            PluginInstruction::Exit => break,
+        }
+    }
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
@@ -74,8 +168,8 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     let selectable = selectable != 0;
     plugin_env
-        .send_screen_instructions
-        .send(ScreenInstruction::SetSelectable(
+        .senders
+        .send_to_screen(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
         ))
@@ -85,8 +179,8 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
 fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
     let max_height = max_height as usize;
     plugin_env
-        .send_screen_instructions
-        .send(ScreenInstruction::SetMaxHeight(
+        .senders
+        .send_to_screen(ScreenInstruction::SetMaxHeight(
             PaneId::Plugin(plugin_env.plugin_id),
             max_height,
         ))
@@ -96,8 +190,8 @@ fn host_set_max_height(plugin_env: &PluginEnv, max_height: i32) {
 fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
     let invisible_borders = invisible_borders != 0;
     plugin_env
-        .send_screen_instructions
-        .send(ScreenInstruction::SetInvisibleBorders(
+        .senders
+        .send_to_screen(ScreenInstruction::SetInvisibleBorders(
             PaneId::Plugin(plugin_env.plugin_id),
             invisible_borders,
         ))
@@ -115,8 +209,8 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
 fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
-        .send_pty_instructions
-        .send(PtyInstruction::SpawnTerminal(Some(path)))
+        .senders
+        .send_to_pty(PtyInstruction::SpawnTerminal(Some(path)))
         .unwrap();
 }
 
@@ -130,7 +224,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     // timers as we'd like.
     //
     // But that's a lot of code, and this is a few lines:
-    let send_plugin_instructions = plugin_env.send_plugin_instructions.clone();
+    let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
     let update_target = Some(plugin_env.plugin_id);
     thread::spawn(move || {
         let start_time = Instant::now();
@@ -140,6 +234,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
 
         send_plugin_instructions
+            .unwrap()
             .send(PluginInstruction::Update(
                 update_target,
                 Event::Timer(elapsed_time),

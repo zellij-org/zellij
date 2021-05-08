@@ -4,7 +4,7 @@ use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::client::ClientInstruction;
 use crate::common::input::config::Config;
-use crate::common::{SenderWithContext, OPENCALLS};
+use crate::common::thread_bus::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::server::ServerInstruction;

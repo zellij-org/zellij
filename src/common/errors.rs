@@ -1,9 +1,9 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{ServerInstruction, ASYNCOPENCALLS, OPENCALLS};
+use super::{thread_bus::ASYNCOPENCALLS, thread_bus::OPENCALLS, ServerInstruction};
 use crate::client::ClientInstruction;
-use crate::pty_bus::PtyInstruction;
+use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +14,7 @@ use std::fmt::{Display, Error, Formatter};
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 #[cfg(not(test))]
-use super::SenderWithContext;
+use super::thread_bus::SenderWithContext;
 #[cfg(not(test))]
 use std::panic::PanicInfo;
 /// Custom panic handler/hook. Prints the [`ErrorContext`].
@@ -200,7 +200,7 @@ pub enum ScreenContext {
     PageScrollDown,
     ClearScroll,
     CloseFocusedPane,
-    ToggleActiveSyncTab,
+    ToggleActiveSyncPanes,
     ToggleActiveTerminalFullscreen,
     SetSelectable,
     SetInvisibleBorders,
@@ -261,7 +261,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateTabName(_) => ScreenContext::UpdateTabName,
             ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
-            ScreenInstruction::ToggleActiveSyncTab => ScreenContext::ToggleActiveSyncTab,
+            ScreenInstruction::ToggleActiveSyncPanes => ScreenContext::ToggleActiveSyncPanes,
         }
     }
 }

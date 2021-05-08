@@ -9,7 +9,7 @@ use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
     CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-use crate::pty_bus::VteBytes;
+use crate::pty::VteBytes;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PaneId {

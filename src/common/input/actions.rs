@@ -40,7 +40,7 @@ pub enum Action {
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
-    ToggleActiveSyncTab,
+    ToggleActiveSyncPanes,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>),
