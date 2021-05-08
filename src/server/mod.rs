@@ -69,7 +69,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             let to_server = to_server.clone();
 
             move || route_thread_main(sessions, os_input, to_server)
-        });
+        }).unwrap();
     #[cfg(not(test))]
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
@@ -185,7 +185,7 @@ fn init_session(
                     Some(&to_screen),
                     None,
                     Some(&to_plugin),
-                    None,
+                    Some(&to_server),
                     Some(os_input.clone()),
                 ),
                 opts.debug,
@@ -221,8 +221,8 @@ fn init_session(
                 plugin_receiver,
                 Some(&to_screen),
                 Some(&to_pty),
-                Some(&to_plugin),
-                Some(&to_server),
+                None,
+                None,
                 None,
             );
             let store = Store::default();

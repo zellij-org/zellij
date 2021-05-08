@@ -1,22 +1,21 @@
-use ::async_std::stream::*;
-use ::async_std::task;
-use ::async_std::task::*;
-use ::std::collections::HashMap;
-use ::std::os::unix::io::RawFd;
-use ::std::pin::*;
-use ::std::time::{Duration, Instant};
+use async_std::stream::*;
+use async_std::task;
+use async_std::task::*;
+use std::collections::HashMap;
+use std::os::unix::io::RawFd;
+use std::pin::*;
+use std::time::{Duration, Instant};
 use std::path::PathBuf;
 
-use super::{screen::ScreenInstruction, thread_bus::SenderWithContext};
+use crate::client::panes::PaneId;
+use crate::common::errors::{get_current_ctx, ContextType, PtyContext};
+use crate::common::screen::ScreenInstruction;
+use crate::common::thread_bus::{Bus, ThreadSenders};
+use crate::layout::Layout;
 use crate::os_input_output::ServerOsApi;
+use crate::server::ServerInstruction;
 use crate::utils::logging::debug_to_file;
 use crate::wasm_vm::PluginInstruction;
-use crate::{
-    common::thread_bus::Bus,
-    errors::{get_current_ctx, ContextType, PtyContext},
-    panes::PaneId,
-};
-use crate::{layout::Layout, server::ServerInstruction};
 
 pub struct ReadFromPid {
     pid: RawFd,
@@ -143,7 +142,7 @@ pub fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
 
 fn stream_terminal_bytes(
     pid: RawFd,
-    send_screen_instructions: SenderWithContext<ScreenInstruction>,
+    senders: ThreadSenders,
     os_input: Box<dyn ServerOsApi>,
     debug: bool,
 ) -> JoinHandle<()> {
@@ -165,7 +164,7 @@ fn stream_terminal_bytes(
                     }
                 }
                 if !bytes_is_empty {
-                    let _ = send_screen_instructions.send(ScreenInstruction::PtyBytes(pid, bytes));
+                    let _ = senders.send_to_screen(ScreenInstruction::PtyBytes(pid, bytes));
                     // for UX reasons, if we got something on the wire, we only send the render notice if:
                     // 1. there aren't any more bytes on the wire afterwards
                     // 2. a certain period (currently 30ms) has elapsed since the last render
@@ -176,7 +175,7 @@ fn stream_terminal_bytes(
                         Some(receive_time) => {
                             if receive_time.elapsed() > max_render_pause {
                                 pending_render = false;
-                                let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                                let _ = senders.send_to_screen(ScreenInstruction::Render);
                                 last_byte_receive_time = Some(Instant::now());
                             } else {
                                 pending_render = true;
@@ -190,21 +189,21 @@ fn stream_terminal_bytes(
                 } else {
                     if pending_render {
                         pending_render = false;
-                        let _ = send_screen_instructions.send(ScreenInstruction::Render);
+                        let _ = senders.send_to_screen(ScreenInstruction::Render);
                     }
                     last_byte_receive_time = None;
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            send_screen_instructions
-                .send(ScreenInstruction::Render)
+            senders
+                .send_to_screen(ScreenInstruction::Render)
                 .unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
-            send_screen_instructions
-                .send(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
+            senders
+                .send_to_screen(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
                 .unwrap();
         }
     })
@@ -228,7 +227,7 @@ impl Pty {
             .spawn_terminal(file_to_open);
         let task_handle = stream_terminal_bytes(
             pid_primary,
-            self.bus.senders.to_screen.as_ref().unwrap().clone(),
+            self.bus.senders.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.debug_to_file,
         );
@@ -255,7 +254,7 @@ impl Pty {
         for id in new_pane_pids {
             let task_handle = stream_terminal_bytes(
                 id,
-                self.bus.senders.to_screen.as_ref().unwrap().clone(),
+                self.bus.senders.clone(),
                 self.bus.os_input.as_ref().unwrap().clone(),
                 self.debug_to_file,
             );

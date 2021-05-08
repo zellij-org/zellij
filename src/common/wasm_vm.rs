@@ -1,14 +1,13 @@
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
+use std::process;
+use std::str::FromStr;
+use std::sync::{mpsc::Sender, Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    fs,
-    path::PathBuf,
-    process,
-    str::FromStr,
-    sync::{mpsc::Sender, Arc, Mutex},
-    thread,
-    time::{Duration, Instant},
-};
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
     WasmerEnv,
@@ -16,13 +15,11 @@ use wasmer::{
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use super::{
-    errors::{ContextType, PluginContext},
-    pty::PtyInstruction,
-    screen::ScreenInstruction,
-    thread_bus::{Bus, ThreadSenders},
-    PaneId,
-};
+use crate::common::errors::{ContextType, PluginContext};
+use crate::common::pty::PtyInstruction;
+use crate::common::screen::ScreenInstruction;
+use crate::common::thread_bus::{Bus, ThreadSenders};
+use crate::common::PaneId;
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {

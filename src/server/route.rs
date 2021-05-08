@@ -3,8 +3,8 @@ use std::sync::{Arc, RwLock};
 use zellij_tile::data::Event;
 
 use crate::common::errors::{ContextType, ServerContext};
-use crate::common::input::actions::Action;
-use crate::common::input::{actions::Direction, handler::get_mode_info};
+use crate::common::input::actions::{Action, Direction};
+use crate::common::input::handler::get_mode_info;
 use crate::common::os_input_output::ServerOsApi;
 use crate::common::pty::PtyInstruction;
 use crate::common::screen::ScreenInstruction;
@@ -168,6 +168,7 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
         Action::Quit => panic!("Received unexpected action"),
     }
 }
+
 pub fn route_thread_main(
     sessions: Arc<RwLock<Option<SessionMetaData>>>,
     mut os_input: Box<dyn ServerOsApi>,

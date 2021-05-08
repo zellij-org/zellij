@@ -7,11 +7,12 @@ use std::str;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::thread_bus::Bus;
 use crate::errors::{ContextType, ScreenContext};
+use crate::layout::Layout;
+use crate::panes::PaneId;
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::wasm_vm::PluginInstruction;
-use crate::{layout::Layout, panes::PaneId};
 
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo};
 
