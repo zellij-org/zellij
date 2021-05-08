@@ -3,9 +3,9 @@ use async_std::task;
 use async_std::task::*;
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
+use std::path::PathBuf;
 use std::pin::*;
 use std::time::{Duration, Instant};
-use std::path::PathBuf;
 
 use crate::client::panes::PaneId;
 use crate::common::errors::{get_current_ctx, ContextType, PtyContext};
@@ -195,9 +195,7 @@ fn stream_terminal_bytes(
                     task::sleep(::std::time::Duration::from_millis(10)).await;
                 }
             }
-            senders
-                .send_to_screen(ScreenInstruction::Render)
-                .unwrap();
+            senders.send_to_screen(ScreenInstruction::Render).unwrap();
             #[cfg(not(test))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data

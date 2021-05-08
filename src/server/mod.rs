@@ -69,7 +69,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             let to_server = to_server.clone();
 
             move || route_thread_main(sessions, os_input, to_server)
-        }).unwrap();
+        })
+        .unwrap();
     #[cfg(not(test))]
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
