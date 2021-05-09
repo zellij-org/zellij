@@ -8,7 +8,9 @@
             "description": "user-defined keybinds",
             "type": "object",
             "properties": {
-                "unbind": {},
+                "unbind": {
+                    "$ref": "#/$defs/unbind"
+                },
                 "normal": {
                     "$ref": "#/$defs/mode_keybinds"
                 },
@@ -38,22 +40,36 @@
             "description": "the set of keybinds for a particular input mode",
             "type": "array",
             "items": {
-                "description": "an individual keybind",
-                "properties": {
-                    "action": {
-                        "description": "the actions to be executed, in order",
-                        "type": "array"
+                "anyOf": [
+                    {
+                        "description": "an individual keybind",
+                        "properties": {
+                            "action": {
+                                "description": "the actions to be executed, in order",
+                                "type": "array"
+                            },
+                            "key": {
+                                "description": "the key sequence(s) which invoke this keybind",
+                                "type": "array"
+                            }
+                        },
+                        "required": [
+                            "action",
+                            "key"
+                        ]
                     },
-                    "key": {
-                        "description": "the key sequence(s) which invoke this keybind",
-                        "type": "array"
+                    {
+                        "properties": {
+                            "unbind": {
+                                "$ref": "#/$defs/unbind"
+                            }
+                        }
                     }
-                },
-                "required": [
-                    "action",
-                    "key"
                 ]
             }
+        },
+        "unbind": {
+            "description": "unbind a particular key"
         }
     }
 }
