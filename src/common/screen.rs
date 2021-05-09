@@ -52,7 +52,7 @@ pub enum ScreenInstruction {
     NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
-    ToggleActiveSyncPanes,
+    ToggleActiveSyncTab,
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
@@ -551,7 +551,7 @@ pub fn screen_thread_main(
             ScreenInstruction::ChangeMode(mode_info) => {
                 screen.change_mode(mode_info);
             }
-            ScreenInstruction::ToggleActiveSyncPanes => {
+            ScreenInstruction::ToggleActiveSyncTab => {
                 screen
                     .get_active_tab_mut()
                     .unwrap()

@@ -140,10 +140,10 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .send_to_screen(ScreenInstruction::SwitchTabPrev)
                 .unwrap();
         }
-        Action::ToggleActiveSyncPanes => {
+        Action::ToggleActiveSyncTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ToggleActiveSyncPanes)
+                .send_to_screen(ScreenInstruction::ToggleActiveSyncTab)
                 .unwrap();
         }
         Action::CloseTab => {
