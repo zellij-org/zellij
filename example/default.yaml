@@ -67,7 +67,6 @@ keybinds:
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
     pane:
-        - unbind: true,
         - action: [SwitchToMode: Locked,]
           key: [Ctrl: 'g']
         - action: [SwitchToMode: Pane,]
