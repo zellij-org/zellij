@@ -6,10 +6,11 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
+use super::options::Options;
 use crate::cli::{CliArgs, ConfigCli};
 use crate::common::setup;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
@@ -19,13 +20,16 @@ type ConfigResult = Result<Config, ConfigError>;
 /// Intermediate deserialization config struct
 #[derive(Debug, Deserialize)]
 pub struct ConfigFromYaml {
+    #[serde(flatten)]
+    pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
 }
 
 /// Main configuration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Config {
     pub keybinds: Keybinds,
+    pub options: Options,
 }
 
 #[derive(Debug)]
@@ -43,7 +47,8 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         let keybinds = Keybinds::default();
-        Config { keybinds }
+        let options = Options::default();
+        Config { keybinds, options }
     }
 }
 
@@ -55,7 +60,7 @@ impl TryFrom<&CliArgs> for Config {
             return Config::new(&path);
         }
 
-        if let Some(ConfigCli::Config { clean, .. }) = opts.option {
+        if let Some(ConfigCli::Setup { clean, .. }) = opts.option {
             if clean {
                 return Config::from_default_assets();
             }
@@ -84,7 +89,8 @@ impl Config {
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
         let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(&yaml_config)?;
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
-        Ok(Config { keybinds })
+        let options = Options::from_yaml(config_from_yaml.options);
+        Ok(Config { keybinds, options })
     }
 
     /// Deserializes from given path.

@@ -10,6 +10,10 @@ pub struct CliArgs {
     #[structopt(long)]
     pub max_panes: Option<usize>,
 
+    /// Speficy, if a simplified layout should be used that is compatible with more fonts
+    #[structopt(long)]
+    pub simplified: bool,
+
     /// Change where zellij looks for layouts and plugins
     #[structopt(long)]
     pub data_dir: Option<PathBuf>,
@@ -36,11 +40,11 @@ pub struct CliArgs {
 #[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
 pub enum ConfigCli {
     /// Change the behaviour of zellij
-    #[structopt(name = "option")]
-    Config {
-        /// Disables loading of configuration file at default location
+    #[structopt(name = "options")]
+    Options {
         #[structopt(long)]
-        clean: bool,
+        /// Allow plugins to use a more compatible font type
+        simplified_ui: bool,
     },
 
     #[structopt(name = "generate-completion")]
@@ -48,9 +52,12 @@ pub enum ConfigCli {
 
     #[structopt(name = "setup")]
     Setup {
-        /// Disables loading of configuration file at default location
         /// Dump the default configuration file to stdout
         #[structopt(long)]
         dump_config: bool,
+        /// Disables loading of configuration file at default location,
+        /// loads the defaults that zellij ships with
+        #[structopt(long)]
+        clean: bool,
     },
 }

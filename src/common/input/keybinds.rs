@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use super::actions::Action;
 use super::config;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use zellij_tile::data::*;
 
 /// Used in the config struct
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 
 /// Intermediate struct used for deserialisation

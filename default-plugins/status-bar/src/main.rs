@@ -140,9 +140,15 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
+        let separator = if !self.mode_info.capabilities.arrow_fonts {
+            ARROW_SEPARATOR
+        } else {
+            &""
+        };
+
         let colored_elements = color_elements(self.mode_info.palette);
-        let superkey = superkey(colored_elements);
-        let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len);
+        let superkey = superkey(colored_elements, separator);
+        let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len, separator);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
         let second_line = keybinds(&self.mode_info, cols);

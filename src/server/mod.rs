@@ -11,13 +11,14 @@ use std::{
 };
 use wasmer::{ChainableNamedResolver, Instance, Module, Store, Value};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_tile::data::{Event, EventType, InputMode, ModeInfo};
+use zellij_tile::data::{Event, EventType, InputMode, ModeInfo, PluginCapabilities};
 
-use crate::cli::CliArgs;
+use crate::cli::{CliArgs, ConfigCli};
 use crate::client::ClientInstruction;
 use crate::common::{
     errors::{ContextType, PluginContext, PtyContext, ScreenContext, ServerContext},
     input::actions::{Action, Direction},
+    input::options::Options,
     input::handler::get_mode_info,
     os_input_output::{set_permissions, ServerOsApi},
     pty_bus::{PtyBus, PtyInstruction},
@@ -36,7 +37,7 @@ use crate::panes::PositionAndSize;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs),
+    NewClient(PositionAndSize, CliArgs, Options),
     Action(Action),
     Render(Option<String>),
     UnblockInputThread,
@@ -112,10 +113,11 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
                 let (instruction, mut err_ctx) = receive_server_instructions.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
-                    ServerInstruction::NewClient(full_screen_ws, opts) => {
+                    ServerInstruction::NewClient(full_screen_ws, opts, config_options) => {
                         let session_data = init_session(
                             os_input.clone(),
                             opts,
+                            config_options,
                             send_server_instructions.clone(),
                             full_screen_ws,
                         );
@@ -190,6 +192,7 @@ fn handle_client(
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     opts: CliArgs,
+    config_options: Options,
     send_server_instructions: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {
@@ -303,6 +306,11 @@ fn init_session(
             let send_pty_instructions = send_pty_instructions.clone();
             let send_server_instructions = send_server_instructions;
             let max_panes = opts.max_panes;
+            let capabilities = if let Some(ConfigCli::Options { simplified_ui }) = opts.option {
+                simplified_ui
+            } else {
+                config_options.simplified_ui
+            };
             let colors = os_input.load_palette();
 
             move || {
@@ -316,6 +324,9 @@ fn init_session(
                     max_panes,
                     ModeInfo {
                         palette: colors,
+                        capabilities: PluginCapabilities {
+                            arrow_fonts: capabilities,
+                        },
                         ..ModeInfo::default()
                     },
                     InputMode::Normal,

@@ -1,15 +1,15 @@
-use crate::{LinePart, ARROW_SEPARATOR};
+use crate::{line::tab_separator, LinePart};
 use ansi_term::ANSIStrings;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
-pub fn active_tab(text: String, palette: Palette) -> LinePart {
-    let left_separator = style!(palette.bg, palette.green).paint(ARROW_SEPARATOR);
+pub fn active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
+    let left_separator = style!(palette.bg, palette.green).paint(separator);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
     let tab_styled_text = style!(palette.black, palette.green)
         .bold()
         .paint(format!(" {} ", text));
-    let right_separator = style!(palette.green, palette.bg).paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.green, palette.bg).paint(separator);
     let tab_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
@@ -20,13 +20,13 @@ pub fn active_tab(text: String, palette: Palette) -> LinePart {
     }
 }
 
-pub fn non_active_tab(text: String, palette: Palette) -> LinePart {
-    let left_separator = style!(palette.bg, palette.fg).paint(ARROW_SEPARATOR);
+pub fn non_active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
+    let left_separator = style!(palette.bg, palette.fg).paint(separator);
     let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
     let tab_styled_text = style!(palette.black, palette.fg)
         .bold()
         .paint(format!(" {} ", text));
-    let right_separator = style!(palette.fg, palette.bg).paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.fg, palette.bg).paint(separator);
     let tab_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
@@ -43,7 +43,9 @@ pub fn tab_style(
     position: usize,
     is_sync_panes_active: bool,
     palette: Palette,
+    capabilities: PluginCapabilities,
 ) -> LinePart {
+    let separator = tab_separator(capabilities);
     let mut tab_text = if text.is_empty() {
         format!("Tab #{}", position + 1)
     } else {
@@ -53,8 +55,8 @@ pub fn tab_style(
         tab_text.push_str(" (Sync)");
     }
     if is_active_tab {
-        active_tab(tab_text, palette)
+        active_tab(tab_text, palette, separator)
     } else {
-        non_active_tab(tab_text, palette)
+        non_active_tab(tab_text, palette, separator)
     }
 }

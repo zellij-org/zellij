@@ -1,6 +1,7 @@
 ---
 keybinds:
     normal:
+        - unbind : true
         - action: [GoToTab: 1,]
           key: [F: 1,]
         - action: [GoToTab: 2,]
