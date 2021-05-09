@@ -193,7 +193,8 @@ fn last_keybind_overwrites() {
 #[test]
 fn unbind_single_mode() {
     let unbind = Unbind::All(true);
-    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds);
@@ -211,7 +212,8 @@ fn unbind_single_mode() {
 #[test]
 fn unbind_multiple_modes() {
     let unbind = Unbind::All(true);
-    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds.clone());
@@ -232,7 +234,8 @@ fn unbind_multiple_modes() {
 #[test]
 fn unbind_single_keybind_single_mode() {
     let unbind = Unbind::Keys(vec![Key::Alt('n')]);
-    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds);
@@ -255,8 +258,10 @@ fn unbind_single_keybind_single_mode() {
 fn unbind_single_keybind_multiple_modes() {
     let unbind_n = Unbind::Keys(vec![Key::Alt('n')]);
     let unbind_h = Unbind::Keys(vec![Key::Alt('h')]);
-    let key_action_unbinds_n = vec![KeyActionUnbind::Unbind(unbind_n)];
-    let key_action_unbinds_h = vec![KeyActionUnbind::Unbind(unbind_h)];
+    let unbind_from_yaml_n = UnbindFromYaml { unbind: unbind_n };
+    let unbind_from_yaml_h = UnbindFromYaml { unbind: unbind_h };
+    let key_action_unbinds_n = vec![KeyActionUnbind::Unbind(unbind_from_yaml_n)];
+    let key_action_unbinds_h = vec![KeyActionUnbind::Unbind(unbind_from_yaml_h)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_n);
@@ -282,7 +287,8 @@ fn unbind_single_keybind_multiple_modes() {
 #[test]
 fn unbind_multiple_keybinds_single_mode() {
     let unbind = Unbind::Keys(vec![Key::Alt('n'), Key::Ctrl('p')]);
-    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds);
@@ -310,8 +316,14 @@ fn unbind_multiple_keybinds_single_mode() {
 fn unbind_multiple_keybinds_multiple_modes() {
     let unbind_normal = Unbind::Keys(vec![Key::Alt('n'), Key::Ctrl('p')]);
     let unbind_resize = Unbind::Keys(vec![Key::Char('h'), Key::Ctrl('r')]);
-    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_normal)];
-    let key_action_unbinds_resize = vec![KeyActionUnbind::Unbind(unbind_resize)];
+    let unbind_from_yaml_normal = UnbindFromYaml {
+        unbind: unbind_normal,
+    };
+    let unbind_from_yaml_resize = UnbindFromYaml {
+        unbind: unbind_resize,
+    };
+    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml_normal)];
+    let key_action_unbinds_resize = vec![KeyActionUnbind::Unbind(unbind_from_yaml_resize)];
 
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_normal);
@@ -384,7 +396,8 @@ fn unbind_multiple_keybinds_all_modes() {
 #[test]
 fn unbind_all_toplevel_single_key_single_mode() {
     let unbind = Unbind::Keys(vec![Key::Alt('h')]);
-    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_normal);
     let from_yaml = KeybindsFromYaml {
@@ -400,8 +413,10 @@ fn unbind_all_toplevel_single_key_single_mode() {
 fn unbind_all_toplevel_single_key_multiple_modes() {
     let unbind_n = Unbind::Keys(vec![Key::Alt('n')]);
     let unbind_h = Unbind::Keys(vec![Key::Alt('h')]);
-    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_n)];
-    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind_h)];
+    let unbind_from_yaml_n = UnbindFromYaml { unbind: unbind_n };
+    let unbind_from_yaml_h = UnbindFromYaml { unbind: unbind_h };
+    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml_n)];
+    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind_from_yaml_h)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_normal);
     keys.insert(InputMode::Pane, key_action_unbinds_pane);
@@ -418,8 +433,10 @@ fn unbind_all_toplevel_single_key_multiple_modes() {
 fn unbind_all_toplevel_multiple_key_multiple_modes() {
     let unbind_n = Unbind::Keys(vec![Key::Alt('n'), Key::Ctrl('p')]);
     let unbind_h = Unbind::Keys(vec![Key::Alt('h'), Key::Ctrl('t')]);
-    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_n)];
-    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind_h)];
+    let unbind_from_yaml_n = UnbindFromYaml { unbind: unbind_n };
+    let unbind_from_yaml_h = UnbindFromYaml { unbind: unbind_h };
+    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml_n)];
+    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind_from_yaml_h)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_normal);
     keys.insert(InputMode::Pane, key_action_unbinds_pane);
@@ -435,8 +452,9 @@ fn unbind_all_toplevel_multiple_key_multiple_modes() {
 #[test]
 fn unbind_all_toplevel_all_key_multiple_modes() {
     let unbind = Unbind::All(true);
-    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind.clone())];
-    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbinds_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml.clone())];
+    let key_action_unbinds_pane = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbinds_normal);
     keys.insert(InputMode::Pane, key_action_unbinds_pane);
@@ -493,7 +511,8 @@ fn unbind_single_keybind_all_modes() {
 #[test]
 fn unbind_single_toplevel_single_key_single_mode_identical() {
     let unbind = Unbind::Keys(vec![Key::Alt('n')]);
-    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbind);
     let from_yaml = KeybindsFromYaml {
@@ -537,7 +556,8 @@ fn unbind_single_toplevel_single_key_single_mode_identical() {
 #[test]
 fn unbind_single_toplevel_single_key_single_mode_differing() {
     let unbind = Unbind::Keys(vec![Key::Alt('l')]);
-    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbind);
     let from_yaml = KeybindsFromYaml {
@@ -581,7 +601,8 @@ fn unbind_single_toplevel_single_key_single_mode_differing() {
 #[test]
 fn unbind_single_toplevel_single_key_multiple_modes() {
     let unbind = Unbind::Keys(vec![Key::Alt('l')]);
-    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbind.clone());
     keys.insert(InputMode::Pane, key_action_unbind);
@@ -631,7 +652,8 @@ fn unbind_single_toplevel_multiple_keys_single_mode() {
         Key::Alt('j'),
         Key::Alt('k'),
     ]);
-    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbind.clone());
     keys.insert(InputMode::Pane, key_action_unbind);
@@ -676,9 +698,13 @@ fn unbind_single_toplevel_multiple_keys_single_mode() {
 #[test]
 fn unbind_single_toplevel_multiple_keys_multiple_modes() {
     let unbind_normal = Unbind::Keys(vec![Key::Alt('l'), Key::Ctrl('p')]);
-    let key_action_unbind_normal = vec![KeyActionUnbind::Unbind(unbind_normal)];
+    let unbind_from_yaml_normal = UnbindFromYaml {
+        unbind: unbind_normal,
+    };
+    let key_action_unbind_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml_normal)];
     let unbind = Unbind::Keys(vec![Key::Alt('l'), Key::Alt('k')]);
-    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind)];
+    let unbind_from_yaml = UnbindFromYaml { unbind };
+    let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     keys.insert(InputMode::Normal, key_action_unbind_normal);
     keys.insert(InputMode::Pane, key_action_unbind);

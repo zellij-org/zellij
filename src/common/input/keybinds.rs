@@ -29,7 +29,7 @@ pub struct KeybindsFromYaml {
 #[serde(untagged)]
 enum KeyActionUnbind {
     KeyAction(KeyActionFromYaml),
-    Unbind(Unbind),
+    Unbind(UnbindFromYaml),
 }
 
 /// Intermediate struct used for deserialisation
@@ -44,6 +44,12 @@ struct KeyActionUnbindFromYaml {
 pub struct KeyActionFromYaml {
     action: Vec<Action>,
     key: Vec<Key>,
+}
+
+/// Intermediate struct used for deserialisation
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct UnbindFromYaml {
+    unbind: Unbind,
 }
 
 /// List of keys, for which to disable their respective default actions
@@ -106,7 +112,7 @@ impl Keybinds {
                 for keybind in keybinds.iter() {
                     match keybind {
                         KeyActionUnbind::Unbind(unbind) => {
-                            unbind_config.insert(mode, unbind.clone());
+                            unbind_config.insert(mode, unbind.unbind.clone());
                         }
                         KeyActionUnbind::KeyAction(key_action_from_yaml) => {
                             keybind_config
