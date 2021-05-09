@@ -1,13 +1,15 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use super::{thread_bus::ASYNCOPENCALLS, thread_bus::OPENCALLS, ServerInstruction};
-use crate::client::ClientInstruction;
-use crate::pty::PtyInstruction;
-use crate::screen::ScreenInstruction;
 use serde::{Deserialize, Serialize};
 
 use std::fmt::{Display, Error, Formatter};
+
+use crate::server::ServerInstruction;
+use crate::common::thread_bus::{ASYNCOPENCALLS, OPENCALLS};
+use crate::client::ClientInstruction;
+use crate::pty::PtyInstruction;
+use crate::screen::ScreenInstruction;
 
 /// The maximum amount of calls an [`ErrorContext`] will keep track
 /// of in its stack representation. This is a per-thread maximum.
