@@ -1,0 +1,62 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "zellij/config_schema.json",
+    "description": "Configuration for the zellij terminal multiplexer",
+    "type": "object",
+    "properties": {
+        "keybinds": {
+            "description": "user-defined keybinds",
+            "type": "object",
+            "properties": {
+                "unbind": {},
+                "normal": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "locked": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "resize": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "panes": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "tab": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "scroll": {
+                    "$ref": "#/$defs/mode_keybinds"
+                },
+                "renametab": {
+                    "$ref": "#/$defs/mode_keybinds"
+                }
+            }
+        }
+    },
+    "required": [
+        "keybinds"
+    ],
+    "$defs": {
+        "mode_keybinds": {
+            "description": "the set of keybinds for a particular input mode",
+            "type": "array",
+            "items": {
+                "description": "an individual keybind",
+                "properties": {
+                    "action": {
+                        "description": "the actions to be executed, in order",
+                        "type": "array"
+                    },
+                    "key": {
+                        "description": "the key sequence(s) which invoke this keybind",
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "action",
+                    "key"
+                ]
+            }
+        }
+    }
+}
