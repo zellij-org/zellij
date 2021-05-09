@@ -33,9 +33,6 @@
             }
         }
     },
-    "required": [
-        "keybinds"
-    ],
     "$defs": {
         "mode_keybinds": {
             "description": "the set of keybinds for a particular input mode",
