@@ -1848,7 +1848,7 @@ impl Tab {
         }
         self.render();
     }
-    // returns a boolean to allow the caller to know if the move happened or not
+    // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self) -> bool {
         if !self.has_selectable_panes() {
             return false;
@@ -1941,7 +1941,7 @@ impl Tab {
         }
         self.render();
     }
-    // returns a boolean to allow the caller to know if the move happened or not
+    // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self) -> bool {
         if !self.has_selectable_panes() {
             return false;

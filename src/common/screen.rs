@@ -424,11 +424,31 @@ pub fn screen_thread_main(
             ScreenInstruction::MoveFocusLeft => {
                 screen.get_active_tab_mut().unwrap().move_focus_left();
             }
+            ScreenInstruction::MoveFocusLeftOrPreviousTab => {
+                if !screen.get_active_tab_mut().unwrap().move_focus_left() {
+                    screen.switch_tab_prev();
+                }
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
             ScreenInstruction::MoveFocusDown => {
                 screen.get_active_tab_mut().unwrap().move_focus_down();
             }
             ScreenInstruction::MoveFocusRight => {
                 screen.get_active_tab_mut().unwrap().move_focus_right();
+            }
+            ScreenInstruction::MoveFocusRightOrNextTab => {
+                if !screen.get_active_tab_mut().unwrap().move_focus_right() {
+                    screen.switch_tab_next();
+                }
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
             }
             ScreenInstruction::MoveFocusUp => {
                 screen.get_active_tab_mut().unwrap().move_focus_up();
