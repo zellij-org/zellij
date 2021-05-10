@@ -306,8 +306,8 @@ fn init_session(
             let send_pty_instructions = send_pty_instructions.clone();
             let send_server_instructions = send_server_instructions;
             let max_panes = opts.max_panes;
-            let capabilities = if let Some(ConfigCli::Options { simplified_ui }) = opts.option {
-                simplified_ui
+            let capabilities = if let Some(ConfigCli::Options(options)) = opts.option {
+                options.simplified_ui
             } else {
                 config_options.simplified_ui
             };

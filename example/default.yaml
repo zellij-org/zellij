@@ -1,5 +1,5 @@
 ---
-simplified_ui: false
+simplified_ui: true
 keybinds:
     unbind: true
     normal:
