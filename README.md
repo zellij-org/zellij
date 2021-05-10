@@ -34,6 +34,12 @@ You can install it through `cargo`:
 cargo install zellij
 ```
 
+Via Homebrew
+
+```
+brew install zellij
+```
+
 Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
 ## How do I hack on it? (Contributing)
