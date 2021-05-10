@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
+use structopt::StructOpt;
 
-#[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
 /// or cli flags
 pub struct Options {
     /// Allow plugins to use a more compatible font type
+    #[structopt(long)]
     pub simplified_ui: bool,
 }
 

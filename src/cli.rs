@@ -1,4 +1,5 @@
 use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
+use crate::common::input::options::Options;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -41,11 +42,7 @@ pub struct CliArgs {
 pub enum ConfigCli {
     /// Change the behaviour of zellij
     #[structopt(name = "options")]
-    Options {
-        #[structopt(long)]
-        /// Allow plugins to use a more compatible font type
-        simplified_ui: bool,
-    },
+    Options(Options),
 
     #[structopt(name = "generate-completion")]
     GenerateCompletion { shell: String },
