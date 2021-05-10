@@ -36,6 +36,11 @@ cargo install zellij
 
 Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
 
+As the default plugins make use of characters that are mostly only found in [nerdfonts](https://www.nerdfonts.com/),
+you get the best experience either with installing nerdfonts, or telling the plugins that you request a ui, that
+does not rely on such characters with `zellij options --simplified-ui`, or putting `simplified_ui: true` in the
+config file.
+
 ## How do I hack on it? (Contributing)
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
