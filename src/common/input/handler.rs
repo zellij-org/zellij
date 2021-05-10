@@ -119,7 +119,8 @@ impl InputHandler {
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab
-            | Action::GoToTab(_) => {
+            | Action::GoToTab(_)
+            | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input
                     .send_to_server(ServerInstruction::Action(action));

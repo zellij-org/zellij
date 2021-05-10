@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: fix support for CSI subparameters (https://github.com/zellij-org/zellij/pull/469)
 * Move the sync command to tab mode (https://github.com/zellij-org/zellij/pull/412)
 * Fix exit code of `dump-default-config` (https://github.com/zellij-org/zellij/pull/480)
+* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471) 
 
 ## [0.8.0] - 2021-05-07
 * Terminal compatibility: pass vttest 8 (https://github.com/zellij-org/zellij/pull/461)

@@ -78,6 +78,14 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
+        Action::MoveFocusOrTab(direction) => {
+            let screen_instr = match direction {
+                Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab,
+                Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab,
+                _ => unreachable!(),
+            };
+            session.senders.send_to_screen(screen_instr).unwrap();
+        }
         Action::ScrollUp => {
             session
                 .senders
