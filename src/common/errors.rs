@@ -192,9 +192,11 @@ pub enum ScreenContext {
     FocusNextPane,
     FocusPreviousPane,
     MoveFocusLeft,
+    MoveFocusLeftOrPreviousTab,
     MoveFocusDown,
     MoveFocusUp,
     MoveFocusRight,
+    MoveFocusRightOrNextTab,
     Exit,
     ScrollUp,
     ScrollDown,
@@ -237,9 +239,13 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
             ScreenInstruction::MoveFocusLeft => ScreenContext::MoveFocusLeft,
+            ScreenInstruction::MoveFocusLeftOrPreviousTab => {
+                ScreenContext::MoveFocusLeftOrPreviousTab
+            }
             ScreenInstruction::MoveFocusDown => ScreenContext::MoveFocusDown,
             ScreenInstruction::MoveFocusUp => ScreenContext::MoveFocusUp,
             ScreenInstruction::MoveFocusRight => ScreenContext::MoveFocusRight,
+            ScreenInstruction::MoveFocusRightOrNextTab => ScreenContext::MoveFocusRightOrNextTab,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown => ScreenContext::ScrollDown,
