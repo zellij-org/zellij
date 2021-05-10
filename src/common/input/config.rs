@@ -178,7 +178,10 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_option_clean() {
         let mut opts = CliArgs::default();
-        opts.option = Some(ConfigCli::Config { clean: true });
+        opts.option = Some(ConfigCli::Setup {
+            clean: true,
+            dump_config: false,
+        });
         let result = Config::try_from(&opts);
         assert!(result.is_ok());
     }

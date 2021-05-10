@@ -217,7 +217,13 @@ fn init_session(
             let options = opts.option;
 
             move || {
-                screen_thread_main(screen_bus, max_panes, full_screen_ws, options, config_options);
+                screen_thread_main(
+                    screen_bus,
+                    max_panes,
+                    full_screen_ws,
+                    options,
+                    config_options,
+                );
             }
         })
         .unwrap();

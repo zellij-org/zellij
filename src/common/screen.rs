@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
 
+use crate::cli::ConfigCli;
+use crate::common::input::options::Options;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::thread_bus::Bus;
-use crate::common::input::options::Options;
-use crate::cli::ConfigCli;
 use crate::errors::{ContextType, ScreenContext};
 use crate::layout::Layout;
 use crate::panes::PaneId;
@@ -16,7 +16,7 @@ use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::wasm_vm::PluginInstruction;
 
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo, PluginCapabilities};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
