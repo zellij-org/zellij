@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::client::ClientInstruction;
-use crate::common::{ChannelWithContext, SenderType, SenderWithContext};
+use crate::common::thread_bus::{ChannelWithContext, SenderType, SenderWithContext};
 use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
 use crate::server::ServerInstruction;

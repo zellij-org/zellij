@@ -16,7 +16,7 @@ use crate::common::{
     input::config::Config,
     input::handler::input_loop,
     os_input_output::ClientOsApi,
-    SenderType, SenderWithContext, SyncChannelWithContext,
+    thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
 };
 use crate::server::ServerInstruction;
 

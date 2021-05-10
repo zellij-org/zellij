@@ -6,9 +6,7 @@ mod server;
 mod tests;
 
 use client::{boundaries, layout, panes, start_client, tab};
-use common::{
-    command_is_executing, errors, os_input_output, pty_bus, screen, setup, utils, wasm_vm,
-};
+use common::{command_is_executing, errors, os_input_output, pty, screen, setup, utils, wasm_vm};
 use server::start_server;
 use structopt::StructOpt;
 
@@ -47,7 +45,7 @@ pub fn main() {
         CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
     } else if let Some(crate::cli::ConfigCli::Setup { .. }) = opts.option {
         setup::dump_default_config().expect("Failed to print to stdout");
-        std::process::exit(1);
+        std::process::exit(0);
     } else {
         atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();

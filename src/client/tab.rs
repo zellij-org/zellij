@@ -2,11 +2,12 @@
 //! as well as how they should be resized
 
 use crate::client::pane_resizer::PaneResizer;
-use crate::common::{input::handler::parse_keys, SenderWithContext};
+use crate::common::input::handler::parse_keys;
+use crate::common::thread_bus::ThreadSenders;
 use crate::layout::Layout;
 use crate::os_input_output::ServerOsApi;
 use crate::panes::{PaneId, PositionAndSize, TerminalPane};
-use crate::pty_bus::{PtyInstruction, VteBytes};
+use crate::pty::{PtyInstruction, VteBytes};
 use crate::server::ServerInstruction;
 use crate::utils::shared::adjust_to_size;
 use crate::wasm_vm::PluginInstruction;
@@ -69,9 +70,7 @@ pub struct Tab {
     full_screen_ws: PositionAndSize,
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
-    send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    send_pty_instructions: SenderWithContext<PtyInstruction>,
-    send_server_instructions: SenderWithContext<ServerInstruction>,
+    pub senders: ThreadSenders,
     synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
@@ -219,7 +218,7 @@ pub trait Pane {
 }
 
 impl Tab {
-    // FIXME: Too many arguments here! Maybe bundle all of the senders for the whole program in a struct?
+    // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         index: usize,
@@ -227,9 +226,7 @@ impl Tab {
         name: String,
         full_screen_ws: &PositionAndSize,
         mut os_api: Box<dyn ServerOsApi>,
-        send_plugin_instructions: SenderWithContext<PluginInstruction>,
-        send_pty_instructions: SenderWithContext<PtyInstruction>,
-        send_server_instructions: SenderWithContext<ServerInstruction>,
+        senders: ThreadSenders,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
@@ -261,9 +258,7 @@ impl Tab {
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
-            send_plugin_instructions,
-            send_pty_instructions,
-            send_server_instructions,
+            senders,
             should_clear_display_before_rendering: false,
             mode_info,
             input_mode,
@@ -315,14 +310,14 @@ impl Tab {
             // Just a regular terminal
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Load(pid_tx, plugin.clone()))
+                self.senders
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
-                    self.send_plugin_instructions.clone(),
+                    self.senders.to_plugin.as_ref().unwrap().clone(),
                 );
                 if let Some(max_rows) = position_and_size.max_rows {
                     new_plugin.set_max_height(max_rows);
@@ -332,8 +327,8 @@ impl Tab {
                 }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
-                self.send_plugin_instructions
-                    .send(PluginInstruction::Update(
+                self.senders
+                    .send_to_plugin(PluginInstruction::Update(
                         Some(pid),
                         Event::ModeUpdate(self.mode_info.clone()),
                     ))
@@ -355,8 +350,8 @@ impl Tab {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
-            self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                 .unwrap();
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
@@ -400,9 +395,9 @@ impl Tab {
                 },
             );
             if terminal_id_to_split.is_none() {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid))
-                    .unwrap(); // we can't open this pane, close the pty
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                    .unwrap();
                 return; // likely no terminal large enough to split
             }
             let terminal_id_to_split = terminal_id_to_split.unwrap();
@@ -481,9 +476,9 @@ impl Tab {
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid))
-                    .unwrap(); // we can't open this pane, close the pty
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                    .unwrap();
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -538,9 +533,9 @@ impl Tab {
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid))
-                    .unwrap(); // we can't open this pane, close the pty
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                    .unwrap();
                 return;
             }
             let terminal_ws = PositionAndSize {
@@ -597,7 +592,7 @@ impl Tab {
     }
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         // if we don't have the terminal in self.terminals it's probably because
-        // of a race condition where the terminal was created in pty_bus but has not
+        // of a race condition where the terminal was created in pty but has not
         // yet been created in Screen. These events are currently not buffered, so
         // if you're debugging seemingly randomly missing stdout data, this is
         // the reason
@@ -628,8 +623,8 @@ impl Tab {
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
-                    self.send_plugin_instructions
-                        .send(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
+                    self.senders
+                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
                         .unwrap()
                 }
             }
@@ -706,7 +701,7 @@ impl Tab {
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
-    pub fn toggle_sync_tab_is_active(&mut self) {
+    pub fn toggle_sync_panes_is_active(&mut self) {
         self.synchronize_is_active = !self.synchronize_is_active;
     }
     pub fn panes_contain_widechar(&self) -> bool {
@@ -781,8 +776,8 @@ impl Tab {
             }
         }
 
-        self.send_server_instructions
-            .send(ServerInstruction::Render(Some(output)))
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
@@ -1853,12 +1848,13 @@ impl Tab {
         }
         self.render();
     }
-    pub fn move_focus_left(&mut self) {
+    // returns a boolean that indicates whether the focus moved
+    pub fn move_focus_left(&mut self) -> bool {
         if !self.has_selectable_panes() {
-            return;
+            return false;
         }
         if self.fullscreen_is_active {
-            return;
+            return false;
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
@@ -1873,6 +1869,8 @@ impl Tab {
             match next_index {
                 Some(&p) => {
                     self.active_terminal = Some(p);
+                    self.render();
+                    return true;
                 }
                 None => {
                     self.active_terminal = Some(active.pid());
@@ -1881,7 +1879,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render();
+        false
     }
     pub fn move_focus_down(&mut self) {
         if !self.has_selectable_panes() {
@@ -1943,12 +1941,13 @@ impl Tab {
         }
         self.render();
     }
-    pub fn move_focus_right(&mut self) {
+    // returns a boolean that indicates whether the focus moved
+    pub fn move_focus_right(&mut self) -> bool {
         if !self.has_selectable_panes() {
-            return;
+            return false;
         }
         if self.fullscreen_is_active {
-            return;
+            return false;
         }
         let active_terminal = self.get_active_pane();
         if let Some(active) = active_terminal {
@@ -1963,6 +1962,8 @@ impl Tab {
             match next_index {
                 Some(&p) => {
                     self.active_terminal = Some(p);
+                    self.render();
+                    return true;
                 }
                 None => {
                     self.active_terminal = Some(active.pid());
@@ -1971,7 +1972,7 @@ impl Tab {
         } else {
             self.active_terminal = Some(active_terminal.unwrap().pid());
         }
-        self.render();
+        false
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
@@ -2086,8 +2087,8 @@ impl Tab {
         if let Some(max_panes) = self.max_panes {
             let terminals = self.get_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
-                self.send_pty_instructions
-                    .send(PtyInstruction::ClosePane(pid))
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(pid))
                     .unwrap();
                 self.close_pane_without_rerender(pid);
             }
@@ -2198,8 +2199,8 @@ impl Tab {
     pub fn close_focused_pane(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             self.close_pane(active_pane_id);
-            self.send_pty_instructions
-                .send(PtyInstruction::ClosePane(active_pane_id))
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .unwrap();
         }
     }

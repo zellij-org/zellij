@@ -4,7 +4,7 @@ use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::client::ClientInstruction;
 use crate::common::input::config::Config;
-use crate::common::{SenderWithContext, OPENCALLS};
+use crate::common::thread_bus::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
 use crate::server::ServerInstruction;
@@ -119,7 +119,8 @@ impl InputHandler {
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab
-            | Action::GoToTab(_) => {
+            | Action::GoToTab(_)
+            | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input
                     .send_to_server(ServerInstruction::Action(action));
