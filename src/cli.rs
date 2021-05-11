@@ -16,6 +16,9 @@ pub struct CliArgs {
     #[structopt(long)]
     pub data_dir: Option<PathBuf>,
 
+    #[structopt(long)]
+    pub server: Option<PathBuf>,
+
     /// Path to a layout yaml file
     #[structopt(short, long)]
     pub layout: Option<PathBuf>,

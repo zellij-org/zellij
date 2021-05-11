@@ -217,7 +217,7 @@ impl ClientOsApi for FakeInputOutput {
             cb();
         }
     }
-    fn connect_to_server(&self) {}
+    fn connect_to_server(&self, path: &std::path::Path) {}
 }
 
 impl ServerOsApi for FakeInputOutput {

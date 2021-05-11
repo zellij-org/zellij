@@ -1,5 +1,6 @@
 pub mod route;
 
+use daemonize::Daemonize;
 use interprocess::local_socket::LocalSocketListener;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -19,7 +20,7 @@ use crate::common::{
     screen::{screen_thread_main, ScreenInstruction},
     setup::{get_default_data_dir, install::populate_data_dir},
     thread_bus::{ChannelWithContext, SenderType, SenderWithContext},
-    utils::consts::ZELLIJ_IPC_PIPE,
+    utils::consts::ZELLIJ_PROJ_DIR,
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use crate::layout::Layout;
@@ -56,10 +57,12 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(
-    os_input: Box<dyn ServerOsApi>,
-    config_options: Options,
-) -> thread::JoinHandle<()> {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+    Daemonize::new()
+        .working_directory(std::env::var("HOME").unwrap())
+        .umask(0o077)
+        .start()
+        .expect("could not daemonize the server process");
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channel();
     let to_server = SenderWithContext::new(SenderType::Sender(to_server));
     let sessions: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
@@ -85,13 +88,11 @@ pub fn start_server(
             let os_input = os_input.clone();
             let sessions = sessions.clone();
             let to_server = to_server.clone();
-            let capabilities = PluginCapabilities {
-                arrow_fonts: config_options.simplified_ui,
-            };
+            let socket_path = socket_path.clone();
             move || {
-                drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
-                let listener = LocalSocketListener::bind(&**ZELLIJ_IPC_PIPE).unwrap();
-                set_permissions(&*ZELLIJ_IPC_PIPE).unwrap();
+                drop(std::fs::remove_file(&socket_path));
+                let listener = LocalSocketListener::bind(&*socket_path).unwrap();
+                set_permissions(&socket_path).unwrap();
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
@@ -125,48 +126,38 @@ pub fn start_server(
             }
         });
 
-    thread::Builder::new()
-        .name("server_thread".to_string())
-        .spawn({
-            move || loop {
-                let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
-                err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
-                match instruction {
-                    ServerInstruction::NewClient(full_screen_ws, opts, config_options) => {
-                        let session_data = init_session(
-                            os_input.clone(),
-                            opts,
-                            config_options,
-                            to_server.clone(),
-                            full_screen_ws,
-                        );
-                        *sessions.write().unwrap() = Some(session_data);
-                        sessions
-                            .read()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_pty(PtyInstruction::NewTab)
-                            .unwrap();
-                    }
-                    ServerInstruction::UnblockInputThread => {
-                        os_input.send_to_client(ClientInstruction::UnblockInputThread);
-                    }
-                    ServerInstruction::ClientExit => {
-                        *sessions.write().unwrap() = None;
-                        os_input.send_to_client(ClientInstruction::Exit);
-                        drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
-                        break;
-                    }
-                    ServerInstruction::Render(output) => {
-                        os_input.send_to_client(ClientInstruction::Render(output))
-                    }
-                    _ => panic!("Received unexpected instruction."),
-                }
+    loop {
+        let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
+        err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
+        match instruction {
+            ServerInstruction::NewClient(full_screen_ws, opts) => {
+                let session_data =
+                    init_session(os_input.clone(), opts, to_server.clone(), full_screen_ws);
+                *sessions.write().unwrap() = Some(session_data);
+                sessions
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_pty(PtyInstruction::NewTab)
+                    .unwrap();
             }
-        })
-        .unwrap()
+            ServerInstruction::UnblockInputThread => {
+                os_input.send_to_client(ClientInstruction::UnblockInputThread);
+            }
+            ServerInstruction::ClientExit => {
+                *sessions.write().unwrap() = None;
+                os_input.send_to_client(ClientInstruction::Exit);
+                drop(std::fs::remove_file(&socket_path));
+                break;
+            }
+            ServerInstruction::Render(output) => {
+                os_input.send_to_client(ClientInstruction::Render(output))
+            }
+            _ => panic!("Received unexpected instruction."),
+        }
+    }
 }
 
 fn init_session(

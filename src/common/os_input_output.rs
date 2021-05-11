@@ -1,8 +1,5 @@
 use crate::client::ClientInstruction;
-use crate::common::{
-    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
-    utils::consts::ZELLIJ_IPC_PIPE,
-};
+use crate::common::ipc::{IpcReceiverWithContext, IpcSenderWithContext};
 use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
 use crate::server::ServerInstruction;
@@ -319,7 +316,7 @@ pub trait ClientOsApi: Send + Sync {
     fn recv_from_server(&self) -> (ClientInstruction, ErrorContext);
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
-    fn connect_to_server(&self);
+    fn connect_to_server(&self, path: &Path);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -379,14 +376,19 @@ impl ClientOsApi for ClientOsInputOutput {
             }
         }
     }
-    fn connect_to_server(&self) {
-        let socket = match LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE) {
-            Ok(sock) => sock,
-            Err(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-                LocalSocketStream::connect(&**ZELLIJ_IPC_PIPE).unwrap()
+    fn connect_to_server(&self, path: &Path) {
+        let socket;
+        loop {
+            match LocalSocketStream::connect(path) {
+                Ok(sock) => {
+                    socket = sock;
+                    break;
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
             }
-        };
+        }
         let sender = IpcSenderWithContext::new(socket);
         let receiver = sender.get_receiver();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);

@@ -5,7 +5,10 @@ pub mod panes;
 pub mod tab;
 
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::env::current_exe;
+use std::io::{self, Write};
+use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
@@ -18,6 +21,7 @@ use crate::common::{
     input::options::Options,
     os_input_output::ClientOsApi,
     thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
+    utils::consts::ZELLIJ_IPC_PIPE,
 };
 use crate::server::ServerInstruction;
 
@@ -30,8 +34,25 @@ pub enum ClientInstruction {
     Exit,
 }
 
+fn spawn_server(socket_path: &Path) -> io::Result<()> {
+    let status = Command::new(current_exe()?)
+        .arg("--server")
+        .arg(socket_path)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        let msg = "Process returned non-zero exit code";
+        let err_msg = match status.code() {
+            Some(c) => format!("{}: {}", msg, c),
+            None => msg.to_string(),
+        };
+        Err(io::Error::new(io::ErrorKind::Other, err_msg))
+    }
+}
+
 pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: Config) {
-    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+    spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
@@ -50,12 +71,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     let config_options = Options::from_cli(&config.options, opts.option.clone());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    os_input.connect_to_server();
-    os_input.send_to_server(ServerInstruction::NewClient(
-        full_screen_ws,
-        opts,
-        config_options,
-    ));
+    os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
+    os_input.send_to_server(ServerInstruction::NewClient(full_screen_ws, opts));
     os_input.set_raw_mode(0);
     let _ = os_input
         .get_stdout_writer()
@@ -130,7 +147,6 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         })
         .unwrap();
 
-    #[warn(clippy::never_loop)]
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
             .recv()
