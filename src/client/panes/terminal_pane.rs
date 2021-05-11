@@ -20,22 +20,57 @@ pub enum PaneId {
 /// in character rows and columns.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PositionAndSize {
-    pub x: usize,
-    pub y: usize,
-    pub rows: usize,
-    pub cols: usize,
-    // FIXME: Honestly, these shouldn't exist and rows / columns should be enums like:
-    // Dimension::Flex(usize) / Dimension::Fixed(usize), but 400+ compiler errors is more than
-    // I'm in the mood for right now...
-    pub rows_fixed: bool,
-    pub cols_fixed: bool,
+    pub x: Dimension,
+    pub y: Dimension,
+    pub rows: Dimension,
+    pub cols: Dimension,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Dimension {
+    inner: (usize, f64),
+    fixed: bool,
+}
+
+impl Dimension {
+    // FIXME: This might be a better type-bound: impl Into<usize> + Into<f64>
+    pub fn new(d: usize) -> Self {
+        Self {
+            inner: (d, d as f64),
+            ..Default::default()
+        }
+    }
+
+    pub fn as_mut_usize(&mut self) -> &mut usize {
+        &mut self.inner.0
+    }
+
+    pub fn as_mut_f64(&mut self) -> &mut f64 {
+        &mut self.inner.1
+    }
+
+    pub fn to_usize(&mut self) -> usize {
+        self.inner.0
+    }
+
+    pub fn to_f64(&mut self) -> f64 {
+        self.inner.1
+    }
+
+    pub fn set_size(&mut self, size: usize) {
+        self.inner = (size, size as f64);
+    }
+
+    pub fn set_fixed(&mut self, fixed: bool) {
+        self.fixed = fixed;
+    }
 }
 
 impl From<Winsize> for PositionAndSize {
     fn from(winsize: Winsize) -> PositionAndSize {
         PositionAndSize {
-            cols: winsize.ws_col as usize,
-            rows: winsize.ws_row as usize,
+            cols: Dimension::new(winsize.ws_col as usize),
+            rows: Dimension::new(winsize.ws_row as usize),
             ..Default::default()
         }
     }
@@ -77,8 +112,8 @@ impl Pane for TerminalPane {
     }
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
         let position_and_size_override = PositionAndSize {
-            x,
-            y,
+            x: Dimension::new(x),
+            y: Dimension::new(y),
             rows: size.rows,
             cols: size.cols,
             ..Default::default()
@@ -161,12 +196,12 @@ impl Pane for TerminalPane {
         unimplemented!();
     }
     fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = fixed_height;
-        self.position_and_size.rows_fixed = true;
+        self.position_and_size.rows.set_size(fixed_height);
+        self.position_and_size.rows.set_fixed(true);
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = fixed_width;
-        self.position_and_size.cols_fixed = true;
+        self.position_and_size.cols.set_size(fixed_width);
+        self.position_and_size.cols.set_fixed(true);
     }
     fn render(&mut self) -> Option<String> {
         if self.should_render() {
@@ -221,52 +256,52 @@ impl Pane for TerminalPane {
         PaneId::Terminal(self.pid)
     }
     fn reduce_height_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.position_and_size.rows -= count;
+        *self.position_and_size.y.as_mut_usize() += count;
+        *self.position_and_size.rows.as_mut_usize() -= count;
         self.reflow_lines();
     }
     fn increase_height_down(&mut self, count: usize) {
-        self.position_and_size.rows += count;
+        *self.position_and_size.rows.as_mut_usize() += count;
         self.reflow_lines();
     }
     fn increase_height_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.position_and_size.rows += count;
+        *self.position_and_size.y.as_mut_usize() -= count;
+        *self.position_and_size.rows.as_mut_usize() += count;
         self.reflow_lines();
     }
     fn reduce_height_up(&mut self, count: usize) {
-        self.position_and_size.rows -= count;
+        *self.position_and_size.rows.as_mut_usize() -= count;
         self.reflow_lines();
     }
     fn reduce_width_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.position_and_size.cols -= count;
+        *self.position_and_size.x.as_mut_usize() += count;
+        *self.position_and_size.cols.as_mut_usize() -= count;
         self.reflow_lines();
     }
     fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.cols -= count;
+        *self.position_and_size.cols.as_mut_usize() -= count;
         self.reflow_lines();
     }
     fn increase_width_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.position_and_size.cols += count;
+        *self.position_and_size.x.as_mut_usize() -= count;
+        *self.position_and_size.cols.as_mut_usize() += count;
         self.reflow_lines();
     }
     fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.cols += count;
+        *self.position_and_size.cols.as_mut_usize() += count;
         self.reflow_lines();
     }
     fn push_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
+        *self.position_and_size.y.as_mut_usize() += count;
     }
     fn push_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
+        *self.position_and_size.x.as_mut_usize() += count;
     }
     fn pull_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
+        *self.position_and_size.x.as_mut_usize() -= count;
     }
     fn pull_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
+        *self.position_and_size.y.as_mut_usize() -= count;
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
@@ -292,7 +327,7 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.cols);
+        let grid = Grid::new(position_and_size.rows.to_usize(), position_and_size.cols.to_usize());
         TerminalPane {
             pid,
             grid,
@@ -305,26 +340,26 @@ impl TerminalPane {
     }
     pub fn get_x(&self) -> usize {
         match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.x,
-            None => self.position_and_size.x as usize,
+            Some(position_and_size_override) => position_and_size_override.x.to_usize(),
+            None => self.position_and_size.x.to_usize(),
         }
     }
     pub fn get_y(&self) -> usize {
         match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.y,
-            None => self.position_and_size.y as usize,
+            Some(position_and_size_override) => position_and_size_override.y.to_usize(),
+            None => self.position_and_size.y.to_usize(),
         }
     }
     pub fn get_columns(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.cols,
-            None => self.position_and_size.cols as usize,
+            Some(position_and_size_override) => position_and_size_override.cols.to_usize(),
+            None => self.position_and_size.cols.to_usize(),
         }
     }
     pub fn get_rows(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows as usize,
+            Some(position_and_size_override) => position_and_size_override.rows.to_usize(),
+            None => self.position_and_size.rows.to_usize(),
         }
     }
     fn reflow_lines(&mut self) {
