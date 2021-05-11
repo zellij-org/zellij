@@ -293,24 +293,12 @@ impl Pane for TerminalPane {
     }
     fn cursor_shape_csi(&self) -> String {
         match self.grid.cursor_shape() {
-            CursorShape::Block => {
-                format!("\u{1b}[0 q")
-            }
-            CursorShape::BlinkingBlock => {
-                format!("\u{1b}[1 q")
-            }
-            CursorShape::Underline => {
-                format!("\u{1b}[4 q")
-            }
-            CursorShape::BlinkingUnderline => {
-                format!("\u{1b}[3 q")
-            }
-            CursorShape::Beam => {
-                format!("\u{1b}[6 q")
-            }
-            CursorShape::BlinkingBeam => {
-                format!("\u{1b}[5 q")
-            }
+            CursorShape::Block => "\u{1b}[0 q".to_string(),
+            CursorShape::BlinkingBlock => "\u{1b}[1 q".to_string(),
+            CursorShape::Underline => "\u{1b}[4 q".to_string(),
+            CursorShape::BlinkingUnderline => "\u{1b}[3 q".to_string(),
+            CursorShape::Beam => "\u{1b}[6 q".to_string(),
+            CursorShape::BlinkingBeam => "\u{1b}[5 q".to_string(),
         }
     }
 }

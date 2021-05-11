@@ -133,7 +133,7 @@ pub trait Pane {
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
     fn cursor_shape_csi(&self) -> String {
-        format!("\u{1b}[0 q") // default to non blinking block
+        "\u{1b}[0 q".to_string() // default to non blinking block
     }
 
     fn right_boundary_x_coords(&self) -> usize {

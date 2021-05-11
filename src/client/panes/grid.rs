@@ -1262,10 +1262,7 @@ impl Perform for Grid {
                 self.advance_to_next_tabstop(self.cursor.pending_styles);
             }
         } else if c == 'q' {
-            let first_intermediate_is_space = match intermediates.get(0) {
-                Some(b' ') => true,
-                _ => false,
-            };
+            let first_intermediate_is_space = matches!(intermediates.get(0), Some(b' '));
             if first_intermediate_is_space {
                 // DECSCUSR (CSI Ps SP q) -- Set Cursor Style.
                 let cursor_style_id = next_param_or(0);
