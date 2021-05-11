@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
-    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, CursorShape,
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -290,6 +290,29 @@ impl Pane for TerminalPane {
 
     fn set_active_at(&mut self, time: Instant) {
         self.active_at = time;
+    }
+    fn cursor_shape_csi(&self) -> String {
+        match self.grid.cursor_shape() {
+            CursorShape::Block => {
+                format!("\u{1b}[0 q")
+            }
+            CursorShape::BlinkingBlock => {
+                format!("\u{1b}[1 q")
+            }
+            CursorShape::Underline => {
+                format!("\u{1b}[4 q")
+            }
+            CursorShape::BlinkingUnderline => {
+                format!("\u{1b}[3 q")
+            }
+            CursorShape::Beam => {
+                format!("\u{1b}[6 q")
+            }
+            CursorShape::BlinkingBeam => {
+                format!("\u{1b}[5 q")
+            }
+        }
+
     }
 }
 

@@ -1,0 +1,8 @@
+---
+source: src/client/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C):                                         foo
+01 (C): 
+
