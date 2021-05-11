@@ -718,7 +718,7 @@ pub struct Cursor {
     pub is_hidden: bool,
     pub pending_styles: CharacterStyles,
     pub charsets: Charsets,
-    shape: CursorShape
+    shape: CursorShape,
 }
 
 impl Cursor {

@@ -1253,7 +1253,6 @@ impl Perform for Grid {
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down(count, pad_character);
-
         } else if c == 'F' {
             let count = next_param_or(1);
             self.move_cursor_up(count);
@@ -1263,10 +1262,9 @@ impl Perform for Grid {
                 self.advance_to_next_tabstop(self.cursor.pending_styles);
             }
         } else if c == 'q' {
-
             let first_intermediate_is_space = match intermediates.get(0) {
                 Some(b' ') => true,
-                _ => false
+                _ => false,
             };
             if first_intermediate_is_space {
                 // DECSCUSR (CSI Ps SP q) -- Set Cursor Style.
@@ -1278,7 +1276,7 @@ impl Perform for Grid {
                     4 => Some(CursorShape::Underline),
                     5 => Some(CursorShape::BlinkingBeam),
                     6 => Some(CursorShape::Beam),
-                    _ => None
+                    _ => None,
                 };
                 if let Some(cursor_shape) = shape {
                     self.cursor.change_shape(cursor_shape);

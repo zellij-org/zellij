@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::panes::grid::Grid;
 use crate::panes::terminal_character::{
-    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, CursorShape,
+    CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -312,7 +312,6 @@ impl Pane for TerminalPane {
                 format!("\u{1b}[5 q")
             }
         }
-
     }
 }
 
