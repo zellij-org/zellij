@@ -701,6 +701,16 @@ impl IndexMut<CharsetIndex> for Charsets {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum CursorShape {
+    Block,
+    BlinkingBlock,
+    Underline,
+    BlinkingUnderline,
+    Beam,
+    BlinkingBeam,
+}
+
 #[derive(Clone, Debug)]
 pub struct Cursor {
     pub x: usize,
@@ -708,6 +718,7 @@ pub struct Cursor {
     pub is_hidden: bool,
     pub pending_styles: CharacterStyles,
     pub charsets: Charsets,
+    shape: CursorShape,
 }
 
 impl Cursor {
@@ -718,7 +729,14 @@ impl Cursor {
             is_hidden: false,
             pending_styles: CharacterStyles::new(),
             charsets: Default::default(),
+            shape: CursorShape::Block,
         }
+    }
+    pub fn change_shape(&mut self, shape: CursorShape) {
+        self.shape = shape;
+    }
+    pub fn get_shape(&self) -> CursorShape {
+        self.shape
     }
 }
 

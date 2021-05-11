@@ -132,6 +132,9 @@ pub trait Pane {
     fn clear_scroll(&mut self);
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
+    fn cursor_shape_csi(&self) -> String {
+        "\u{1b}[0 q".to_string() // default to non blinking block
+    }
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -762,10 +765,12 @@ impl Tab {
         match self.get_active_terminal_cursor_position() {
             Some((cursor_position_x, cursor_position_y)) => {
                 let show_cursor = "\u{1b}[?25h";
+                let change_cursor_shape = self.get_active_pane().unwrap().cursor_shape_csi();
                 let goto_cursor_position = &format!(
-                    "\u{1b}[{};{}H\u{1b}[m",
+                    "\u{1b}[{};{}H\u{1b}[m{}",
                     cursor_position_y + 1,
-                    cursor_position_x + 1
+                    cursor_position_x + 1,
+                    change_cursor_shape
                 ); // goto row/col
                 output.push_str(show_cursor);
                 output.push_str(goto_cursor_position);
