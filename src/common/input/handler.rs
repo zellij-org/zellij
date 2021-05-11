@@ -11,7 +11,7 @@ use crate::server::ServerInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
-use zellij_tile::data::{InputMode, Key, ModeInfo, Palette};
+use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -149,6 +149,7 @@ impl InputHandler {
 // TODO this should probably be automatically generated in some way
 pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
+    let capabilities = PluginCapabilities { arrow_fonts: true };
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {
@@ -182,6 +183,7 @@ pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
         mode,
         keybinds,
         palette,
+        capabilities,
     }
 }
 

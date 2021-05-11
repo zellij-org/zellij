@@ -42,7 +42,11 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.connect_to_server();
-    os_input.send_to_server(ServerInstruction::NewClient(full_screen_ws, opts));
+    os_input.send_to_server(ServerInstruction::NewClient(
+        full_screen_ws,
+        opts,
+        config.options.clone(),
+    ));
     os_input.set_raw_mode(0);
 
     let (send_client_instructions, receive_client_instructions): SyncChannelWithContext<

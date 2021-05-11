@@ -4,3 +4,4 @@ pub mod actions;
 pub mod config;
 pub mod handler;
 pub mod keybinds;
+pub mod options;

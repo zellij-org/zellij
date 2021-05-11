@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
 
+use crate::cli::ConfigCli;
+use crate::common::input::options::Options;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::thread_bus::Bus;
 use crate::errors::{ContextType, ScreenContext};
@@ -14,7 +16,7 @@ use crate::server::ServerInstruction;
 use crate::tab::Tab;
 use crate::wasm_vm::PluginInstruction;
 
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
@@ -328,14 +330,24 @@ pub fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
+    options: Option<ConfigCli>,
+    config_options: Options,
 ) {
     let colors = bus.os_input.as_ref().unwrap().load_palette();
+    let capabilities = if let Some(ConfigCli::Options(options)) = options {
+        options.simplified_ui
+    } else {
+        config_options.simplified_ui
+    };
     let mut screen = Screen::new(
         bus,
         &full_screen_ws,
         max_panes,
         ModeInfo {
             palette: colors,
+            capabilities: PluginCapabilities {
+                arrow_fonts: capabilities,
+            },
             ..ModeInfo::default()
         },
         InputMode::Normal,

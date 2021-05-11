@@ -12,7 +12,7 @@ use crate::client::ClientInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
     errors::{ContextType, ServerContext},
-    input::actions::Action,
+    input::{actions::Action, options::Options},
     os_input_output::{set_permissions, ServerOsApi},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -30,7 +30,7 @@ use route::route_thread_main;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs),
+    NewClient(PositionAndSize, CliArgs, Options),
     Action(Action),
     Render(Option<String>),
     UnblockInputThread,
@@ -115,9 +115,14 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
                 let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
                 err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
                 match instruction {
-                    ServerInstruction::NewClient(full_screen_ws, opts) => {
-                        let session_data =
-                            init_session(os_input.clone(), opts, to_server.clone(), full_screen_ws);
+                    ServerInstruction::NewClient(full_screen_ws, opts, config_options) => {
+                        let session_data = init_session(
+                            os_input.clone(),
+                            opts,
+                            config_options,
+                            to_server.clone(),
+                            full_screen_ws,
+                        );
                         *sessions.write().unwrap() = Some(session_data);
                         sessions
                             .read()
@@ -150,6 +155,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     opts: CliArgs,
+    config_options: Options,
     to_server: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {
@@ -208,9 +214,16 @@ fn init_session(
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
+            let options = opts.option;
 
             move || {
-                screen_thread_main(screen_bus, max_panes, full_screen_ws);
+                screen_thread_main(
+                    screen_bus,
+                    max_panes,
+                    full_screen_ws,
+                    options,
+                    config_options,
+                );
             }
         })
         .unwrap();
