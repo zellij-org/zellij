@@ -53,8 +53,8 @@ pub mod install {
 #[cfg(not(test))]
 pub fn find_default_config_dir() -> Option<PathBuf> {
     vec![
-        Some(xdg_config_dir()),
         home_config_dir(),
+        Some(xdg_config_dir()),
         Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
     ]
     .into_iter()

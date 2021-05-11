@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Change Switch default config loading order of `HOME` and system (https://github.com/zellij-org/zellij/pull/488)
 
 ## [0.9.0] - 2021-05-11
 * Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)
