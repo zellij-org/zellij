@@ -4,7 +4,7 @@ use directories_next::{BaseDirs, ProjectDirs};
 use std::io::Write;
 use std::{fs, path::Path, path::PathBuf};
 
-const CONFIG_LOCATION: &str = "/.config/zellij";
+const CONFIG_LOCATION: &str = ".config/zellij";
 
 #[macro_export]
 macro_rules! asset_map {
