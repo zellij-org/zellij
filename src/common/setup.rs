@@ -6,7 +6,7 @@ use directories_next::BaseDirs;
 use std::io::Write;
 use std::{fs, path::Path, path::PathBuf};
 
-const CONFIG_LOCATION: &str = "/.config/zellij";
+const CONFIG_LOCATION: &str = ".config/zellij";
 
 #[macro_export]
 macro_rules! asset_map {
@@ -44,7 +44,7 @@ pub mod install {
             let path = data_dir.join(path);
             let parent_path = path.parent().unwrap();
             fs::create_dir_all(parent_path).unwrap();
-            set_permissions(parent_path);
+            set_permissions(parent_path).unwrap();
             if out_of_date || !path.exists() {
                 fs::write(path, bytes).expect("Failed to install default assets!");
             }
@@ -57,8 +57,8 @@ pub mod install {
 /// existing config directory, returns the first match
 pub fn find_default_config_dir() -> Option<PathBuf> {
     vec![
-        Some(xdg_config_dir()),
         home_config_dir(),
+        Some(xdg_config_dir()),
         Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
     ]
     .into_iter()

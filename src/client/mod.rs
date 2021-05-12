@@ -15,8 +15,9 @@ use crate::common::{
     errors::{ClientContext, ContextType},
     input::config::Config,
     input::handler::input_loop,
+    input::options::Options,
     os_input_output::ClientOsApi,
-    SenderType, SenderWithContext, SyncChannelWithContext,
+    thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
 };
 use crate::server::ServerInstruction;
 
@@ -30,20 +31,36 @@ pub enum ClientInstruction {
 }
 
 pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: Config) {
+    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
+    let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
         .unwrap();
+    let _ = os_input
+        .get_stdout_writer()
+        .write(clear_client_terminal_attributes.as_bytes())
+        .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
 
     let mut command_is_executing = CommandIsExecuting::new();
 
+    let config_options = Options::from_cli(&config.options, opts.option.clone());
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.connect_to_server();
-    os_input.send_to_server(ServerInstruction::NewClient(full_screen_ws, opts));
+    os_input.send_to_server(ServerInstruction::NewClient(
+        full_screen_ws,
+        opts,
+        config_options,
+    ));
     os_input.set_raw_mode(0);
+    let _ = os_input
+        .get_stdout_writer()
+        .write(bracketed_paste.as_bytes())
+        .unwrap();
 
     let (send_client_instructions, receive_client_instructions): SyncChannelWithContext<
         ClientInstruction,

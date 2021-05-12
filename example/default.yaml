@@ -1,4 +1,5 @@
 ---
+simplified_ui: true
 keybinds:
     unbind: true
     normal:
@@ -16,9 +17,9 @@ keybinds:
           key: [Ctrl: 'q',]
         - action: [NewPane: ]
           key: [ Alt: 'n',]
-        - action: [MoveFocus: Left,]
+        - action: [MoveFocusOrTab: Left,]
           key: [ Alt: 'h',]
-        - action: [MoveFocus: Right,]
+        - action: [MoveFocusOrTab: Right,]
           key: [ Alt: 'l',]
         - action: [MoveFocus: Down,]
           key: [ Alt: 'j',]

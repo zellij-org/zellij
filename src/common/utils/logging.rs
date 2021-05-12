@@ -10,10 +10,12 @@ use std::{
 use crate::os_input_output::set_permissions;
 use crate::utils::consts::{ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 
-pub fn atomic_create_file(file_name: &Path) {
-    let _ = fs::OpenOptions::new().create(true).open(file_name);
-    #[cfg(not(test))]
-    set_permissions(file_name);
+pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
+    let _ = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(file_name)?;
+    set_permissions(file_name)
 }
 
 pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
@@ -27,7 +29,7 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
         Ok(())
     };
     if result.is_ok() {
-        set_permissions(dir_name);
+        set_permissions(dir_name)?;
     }
     result
 }
@@ -38,10 +40,9 @@ pub fn debug_log_to_file(mut message: String) -> io::Result<()> {
 }
 
 pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
-    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE);
+    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE)?;
     let mut file = fs::OpenOptions::new()
         .append(true)
-        .create(true)
         .open(&*ZELLIJ_TMP_LOG_FILE)?;
     file.write_all(message.as_bytes())
 }
@@ -78,6 +79,7 @@ pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
     let mut file = fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(path)?;
+        .open(&path)?;
+    set_permissions(&path)?;
     file.write_all(&[message])
 }

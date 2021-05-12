@@ -347,3 +347,39 @@ fn vttest8_5() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn csi_b() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "csi-b";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn csi_capital_i() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "csi-capital-i";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn csi_capital_z() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "csi-capital-z";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

@@ -48,7 +48,7 @@ fn populate_tabs_in_tab_line(
     }
 }
 
-fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart {
+fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: &str) -> LinePart {
     if tab_count_to_the_left == 0 {
         return LinePart {
             part: String::new(),
@@ -62,11 +62,11 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart
     };
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
-    let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
+    let left_separator = style!(palette.bg, palette.orange).paint(separator);
     let more_styled_text = style!(palette.black, palette.orange)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.orange, palette.bg).paint(separator);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, more_styled_text, right_separator,])
@@ -77,7 +77,11 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette) -> LinePart
     }
 }
 
-fn right_more_message(tab_count_to_the_right: usize, palette: Palette) -> LinePart {
+fn right_more_message(
+    tab_count_to_the_right: usize,
+    palette: Palette,
+    separator: &str,
+) -> LinePart {
     if tab_count_to_the_right == 0 {
         return LinePart {
             part: String::new(),
@@ -90,11 +94,11 @@ fn right_more_message(tab_count_to_the_right: usize, palette: Palette) -> LinePa
         " +many → ".to_string()
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
-    let left_separator = style!(palette.bg, palette.orange).paint(ARROW_SEPARATOR);
+    let left_separator = style!(palette.bg, palette.orange).paint(separator);
     let more_styled_text = style!(palette.black, palette.orange)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.orange, palette.bg).paint(ARROW_SEPARATOR);
+    let right_separator = style!(palette.orange, palette.bg).paint(separator);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, more_styled_text, right_separator,])
@@ -111,14 +115,15 @@ fn add_previous_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
     palette: Palette,
+    separator: &str,
 ) {
     while get_current_title_len(&tabs_to_render)
-        + left_more_message(tabs_before_active.len(), palette).len
+        + left_more_message(tabs_before_active.len(), palette, separator).len
         >= cols
     {
         tabs_before_active.push(tabs_to_render.remove(0));
     }
-    let left_more_message = left_more_message(tabs_before_active.len(), palette);
+    let left_more_message = left_more_message(tabs_before_active.len(), palette, separator);
     title_bar.push(left_more_message);
 }
 
@@ -127,14 +132,15 @@ fn add_next_tabs_msg(
     title_bar: &mut Vec<LinePart>,
     cols: usize,
     palette: Palette,
+    separator: &str,
 ) {
     while get_current_title_len(&title_bar)
-        + right_more_message(tabs_after_active.len(), palette).len
+        + right_more_message(tabs_after_active.len(), palette, separator).len
         >= cols
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
     }
-    let right_more_message = right_more_message(tabs_after_active.len(), palette);
+    let right_more_message = right_more_message(tabs_after_active.len(), palette, separator);
     title_bar.push(right_more_message);
 }
 
@@ -148,11 +154,20 @@ fn tab_line_prefix(palette: Palette) -> LinePart {
     }
 }
 
+pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
+    if !capabilities.arrow_fonts {
+        ARROW_SEPARATOR
+    } else {
+        &""
+    }
+}
+
 pub fn tab_line(
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
     palette: Palette,
+    capabilities: PluginCapabilities,
 ) -> Vec<LinePart> {
     let mut tabs_to_render: Vec<LinePart> = vec![];
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
@@ -180,6 +195,7 @@ pub fn tab_line(
             &mut tab_line,
             cols - prefix.len,
             palette,
+            tab_separator(capabilities),
         );
     }
     tab_line.append(&mut tabs_to_render);
@@ -189,6 +205,7 @@ pub fn tab_line(
             &mut tab_line,
             cols - prefix.len,
             palette,
+            tab_separator(capabilities),
         );
     }
     tab_line.insert(0, prefix);

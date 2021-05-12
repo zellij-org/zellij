@@ -60,10 +60,17 @@ impl ZellijPlugin for State {
                 t.position,
                 t.is_sync_panes_active,
                 self.mode_info.palette,
+                self.mode_info.capabilities,
             );
             all_tabs.push(tab);
         }
-        let tab_line = tab_line(all_tabs, active_tab_index, cols, self.mode_info.palette);
+        let tab_line = tab_line(
+            all_tabs,
+            active_tab_index,
+            cols,
+            self.mode_info.palette,
+            self.mode_info.capabilities,
+        );
         let mut s = String::new();
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);

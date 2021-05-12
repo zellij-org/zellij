@@ -37,5 +37,5 @@ The Boundaries refer to those lines that are drawn between terminal panes. A few
   * The Rect trait is here so that different panes can implement it, giving boundaries a generic way to calculate the size of the pane and draw boundaries around it.
   * Here we use the [unicode box drawing characters](https://en.wikipedia.org/wiki/Box-drawing_character) in order to draw the borders. There's some logic here about combining them together for all possible combinations of pane locations.
 
-## PTY Bus (src/pty_bus.rs)
+## PTY Bus (src/pty.rs)
 The PtyBus keeps track of several asynchronous streams that read from pty sockets (eg. /dev/pts/999), parse those bytes into ANSI/VT events and send them on to the Screen so that they can be received in the relevant TerminalPane.

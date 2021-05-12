@@ -29,6 +29,9 @@ pub enum Action {
     /// Move the focus pane in specified direction.
     SwitchFocus,
     MoveFocus(Direction),
+    /// Tries to move the focus pane in specified direction.
+    /// If there is no pane in the direction, move to previous/next Tab.
+    MoveFocusOrTab(Direction),
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll down in focus pane.
@@ -39,8 +42,8 @@ pub enum Action {
     PageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
-    /// Toggle between sending text commands to all panes and normal mode.
-    ToggleActiveSyncPanes,
+    /// Toggle between sending text commands to all panes on the current tab and normal mode.
+    ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>),

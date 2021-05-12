@@ -5,8 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Change Switch default config loading order of `HOME` and system (https://github.com/zellij-org/zellij/pull/488)
+* Add support for requesting a simpler layout from plugins, move `clean` flag from `options` to `setup` (https://github.com/zellij-org/zellij/pull/479)
+* Improve config loading slightly (https://github.com/zellij-org/zellij/pull/492)
+* Terminal compatibility: preserve current style when clearing viewport (https://github.com/zellij-org/zellij/pull/493)
+* Fix propagation of plugin ui request (https://github.com/zellij-org/zellij/pull/495)
+* Handle pasted text properly (https://github.com/zellij-org/zellij/pull/494)
+* Fix default keybinds for tab -> resize mode (https://github.com/zellij-org/zellij/pull/497)
+
+## [0.9.0] - 2021-05-11
+* Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)
+* Terminal compatibility: fix support for CSI subparameters (https://github.com/zellij-org/zellij/pull/469)
+* Move the sync command to tab mode (https://github.com/zellij-org/zellij/pull/412)
+* Fix exit code of `dump-default-config` (https://github.com/zellij-org/zellij/pull/480)
+* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471) 
+* Terminal Compatibility: various behaviour fixes (https://github.com/zellij-org/zellij/pull/486)
+* Fix handling of `$HOME` `config` directory, especially relevant for darwin systems (https://github.com/zellij-org/zellij/pull/487)
+
+## [0.8.0] - 2021-05-07
 * Terminal compatibility: pass vttest 8 (https://github.com/zellij-org/zellij/pull/461)
 * Add a Manpage (https://github.com/zellij-org/zellij/pull/455)
+* Code infrastructure changes to support the upcoming session detach (https://github.com/zellij-org/zellij/pull/223)
 
 ## [0.7.0] - 2021-05-04
 * Fix the tab '(Sync)' suffix in named tabs (https://github.com/zellij-org/zellij/pull/410)

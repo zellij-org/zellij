@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.8.0"
+version = "0.10.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
@@ -30,7 +30,7 @@ termion = "1.5.0"
 termios = "0.3"
 unicode-truncate = "0.2.0"
 unicode-width = "0.1.8"
-vte = "0.8.0"
+vte = "0.10.1"
 strum = "0.20.0"
 lazy_static = "1.4.0"
 wasmer = "1.0.0"
@@ -80,4 +80,5 @@ assets = [
 ]
 
 [features]
+default = [ "enable_automatic_asset_installation", ]
 enable_automatic_asset_installation = []

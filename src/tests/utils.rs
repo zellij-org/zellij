@@ -47,6 +47,10 @@ pub fn get_next_to_last_snapshot(mut snapshots: Vec<String>) -> Option<String> {
 pub mod commands {
     pub const QUIT: [u8; 1] = [17]; // ctrl-q
     pub const ESC: [u8; 1] = [27];
+    pub const ENTER: [u8; 1] = [10]; // char '\n'
+
+    pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
+    pub const MOVE_FOCUS_RIGHT_IN_NORMAL_MODE: [u8; 2] = [27, 108]; // alt-l
 
     pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
     pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
@@ -77,5 +81,8 @@ pub mod commands {
     pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
     pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
     pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
+
+    pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
     pub const SLEEP: [u8; 0] = [];
 }

@@ -3,7 +3,7 @@ source: src/tests/integration/compatibility.rs
 expression: snapshot_before_quit
 
 ---
-█                                                                                                                   
+                                                                                                                    
   1  [||||||||||||||||||||||||||||||||||||||||||100.0%]   Tasks: 79, 382 thr; 1 running                             
   2  [                                            0.0%]   Load average: 1.40 1.43 1.38                              
   3  [                                            0.0%]   Uptime: 2 days, 07:33:50                                  
