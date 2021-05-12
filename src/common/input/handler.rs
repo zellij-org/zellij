@@ -23,6 +23,7 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
+    pasting: bool,
 }
 
 impl InputHandler {
@@ -40,6 +41,7 @@ impl InputHandler {
             command_is_executing,
             send_client_instructions,
             should_exit: false,
+            pasting: false,
         }
     }
 
@@ -49,6 +51,8 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         let alt_left_bracket = vec![27, 91];
+        let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
         loop {
             if self.should_exit {
                 break;
@@ -67,6 +71,10 @@ impl InputHandler {
                             if unsupported_key == alt_left_bracket {
                                 let key = Key::Alt('[');
                                 self.handle_key(&key, raw_bytes);
+                            } else if unsupported_key == bracketed_paste_start {
+                                self.pasting = true;
+                            } else if unsupported_key == bracketed_paste_end {
+                                self.pasting = false;
                             }
                         }
                         termion::event::Event::Mouse(_) => {
@@ -81,10 +89,20 @@ impl InputHandler {
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
         let keybinds = &self.config.keybinds;
-        for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, keybinds) {
-            let should_exit = self.dispatch_action(action);
-            if should_exit {
-                self.should_exit = true;
+        if self.pasting {
+            // we're inside a paste block, if we're in a mode that allows sending text to the
+            // terminal, send all text directly without interpreting it
+            // otherwise, just discard the input
+            if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+                let action = Action::Write(raw_bytes);
+                self.dispatch_action(action);
+            }
+        } else {
+            for action in Keybinds::key_to_actions(&key, raw_bytes, &self.mode, keybinds) {
+                let should_exit = self.dispatch_action(action);
+                if should_exit {
+                    self.should_exit = true;
+                }
             }
         }
     }
