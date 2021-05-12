@@ -15,9 +15,8 @@ use crate::common::{
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
-    setup::install::populate_data_dir,
+    setup::{get_default_data_dir, install::populate_data_dir},
     thread_bus::{ChannelWithContext, SenderType, SenderWithContext, SyncChannelWithContext},
-    utils::consts::ZELLIJ_PROJ_DIR,
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use crate::layout::Layout;
