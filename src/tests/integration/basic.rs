@@ -4,10 +4,10 @@ use ::insta::assert_snapshot;
 use crate::common::input::config::Config;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::{
-    PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE, SCROLL_MODE, SCROLL_PAGE_DOWN_IN_SCROLL_MODE,
-    SCROLL_PAGE_UP_IN_SCROLL_MODE, SCROLL_UP_IN_SCROLL_MODE, SPAWN_TERMINAL_IN_PANE_MODE,
-    SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE, BRACKETED_PASTE_START, BRACKETED_PASTE_END
+    BRACKETED_PASTE_END, BRACKETED_PASTE_START, PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE,
+    SCROLL_MODE, SCROLL_PAGE_DOWN_IN_SCROLL_MODE, SCROLL_PAGE_UP_IN_SCROLL_MODE,
+    SCROLL_UP_IN_SCROLL_MODE, SPAWN_TERMINAL_IN_PANE_MODE, SPLIT_DOWN_IN_PANE_MODE,
+    SPLIT_RIGHT_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
@@ -458,7 +458,13 @@ pub fn bracketed_paste() {
         ..Default::default()
     };
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
-    fake_input_output.add_terminal_input(&[&PANE_MODE, &BRACKETED_PASTE_START, &SPLIT_RIGHT_IN_PANE_MODE, &BRACKETED_PASTE_END, &QUIT]);
+    fake_input_output.add_terminal_input(&[
+        &PANE_MODE,
+        &BRACKETED_PASTE_START,
+        &SPLIT_RIGHT_IN_PANE_MODE,
+        &BRACKETED_PASTE_END,
+        &QUIT,
+    ]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),
