@@ -143,7 +143,13 @@ pub struct PluginIds {
     pub zellij_pid: u32,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginCapabilities {
     pub arrow_fonts: bool,
+}
+
+impl Default for PluginCapabilities {
+    fn default() -> PluginCapabilities {
+        PluginCapabilities { arrow_fonts: true }
+    }
 }

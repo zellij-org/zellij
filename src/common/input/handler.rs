@@ -147,9 +147,12 @@ impl InputHandler {
 /// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
 // TODO this should probably be automatically generated in some way
-pub fn get_mode_info(mode: InputMode, palette: Palette) -> ModeInfo {
+pub fn get_mode_info(
+    mode: InputMode,
+    palette: Palette,
+    capabilities: PluginCapabilities,
+) -> ModeInfo {
     let mut keybinds: Vec<(String, String)> = vec![];
-    let capabilities = PluginCapabilities { arrow_fonts: true };
     match mode {
         InputMode::Normal | InputMode::Locked => {}
         InputMode::Resize => {

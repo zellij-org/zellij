@@ -5,7 +5,7 @@ use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::{start, CliArgs};
 
-use crate::common::input::config::Config;
+use crate::common::input::{config::Config, options::Options};
 use crate::tests::utils::commands::{
     ENTER, MOVE_FOCUS_LEFT_IN_NORMAL_MODE, MOVE_FOCUS_LEFT_IN_PANE_MODE,
     MOVE_FOCUS_RIGHT_IN_PANE_MODE, NEW_TAB_IN_TAB_MODE, PANE_MODE, QUIT, SPLIT_DOWN_IN_PANE_MODE,
@@ -37,6 +37,7 @@ pub fn move_focus_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -75,6 +76,7 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -113,6 +115,7 @@ pub fn move_focus_left_changes_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        Options::default(),
     );
 
     let output_frames = fake_input_output

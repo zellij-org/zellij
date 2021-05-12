@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add support for requesting a simpler layout from plugins, move `clean` flag from `options` to `setup` (https://github.com/zellij-org/zellij/pull/479)
 * Improve config loading slightly (https://github.com/zellij-org/zellij/pull/492)
 * Terminal compatibility: preserve current style when clearing viewport (https://github.com/zellij-org/zellij/pull/493)
+* Fix propagation of plugin ui request (https://github.com/zellij-org/zellij/pull/495)
 
 ## [0.9.0] - 2021-05-11
 * Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)

@@ -6,13 +6,14 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc::channel};
 use wasmer::Store;
+use zellij_tile::data::PluginCapabilities;
 
 use crate::cli::CliArgs;
 use crate::client::ClientInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
     errors::{ContextType, ServerContext},
-    input::{actions::Action, options::ConfigOptions},
+    input::{actions::Action, options::Options},
     os_input_output::{set_permissions, ServerOsApi},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -30,7 +31,7 @@ use route::route_thread_main;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs, ConfigOptions),
+    NewClient(PositionAndSize, CliArgs, Options),
     Action(Action),
     Render(Option<String>),
     UnblockInputThread,
@@ -55,7 +56,10 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
+pub fn start_server(
+    os_input: Box<dyn ServerOsApi>,
+    config_options: Options,
+) -> thread::JoinHandle<()> {
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channel();
     let to_server = SenderWithContext::new(SenderType::Sender(to_server));
     let sessions: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
@@ -67,8 +71,11 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             let sessions = sessions.clone();
             let os_input = os_input.clone();
             let to_server = to_server.clone();
+            let capabilities = PluginCapabilities {
+                arrow_fonts: !config_options.simplified_ui,
+            };
 
-            move || route_thread_main(sessions, os_input, to_server)
+            move || route_thread_main(sessions, os_input, to_server, capabilities)
         })
         .unwrap();
     #[cfg(not(test))]
@@ -78,6 +85,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
             let os_input = os_input.clone();
             let sessions = sessions.clone();
             let to_server = to_server.clone();
+            let capabilities = PluginCapabilities {
+                arrow_fonts: config_options.simplified_ui,
+            };
             move || {
                 drop(std::fs::remove_file(&*ZELLIJ_IPC_PIPE));
                 let listener = LocalSocketListener::bind(&**ZELLIJ_IPC_PIPE).unwrap();
@@ -96,7 +106,14 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
                                     let os_input = os_input.clone();
                                     let to_server = to_server.clone();
 
-                                    move || route_thread_main(sessions, os_input, to_server)
+                                    move || {
+                                        route_thread_main(
+                                            sessions,
+                                            os_input,
+                                            to_server,
+                                            capabilities,
+                                        )
+                                    }
                                 })
                                 .unwrap();
                         }
@@ -155,7 +172,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     opts: CliArgs,
-    config_options: ConfigOptions,
+    config_options: Options,
     to_server: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {
@@ -214,6 +231,7 @@ fn init_session(
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
+            let config_options = config_options;
 
             move || {
                 screen_thread_main(screen_bus, max_panes, full_screen_ws, config_options);

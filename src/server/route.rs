@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_tile::data::Event;
+use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::common::errors::{ContextType, ServerContext};
 use crate::common::input::actions::{Action, Direction};
@@ -12,7 +12,12 @@ use crate::common::thread_bus::SenderWithContext;
 use crate::common::wasm_vm::PluginInstruction;
 use crate::server::{ServerInstruction, SessionMetaData};
 
-fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn ServerOsApi) {
+fn route_action(
+    action: Action,
+    session: &SessionMetaData,
+    os_input: &dyn ServerOsApi,
+    capabilities: PluginCapabilities,
+) {
     match action {
         Action::Write(val) => {
             session
@@ -30,12 +35,16 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
-                    Event::ModeUpdate(get_mode_info(mode, palette)),
+                    Event::ModeUpdate(get_mode_info(mode, palette, capabilities)),
                 ))
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(mode, palette)))
+                .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
+                    mode,
+                    palette,
+                    capabilities,
+                )))
                 .unwrap();
             session
                 .senders
@@ -181,6 +190,7 @@ pub fn route_thread_main(
     sessions: Arc<RwLock<Option<SessionMetaData>>>,
     mut os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
+    capabilities: PluginCapabilities,
 ) {
     loop {
         let (instruction, mut err_ctx) = os_input.recv_from_client();
@@ -192,7 +202,12 @@ pub fn route_thread_main(
                 break;
             }
             ServerInstruction::Action(action) => {
-                route_action(action, rlocked_sessions.as_ref().unwrap(), &*os_input);
+                route_action(
+                    action,
+                    rlocked_sessions.as_ref().unwrap(),
+                    &*os_input,
+                    capabilities,
+                );
             }
             ServerInstruction::TerminalResize(new_size) => {
                 rlocked_sessions
