@@ -78,3 +78,7 @@ assets = [
   ["assets/completions/zellij.fish", "usr/share/fish/vendor_completions.d/zellij.fish", "644"],
   ["assets/completions/_zellij", "usr/share/zsh/vendor-completions/_zellij", "644"],
 ]
+
+[features]
+default = [ "enable_automatic_asset_installation", ]
+enable_automatic_asset_installation = []
