@@ -8,7 +8,7 @@ use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::CliArgs;
 
-use crate::common::input::{config::Config, options::Options};
+use crate::common::input::config::Config;
 use crate::tests::utils::commands::QUIT;
 
 /*
@@ -49,7 +49,6 @@ pub fn run_bandwhich_from_fish_shell() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -79,7 +78,6 @@ pub fn fish_tab_completion_options() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -114,7 +112,6 @@ pub fn fish_select_tab_completion_options() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -153,7 +150,6 @@ pub fn vim_scroll_region_down() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -189,7 +185,6 @@ pub fn vim_ctrl_d() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -224,7 +219,6 @@ pub fn vim_ctrl_u() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -254,7 +248,6 @@ pub fn htop() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -284,7 +277,6 @@ pub fn htop_scrolling() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -314,7 +306,6 @@ pub fn htop_right_scrolling() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -352,7 +343,6 @@ pub fn vim_overwrite() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -385,7 +375,6 @@ pub fn clear_scroll_region() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -415,7 +404,6 @@ pub fn display_tab_characters_properly() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -445,7 +433,6 @@ pub fn neovim_insert_mode() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -477,7 +464,6 @@ pub fn bash_cursor_linewrap() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -509,7 +495,6 @@ pub fn fish_paste_multiline() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -539,7 +524,6 @@ pub fn git_log() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -571,7 +555,6 @@ pub fn git_diff_scrollup() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -601,7 +584,6 @@ pub fn emacs_longbuf() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -631,7 +613,6 @@ pub fn top_and_quit() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -667,7 +648,6 @@ pub fn exa_plus_omf_theme() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer

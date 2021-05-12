@@ -49,6 +49,7 @@ impl From<ClientToServerMsg> for ServerInstruction {
 
 pub struct SessionMetaData {
     pub senders: ThreadSenders,
+    pub capabilities: PluginCapabilities,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
@@ -65,7 +66,7 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf, config_options: Options) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     #[cfg(not(test))]
     daemonize::Daemonize::new()
         .working_directory(std::env::var("HOME").unwrap())
@@ -96,11 +97,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf, config
             let sessions = sessions.clone();
             let os_input = os_input.clone();
             let to_server = to_server.clone();
-            let capabilities = PluginCapabilities {
-                arrow_fonts: !config_options.simplified_ui,
-            };
 
-            move || route_thread_main(sessions, os_input, to_server, capabilities)
+            move || route_thread_main(sessions, os_input, to_server)
         })
         .unwrap();
     #[cfg(not(test))]
@@ -114,9 +112,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf, config
             let sessions = sessions.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
-            let capabilities = PluginCapabilities {
-                arrow_fonts: config_options.simplified_ui,
-            };
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
@@ -135,14 +130,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf, config
                                     let os_input = os_input.clone();
                                     let to_server = to_server.clone();
 
-                                    move || {
-                                        route_thread_main(
-                                            sessions,
-                                            os_input,
-                                            to_server,
-                                            capabilities,
-                                        )
-                                    }
+                                    move || route_thread_main(sessions, os_input, to_server)
                                 })
                                 .unwrap();
                         }
@@ -218,6 +206,10 @@ fn init_session(
     #[cfg(not(disable_automatic_asset_installation))]
     populate_data_dir(&data_dir);
 
+    let capabilities = PluginCapabilities {
+        arrow_fonts: config_options.simplified_ui,
+    };
+
     // Don't use default layouts in tests, but do everywhere else
     #[cfg(not(test))]
     let default_layout = Some(PathBuf::from("default"));
@@ -259,7 +251,6 @@ fn init_session(
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
-            let config_options = config_options;
 
             move || {
                 screen_thread_main(screen_bus, max_panes, full_screen_ws, config_options);
@@ -290,6 +281,7 @@ fn init_session(
             to_plugin: Some(to_plugin),
             to_server: None,
         },
+        capabilities,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
