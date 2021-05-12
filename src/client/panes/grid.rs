@@ -1056,7 +1056,7 @@ impl Perform for Grid {
                 } else if clear_type == 1 {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
-                    self.clear_all(char_to_replace);
+                    self.fill_viewport(char_to_replace);
                 }
             };
         } else if c == 'H' || c == 'f' {
