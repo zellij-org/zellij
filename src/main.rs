@@ -12,7 +12,7 @@ use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::common::input::config::Config;
+use crate::common::input::{config::Config, options::Options};
 use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi, ServerOsApi};
 use crate::utils::{
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
@@ -29,6 +29,8 @@ pub fn main() {
             std::process::exit(1);
         }
     };
+    let config_options = Options::from_cli(&config.options, opts.option.clone());
+
     if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
         let shell = match shell.as_ref() {
             "bash" => structopt::clap::Shell::Bash,
@@ -51,7 +53,13 @@ pub fn main() {
         atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
         let server_os_input = get_server_os_input();
         let os_input = get_client_os_input();
-        start(Box::new(os_input), opts, Box::new(server_os_input), config);
+        start(
+            Box::new(os_input),
+            opts,
+            Box::new(server_os_input),
+            config,
+            config_options,
+        );
     }
 }
 pub fn start(
@@ -59,8 +67,9 @@ pub fn start(
     opts: CliArgs,
     server_os_input: Box<dyn ServerOsApi>,
     config: Config,
+    config_options: Options,
 ) {
-    let ipc_thread = start_server(server_os_input);
+    let ipc_thread = start_server(server_os_input, config_options);
     start_client(client_os_input, opts, config);
     drop(ipc_thread.join());
 }

@@ -1,7 +1,7 @@
 use insta::assert_snapshot;
 use std::path::PathBuf;
 
-use crate::common::input::config::Config;
+use crate::common::input::{config::Config, options::Options};
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::utils::commands::QUIT;
@@ -33,6 +33,7 @@ pub fn accepts_basic_layout() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
