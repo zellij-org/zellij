@@ -72,6 +72,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
 
     std::env::set_var(&"ZELLIJ", "0");
 
+    #[cfg(not(test))]
     spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 
     let mut command_is_executing = CommandIsExecuting::new();

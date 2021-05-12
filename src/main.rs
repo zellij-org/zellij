@@ -14,10 +14,10 @@ use structopt::StructOpt;
 
 use crate::cli::CliArgs;
 use crate::command_is_executing::CommandIsExecuting;
-use crate::common::input::{config::Config, options::Options};
-use crate::os_input_output::{get_client_os_input, get_server_os_input, ClientOsApi, ServerOsApi};
+use crate::common::input::config::Config;
+use crate::os_input_output::{get_client_os_input, get_server_os_input};
 use crate::utils::{
-    consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
+    consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
 };
 use std::convert::TryFrom;
@@ -47,15 +47,4 @@ pub fn main() {
             start_client(Box::new(os_input), opts, config);
         }
     }
-}
-pub fn start(
-    client_os_input: Box<dyn ClientOsApi>,
-    opts: CliArgs,
-    server_os_input: Box<dyn ServerOsApi>,
-    config: Config,
-    config_options: Options,
-) {
-    start_server(server_os_input, ZELLIJ_IPC_PIPE.clone());
-    start_client(client_os_input, opts, config);
-    //drop(ipc_thread.join());
 }

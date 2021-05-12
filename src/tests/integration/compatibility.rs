@@ -4,8 +4,9 @@ use ::std::collections::HashMap;
 use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::possible_tty_inputs::Bytes;
+use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{start, CliArgs};
+use crate::CliArgs;
 
 use crate::common::input::{config::Config, options::Options};
 use crate::tests::utils::commands::QUIT;

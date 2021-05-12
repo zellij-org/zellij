@@ -1,7 +1,5 @@
 pub mod route;
 
-use daemonize::Daemonize;
-use interprocess::local_socket::LocalSocketListener;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc};
@@ -13,7 +11,7 @@ use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
     errors::ContextType,
     ipc::{ClientToServerMsg, ServerToClientMsg},
-    os_input_output::{set_permissions, ServerOsApi},
+    os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     setup::install::populate_data_dir,
@@ -65,7 +63,8 @@ impl Drop for SessionMetaData {
 }
 
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
-    Daemonize::new()
+    #[cfg(not(test))]
+    daemonize::Daemonize::new()
         .working_directory(std::env::var("HOME").unwrap())
         .umask(0o077)
         .start()
@@ -105,6 +104,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
+            use crate::common::os_input_output::set_permissions;
+            use interprocess::local_socket::LocalSocketListener;
+
             let os_input = os_input.clone();
             let sessions = sessions.clone();
             let to_server = to_server.clone();
@@ -180,6 +182,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
         }
     }
+    #[cfg(not(test))]
     drop(std::fs::remove_file(&socket_path));
 }
 
