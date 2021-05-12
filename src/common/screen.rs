@@ -4,8 +4,7 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
 
-use crate::cli::ConfigCli;
-use crate::common::input::options::Options;
+use crate::common::input::options::ConfigOptions;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::thread_bus::Bus;
 use crate::errors::{ContextType, ScreenContext};
@@ -330,15 +329,11 @@ pub fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
-    options: Option<ConfigCli>,
-    config_options: Options,
+    config_options: ConfigOptions,
 ) {
     let colors = bus.os_input.as_ref().unwrap().load_palette();
-    let capabilities = if let Some(ConfigCli::Options(options)) = options {
-        options.simplified_ui
-    } else {
-        config_options.simplified_ui
-    };
+    let capabilities = config_options.simplified_ui;
+
     let mut screen = Screen::new(
         bus,
         &full_screen_ws,

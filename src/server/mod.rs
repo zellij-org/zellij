@@ -12,7 +12,7 @@ use crate::client::ClientInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
     errors::{ContextType, ServerContext},
-    input::{actions::Action, options::Options},
+    input::{actions::Action, options::ConfigOptions},
     os_input_output::{set_permissions, ServerOsApi},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -30,7 +30,7 @@ use route::route_thread_main;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerInstruction {
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs, Options),
+    NewClient(PositionAndSize, CliArgs, ConfigOptions),
     Action(Action),
     Render(Option<String>),
     UnblockInputThread,
@@ -155,7 +155,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>) -> thread::JoinHandle<()> {
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     opts: CliArgs,
-    config_options: Options,
+    config_options: ConfigOptions,
     to_server: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {
@@ -214,16 +214,9 @@ fn init_session(
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
-            let options = opts.option;
 
             move || {
-                screen_thread_main(
-                    screen_bus,
-                    max_panes,
-                    full_screen_ws,
-                    options,
-                    config_options,
-                );
+                screen_thread_main(screen_bus, max_panes, full_screen_ws, config_options);
             }
         })
         .unwrap();

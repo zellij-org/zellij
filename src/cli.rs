@@ -11,10 +11,6 @@ pub struct CliArgs {
     #[structopt(long)]
     pub max_panes: Option<usize>,
 
-    /// Speficy, if a simplified layout should be used that is compatible with more fonts
-    #[structopt(long)]
-    pub simplified: bool,
-
     /// Change where zellij looks for layouts and plugins
     #[structopt(long)]
     pub data_dir: Option<PathBuf>,

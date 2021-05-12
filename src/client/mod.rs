@@ -15,6 +15,7 @@ use crate::common::{
     errors::{ClientContext, ContextType},
     input::config::Config,
     input::handler::input_loop,
+    input::options::{ConfigOptions, Options},
     os_input_output::ClientOsApi,
     thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
 };
@@ -40,12 +41,15 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
 
     let mut command_is_executing = CommandIsExecuting::new();
 
+    let config_options: ConfigOptions =
+        Options::from_cli(&config.options, opts.option.clone()).into();
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     os_input.connect_to_server();
     os_input.send_to_server(ServerInstruction::NewClient(
         full_screen_ws,
         opts,
-        config.options.clone(),
+        config_options,
     ));
     os_input.set_raw_mode(0);
 
