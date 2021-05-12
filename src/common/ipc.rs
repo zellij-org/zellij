@@ -3,7 +3,7 @@
 use crate::cli::CliArgs;
 use crate::common::{
     errors::{get_current_ctx, ErrorContext},
-    input::actions::Action,
+    input::{actions::Action, options::Options},
 };
 use crate::panes::PositionAndSize;
 use interprocess::local_socket::LocalSocketStream;
@@ -47,7 +47,7 @@ pub enum ClientToServerMsg {
     DisconnectFromSession,*/
     ClientExit,
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs),
+    NewClient(PositionAndSize, CliArgs, Options),
     Action(Action),
 }
 

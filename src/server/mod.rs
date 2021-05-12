@@ -10,6 +10,7 @@ use crate::cli::CliArgs;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
     errors::ContextType,
+    input::options::Options,
     ipc::{ClientToServerMsg, ServerToClientMsg},
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
@@ -27,7 +28,7 @@ use route::route_thread_main;
 /// ones sent by client to server
 #[derive(Debug, Clone)]
 pub enum ServerInstruction {
-    NewClient(PositionAndSize, CliArgs),
+    NewClient(PositionAndSize, CliArgs, Options),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -38,7 +39,9 @@ impl From<ClientToServerMsg> for ServerInstruction {
     fn from(instruction: ClientToServerMsg) -> Self {
         match instruction {
             ClientToServerMsg::ClientExit => ServerInstruction::ClientExit,
-            ClientToServerMsg::NewClient(pos, opts) => ServerInstruction::NewClient(pos, opts),
+            ClientToServerMsg::NewClient(pos, opts, options) => {
+                ServerInstruction::NewClient(pos, opts, options)
+            }
             _ => unreachable!(),
         }
     }
@@ -62,7 +65,7 @@ impl Drop for SessionMetaData {
     }
 }
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf, config_options: Options) {
     #[cfg(not(test))]
     daemonize::Daemonize::new()
         .working_directory(std::env::var("HOME").unwrap())
@@ -111,6 +114,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let sessions = sessions.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
+            let capabilities = PluginCapabilities {
+                arrow_fonts: config_options.simplified_ui,
+            };
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
@@ -152,9 +158,14 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(full_screen_ws, opts) => {
-                let session_data =
-                    init_session(os_input.clone(), opts, to_server.clone(), full_screen_ws);
+            ServerInstruction::NewClient(full_screen_ws, opts, config_options) => {
+                let session_data = init_session(
+                    os_input.clone(),
+                    opts,
+                    config_options,
+                    to_server.clone(),
+                    full_screen_ws,
+                );
                 *sessions.write().unwrap() = Some(session_data);
                 sessions
                     .read()

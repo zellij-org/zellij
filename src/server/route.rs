@@ -202,7 +202,12 @@ pub fn route_thread_main(
                 break;
             }
             ClientToServerMsg::Action(action) => {
-                route_action(action, rlocked_sessions.as_ref().unwrap(), &*os_input);
+                route_action(
+                    action,
+                    rlocked_sessions.as_ref().unwrap(),
+                    &*os_input,
+                    capabilities,
+                );
             }
             ClientToServerMsg::TerminalResize(new_size) => {
                 rlocked_sessions
