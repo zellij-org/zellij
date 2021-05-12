@@ -120,6 +120,11 @@ impl ErrorContext {
                 break;
             }
         }
+        self.update_thread_ctx()
+    }
+
+    /// Updates the thread local [`ErrorContext`].
+    pub fn update_thread_ctx(&self) {
         ASYNCOPENCALLS
             .try_with(|ctx| *ctx.borrow_mut() = *self)
             .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self));
@@ -369,9 +374,7 @@ impl From<&ClientInstruction> for ClientContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ServerContext {
     NewClient,
-    Action,
     Render,
-    TerminalResize,
     UnblockInputThread,
     ClientExit,
     Error,
@@ -381,8 +384,6 @@ impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
-            ServerInstruction::Action(_) => ServerContext::Action,
-            ServerInstruction::TerminalResize(_) => ServerContext::TerminalResize,
             ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit => ServerContext::ClientExit,

@@ -1,10 +1,14 @@
 //! IPC stuff for starting to split things into a client and server model.
 
-use crate::common::errors::{get_current_ctx, ErrorContext};
+use crate::cli::CliArgs;
+use crate::common::{
+    errors::{get_current_ctx, ErrorContext},
+    input::actions::Action,
+};
+use crate::panes::PositionAndSize;
 use interprocess::local_socket::LocalSocketStream;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -29,9 +33,9 @@ pub enum ClientType {
 }
 
 // Types of messages sent from the client to the server
-#[derive(Serialize, Deserialize)]
-pub enum _ClientToServerMsg {
-    // List which sessions are available
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ClientToServerMsg {
+    /*// List which sessions are available
     ListSessions,
     // Create a new session
     CreateSession,
@@ -40,16 +44,24 @@ pub enum _ClientToServerMsg {
     // Force detach
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
-    DisconnectFromSession,
+    DisconnectFromSession,*/
+    ClientExit,
+    TerminalResize(PositionAndSize),
+    NewClient(PositionAndSize, CliArgs),
+    Action(Action),
 }
 
 // Types of messages sent from the server to the client
-// @@@ Implement Serialize and Deserialize for this...
-pub enum _ServerToClientMsg {
-    // Info about a particular session
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ServerToClientMsg {
+    /*// Info about a particular session
     SessionInfo(Session),
     // A list of sessions
-    SessionList(HashSet<Session>),
+    SessionList(HashSet<Session>),*/
+    Render(Option<String>),
+    UnblockInputThread,
+    Exit,
+    ServerError(String),
 }
 
 /// Sends messages on a stream socket, along with an [`ErrorContext`].

@@ -2,7 +2,6 @@ pub mod route;
 
 use daemonize::Daemonize;
 use interprocess::local_socket::LocalSocketListener;
-use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc};
@@ -10,11 +9,10 @@ use wasmer::Store;
 use zellij_tile::data::PluginCapabilities;
 
 use crate::cli::CliArgs;
-use crate::client::ClientInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::common::{
-    errors::{ContextType, ServerContext},
-    input::{actions::Action, options::Options},
+    errors::ContextType,
+    ipc::{ClientToServerMsg, ServerToClientMsg},
     os_input_output::{set_permissions, ServerOsApi},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -29,15 +27,23 @@ use route::route_thread_main;
 
 /// Instructions related to server-side application including the
 /// ones sent by client to server
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum ServerInstruction {
-    TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs, Options),
-    Action(Action),
+    NewClient(PositionAndSize, CliArgs),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
     Error(String),
+}
+
+impl From<ClientToServerMsg> for ServerInstruction {
+    fn from(instruction: ClientToServerMsg) -> Self {
+        match instruction {
+            ClientToServerMsg::ClientExit => ServerInstruction::ClientExit,
+            ClientToServerMsg::NewClient(pos, opts) => ServerInstruction::NewClient(pos, opts),
+            _ => unreachable!(),
+        }
+    }
 }
 
 pub struct SessionMetaData {
@@ -64,6 +70,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .umask(0o077)
         .start()
         .expect("could not daemonize the server process");
+
+    std::env::set_var(&"ZELLIJ", "0");
 
     let (to_server, server_receiver): SyncChannelWithContext<ServerInstruction> =
         mpsc::sync_channel(50);
@@ -140,7 +148,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
     loop {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
-        err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
+        err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::NewClient(full_screen_ws, opts) => {
                 let session_data =
@@ -156,21 +164,20 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             }
             ServerInstruction::UnblockInputThread => {
-                os_input.send_to_client(ClientInstruction::UnblockInputThread);
+                os_input.send_to_client(ServerToClientMsg::UnblockInputThread);
             }
             ServerInstruction::ClientExit => {
                 *sessions.write().unwrap() = None;
-                os_input.send_to_client(ClientInstruction::Exit);
+                os_input.send_to_client(ServerToClientMsg::Exit);
                 break;
             }
             ServerInstruction::Render(output) => {
-                os_input.send_to_client(ClientInstruction::Render(output))
+                os_input.send_to_client(ServerToClientMsg::Render(output))
             }
             ServerInstruction::Error(backtrace) => {
-                os_input.send_to_client(ClientInstruction::ServerError(backtrace));
+                os_input.send_to_client(ServerToClientMsg::ServerError(backtrace));
                 break;
             }
-            _ => panic!("Received unexpected instruction."),
         }
     }
     drop(std::fs::remove_file(&socket_path));

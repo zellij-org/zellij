@@ -1,8 +1,8 @@
-use crate::client::ClientInstruction;
-use crate::common::ipc::{IpcReceiverWithContext, IpcSenderWithContext};
+use crate::common::ipc::{
+    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+};
 use crate::errors::ErrorContext;
 use crate::panes::PositionAndSize;
-use crate::server::ServerInstruction;
 use crate::utils::shared::default_palette;
 use interprocess::local_socket::LocalSocketStream;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
@@ -167,8 +167,8 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    receive_instructions_from_client: Option<Arc<Mutex<IpcReceiverWithContext<ServerInstruction>>>>,
-    send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ClientInstruction>>>>,
+    receive_instructions_from_client: Option<Arc<Mutex<IpcReceiverWithContext<ClientToServerMsg>>>>,
+    send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ServerToClientMsg>>>>,
 }
 
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
@@ -192,9 +192,9 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     /// Receives a message on server-side IPC channel
-    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext);
+    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext);
     /// Sends a message to client
-    fn send_to_client(&self, msg: ClientInstruction);
+    fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
     fn add_client_sender(&mut self);
     /// Update the receiver socket for the client
@@ -233,7 +233,7 @@ impl ServerOsApi for ServerOsInputOutput {
         waitpid(Pid::from_raw(pid), None).unwrap();
         Ok(())
     }
-    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
         self.receive_instructions_from_client
             .as_ref()
             .unwrap()
@@ -241,7 +241,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap()
             .recv()
     }
-    fn send_to_client(&self, msg: ClientInstruction) {
+    fn send_to_client(&self, msg: ServerToClientMsg) {
         self.send_instructions_to_client
             .lock()
             .unwrap()
@@ -288,8 +288,8 @@ pub fn get_server_os_input() -> ServerOsInputOutput {
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ServerInstruction>>>>,
-    receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ClientInstruction>>>>,
+    send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
+    receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -310,10 +310,10 @@ pub trait ClientOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
-    fn send_to_server(&self, msg: ServerInstruction);
+    fn send_to_server(&self, msg: ClientToServerMsg);
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
-    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext);
+    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext);
     fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
@@ -346,7 +346,7 @@ impl ClientOsApi for ClientOsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
-    fn send_to_server(&self, msg: ServerInstruction) {
+    fn send_to_server(&self, msg: ClientToServerMsg) {
         self.send_instructions_to_server
             .lock()
             .unwrap()
@@ -354,7 +354,7 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .send(msg);
     }
-    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext) {
         self.receive_instructions_from_server
             .lock()
             .unwrap()
