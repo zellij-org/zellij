@@ -153,7 +153,7 @@ impl ClientOsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::IntoRawMode(pid));
     }
-    fn unset_raw_mode(&mut self, pid: RawFd) {
+    fn unset_raw_mode(&self, pid: RawFd) {
         self.io_events
             .lock()
             .unwrap()
@@ -217,7 +217,7 @@ impl ClientOsApi for FakeInputOutput {
             cb();
         }
     }
-    fn connect_to_server(&self, path: &std::path::Path) {}
+    fn connect_to_server(&self, _path: &std::path::Path) {}
 }
 
 impl ServerOsApi for FakeInputOutput {

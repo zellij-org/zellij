@@ -13,22 +13,23 @@ pub struct CliArgs {
     pub max_panes: Option<usize>,
 
     /// Change where zellij looks for layouts and plugins
-    #[structopt(long)]
+    #[structopt(long, parse(from_os_str))]
     pub data_dir: Option<PathBuf>,
 
-    #[structopt(long)]
+    /// Run server listening at the specified socket path
+    #[structopt(long, parse(from_os_str))]
     pub server: Option<PathBuf>,
 
     /// Path to a layout yaml file
-    #[structopt(short, long)]
+    #[structopt(short, long, parse(from_os_str))]
     pub layout: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration
-    #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV)]
+    #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
     pub config: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration
-    #[structopt(long, env=ZELLIJ_CONFIG_DIR_ENV)]
+    #[structopt(long, env=ZELLIJ_CONFIG_DIR_ENV, parse(from_os_str))]
     pub config_dir: Option<PathBuf>,
 
     #[structopt(subcommand)]

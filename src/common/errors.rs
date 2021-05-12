@@ -19,12 +19,29 @@ const MAX_THREAD_CALL_STACK: usize = 6;
 use super::thread_bus::SenderWithContext;
 #[cfg(not(test))]
 use std::panic::PanicInfo;
+
+pub trait ErrorInstruction {
+    fn error(err: String) -> Self;
+}
+
+impl ErrorInstruction for ClientInstruction {
+    fn error(err: String) -> Self {
+        ClientInstruction::Error(err)
+    }
+}
+
+impl ErrorInstruction for ServerInstruction {
+    fn error(err: String) -> Self {
+        ServerInstruction::Error(err)
+    }
+}
+
 /// Custom panic handler/hook. Prints the [`ErrorContext`].
 #[cfg(not(test))]
-pub fn handle_panic(
-    info: &PanicInfo<'_>,
-    send_app_instructions: &SenderWithContext<ClientInstruction>,
-) {
+pub fn handle_panic<T>(info: &PanicInfo<'_>, sender: &SenderWithContext<T>)
+where
+    T: ErrorInstruction + Clone,
+{
     use backtrace::Backtrace;
     use std::{process, thread};
     let backtrace = Backtrace::new();
@@ -70,7 +87,7 @@ pub fn handle_panic(
         println!("{}", backtrace);
         process::exit(1);
     } else {
-        let _ = send_app_instructions.send(ClientInstruction::Error(backtrace));
+        let _ = sender.send(T::error(backtrace));
     }
 }
 
@@ -333,6 +350,7 @@ pub enum ClientContext {
     Error,
     UnblockInputThread,
     Render,
+    ServerError,
 }
 
 impl From<&ClientInstruction> for ClientContext {
@@ -340,6 +358,7 @@ impl From<&ClientInstruction> for ClientContext {
         match *client_instruction {
             ClientInstruction::Exit => ClientContext::Exit,
             ClientInstruction::Error(_) => ClientContext::Error,
+            ClientInstruction::ServerError(_) => ClientContext::ServerError,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
         }
@@ -355,6 +374,7 @@ pub enum ServerContext {
     TerminalResize,
     UnblockInputThread,
     ClientExit,
+    Error,
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -366,6 +386,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit => ServerContext::ClientExit,
+            ServerInstruction::Error(_) => ServerContext::Error,
         }
     }
 }

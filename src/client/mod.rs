@@ -32,6 +32,7 @@ pub enum ClientInstruction {
     Render(Option<String>),
     UnblockInputThread,
     Exit,
+    ServerError(String),
 }
 
 fn spawn_server(socket_path: &Path) -> io::Result<()> {
@@ -52,7 +53,6 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
 }
 
 pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: Config) {
-    spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
@@ -60,11 +60,10 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
         .unwrap();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(clear_client_terminal_attributes.as_bytes())
-        .unwrap();
+
     std::env::set_var(&"ZELLIJ", "0");
+
+    spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 
     let mut command_is_executing = CommandIsExecuting::new();
 
@@ -131,21 +130,38 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .name("router".to_string())
         .spawn({
             let os_input = os_input.clone();
-            move || {
-                loop {
-                    let (instruction, mut err_ctx) = os_input.recv_from_server();
-                    err_ctx.add_call(ContextType::Client(ClientContext::from(&instruction)));
-                    if let ClientInstruction::Exit = instruction {
-                        break;
+            let mut should_break = false;
+            move || loop {
+                let (instruction, mut err_ctx) = os_input.recv_from_server();
+                err_ctx.add_call(ContextType::Client(ClientContext::from(&instruction)));
+                match instruction {
+                    ClientInstruction::Exit | ClientInstruction::ServerError(_) => {
+                        should_break = true;
                     }
-                    send_client_instructions.send(instruction).unwrap();
+                    _ => {}
                 }
-                send_client_instructions
-                    .send(ClientInstruction::Exit)
-                    .unwrap();
+                send_client_instructions.send(instruction).unwrap();
+                if should_break {
+                    break;
+                }
             }
         })
         .unwrap();
+
+    let handle_error = |backtrace: String| {
+        os_input.unset_raw_mode(0);
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let restore_snapshot = "\u{1b}[?1049l";
+        let error = format!(
+            "{}\n{}{}",
+            goto_start_of_last_line, restore_snapshot, backtrace
+        );
+        let _ = os_input
+            .get_stdout_writer()
+            .write(error.as_bytes())
+            .unwrap();
+        std::process::exit(1);
+    };
 
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
@@ -159,18 +175,10 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
             ClientInstruction::Exit => break,
             ClientInstruction::Error(backtrace) => {
                 let _ = os_input.send_to_server(ServerInstruction::ClientExit);
-                os_input.unset_raw_mode(0);
-                let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-                let restore_snapshot = "\u{1b}[?1049l";
-                let error = format!(
-                    "{}\n{}{}",
-                    goto_start_of_last_line, restore_snapshot, backtrace
-                );
-                let _ = os_input
-                    .get_stdout_writer()
-                    .write(error.as_bytes())
-                    .unwrap();
-                std::process::exit(1);
+                handle_error(backtrace);
+            }
+            ClientInstruction::ServerError(backtrace) => {
+                handle_error(backtrace);
             }
             ClientInstruction::Render(output) => {
                 if output.is_none() {

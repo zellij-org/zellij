@@ -302,7 +302,7 @@ pub trait ClientOsApi: Send + Sync {
     fn set_raw_mode(&mut self, fd: RawFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&mut self, fd: RawFd);
+    fn unset_raw_mode(&self, fd: RawFd);
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns the raw contents of standard input.
@@ -326,7 +326,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
-    fn unset_raw_mode(&mut self, fd: RawFd) {
+    fn unset_raw_mode(&self, fd: RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         unset_raw_mode(fd, orig_termios.clone());
     }

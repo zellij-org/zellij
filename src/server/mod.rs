@@ -5,7 +5,7 @@ use interprocess::local_socket::LocalSocketListener;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::{path::PathBuf, sync::mpsc::channel};
+use std::{path::PathBuf, sync::mpsc};
 use wasmer::Store;
 use zellij_tile::data::PluginCapabilities;
 
@@ -18,8 +18,8 @@ use crate::common::{
     os_input_output::{set_permissions, ServerOsApi},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
-    setup::{get_default_data_dir, install::populate_data_dir},
-    thread_bus::{ChannelWithContext, SenderType, SenderWithContext},
+    setup::install::populate_data_dir,
+    thread_bus::{ChannelWithContext, SenderType, SenderWithContext, SyncChannelWithContext},
     utils::consts::ZELLIJ_PROJ_DIR,
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
@@ -37,6 +37,7 @@ pub enum ServerInstruction {
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
+    Error(String),
 }
 
 pub struct SessionMetaData {
@@ -63,9 +64,20 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .umask(0o077)
         .start()
         .expect("could not daemonize the server process");
-    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channel();
-    let to_server = SenderWithContext::new(SenderType::Sender(to_server));
+
+    let (to_server, server_receiver): SyncChannelWithContext<ServerInstruction> =
+        mpsc::sync_channel(50);
+    let to_server = SenderWithContext::new(SenderType::SyncSender(to_server));
     let sessions: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
+
+    #[cfg(not(test))]
+    std::panic::set_hook({
+        use crate::errors::handle_panic;
+        let to_server = to_server.clone();
+        Box::new(move |info| {
+            handle_panic(info, &to_server);
+        })
+    });
 
     #[cfg(test)]
     thread::Builder::new()
@@ -149,15 +161,19 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::ClientExit => {
                 *sessions.write().unwrap() = None;
                 os_input.send_to_client(ClientInstruction::Exit);
-                drop(std::fs::remove_file(&socket_path));
                 break;
             }
             ServerInstruction::Render(output) => {
                 os_input.send_to_client(ClientInstruction::Render(output))
             }
+            ServerInstruction::Error(backtrace) => {
+                os_input.send_to_client(ClientInstruction::ServerError(backtrace));
+                break;
+            }
             _ => panic!("Received unexpected instruction."),
         }
     }
+    drop(std::fs::remove_file(&socket_path));
 }
 
 fn init_session(
@@ -167,12 +183,12 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {
-    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channel();
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = mpsc::channel();
     let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
 
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channel();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = mpsc::channel();
     let to_plugin = SenderWithContext::new(SenderType::Sender(to_plugin));
-    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channel();
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = mpsc::channel();
     let to_pty = SenderWithContext::new(SenderType::Sender(to_pty));
 
     // Determine and initialize the data directory
