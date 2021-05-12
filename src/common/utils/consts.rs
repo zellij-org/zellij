@@ -47,3 +47,8 @@ lazy_static! {
     pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
     pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("log.txt");
 }
+
+pub const FEATURES: &[&str] = &[
+    #[cfg(feature = "enable_automatic_asset_installation")]
+    "enable_automatic_asset_installation",
+];
