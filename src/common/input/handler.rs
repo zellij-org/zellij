@@ -75,6 +75,10 @@ impl InputHandler {
                                 self.pasting = true;
                             } else if unsupported_key == bracketed_paste_end {
                                 self.pasting = false;
+                            } else {
+                                // this is a hack because termion doesn't recognize certain keys
+                                // in this case we just forward it to the terminal
+                                self.handle_unknown_key(raw_bytes);
                             }
                         }
                         termion::event::Event::Mouse(_) => {
@@ -85,6 +89,12 @@ impl InputHandler {
                     Err(err) => panic!("Encountered read error: {:?}", err),
                 }
             }
+        }
+    }
+    fn handle_unknown_key(&mut self, raw_bytes: Vec<u8>) {
+        if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+            let action = Action::Write(raw_bytes);
+            self.dispatch_action(action);
         }
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
