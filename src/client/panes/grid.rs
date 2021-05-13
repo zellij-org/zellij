@@ -9,7 +9,9 @@ use vte::{Params, Perform};
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
 
+use crate::utils::consts::VERSION;
 use crate::utils::logging::debug_log_to_file;
+use crate::utils::shared::version_number;
 
 use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
@@ -186,6 +188,7 @@ pub struct Grid {
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
+    pub pending_messages_to_pty: Vec<Vec<u8>>,
 }
 
 impl Debug for Grid {
@@ -222,6 +225,7 @@ impl Grid {
             alternative_lines_above_viewport_and_cursor: None,
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
+            pending_messages_to_pty: vec![],
         }
     }
     pub fn contains_widechar(&self) -> bool {
@@ -1283,6 +1287,64 @@ impl Perform for Grid {
             for _ in 0..next_param_or(1) {
                 self.move_to_previous_tabstop();
             }
+        } else if c == 'c' {
+            // identify terminal
+            // https://vt100.net/docs/vt510-rm/DA1.html
+            match intermediates.get(0) {
+                None | Some(0) => {
+                    // primary device attributes
+                    let terminal_capabilities = "\u{1b}[?6c";
+                    self.pending_messages_to_pty
+                        .push(terminal_capabilities.as_bytes().to_vec());
+                }
+                Some(b'>') => {
+                    // secondary device attributes
+                    let version = version_number(VERSION);
+                    let text = format!("\u{1b}[>0;{};1c", version);
+                    self.pending_messages_to_pty.push(text.as_bytes().to_vec());
+                }
+                _ => {}
+            }
+        } else if c == 'n' {
+            // DSR - device status report
+            // https://vt100.net/docs/vt510-rm/DSR.html
+            match next_param_or(0) {
+                5 => {
+                    // report terminal status
+                    let all_good = "\u{1b}[0n";
+                    self.pending_messages_to_pty
+                        .push(all_good.as_bytes().to_vec());
+                }
+                6 => {
+                    // CPR - cursor position report
+                    let position_report =
+                        format!("\x1b[{};{}R", self.cursor.y + 1, self.cursor.x + 1);
+                    self.pending_messages_to_pty
+                        .push(position_report.as_bytes().to_vec());
+                }
+                _ => {}
+            }
+        } else if c == 't' {
+            match next_param_or(1) as usize {
+                14 => {
+                    // TODO: report text area size in pixels, currently unimplemented
+                    // to solve this we probably need to query the user's terminal for the cursor
+                    // size and then use it as a multiplier
+                }
+                18 => {
+                    // report text area
+                    let text_area_report = format!("\x1b[8;{};{}t", self.height, self.width);
+                    self.pending_messages_to_pty
+                        .push(text_area_report.as_bytes().to_vec());
+                }
+                22 => {
+                    // TODO: push title
+                }
+                23 => {
+                    // TODO: pop title
+                }
+                _ => {}
+            }
         } else {
             let result = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
             #[cfg(not(test))]
@@ -1340,6 +1402,11 @@ impl Perform for Grid {
             }
             (b'7', None) => {
                 self.save_cursor_position();
+            }
+            (b'Z', None) => {
+                let terminal_capabilities = "\u{1b}[?6c";
+                self.pending_messages_to_pty
+                    .push(terminal_capabilities.as_bytes().to_vec());
             }
             (b'8', None) => {
                 self.restore_cursor_position();

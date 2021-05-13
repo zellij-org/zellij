@@ -301,6 +301,9 @@ impl Pane for TerminalPane {
             CursorShape::BlinkingBeam => "\u{1b}[5 q".to_string(),
         }
     }
+    fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
+        self.grid.pending_messages_to_pty.drain(..).collect()
+    }
 }
 
 impl TerminalPane {
