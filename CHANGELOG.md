@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix propagation of plugin ui request (https://github.com/zellij-org/zellij/pull/495)
 * Handle pasted text properly (https://github.com/zellij-org/zellij/pull/494)
 * Fix default keybinds for tab -> resize mode (https://github.com/zellij-org/zellij/pull/497)
+* Terminal compatibility: device reports (https://github.com/zellij-org/zellij/pull/500)
 
 ## [0.9.0] - 2021-05-11
 * Add more functionality to unbinding the default keybindings (https://github.com/zellij-org/zellij/pull/468)
