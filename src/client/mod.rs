@@ -132,15 +132,26 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let send_client_instructions = send_client_instructions.clone();
             move || {
-                os_input.receive_sigwinch(Box::new({
-                    let os_api = os_input.clone();
-                    move || {
-                        os_api.send_to_server(ClientToServerMsg::TerminalResize(
-                            os_api.get_terminal_size_using_fd(0),
-                        ));
-                    }
-                }));
+                os_input.handle_signals(
+                    Box::new({
+                        let os_api = os_input.clone();
+                        move || {
+                            os_api.send_to_server(ClientToServerMsg::TerminalResize(
+                                os_api.get_terminal_size_using_fd(0),
+                            ));
+                        }
+                    }),
+                    Box::new({
+                        let send_client_instructions = send_client_instructions.clone();
+                        move || {
+                            send_client_instructions
+                                .send(ClientInstruction::Exit)
+                                .unwrap()
+                        }
+                    }),
+                );
             }
         })
         .unwrap();

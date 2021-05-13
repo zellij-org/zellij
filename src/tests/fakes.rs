@@ -204,7 +204,7 @@ impl ClientOsApi for FakeInputOutput {
             .recv()
             .unwrap()
     }
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {
         if self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
             {
@@ -213,7 +213,7 @@ impl ClientOsApi for FakeInputOutput {
                     should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
                 }
             }
-            cb();
+            sigwinch_cb();
         }
     }
     fn connect_to_server(&self, _path: &std::path::Path) {}

@@ -314,7 +314,7 @@ pub trait ClientOsApi: Send + Sync {
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
     fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext);
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>);
+    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
 }
@@ -362,14 +362,15 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .recv()
     }
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
-        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT]).unwrap();
+    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
+        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP]).unwrap();
         for signal in signals.forever() {
             match signal {
                 SIGWINCH => {
-                    cb();
+                    sigwinch_cb();
                 }
-                SIGTERM | SIGINT | SIGQUIT => {
+                SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
+                    quit_cb();
                     break;
                 }
                 _ => unreachable!(),
