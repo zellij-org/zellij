@@ -383,3 +383,15 @@ fn csi_capital_z() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn terminal_reports() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 97);
+    let fixture_name = "terminal_reports";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
+}

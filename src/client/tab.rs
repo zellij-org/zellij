@@ -218,6 +218,11 @@ pub trait Pane {
     fn invisible_borders(&self) -> bool {
         false
     }
+    fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
+        // TODO: this is only relevant to terminal panes
+        // we should probably refactor away from this trait at some point
+        vec![]
+    }
 }
 
 impl Tab {
@@ -601,6 +606,10 @@ impl Tab {
         // the reason
         if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
             terminal_output.handle_pty_bytes(bytes);
+            let messages_to_pty = terminal_output.drain_messages_to_pty();
+            for message in messages_to_pty {
+                self.write_to_pane_id(message, PaneId::Terminal(pid));
+            }
         }
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
