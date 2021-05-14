@@ -1,5 +1,6 @@
 use super::common::utils::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
 use crate::common::input::options::Options;
+use crate::common::setup::Setup;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -40,17 +41,7 @@ pub enum ConfigCli {
     #[structopt(name = "options")]
     Options(Options),
 
-    #[structopt(name = "generate-completion")]
-    GenerateCompletion { shell: String },
-
+    /// Setup zellij and check its configuration
     #[structopt(name = "setup")]
-    Setup {
-        /// Dump the default configuration file to stdout
-        #[structopt(long)]
-        dump_config: bool,
-        /// Disables loading of configuration file at default location,
-        /// loads the defaults that zellij ships with
-        #[structopt(long)]
-        clean: bool,
-    },
+    Setup(Setup),
 }

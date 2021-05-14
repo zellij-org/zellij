@@ -6,7 +6,9 @@ mod server;
 mod tests;
 
 use client::{boundaries, layout, panes, start_client, tab};
-use common::{command_is_executing, errors, os_input_output, pty, screen, setup, utils, wasm_vm};
+use common::{
+    command_is_executing, errors, os_input_output, pty, screen, setup::Setup, utils, wasm_vm,
+};
 use server::start_server;
 use structopt::StructOpt;
 
@@ -22,33 +24,19 @@ use std::convert::TryFrom;
 
 pub fn main() {
     let opts = CliArgs::from_args();
-    let config = match Config::try_from(&opts) {
-        Ok(config) => config,
-        Err(e) => {
-            eprintln!("There was an error in the config file:\n{}", e);
-            std::process::exit(1);
-        }
-    };
-    let config_options = Options::from_cli(&config.options, opts.option.clone());
 
-    if let Some(crate::cli::ConfigCli::GenerateCompletion { shell }) = opts.option {
-        let shell = match shell.as_ref() {
-            "bash" => structopt::clap::Shell::Bash,
-            "fish" => structopt::clap::Shell::Fish,
-            "zsh" => structopt::clap::Shell::Zsh,
-            "powerShell" => structopt::clap::Shell::PowerShell,
-            "elvish" => structopt::clap::Shell::Elvish,
-            other => {
-                eprintln!("Unsupported shell: {}", other);
+    if let Some(crate::cli::ConfigCli::Setup(setup)) = opts.option.clone() {
+        Setup::from_cli(&setup, opts).expect("Failed to print to stdout");
+        std::process::exit(0);
+    } else {
+        let config = match Config::try_from(&opts) {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("There was an error in the config file:\n{}", e);
                 std::process::exit(1);
             }
         };
-        let mut out = std::io::stdout();
-        CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
-    } else if let Some(crate::cli::ConfigCli::Setup { .. }) = opts.option {
-        setup::dump_default_config().expect("Failed to print to stdout");
-        std::process::exit(0);
-    } else {
+        let config_options = Options::from_cli(&config.options, opts.option.clone());
         atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
         atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
         let server_os_input = get_server_os_input();

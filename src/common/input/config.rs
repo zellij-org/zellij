@@ -60,8 +60,8 @@ impl TryFrom<&CliArgs> for Config {
             return Config::new(&path);
         }
 
-        if let Some(ConfigCli::Setup { clean, .. }) = opts.option {
-            if clean {
+        if let Some(ConfigCli::Setup(setup)) = opts.option.clone() {
+            if setup.clean {
                 return Config::from_default_assets();
             }
         }
@@ -177,11 +177,12 @@ mod config_test {
 
     #[test]
     fn try_from_cli_args_with_option_clean() {
+        use crate::common::setup::Setup;
         let mut opts = CliArgs::default();
-        opts.option = Some(ConfigCli::Setup {
+        opts.option = Some(ConfigCli::Setup(Setup {
             clean: true,
-            dump_config: false,
-        });
+            ..Setup::default()
+        }));
         let result = Config::try_from(&opts);
         assert!(result.is_ok());
     }
