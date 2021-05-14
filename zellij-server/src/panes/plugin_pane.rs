@@ -39,6 +39,9 @@ impl PluginPane {
 }
 
 impl Pane for PluginPane {
+    fn get_char_at(&self, x: usize, y: usize) -> Option<char> {
+        None
+    }
     // FIXME: These position and size things should all be moved to default trait implementations,
     // with something like a get_pos_and_sz() method underpinning all of them. Alternatively and
     // preferably, just use an enum and not a trait object

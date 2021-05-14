@@ -33,6 +33,18 @@ pub struct TerminalPane {
 }
 
 impl Pane for TerminalPane {
+    fn get_char_at(&self, x: usize, y: usize) -> Option<char> {
+        let line = &self.grid.as_character_lines()[y - 1];
+        let mut current_char_col = 0;
+        for char in line {
+            if x >= current_char_col && x <= current_char_col + char.width() {
+                return Some(char.character);
+            }
+            current_char_col += char.width();
+        }
+        None
+    }
+
     fn x(&self) -> usize {
         self.get_x()
     }

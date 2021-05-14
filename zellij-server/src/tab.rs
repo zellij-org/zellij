@@ -143,6 +143,7 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
+    fn get_char_at(&self, x: usize, y: usize) -> Option<char>;
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -805,6 +806,9 @@ impl Tab {
             if pos.contains(x, y) {
                 dbg!(format!("({},{}) is inside pane {:?}", x, y, id));
                 pane_id = Some(id);
+                // make this relative position
+                let char_at = pane.get_char_at(x - pos.x, y - pos.y);
+                dbg!(format!("char at ({},{})={:?}", x, y, char_at));
                 break;
             }
         }

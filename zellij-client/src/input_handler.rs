@@ -73,6 +73,7 @@ impl InputHandler {
                         termion::event::Event::Mouse(me) => {
                             // only handle mouse wheel scrolling for now
                             if let termion::event::MouseEvent::Press(button, x, y) = me {
+                                dbg!(format!("mouse button '{:?}'press at ({},{})", button, x, y));
                                 match button {
                                     termion::event::MouseButton::WheelUp => {
                                         self.dispatch_action(Action::ScrollUp);
