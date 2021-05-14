@@ -87,7 +87,7 @@ for plugin in ${plugins}
     mkdir ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/
     plugin_name = basename ${plugin}
     plugin_out = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/${plugin_name}
-    if not is_path_exists ${plugin_out} or is_path_newer ${plugin} ${plugin_out}
+    if is_path_newer ${plugin} ${plugin_out} or not is_path_exists ${plugin_out}
         exec wasm-opt -O ${plugin} -o ${plugin_out}
     end
 end
