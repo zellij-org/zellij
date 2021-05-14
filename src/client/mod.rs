@@ -20,6 +20,7 @@ use crate::common::{
     thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
 };
 use crate::server::ServerInstruction;
+use zellij_tile::data::InputMode;
 
 /// Instructions related to the client-side application and sent from server to client
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -54,7 +55,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     os_input.send_to_server(ServerInstruction::NewClient(
         full_screen_ws,
         opts,
-        config_options,
+        config_options.clone(),
     ));
     os_input.set_raw_mode(0);
     let _ = os_input
@@ -83,12 +84,14 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
             let send_client_instructions = send_client_instructions.clone();
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
+            let default_mode = config_options.default_mode.unwrap_or(InputMode::Normal);
             move || {
                 input_loop(
                     os_input,
                     config,
                     command_is_executing,
                     send_client_instructions,
+                    default_mode,
                 )
             }
         });

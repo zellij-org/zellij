@@ -333,6 +333,7 @@ pub fn screen_thread_main(
 ) {
     let colors = bus.os_input.as_ref().unwrap().load_palette();
     let capabilities = config_options.simplified_ui;
+    let default_mode = config_options.default_mode.unwrap_or_default();
 
     let mut screen = Screen::new(
         bus,
@@ -343,9 +344,10 @@ pub fn screen_thread_main(
             capabilities: PluginCapabilities {
                 arrow_fonts: capabilities,
             },
+            mode: default_mode,
             ..ModeInfo::default()
         },
-        InputMode::Normal,
+        default_mode,
         colors,
     );
     loop {

@@ -33,9 +33,10 @@ impl InputHandler {
         command_is_executing: CommandIsExecuting,
         config: Config,
         send_client_instructions: SenderWithContext<ClientInstruction>,
+        mode: InputMode,
     ) -> Self {
         InputHandler {
-            mode: InputMode::Normal,
+            mode,
             os_input,
             config,
             command_is_executing,
@@ -225,12 +226,14 @@ pub fn input_loop(
     config: Config,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
+    default_mode: InputMode,
 ) {
     let _handler = InputHandler::new(
         os_input,
         command_is_executing,
         config,
         send_client_instructions,
+        default_mode,
     )
     .handle_input();
 }

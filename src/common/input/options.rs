@@ -2,6 +2,7 @@
 use crate::cli::ConfigCli;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use zellij_tile::data::InputMode;
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
@@ -11,6 +12,9 @@ pub struct Options {
     /// that is compatible with more fonts
     #[structopt(long)]
     pub simplified_ui: bool,
+    /// Allows to specify the default mode
+    #[structopt(long)]
+    pub default_mode: Option<InputMode>,
 }
 
 impl Options {
@@ -32,7 +36,15 @@ impl Options {
             self.simplified_ui
         };
 
-        Options { simplified_ui }
+        let default_mode = match other.default_mode {
+            None => self.default_mode,
+            other => other,
+        };
+
+        Options {
+            simplified_ui,
+            default_mode,
+        }
     }
 
     pub fn from_cli(&self, other: Option<ConfigCli>) -> Options {
