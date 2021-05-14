@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Add `check` flag to `setup` subcommand, move `generate-completions` subcommand to `setup` flag (https://github.com/zellij-org/zellij/pull/503)
 
 ## [0.10.0] - 2021-05-14
 * Change Switch default config loading order of `HOME` and system (https://github.com/zellij-org/zellij/pull/488)
