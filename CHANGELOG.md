@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.10.0] - 2021-05-14
 * Change Switch default config loading order of `HOME` and system (https://github.com/zellij-org/zellij/pull/488)
 * Add support for requesting a simpler layout from plugins, move `clean` flag from `options` to `setup` (https://github.com/zellij-org/zellij/pull/479)
 * Improve config loading slightly (https://github.com/zellij-org/zellij/pull/492)

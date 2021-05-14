@@ -2254,7 +2254,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "ansi_term 0.12.1",
  "async-std",
@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.8.0"
+version = "0.11.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.7.0"
+version = "0.11.0"
 dependencies = [
  "ansi_term 0.12.1",
 ]
