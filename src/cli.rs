@@ -16,9 +16,13 @@ pub struct CliArgs {
     #[structopt(long)]
     pub data_dir: Option<PathBuf>,
 
-    /// Path to a layout yaml file
+    /// Name of a layout yaml file inside the plugin directory
     #[structopt(short, long)]
     pub layout: Option<PathBuf>,
+
+    /// Path to a layout yaml file
+    #[structopt(long, parse(from_os_str))]
+    pub layout_path: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration
     #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV)]
