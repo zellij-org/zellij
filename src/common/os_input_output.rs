@@ -275,14 +275,14 @@ impl Clone for Box<dyn ServerOsApi> {
     }
 }
 
-pub fn get_server_os_input() -> ServerOsInputOutput {
-    let current_termios = termios::tcgetattr(0).unwrap();
+pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
+    let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    ServerOsInputOutput {
+    Ok(ServerOsInputOutput {
         orig_termios,
         receive_instructions_from_client: None,
         send_instructions_to_client: Arc::new(Mutex::new(None)),
-    }
+    })
 }
 
 #[derive(Clone)]
@@ -403,12 +403,12 @@ impl Clone for Box<dyn ClientOsApi> {
     }
 }
 
-pub fn get_client_os_input() -> ClientOsInputOutput {
-    let current_termios = termios::tcgetattr(0).unwrap();
+pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
+    let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    ClientOsInputOutput {
+    Ok(ClientOsInputOutput {
         orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
-    }
+    })
 }
