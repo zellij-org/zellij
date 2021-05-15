@@ -7,11 +7,10 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::client::ClientInstruction;
+use crate::common::ipc::{ClientToServerMsg, ServerToClientMsg};
 use crate::common::thread_bus::{ChannelWithContext, SenderType, SenderWithContext};
 use crate::errors::ErrorContext;
 use crate::os_input_output::{ClientOsApi, ServerOsApi};
-use crate::server::ServerInstruction;
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 use crate::tests::utils::commands::{QUIT, SLEEP};
 use crate::utils::shared::default_palette;
@@ -77,10 +76,10 @@ pub struct FakeInputOutput {
     win_sizes: Arc<Mutex<HashMap<RawFd, PositionAndSize>>>,
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
-    send_instructions_to_client: SenderWithContext<ClientInstruction>,
-    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ClientInstruction, ErrorContext)>>>,
-    send_instructions_to_server: SenderWithContext<ServerInstruction>,
-    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ServerInstruction, ErrorContext)>>>,
+    send_instructions_to_client: SenderWithContext<ServerToClientMsg>,
+    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ServerToClientMsg, ErrorContext)>>>,
+    send_instructions_to_server: SenderWithContext<ClientToServerMsg>,
+    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ClientToServerMsg, ErrorContext)>>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
 }
@@ -90,10 +89,10 @@ impl FakeInputOutput {
         let mut win_sizes = HashMap::new();
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
-        let (client_sender, client_receiver): ChannelWithContext<ClientInstruction> =
+        let (client_sender, client_receiver): ChannelWithContext<ServerToClientMsg> =
             mpsc::channel();
         let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
-        let (server_sender, server_receiver): ChannelWithContext<ServerInstruction> =
+        let (server_sender, server_receiver): ChannelWithContext<ClientToServerMsg> =
             mpsc::channel();
         let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
@@ -153,7 +152,7 @@ impl ClientOsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::IntoRawMode(pid));
     }
-    fn unset_raw_mode(&mut self, pid: RawFd) {
+    fn unset_raw_mode(&self, pid: RawFd) {
         self.io_events
             .lock()
             .unwrap()
@@ -195,17 +194,17 @@ impl ClientOsApi for FakeInputOutput {
     fn get_stdout_writer(&self) -> Box<dyn Write> {
         Box::new(self.stdout_writer.clone())
     }
-    fn send_to_server(&self, msg: ServerInstruction) {
+    fn send_to_server(&self, msg: ClientToServerMsg) {
         self.send_instructions_to_server.send(msg).unwrap();
     }
-    fn recv_from_server(&self) -> (ClientInstruction, ErrorContext) {
+    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext) {
         self.receive_instructions_from_server
             .lock()
             .unwrap()
             .recv()
             .unwrap()
     }
-    fn receive_sigwinch(&self, cb: Box<dyn Fn()>) {
+    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {
         if self.sigwinch_event.is_some() {
             let (lock, cvar) = &*self.should_trigger_sigwinch;
             {
@@ -214,10 +213,10 @@ impl ClientOsApi for FakeInputOutput {
                     should_trigger_sigwinch = cvar.wait(should_trigger_sigwinch).unwrap();
                 }
             }
-            cb();
+            sigwinch_cb();
         }
     }
-    fn connect_to_server(&self) {}
+    fn connect_to_server(&self, _path: &std::path::Path) {}
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -278,14 +277,14 @@ impl ServerOsApi for FakeInputOutput {
         self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
         Ok(())
     }
-    fn recv_from_client(&self) -> (ServerInstruction, ErrorContext) {
+    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
         self.receive_instructions_from_client
             .lock()
             .unwrap()
             .recv()
             .unwrap()
     }
-    fn send_to_client(&self, msg: ClientInstruction) {
+    fn send_to_client(&self, msg: ServerToClientMsg) {
         self.send_instructions_to_client.send(msg).unwrap();
     }
     fn add_client_sender(&mut self) {}

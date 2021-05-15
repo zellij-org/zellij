@@ -4,30 +4,62 @@ pub mod pane_resizer;
 pub mod panes;
 pub mod tab;
 
-use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::env::current_exe;
+use std::io::{self, Write};
+use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
 use crate::cli::CliArgs;
 use crate::common::{
     command_is_executing::CommandIsExecuting,
-    errors::{ClientContext, ContextType},
+    errors::ContextType,
     input::config::Config,
     input::handler::input_loop,
     input::options::Options,
+    ipc::{ClientToServerMsg, ServerToClientMsg},
     os_input_output::ClientOsApi,
     thread_bus::{SenderType, SenderWithContext, SyncChannelWithContext},
+    utils::consts::ZELLIJ_IPC_PIPE,
 };
-use crate::server::ServerInstruction;
 
 /// Instructions related to the client-side application and sent from server to client
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum ClientInstruction {
     Error(String),
     Render(Option<String>),
     UnblockInputThread,
     Exit,
+    ServerError(String),
+}
+
+impl From<ServerToClientMsg> for ClientInstruction {
+    fn from(instruction: ServerToClientMsg) -> Self {
+        match instruction {
+            ServerToClientMsg::Exit => ClientInstruction::Exit,
+            ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
+            ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::ServerError(backtrace) => ClientInstruction::ServerError(backtrace),
+        }
+    }
+}
+
+fn spawn_server(socket_path: &Path) -> io::Result<()> {
+    let status = Command::new(current_exe()?)
+        .arg("--server")
+        .arg(socket_path)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        let msg = "Process returned non-zero exit code";
+        let err_msg = match status.code() {
+            Some(c) => format!("{}: {}", msg, c),
+            None => msg.to_string(),
+        };
+        Err(io::Error::new(io::ErrorKind::Other, err_msg))
+    }
 }
 
 pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: Config) {
@@ -45,13 +77,16 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
 
+    #[cfg(not(test))]
+    spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
+
     let mut command_is_executing = CommandIsExecuting::new();
 
     let config_options = Options::from_cli(&config.options, opts.option.clone());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    os_input.connect_to_server();
-    os_input.send_to_server(ServerInstruction::NewClient(
+    os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
+    os_input.send_to_server(ClientToServerMsg::NewClient(
         full_screen_ws,
         opts,
         config_options,
@@ -97,15 +132,26 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let send_client_instructions = send_client_instructions.clone();
             move || {
-                os_input.receive_sigwinch(Box::new({
-                    let os_api = os_input.clone();
-                    move || {
-                        os_api.send_to_server(ServerInstruction::TerminalResize(
-                            os_api.get_terminal_size_using_fd(0),
-                        ));
-                    }
-                }));
+                os_input.handle_signals(
+                    Box::new({
+                        let os_api = os_input.clone();
+                        move || {
+                            os_api.send_to_server(ClientToServerMsg::TerminalResize(
+                                os_api.get_terminal_size_using_fd(0),
+                            ));
+                        }
+                    }),
+                    Box::new({
+                        let send_client_instructions = send_client_instructions.clone();
+                        move || {
+                            send_client_instructions
+                                .send(ClientInstruction::Exit)
+                                .unwrap()
+                        }
+                    }),
+                );
             }
         })
         .unwrap();
@@ -114,47 +160,53 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .name("router".to_string())
         .spawn({
             let os_input = os_input.clone();
-            move || {
-                loop {
-                    let (instruction, mut err_ctx) = os_input.recv_from_server();
-                    err_ctx.add_call(ContextType::Client(ClientContext::from(&instruction)));
-                    if let ClientInstruction::Exit = instruction {
-                        break;
+            let mut should_break = false;
+            move || loop {
+                let (instruction, err_ctx) = os_input.recv_from_server();
+                err_ctx.update_thread_ctx();
+                match instruction {
+                    ServerToClientMsg::Exit | ServerToClientMsg::ServerError(_) => {
+                        should_break = true;
                     }
-                    send_client_instructions.send(instruction).unwrap();
+                    _ => {}
                 }
-                send_client_instructions
-                    .send(ClientInstruction::Exit)
-                    .unwrap();
+                send_client_instructions.send(instruction.into()).unwrap();
+                if should_break {
+                    break;
+                }
             }
         })
         .unwrap();
 
-    #[warn(clippy::never_loop)]
+    let handle_error = |backtrace: String| {
+        os_input.unset_raw_mode(0);
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let restore_snapshot = "\u{1b}[?1049l";
+        let error = format!(
+            "{}\n{}{}",
+            goto_start_of_last_line, restore_snapshot, backtrace
+        );
+        let _ = os_input
+            .get_stdout_writer()
+            .write(error.as_bytes())
+            .unwrap();
+        std::process::exit(1);
+    };
+
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
             .recv()
             .expect("failed to receive app instruction on channel");
 
-        err_ctx.add_call(ContextType::Client(ClientContext::from(
-            &client_instruction,
-        )));
+        err_ctx.add_call(ContextType::Client((&client_instruction).into()));
         match client_instruction {
             ClientInstruction::Exit => break,
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ServerInstruction::ClientExit);
-                os_input.unset_raw_mode(0);
-                let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-                let restore_snapshot = "\u{1b}[?1049l";
-                let error = format!(
-                    "{}\n{}{}",
-                    goto_start_of_last_line, restore_snapshot, backtrace
-                );
-                let _ = os_input
-                    .get_stdout_writer()
-                    .write(error.as_bytes())
-                    .unwrap();
-                std::process::exit(1);
+                let _ = os_input.send_to_server(ClientToServerMsg::ClientExit);
+                handle_error(backtrace);
+            }
+            ClientInstruction::ServerError(backtrace) => {
+                handle_error(backtrace);
             }
             ClientInstruction::Render(output) => {
                 if output.is_none() {
@@ -172,7 +224,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         }
     }
 
-    let _ = os_input.send_to_server(ServerInstruction::ClientExit);
+    let _ = os_input.send_to_server(ClientToServerMsg::ClientExit);
     router_thread.join().unwrap();
 
     // cleanup();

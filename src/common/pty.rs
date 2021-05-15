@@ -8,7 +8,7 @@ use std::pin::*;
 use std::time::{Duration, Instant};
 
 use crate::client::panes::PaneId;
-use crate::common::errors::{get_current_ctx, ContextType, PtyContext};
+use crate::common::errors::{get_current_ctx, ContextType};
 use crate::common::screen::ScreenInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
 use crate::layout::Layout;
@@ -87,7 +87,7 @@ pub struct Pty {
 pub fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
-        err_ctx.add_call(ContextType::Pty(PtyContext::from(&event)));
+        err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
             PtyInstruction::SpawnTerminal(file_to_open) => {
                 let pid = pty.spawn_terminal(file_to_open);

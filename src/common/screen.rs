@@ -7,7 +7,7 @@ use std::str;
 use crate::common::input::options::Options;
 use crate::common::pty::{PtyInstruction, VteBytes};
 use crate::common::thread_bus::Bus;
-use crate::errors::{ContextType, ScreenContext};
+use crate::errors::ContextType;
 use crate::layout::Layout;
 use crate::panes::PaneId;
 use crate::panes::PositionAndSize;
@@ -353,7 +353,7 @@ pub fn screen_thread_main(
             .bus
             .recv()
             .expect("failed to receive event on channel");
-        err_ctx.add_call(ContextType::Screen(ScreenContext::from(&event)));
+        err_ctx.add_call(ContextType::Screen((&event).into()));
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                 let active_tab = screen.get_active_tab_mut().unwrap();

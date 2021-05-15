@@ -15,7 +15,7 @@ use wasmer::{
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
 
-use crate::common::errors::{ContextType, PluginContext};
+use crate::common::errors::ContextType;
 use crate::common::pty::PtyInstruction;
 use crate::common::screen::ScreenInstruction;
 use crate::common::thread_bus::{Bus, ThreadSenders};
@@ -44,7 +44,7 @@ pub fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: Pat
     let mut plugin_map = HashMap::new();
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
-        err_ctx.add_call(ContextType::Plugin(PluginContext::from(&event)));
+        err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(pid_tx, path) => {
                 let plugin_dir = data_dir.join("plugins/");
