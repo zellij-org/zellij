@@ -19,7 +19,7 @@ use crate::common::{
     screen::{screen_thread_main, ScreenInstruction},
     setup::{get_default_data_dir, install::populate_data_dir},
     thread_bus::{ChannelWithContext, SenderType, SenderWithContext},
-    utils::consts::{ZELLIJ_IPC_PIPE, ZELLIJ_PROJ_DIR},
+    utils::consts::ZELLIJ_IPC_PIPE,
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use crate::layout::Layout;
