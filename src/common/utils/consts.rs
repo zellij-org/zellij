@@ -49,6 +49,6 @@ lazy_static! {
 }
 
 pub const FEATURES: &[&str] = &[
-    #[cfg(feature = "enable_automatic_asset_installation")]
-    "enable_automatic_asset_installation",
+    #[cfg(feature = "disable_automatic_asset_installation")]
+    "disable_automatic_asset_installation",
 ];

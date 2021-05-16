@@ -122,8 +122,21 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "publish-zellij-tile", "publish-zellij-tile-utils"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit", "build-release", "publish-zellij-tile", "publish-zellij-tile-utils"]
 run_task = "publish-zellij"
+
+[tasks.release-commit]
+dependencies = ["commit-all", "tag-release"]
+command = "git"
+args = ["push", "--atomic", "origin", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
+
+[tasks.commit-all]
+command = "git"
+args = ["commit", "-aem", "chore(release): v${CARGO_MAKE_CRATE_VERSION}"]
+
+[tasks.tag-release]
+command = "git"
+args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.publish-zellij-tile]
 ignore_errors = true

@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Remove unused imports (https://github.com/zellij-org/zellij/pull/504)
+* More Infrastructure changes for the upcoming session detach feature: run server and client in separate processes (https://github.com/zellij-org/zellij/pull/499)
+
+## [0.11.0] - 2021-05-15
+
+This version is mostly an installation hotfix.
+
 * Add `check` flag to `setup` subcommand, move `generate-completions` subcommand to `setup` flag (https://github.com/zellij-org/zellij/pull/503)
+* Change the asset installation from an opt-in to an opt-out (https://github.com/zellij-org/zellij/pull/512)
 
 ## [0.10.0] - 2021-05-14
 * Change Switch default config loading order of `HOME` and system (https://github.com/zellij-org/zellij/pull/488)

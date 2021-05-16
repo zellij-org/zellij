@@ -4,10 +4,10 @@ use super::actions::Action;
 use super::keybinds::Keybinds;
 use crate::client::ClientInstruction;
 use crate::common::input::config::Config;
+use crate::common::ipc::ClientToServerMsg;
 use crate::common::thread_bus::{SenderWithContext, OPENCALLS};
 use crate::errors::ContextType;
 use crate::os_input_output::ClientOsApi;
-use crate::server::ServerInstruction;
 use crate::CommandIsExecuting;
 
 use termion::input::{TermRead, TermReadEventsAndRaw};
@@ -139,7 +139,7 @@ impl InputHandler {
             Action::SwitchToMode(mode) => {
                 self.mode = mode;
                 self.os_input
-                    .send_to_server(ServerInstruction::Action(action));
+                    .send_to_server(ClientToServerMsg::Action(action));
             }
             Action::CloseFocus
             | Action::NewPane(_)
@@ -151,13 +151,13 @@ impl InputHandler {
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input
-                    .send_to_server(ServerInstruction::Action(action));
+                    .send_to_server(ClientToServerMsg::Action(action));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
             }
             _ => self
                 .os_input
-                .send_to_server(ServerInstruction::Action(action)),
+                .send_to_server(ClientToServerMsg::Action(action)),
         }
 
         should_break

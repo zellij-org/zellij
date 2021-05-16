@@ -1,10 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_tile::data::{Event, PluginCapabilities};
+use zellij_tile::data::Event;
 
-use crate::common::errors::{ContextType, ServerContext};
 use crate::common::input::actions::{Action, Direction};
 use crate::common::input::handler::get_mode_info;
+use crate::common::ipc::ClientToServerMsg;
 use crate::common::os_input_output::ServerOsApi;
 use crate::common::pty::PtyInstruction;
 use crate::common::screen::ScreenInstruction;
@@ -12,12 +12,7 @@ use crate::common::thread_bus::SenderWithContext;
 use crate::common::wasm_vm::PluginInstruction;
 use crate::server::{ServerInstruction, SessionMetaData};
 
-fn route_action(
-    action: Action,
-    session: &SessionMetaData,
-    os_input: &dyn ServerOsApi,
-    capabilities: PluginCapabilities,
-) {
+fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn ServerOsApi) {
     match action {
         Action::Write(val) => {
             session
@@ -35,7 +30,7 @@ fn route_action(
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
-                    Event::ModeUpdate(get_mode_info(mode, palette, capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, palette, session.capabilities)),
                 ))
                 .unwrap();
             session
@@ -43,7 +38,7 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
                     mode,
                     palette,
-                    capabilities,
+                    session.capabilities,
                 )))
                 .unwrap();
             session
@@ -190,26 +185,20 @@ pub fn route_thread_main(
     sessions: Arc<RwLock<Option<SessionMetaData>>>,
     mut os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
-    capabilities: PluginCapabilities,
 ) {
     loop {
-        let (instruction, mut err_ctx) = os_input.recv_from_client();
-        err_ctx.add_call(ContextType::IPCServer(ServerContext::from(&instruction)));
+        let (instruction, err_ctx) = os_input.recv_from_client();
+        err_ctx.update_thread_ctx();
         let rlocked_sessions = sessions.read().unwrap();
         match instruction {
-            ServerInstruction::ClientExit => {
-                to_server.send(instruction).unwrap();
+            ClientToServerMsg::ClientExit => {
+                to_server.send(instruction.into()).unwrap();
                 break;
             }
-            ServerInstruction::Action(action) => {
-                route_action(
-                    action,
-                    rlocked_sessions.as_ref().unwrap(),
-                    &*os_input,
-                    capabilities,
-                );
+            ClientToServerMsg::Action(action) => {
+                route_action(action, rlocked_sessions.as_ref().unwrap(), &*os_input);
             }
-            ServerInstruction::TerminalResize(new_size) => {
+            ClientToServerMsg::TerminalResize(new_size) => {
                 rlocked_sessions
                     .as_ref()
                     .unwrap()
@@ -217,12 +206,9 @@ pub fn route_thread_main(
                     .send_to_screen(ScreenInstruction::TerminalResize(new_size))
                     .unwrap();
             }
-            ServerInstruction::NewClient(..) => {
+            ClientToServerMsg::NewClient(..) => {
                 os_input.add_client_sender();
-                to_server.send(instruction).unwrap();
-            }
-            _ => {
-                to_server.send(instruction).unwrap();
+                to_server.send(instruction.into()).unwrap();
             }
         }
     }
