@@ -4,12 +4,10 @@ pub mod possible_tty_inputs;
 pub mod tty_inputs;
 pub mod utils;
 
-use crate::cli::CliArgs;
-use crate::client::start_client;
-use crate::common::input::config::Config;
-use crate::os_input_output::{ClientOsApi, ServerOsApi};
-use crate::server::start_server;
 use std::path::PathBuf;
+use zellij_client::{os_input_output::ClientOsApi, start_client};
+use zellij_server::{os_input_output::ServerOsApi, start_server};
+use zellij_utils::{cli::CliArgs, input::config::Config};
 
 pub fn start(
     client_os_input: Box<dyn ClientOsApi>,

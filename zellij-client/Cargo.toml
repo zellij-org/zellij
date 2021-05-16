@@ -1,0 +1,21 @@
+[package]
+name = "zellij-client"
+version = "0.12.0"
+authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
+edition = "2018"
+description = "The client-side library for Zellij"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+zellij-utils = { path = "../zellij-utils/", version = "0.12.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.12.0" }
+termion = "1.5.0"
+signal-hook = "0.3"
+nix = "0.19.1"
+interprocess = "1.1.1"
+libc = "0.2"
+
+[features]
+test = ["zellij-utils/test"]
