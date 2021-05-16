@@ -1,10 +1,10 @@
 use insta::assert_snapshot;
 
-use zellij_utils::pane_size::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::CliArgs;
+use zellij_utils::pane_size::PositionAndSize;
 
 use crate::tests::utils::commands::{
     MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_DOWN_IN_RESIZE_MODE,

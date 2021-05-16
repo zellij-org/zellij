@@ -110,9 +110,9 @@ pub struct CharacterStyles {
     pub italic: Option<AnsiCode>,
 }
 
-impl CharacterStyles {
-    pub fn new() -> Self {
-        CharacterStyles {
+impl Default for CharacterStyles {
+    fn default() -> Self {
+        Self {
             foreground: None,
             background: None,
             strike: None,
@@ -125,6 +125,12 @@ impl CharacterStyles {
             dim: None,
             italic: None,
         }
+    }
+}
+
+impl CharacterStyles {
+    pub fn new() -> Self {
+        Self::default()
     }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;

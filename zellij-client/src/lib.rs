@@ -10,7 +10,10 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
-use crate::{command_is_executing::CommandIsExecuting, input_handler::input_loop, os_input_output::ClientOsApi};
+use crate::{
+    command_is_executing::CommandIsExecuting, input_handler::input_loop,
+    os_input_output::ClientOsApi,
+};
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{SenderType, SenderWithContext, SyncChannelWithContext},

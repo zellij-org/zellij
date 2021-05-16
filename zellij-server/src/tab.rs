@@ -2,13 +2,13 @@
 //! as well as how they should be resized
 
 use crate::{
+    os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::{boundaries::Boundaries, layout::Layout, pane_resizer::PaneResizer},
     wasm_vm::PluginInstruction,
     ServerInstruction,
-    os_input_output::ServerOsApi,
 };
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
@@ -19,10 +19,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
-use zellij_utils::{
-    input::parse_keys, pane_size::PositionAndSize,
-    shared::adjust_to_size,
-};
+use zellij_utils::{input::parse_keys, pane_size::PositionAndSize, shared::adjust_to_size};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 

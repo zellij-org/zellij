@@ -1,9 +1,9 @@
-use crate::{panes::PaneId, os_input_output::ServerOsApi, tab::Pane};
+use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashSet},
 };
-use zellij_utils::{pane_size::PositionAndSize};
+use zellij_utils::pane_size::PositionAndSize;
 
 pub(crate) struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,

@@ -8,13 +8,13 @@ use std::pin::*;
 use std::time::{Duration, Instant};
 
 use crate::{
+    os_input_output::ServerOsApi,
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
     ui::layout::Layout,
     wasm_vm::PluginInstruction,
     ServerInstruction,
-    os_input_output::ServerOsApi,
 };
 use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},

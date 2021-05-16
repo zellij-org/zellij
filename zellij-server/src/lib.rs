@@ -1,6 +1,6 @@
+pub mod os_input_output;
 pub mod panes;
 pub mod tab;
-pub mod os_input_output;
 
 mod pty;
 mod route;
@@ -16,12 +16,12 @@ use wasmer::Store;
 use zellij_tile::data::PluginCapabilities;
 
 use crate::{
+    os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
     ui::layout::Layout,
     wasm_vm::{wasm_thread_main, PluginInstruction},
-    os_input_output::ServerOsApi,
 };
 use route::route_thread_main;
 use zellij_utils::{

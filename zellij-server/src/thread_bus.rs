@@ -1,12 +1,11 @@
 //! Definitions and helpers for sending and receiving messages between threads.
 
 use crate::{
-    pty::PtyInstruction, screen::ScreenInstruction, wasm_vm::PluginInstruction, ServerInstruction, os_input_output::ServerOsApi
+    os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
+    wasm_vm::PluginInstruction, ServerInstruction,
 };
 use std::sync::mpsc;
-use zellij_utils::{
-    channels::SenderWithContext, errors::ErrorContext,
-};
+use zellij_utils::{channels::SenderWithContext, errors::ErrorContext};
 
 /// A container for senders to the different threads in zellij on the server side
 #[derive(Clone)]

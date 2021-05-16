@@ -3,9 +3,8 @@ use std::sync::{Arc, RwLock};
 use zellij_tile::data::Event;
 
 use crate::{
-    pty::PtyInstruction, screen::ScreenInstruction, wasm_vm::PluginInstruction, ServerInstruction,
-    SessionMetaData,
-    os_input_output::ServerOsApi,
+    os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
+    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData,
 };
 use zellij_utils::{
     channels::SenderWithContext,

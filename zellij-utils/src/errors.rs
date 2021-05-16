@@ -1,7 +1,7 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use crate::channels::{ASYNCOPENCALLS, OPENCALLS, SenderWithContext};
+use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;

@@ -1434,12 +1434,18 @@ impl Debug for Row {
     }
 }
 
-impl Row {
-    pub fn new() -> Self {
+impl Default for Row {
+    fn default() -> Self {
         Row {
             columns: vec![],
             is_canonical: false,
         }
+    }
+}
+
+impl Row {
+    pub fn new() -> Self {
+        Self::default()
     }
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
         Row {
@@ -1525,6 +1531,9 @@ impl Row {
     }
     pub fn len(&self) -> usize {
         self.columns.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.columns.is_empty()
     }
     pub fn delete_character(&mut self, x: usize) {
         if x < self.columns.len() {

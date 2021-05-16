@@ -5,10 +5,10 @@ use std::{iter, str::from_utf8};
 use strip_ansi_escapes::strip;
 
 use colors_transform::{Color, Rgb};
-use zellij_tile::data::{Palette, PaletteColor, PaletteSource, Theme};
-use std::os::unix::{fs::PermissionsExt};
-use std::path::{Path};
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::{fs, io};
+use zellij_tile::data::{Palette, PaletteColor, PaletteSource, Theme};
 
 const UNIX_PERMISSIONS: u32 = 0o700;
 

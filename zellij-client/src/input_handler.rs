@@ -1,10 +1,6 @@
 //! Main input logic.
 
-use crate::{
-    ClientInstruction,
-    CommandIsExecuting,
-    os_input_output::ClientOsApi,
-};
+use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
 use zellij_utils::{
     channels::{SenderWithContext, OPENCALLS},
     errors::ContextType,
