@@ -1,12 +1,12 @@
-use crate::panes::PositionAndSize;
 use ::insta::assert_snapshot;
+use zellij_utils::pane_size::PositionAndSize;
 
-use crate::common::input::config::Config;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::start;
 use crate::tests::utils::commands::QUIT;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::CliArgs;
+use zellij_utils::input::config::Config;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())

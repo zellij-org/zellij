@@ -1,15 +1,15 @@
 use ::insta::assert_snapshot;
 use ::std::collections::HashMap;
 
-use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::possible_tty_inputs::Bytes;
 use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
 use crate::CliArgs;
+use zellij_utils::pane_size::PositionAndSize;
 
-use crate::common::input::config::Config;
 use crate::tests::utils::commands::QUIT;
+use zellij_utils::input::config::Config;
 
 /*
  * These tests are general compatibility tests for non-trivial scenarios running in the terminal.

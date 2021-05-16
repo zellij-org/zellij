@@ -1,7 +1,7 @@
-use crate::panes::PositionAndSize;
+use zellij_utils::pane_size::PositionAndSize;
 use ::insta::assert_snapshot;
 
-use crate::common::input::config::Config;
+use zellij_utils::input::config::Config;
 use crate::tests::fakes::FakeInputOutput;
 use crate::tests::start;
 use crate::tests::utils::commands::{
