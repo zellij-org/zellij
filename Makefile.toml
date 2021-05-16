@@ -2,7 +2,6 @@
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target"
-CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["zellij-utils", "zellij-server", "zellij-tile", "zellij-client", "zellij-tile-utils"]
 SKIP_TEST = false
 
 # Add clippy to the default flow
@@ -25,7 +24,7 @@ env = { "SKIP_TEST" = true }
 [tasks.test]
 condition = { env_false = ["SKIP_TEST"] }
 dependencies = ["pre-test"]
-args = ["test", "--all-features", "--workspace"]
+args = ["test"]
 
 [tasks.post-test]
 env = { "SKIP_TEST" = false }
@@ -38,6 +37,12 @@ run_task = "launch"
 
 [tasks.build-workspace]
 run_task = { name = "build", fork = true }
+
+[tasks.build]
+args = ["build"]
+
+[tasks.build-release]
+args = ["build", "--release"]
 
 [tasks.build-dev-data-dir]
 script_runner = "@duckscript"
