@@ -241,7 +241,7 @@ impl Tab {
         colors: Palette,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
-            let new_terminal = TerminalPane::new(pid, *full_screen_ws);
+            let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors);
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -343,7 +343,7 @@ impl Tab {
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let new_terminal = TerminalPane::new(*pid, *position_and_size);
+                let new_terminal = TerminalPane::new(*pid, *position_and_size, self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -371,7 +371,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -421,7 +421,7 @@ impl Tab {
             {
                 if let PaneId::Terminal(term_pid) = pid {
                     let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
+                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         bottom_winsize.columns as u16,
@@ -441,7 +441,7 @@ impl Tab {
             } else if terminal_to_split.columns() > terminal_to_split.min_width() * 2 {
                 if let PaneId::Terminal(term_pid) = pid {
                     let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
-                    let new_terminal = TerminalPane::new(term_pid, right_winsize);
+                    let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         right_winsize.columns as u16,
@@ -469,7 +469,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -499,7 +499,7 @@ impl Tab {
 
             active_pane.change_pos_and_size(&top_winsize);
 
-            let new_terminal = TerminalPane::new(term_pid, bottom_winsize);
+            let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 bottom_winsize.columns as u16,
@@ -526,7 +526,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -556,7 +556,7 @@ impl Tab {
 
             active_pane.change_pos_and_size(&left_winsize);
 
-            let new_terminal = TerminalPane::new(term_pid, right_winsize);
+            let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 right_winsize.columns as u16,

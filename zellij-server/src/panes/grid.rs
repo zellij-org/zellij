@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
+    str,
 };
 
 use vte::{Params, Perform};
@@ -9,12 +10,33 @@ use vte::{Params, Perform};
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
 
+use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 
 use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
     EMPTY_TERMINAL_CHARACTER,
 };
+
+// this was copied verbatim from alacritty
+fn parse_number(input: &[u8]) -> Option<u8> {
+    if input.is_empty() {
+        return None;
+    }
+    let mut num: u8 = 0;
+    for c in input {
+        let c = *c as char;
+        if let Some(digit) = c.to_digit(10) {
+            num = match num.checked_mul(10).and_then(|v| v.checked_add(digit as u8)) {
+                Some(v) => v,
+                None => return None,
+            }
+        } else {
+            return None;
+        }
+    }
+    Some(num)
+}
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -178,6 +200,7 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
+    colors: Palette,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
@@ -203,7 +226,7 @@ impl Debug for Grid {
 }
 
 impl Grid {
-    pub fn new(rows: usize, columns: usize) -> Self {
+    pub fn new(rows: usize, columns: usize, colors: Palette) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(SCROLL_BACK),
             viewport: vec![Row::new().canonical()],
@@ -224,6 +247,7 @@ impl Grid {
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
+            colors,
         }
     }
     pub fn contains_widechar(&self) -> bool {
@@ -1011,8 +1035,139 @@ impl Perform for Grid {
         // TBD
     }
 
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {
-        // TBD
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
+
+        if params.is_empty() || params[0].is_empty() {
+            return;
+        }
+
+        match params[0] {
+            // Set window title.
+            b"0" | b"2" => {
+                if params.len() >= 2 {
+                    let _title = params[1..]
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";")
+                        .trim()
+                        .to_owned();
+                    // TBD: do something with title?
+                }
+            }
+
+            // Set color index.
+            b"4" => {
+                // TBD: set color index - currently unsupported
+                //
+                // this changes a terminal color index to something else
+                // meaning anything set to that index will be changed
+                // during rendering
+            }
+
+            // Get/set Foreground, Background, Cursor colors.
+            b"10" | b"11" | b"12" => {
+                if params.len() >= 2 {
+                    if let Some(mut dynamic_code) = parse_number(params[0]) {
+                        for param in &params[1..] {
+                            // currently only getting the color sequence is supported,
+                            // setting still isn't
+                            if param == b"?" {
+                                let color_response_message = match self.colors.bg {
+                                    PaletteColor::Rgb((r, g, b)) => {
+                                        format!(
+                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                            // dynamic_code, color.r, color.g, color.b, terminator
+                                            dynamic_code, r, g, b, terminator
+                                        )
+                                    }
+                                    _ => {
+                                        format!(
+                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                            // dynamic_code, color.r, color.g, color.b, terminator
+                                            dynamic_code, 0, 0, 0, terminator
+                                        )
+                                    }
+                                };
+                                self.pending_messages_to_pty
+                                    .push(color_response_message.as_bytes().to_vec());
+                            }
+                            dynamic_code += 1;
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Set cursor style.
+            b"50" => {
+                if params.len() >= 2
+                    && params[1].len() >= 13
+                    && params[1][0..12] == *b"CursorShape="
+                {
+                    let shape = match params[1][12] as char {
+                        '0' => Some(CursorShape::Block),
+                        '1' => Some(CursorShape::Beam),
+                        '2' => Some(CursorShape::Underline),
+                        _ => None,
+                    };
+                    if let Some(cursor_shape) = shape {
+                        self.cursor.change_shape(cursor_shape);
+                    }
+                }
+            }
+
+            // Set clipboard.
+            b"52" => {
+                if params.len() < 3 {
+                    return;
+                }
+
+                let _clipboard = params[1].get(0).unwrap_or(&b'c');
+                match params[2] {
+                    b"?" => {
+                        // TBD: paste from own clipboard - currently unsupported
+                    }
+                    _base64 => {
+                        // TBD: copy to own clipboard - currently unsupported
+                    }
+                }
+            }
+
+            // Reset color index.
+            b"104" => {
+                // Reset all color indexes when no parameters are given.
+                if params.len() == 1 {
+                    // TBD - reset all color changes - currently unsupported
+                    return;
+                }
+
+                // Reset color indexes given as parameters.
+                for param in &params[1..] {
+                    if let Some(_index) = parse_number(param) {
+                        // TBD - reset color index - currently unimplemented
+                    }
+                }
+            }
+
+            // Reset foreground color.
+            b"110" => {
+                // TBD - reset foreground color - currently unimplemented
+            }
+
+            // Reset background color.
+            b"111" => {
+                // TBD - reset background color - currently unimplemented
+            }
+
+            // Reset text cursor color.
+            b"112" => {
+                // TBD - reset text cursor color - currently unimplemented
+            }
+
+            _ => {}
+        }
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {

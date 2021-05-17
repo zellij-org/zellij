@@ -29,6 +29,9 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
         }
         Action::SwitchToMode(mode) => {
             let palette = os_input.load_palette();
+            // TODO: use the palette from the client and remove it from the server os api
+            // this is left here as a stop gap measure until we shift some code around
+            // to allow for this
             session
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
@@ -199,7 +202,9 @@ pub(crate) fn route_thread_main(
                 break;
             }
             ClientToServerMsg::Action(action) => {
-                route_action(action, rlocked_sessions.as_ref().unwrap(), &*os_input);
+                if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+                    route_action(action, rlocked_sessions, &*os_input);
+                }
             }
             ClientToServerMsg::TerminalResize(new_size) => {
                 rlocked_sessions

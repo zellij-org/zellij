@@ -75,7 +75,7 @@ impl ZellijPlugin for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }
-        match self.mode_info.palette.bg {
+        match self.mode_info.palette.cyan {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
             }
