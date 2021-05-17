@@ -177,9 +177,7 @@ fn stream_terminal_bytes(
             while let Some(bytes) = terminal_bytes.next().await {
                 let bytes_is_empty = bytes.is_empty();
                 if debug {
-                    for byte in bytes.iter() {
-                        debug_to_file(*byte, pid).unwrap();
-                    }
+                    debug_to_file(&bytes, pid).unwrap();
                 }
                 if !bytes_is_empty {
                     let _ = senders.send_to_screen(ScreenInstruction::PtyBytes(pid, bytes));
