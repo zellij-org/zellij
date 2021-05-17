@@ -1071,7 +1071,6 @@ impl Perform for Grid {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
-
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
@@ -1147,7 +1146,7 @@ impl Perform for Grid {
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
                     if let Some(_index) = parse_number(param) {
-                            // TBD - reset color index - currently unimplemented
+                        // TBD - reset color index - currently unimplemented
                     }
                 }
             }
