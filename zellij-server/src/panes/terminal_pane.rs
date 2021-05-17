@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::Instant;
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_tile::data::Palette;
 
 use crate::panes::{
     grid::Grid,
@@ -27,6 +28,7 @@ pub struct TerminalPane {
     pub max_height: Option<usize>,
     pub max_width: Option<usize>,
     pub active_at: Instant,
+    pub colors: Palette,
     vte_parser: vte::Parser,
 }
 
@@ -285,8 +287,8 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.columns);
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
+        let grid = Grid::new(position_and_size.rows, position_and_size.columns, palette);
         TerminalPane {
             pid,
             grid,
@@ -297,6 +299,7 @@ impl TerminalPane {
             max_width: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
+            colors: palette,
         }
     }
     pub fn get_x(&self) -> usize {

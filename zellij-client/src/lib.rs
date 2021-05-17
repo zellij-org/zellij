@@ -21,7 +21,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::config::Config,
     input::options::Options,
-    ipc::{ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg, ClientAttributes},
 };
 
 /// Instructions related to the client-side application
@@ -85,6 +85,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
+    let palette = os_input.load_palette();
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
@@ -103,9 +104,13 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     let config_options = Options::from_cli(&config.options, opts.option.clone());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    let client_attributes = ClientAttributes {
+        position_and_size: full_screen_ws,
+        palette,
+    };
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
     os_input.send_to_server(ClientToServerMsg::NewClient(
-        full_screen_ws,
+        client_attributes,
         opts,
         config_options,
     ));

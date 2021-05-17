@@ -16,6 +16,7 @@ signal-hook = "0.3"
 nix = "0.19.1"
 interprocess = "1.1.1"
 libc = "0.2"
+termbg = "0.2.0"
 
 [features]
 test = ["zellij-utils/test"]

@@ -12,6 +12,8 @@ use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
 };
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::shared::default_palette;
+use zellij_tile::data::{Palette, PaletteColor};
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -77,6 +79,7 @@ pub trait ClientOsApi: Send + Sync {
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
+    fn load_palette(&self) -> Palette;
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -154,6 +157,18 @@ impl ClientOsApi for ClientOsInputOutput {
         let receiver = sender.get_receiver();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+    }
+    fn load_palette(&self) -> Palette {
+		let timeout = std::time::Duration::from_millis(100);
+		let term = termbg::terminal();
+        let mut palette = default_palette();
+		if let Ok(rgb) = termbg::rgb(timeout) {
+            palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));
+            // TODO: also dynamically get all other colors from the user's terminal
+            // this should be done in the same method (OSC ]11), but there might be other
+            // considerations here, hence using the library
+        };
+        palette
     }
 }
 

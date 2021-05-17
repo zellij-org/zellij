@@ -18,6 +18,7 @@ use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::options::Options,
     pane_size::PositionAndSize,
+    ipc::ClientAttributes,
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -128,7 +129,7 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
-    full_screen_ws: PositionAndSize,
+    position_and_size: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     mode_info: ModeInfo,
@@ -140,21 +141,20 @@ impl Screen {
     /// Creates and returns a new [`Screen`].
     pub fn new(
         bus: Bus<ScreenInstruction>,
-        full_screen_ws: &PositionAndSize,
+        client_attributes: &ClientAttributes,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         input_mode: InputMode,
-        colors: Palette,
     ) -> Self {
         Screen {
             bus,
             max_panes,
-            full_screen_ws: *full_screen_ws,
+            position_and_size: client_attributes.position_and_size,
+            colors: client_attributes.palette,
             active_tab_index: None,
             tabs: BTreeMap::new(),
             mode_info,
             input_mode,
-            colors,
         }
     }
 
@@ -167,7 +167,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            &self.full_screen_ws,
+            &self.position_and_size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -274,7 +274,7 @@ impl Screen {
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
-        self.full_screen_ws = new_screen_size;
+        self.position_and_size = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
@@ -323,7 +323,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            &self.full_screen_ws,
+            &self.position_and_size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -383,25 +383,23 @@ impl Screen {
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
-    full_screen_ws: PositionAndSize,
+    client_attributes: ClientAttributes,
     config_options: Options,
 ) {
-    let colors = bus.os_input.as_ref().unwrap().load_palette();
     let capabilities = config_options.simplified_ui;
 
     let mut screen = Screen::new(
         bus,
-        &full_screen_ws,
+        &client_attributes,
         max_panes,
         ModeInfo {
-            palette: colors,
+            palette: client_attributes.palette,
             capabilities: PluginCapabilities {
                 arrow_fonts: capabilities,
             },
             ..ModeInfo::default()
         },
         InputMode::Normal,
-        colors,
     );
     loop {
         let (event, mut err_ctx) = screen

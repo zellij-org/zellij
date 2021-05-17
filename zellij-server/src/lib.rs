@@ -29,15 +29,14 @@ use zellij_utils::{
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::options::Options,
-    ipc::{ClientToServerMsg, ServerToClientMsg},
-    pane_size::PositionAndSize,
+    ipc::{ClientToServerMsg, ServerToClientMsg, ClientAttributes},
     setup::{get_default_data_dir, install::populate_data_dir},
 };
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(PositionAndSize, CliArgs, Options),
+    NewClient(ClientAttributes, CliArgs, Options),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -173,13 +172,13 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(full_screen_ws, opts, config_options) => {
+            ServerInstruction::NewClient(client_attributes, opts, config_options) => {
                 let session_data = init_session(
                     os_input.clone(),
                     opts,
                     config_options,
                     to_server.clone(),
-                    full_screen_ws,
+                    client_attributes,
                 );
                 *sessions.write().unwrap() = Some(session_data);
                 sessions
@@ -217,7 +216,7 @@ fn init_session(
     opts: CliArgs,
     config_options: Options,
     to_server: SenderWithContext<ServerInstruction>,
-    full_screen_ws: PositionAndSize,
+    client_attributes: ClientAttributes,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = mpsc::channel();
     let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
@@ -280,7 +279,7 @@ fn init_session(
             let max_panes = opts.max_panes;
 
             move || {
-                screen_thread_main(screen_bus, max_panes, full_screen_ws, config_options);
+                screen_thread_main(screen_bus, max_panes, client_attributes, config_options);
             }
         })
         .unwrap();

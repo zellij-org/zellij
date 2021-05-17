@@ -13,6 +13,8 @@ use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
+use zellij_tile::data::Palette;
+
 type SessionId = u64;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -32,6 +34,12 @@ pub enum ClientType {
     Writer,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientAttributes {
+    pub position_and_size: PositionAndSize,
+    pub palette: Palette,
+}
+
 // Types of messages sent from the client to the server
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMsg {
@@ -47,7 +55,7 @@ pub enum ClientToServerMsg {
     DisconnectFromSession,*/
     ClientExit,
     TerminalResize(PositionAndSize),
-    NewClient(PositionAndSize, CliArgs, Options),
+    NewClient(ClientAttributes, CliArgs, Options),
     Action(Action),
 }
 
