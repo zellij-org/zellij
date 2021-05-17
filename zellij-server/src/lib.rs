@@ -96,7 +96,7 @@ impl Drop for SessionMetaData {
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     #[cfg(not(any(feature = "test", test)))]
     daemonize::Daemonize::new()
-        .working_directory(std::env::var("HOME").unwrap())
+        .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)
         .start()
         .expect("could not daemonize the server process");
