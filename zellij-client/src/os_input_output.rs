@@ -160,7 +160,6 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn load_palette(&self) -> Palette {
         let timeout = std::time::Duration::from_millis(100);
-        let term = termbg::terminal();
         let mut palette = default_palette();
         if let Ok(rgb) = termbg::rgb(timeout) {
             palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));

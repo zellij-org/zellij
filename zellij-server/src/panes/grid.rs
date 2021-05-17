@@ -1046,7 +1046,7 @@ impl Perform for Grid {
             // Set window title.
             b"0" | b"2" => {
                 if params.len() >= 2 {
-                    let title = params[1..]
+                    let _title = params[1..]
                         .iter()
                         .flat_map(|x| str::from_utf8(x))
                         .collect::<Vec<&str>>()
@@ -1072,9 +1072,6 @@ impl Perform for Grid {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
-                            // 10 is the first dynamic color, also the foreground.
-                            let offset = dynamic_code as usize - 10;
-                            let index = 256 + offset;
 
                             // currently only getting the color sequence is supported,
                             // setting still isn't
@@ -1130,12 +1127,12 @@ impl Perform for Grid {
                     return;
                 }
 
-                let clipboard = params[1].get(0).unwrap_or(&b'c');
+                let _clipboard = params[1].get(0).unwrap_or(&b'c');
                 match params[2] {
                     b"?" => {
                         // TBD: paste from own clipboard - currently unsupported
                     }
-                    base64 => {
+                    _base64 => {
                         // TBD: copy to own clipboard - currently unsupported
                     }
                 }
@@ -1152,7 +1149,7 @@ impl Perform for Grid {
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
                     match parse_number(param) {
-                        Some(index) => {
+                        Some(_index) => {
                             // TBD - reset color index - currently unimplemented
                         }
                         None => {}
