@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use zellij_client::os_input_output::ClientOsApi;
-use zellij_server::os_input_output::ServerOsApi;
+use zellij_server::os_input_output::{Pid, ServerOsApi};
 use zellij_tile::data::Palette;
 use zellij_utils::{
     channels::{ChannelWithContext, SenderType, SenderWithContext},
@@ -22,7 +22,7 @@ const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
 #[derive(Clone)]
 pub enum IoEvent {
-    Kill(RawFd),
+    Kill(Pid),
     SetTerminalSizeUsingFd(RawFd, u16, u16),
     IntoRawMode(RawFd),
     UnsetRawMode(RawFd),
@@ -239,10 +239,13 @@ impl ServerOsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
         let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
-        (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
+        (
+            next_terminal_id as i32,
+            Pid::from_raw(next_terminal_id + 1000),
+        ) // secondary number is arbitrary here
     }
     fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut stdin_writes = self.stdin_writes.lock().unwrap();
@@ -278,8 +281,8 @@ impl ServerOsApi for FakeInputOutput {
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
+    fn kill(&mut self, pid: Pid) -> Result<(), nix::Error> {
+        self.io_events.lock().unwrap().push(IoEvent::Kill(pid));
         Ok(())
     }
     fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {

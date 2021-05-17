@@ -8,7 +8,7 @@ use std::pin::*;
 use std::time::{Duration, Instant};
 
 use crate::{
-    os_input_output::ServerOsApi,
+    os_input_output::{Pid, ServerOsApi},
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
@@ -97,7 +97,7 @@ impl From<&PtyInstruction> for PtyContext {
 
 pub(crate) struct Pty {
     pub bus: Bus<PtyInstruction>,
-    pub id_to_child_pid: HashMap<RawFd, RawFd>,
+    pub id_to_child_pid: HashMap<RawFd, Pid>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -235,7 +235,7 @@ impl Pty {
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) = self
+        let (pid_primary, pid_secondary): (RawFd, Pid) = self
             .bus
             .os_input
             .as_mut()
@@ -255,7 +255,7 @@ impl Pty {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+            let (pid_primary, pid_secondary): (RawFd, Pid) =
                 self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
