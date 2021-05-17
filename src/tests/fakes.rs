@@ -10,9 +10,10 @@ use zellij_utils::{nix, zellij_tile};
 use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
 use crate::tests::utils::commands::{QUIT, SLEEP};
 use zellij_client::os_input_output::ClientOsApi;
-use zellij_server::os_input_output::{Pid, ServerOsApi};
+use zellij_server::os_input_output::{async_trait, AsyncReader, Pid, ServerOsApi};
 use zellij_tile::data::Palette;
 use zellij_utils::{
+    async_std,
     channels::{ChannelWithContext, SenderType, SenderWithContext},
     errors::ErrorContext,
     interprocess::local_socket::LocalSocketStream,
@@ -227,6 +228,33 @@ impl ClientOsApi for FakeInputOutput {
     }
 }
 
+struct FakeAsyncReader {
+    fd: RawFd,
+    os_api: Box<dyn ServerOsApi>,
+}
+
+#[async_trait]
+impl AsyncReader for FakeAsyncReader {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        // simulates async semantics: EAGAIN is not propagated to caller
+        loop {
+            let res = self.os_api.read_from_tty_stdout(self.fd, buf);
+            match res {
+                Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => {
+                    async_std::task::sleep(Duration::from_millis(10)).await;
+                    continue;
+                }
+                Err(e) => {
+                    break Err(std::io::Error::from_raw_os_error(
+                        e.as_errno().unwrap() as i32
+                    ))
+                }
+                Ok(n_bytes) => break Ok(n_bytes),
+            }
+        }
+    }
+}
+
 impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, pid: RawFd, cols: u16, rows: u16) {
         let terminal_input = self
@@ -276,6 +304,12 @@ impl ServerOsApi for FakeInputOutput {
             }
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
+    }
+    fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
+        Box::new(FakeAsyncReader {
+            fd,
+            os_api: ServerOsApi::box_clone(self),
+        })
     }
     fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error> {
         self.io_events.lock().unwrap().push(IoEvent::TcDrain(pid));
