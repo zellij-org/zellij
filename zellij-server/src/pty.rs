@@ -37,7 +37,7 @@ impl ReadFromPid {
 
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut read_buffer = [0; 65535];
         let pid = self.pid;
         let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);

@@ -189,7 +189,7 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
 
 pub(crate) fn route_thread_main(
     sessions: Arc<RwLock<Option<SessionMetaData>>>,
-    mut os_input: Box<dyn ServerOsApi>,
+    os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
     loop {
