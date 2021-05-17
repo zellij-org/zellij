@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Remove unused imports (https://github.com/zellij-org/zellij/pull/504)
 * More Infrastructure changes for the upcoming session detach feature: run server and client in separate processes (https://github.com/zellij-org/zellij/pull/499)
 * Restructuring cargo workspace: Separate client, server and utils into separate crates (https://github.com/zellij-org/zellij/pull/515)
+* Terminal compatibility: handle most OSC sequences (https://github.com/zellij-org/zellij/pull/517)
 
 ## [0.11.0] - 2021-05-15
 
