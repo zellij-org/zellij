@@ -1054,7 +1054,6 @@ impl Perform for Grid {
                         .trim()
                         .to_owned();
                     // TBD: do something with title?
-                    return;
                 }
             }
 
@@ -1117,7 +1116,6 @@ impl Perform for Grid {
                     if let Some(cursor_shape) = shape {
                         self.cursor.change_shape(cursor_shape);
                     }
-                    return;
                 }
             }
 
@@ -1148,11 +1146,8 @@ impl Perform for Grid {
 
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
-                    match parse_number(param) {
-                        Some(_index) => {
+                    if let Some(_index) = parse_number(param) {
                             // TBD - reset color index - currently unimplemented
-                        }
-                        None => {}
                     }
                 }
             }

@@ -41,6 +41,7 @@ pub struct ClientAttributes {
 }
 
 // Types of messages sent from the client to the server
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMsg {
     /*// List which sessions are available
