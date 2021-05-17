@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
-    str
+    str,
 };
 
 use vte::{Params, Perform};
@@ -10,8 +10,8 @@ use vte::{Params, Perform};
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
 
-use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 use zellij_tile::data::{Palette, PaletteColor};
+use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 
 use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
@@ -1056,7 +1056,7 @@ impl Perform for Grid {
                     // TBD: do something with title?
                     return;
                 }
-            },
+            }
 
             // Set color index.
             b"4" => {
@@ -1065,7 +1065,7 @@ impl Perform for Grid {
                 // this changes a terminal color index to something else
                 // meaning anything set to that index will be changed
                 // during rendering
-            },
+            }
 
             // Get/set Foreground, Background, Cursor colors.
             b"10" | b"11" | b"12" => {
@@ -1079,31 +1079,31 @@ impl Perform for Grid {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-								let color_response_message = match self.colors.bg {
+                                let color_response_message = match self.colors.bg {
                                     PaletteColor::Rgb((r, g, b)) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
                                             dynamic_code, r, g, b, terminator
                                         )
-                                    },
+                                    }
                                     _ => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
                                             dynamic_code, 0, 0, 0, terminator
                                         )
-
                                     }
                                 };
-                                self.pending_messages_to_pty.push(color_response_message.as_bytes().to_vec());
+                                self.pending_messages_to_pty
+                                    .push(color_response_message.as_bytes().to_vec());
                             }
                             dynamic_code += 1;
                         }
                         return;
                     }
                 }
-            },
+            }
 
             // Set cursor style.
             b"50" => {
@@ -1122,7 +1122,7 @@ impl Perform for Grid {
                     }
                     return;
                 }
-            },
+            }
 
             // Set clipboard.
             b"52" => {
@@ -1139,7 +1139,7 @@ impl Perform for Grid {
                         // TBD: copy to own clipboard - currently unsupported
                     }
                 }
-            },
+            }
 
             // Reset color index.
             b"104" => {
@@ -1158,7 +1158,7 @@ impl Perform for Grid {
                         None => {}
                     }
                 }
-            },
+            }
 
             // Reset foreground color.
             b"110" => {

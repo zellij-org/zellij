@@ -17,8 +17,8 @@ use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities,
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::options::Options,
-    pane_size::PositionAndSize,
     ipc::ClientAttributes,
+    pane_size::PositionAndSize,
 };
 
 /// Instructions that can be sent to the [`Screen`].

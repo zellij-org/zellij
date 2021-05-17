@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::Instant;
-use zellij_utils::pane_size::PositionAndSize;
 use zellij_tile::data::Palette;
+use zellij_utils::pane_size::PositionAndSize;
 
 use crate::panes::{
     grid::Grid,

@@ -21,7 +21,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::config::Config,
     input::options::Options,
-    ipc::{ClientToServerMsg, ServerToClientMsg, ClientAttributes},
+    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
 /// Instructions related to the client-side application

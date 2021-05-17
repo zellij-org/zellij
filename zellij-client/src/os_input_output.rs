@@ -7,13 +7,13 @@ use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
 };
 use zellij_utils::pane_size::PositionAndSize;
 use zellij_utils::shared::default_palette;
-use zellij_tile::data::{Palette, PaletteColor};
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -159,10 +159,10 @@ impl ClientOsApi for ClientOsInputOutput {
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
     fn load_palette(&self) -> Palette {
-		let timeout = std::time::Duration::from_millis(100);
-		let term = termbg::terminal();
+        let timeout = std::time::Duration::from_millis(100);
+        let term = termbg::terminal();
         let mut palette = default_palette();
-		if let Ok(rgb) = termbg::rgb(timeout) {
+        if let Ok(rgb) = termbg::rgb(timeout) {
             palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));
             // TODO: also dynamically get all other colors from the user's terminal
             // this should be done in the same method (OSC ]11), but there might be other

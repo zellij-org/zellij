@@ -27,7 +27,7 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .send_to_screen(ScreenInstruction::WriteCharacter(val))
                 .unwrap();
         }
-       Action::SwitchToMode(mode) => {
+        Action::SwitchToMode(mode) => {
             let palette = os_input.load_palette();
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around

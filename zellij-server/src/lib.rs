@@ -29,7 +29,7 @@ use zellij_utils::{
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::options::Options,
-    ipc::{ClientToServerMsg, ServerToClientMsg, ClientAttributes},
+    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
     setup::{get_default_data_dir, install::populate_data_dir},
 };
 

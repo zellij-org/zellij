@@ -147,7 +147,9 @@ fn add_next_tabs_msg(
 fn tab_line_prefix(palette: Palette) -> LinePart {
     let prefix_text = " Zellij ".to_string();
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = style!(palette.white, palette.cyan).bold().paint(prefix_text);
+    let prefix_styled_text = style!(palette.white, palette.cyan)
+        .bold()
+        .paint(prefix_text);
     LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
