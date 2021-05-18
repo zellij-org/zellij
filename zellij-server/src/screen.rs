@@ -36,6 +36,8 @@ pub(crate) enum ScreenInstruction {
     ResizeRight,
     ResizeDown,
     ResizeUp,
+    ResizeIncrease,
+    ResizeDecrease,
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
@@ -88,6 +90,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ResizeRight => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown => ScreenContext::ResizeDown,
             ScreenInstruction::ResizeUp => ScreenContext::ResizeUp,
+            ScreenInstruction::ResizeIncrease => ScreenContext::ResizeIncrease,
+            ScreenInstruction::ResizeDecrease => ScreenContext::ResizeDecrease,
             ScreenInstruction::SwitchFocus => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
@@ -542,6 +546,12 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::ResizeUp => {
                 screen.get_active_tab_mut().unwrap().resize_up();
+            }
+            ScreenInstruction::ResizeIncrease => {
+                screen.get_active_tab_mut().unwrap().resize_increase();
+            }
+            ScreenInstruction::ResizeDecrease => {
+                screen.get_active_tab_mut().unwrap().resize_decrease();
             }
             ScreenInstruction::SwitchFocus => {
                 screen.get_active_tab_mut().unwrap().move_focus();

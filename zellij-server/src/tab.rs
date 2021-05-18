@@ -1795,6 +1795,58 @@ impl Tab {
         self.relayout_tab(Direction::Vertical);
         self.render();
     }
+    pub fn resize_increase(&mut self) {
+        let count = 2;
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
+                && self.can_increase_pane_and_surroundings_down(&active_pane_id, count)
+            {
+                self.increase_pane_and_surroundings_right(&active_pane_id, count);
+                self.increase_pane_and_surroundings_down(&active_pane_id, count);
+            } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
+                && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
+            {
+                self.increase_pane_and_surroundings_up(&active_pane_id, count);
+                self.increase_pane_and_surroundings_left(&active_pane_id, count);
+            } else if self.can_increase_pane_and_surroundings_down(&active_pane_id, count)
+                && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
+            {
+                self.increase_pane_and_surroundings_down(&active_pane_id, count);
+                self.increase_pane_and_surroundings_left(&active_pane_id, count);
+            } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
+                && self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
+            {
+                self.increase_pane_and_surroundings_up(&active_pane_id, count);
+                self.increase_pane_and_surroundings_right(&active_pane_id, count);
+            }
+        }
+    }
+    pub fn resize_decrease(&mut self) {
+        let count = 2;
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
+                && self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
+            {
+                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+                self.reduce_pane_and_surroundings_down(&active_pane_id, count);
+            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
+                && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
+            {
+                self.reduce_pane_and_surroundings_up(&active_pane_id, count);
+                self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+            } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
+                && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
+            {
+                self.reduce_pane_and_surroundings_down(&active_pane_id, count);
+                self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
+                && self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
+            {
+                self.reduce_pane_and_surroundings_up(&active_pane_id, count);
+                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+            }
+        }
+    }
     pub fn move_focus(&mut self) {
         if !self.has_selectable_panes() {
             return;
