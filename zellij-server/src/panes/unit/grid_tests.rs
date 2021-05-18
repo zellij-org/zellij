@@ -1,6 +1,6 @@
 use super::super::Grid;
 use ::insta::assert_snapshot;
-use zellij_tile::data::Palette;
+use zellij_utils::{vte, zellij_tile::data::Palette};
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();

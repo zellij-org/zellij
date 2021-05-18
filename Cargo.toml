@@ -13,14 +13,9 @@ resolver = "2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zellij-utils = { path = "zellij-utils/", version = "0.12.0" }
 zellij-client = { path = "zellij-client/", version = "0.12.0" }
 zellij-server = { path = "zellij-server/", version = "0.12.0" }
-zellij-tile = { path = "zellij-tile/", version = "0.12.0" }
-structopt = "0.3"
-interprocess = "1.1.1"
-vte = "0.10.1"
-nix = "0.19.1"
+zellij-utils = { path = "zellij-utils/", version = "0.12.0" }
 
 [dev-dependencies]
 insta = "1.6.0"

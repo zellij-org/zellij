@@ -2290,13 +2290,9 @@ name = "zellij"
 version = "0.12.0"
 dependencies = [
  "insta",
- "interprocess",
- "nix",
  "structopt",
- "vte 0.10.1",
  "zellij-client",
  "zellij-server",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2304,13 +2300,7 @@ dependencies = [
 name = "zellij-client"
 version = "0.12.0"
 dependencies = [
- "interprocess",
- "libc",
- "nix",
- "signal-hook 0.3.8",
  "termbg",
- "termion",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2319,22 +2309,12 @@ name = "zellij-server"
 version = "0.12.0"
 dependencies = [
  "ansi_term 0.12.1",
- "async-std",
  "daemonize",
  "insta",
- "interprocess",
- "libc",
- "nix",
- "serde",
  "serde_json",
- "serde_yaml",
- "signal-hook 0.3.8",
- "termion",
  "unicode-width",
- "vte 0.10.1",
  "wasmer",
  "wasmer-wasi",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2366,14 +2346,17 @@ dependencies = [
  "directories-next",
  "interprocess",
  "lazy_static",
+ "libc",
  "names",
  "nix",
  "serde",
  "serde_yaml",
+ "signal-hook 0.3.8",
  "strip-ansi-escapes",
  "structopt",
  "strum",
  "tempfile",
  "termion",
+ "vte 0.10.1",
  "zellij-tile",
 ]

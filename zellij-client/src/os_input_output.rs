@@ -1,3 +1,5 @@
+use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+
 use interprocess::local_socket::LocalSocketStream;
 use nix::pty::Winsize;
 use nix::sys::termios;
@@ -8,12 +10,12 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use zellij_tile::data::{Palette, PaletteColor};
-use zellij_utils::errors::ErrorContext;
-use zellij_utils::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+use zellij_utils::{
+    errors::ErrorContext,
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    pane_size::PositionAndSize,
+    shared::default_palette,
 };
-use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::shared::default_palette;
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");

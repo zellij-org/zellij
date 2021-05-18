@@ -1,3 +1,5 @@
+use zellij_utils::{serde, serde_yaml};
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::{fs::File, io::prelude::*};
@@ -167,18 +169,21 @@ fn split_space(
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(crate = "self::serde")]
 pub(crate) enum Direction {
     Horizontal,
     Vertical,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(crate = "self::serde")]
 pub(crate) enum SplitSize {
     Percent(u8), // 1 to 100
     Fixed(u16),  // An absolute number of columns or rows
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(crate = "self::serde")]
 pub(crate) struct Layout {
     pub direction: Direction,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
 
+use zellij_utils::zellij_tile;
+
 use crate::{
     panes::PaneId,
     pty::{PtyInstruction, VteBytes},

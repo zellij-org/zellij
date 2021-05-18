@@ -1,3 +1,11 @@
+use std::env;
+use std::os::unix::io::RawFd;
+use std::path::PathBuf;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+
+use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+
 use interprocess::local_socket::LocalSocketStream;
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
@@ -6,17 +14,12 @@ use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult, Pid};
 use signal_hook::consts::*;
-use std::env;
-use std::os::unix::io::RawFd;
-use std::path::PathBuf;
-use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
 use zellij_tile::data::Palette;
-use zellij_utils::errors::ErrorContext;
-use zellij_utils::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+use zellij_utils::{
+    errors::ErrorContext,
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    shared::default_palette,
 };
-use zellij_utils::shared::default_palette;
 
 pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
@@ -36,7 +39,7 @@ pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 /// process exits.
 fn handle_command_exit(mut child: Child) {
     // register the SIGINT signal (TODO handle more signals)
-    let mut signals = ::signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
+    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {

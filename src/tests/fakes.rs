@@ -1,18 +1,21 @@
-use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
-use crate::tests::utils::commands::{QUIT, SLEEP};
-use interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+
+use zellij_utils::{nix, zellij_tile};
+
+use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::{QUIT, SLEEP};
 use zellij_client::os_input_output::ClientOsApi;
 use zellij_server::os_input_output::ServerOsApi;
 use zellij_tile::data::Palette;
 use zellij_utils::{
     channels::{ChannelWithContext, SenderType, SenderWithContext},
     errors::ErrorContext,
+    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::PositionAndSize,
     shared::default_palette,

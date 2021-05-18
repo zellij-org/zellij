@@ -9,6 +9,8 @@ mod thread_bus;
 mod ui;
 mod wasm_vm;
 
+use zellij_utils::zellij_tile;
+
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc};
@@ -131,8 +133,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use interprocess::local_socket::LocalSocketListener;
-            use zellij_utils::shared::set_permissions;
+            use zellij_utils::{
+                interprocess::local_socket::LocalSocketListener, shared::set_permissions,
+            };
 
             let os_input = os_input.clone();
             let sessions = sessions.clone();

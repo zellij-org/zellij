@@ -1,3 +1,5 @@
+use zellij_utils::{vte, zellij_tile};
+
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::Instant;
