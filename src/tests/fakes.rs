@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use zellij_client::os_input_output::ClientOsApi;
-use zellij_server::os_input_output::ServerOsApi;
+use zellij_server::os_input_output::{Pid, ServerOsApi};
 use zellij_tile::data::Palette;
 use zellij_utils::{
     channels::{ChannelWithContext, SenderType, SenderWithContext},
@@ -22,7 +22,7 @@ const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
 #[derive(Clone)]
 pub enum IoEvent {
-    Kill(RawFd),
+    Kill(Pid),
     SetTerminalSizeUsingFd(RawFd, u16, u16),
     IntoRawMode(RawFd),
     UnsetRawMode(RawFd),
@@ -127,7 +127,7 @@ impl FakeInputOutput {
         }
         self.stdin_commands = Arc::new(Mutex::new(stdin_commands));
     }
-    pub fn add_terminal(&mut self, fd: RawFd) {
+    pub fn add_terminal(&self, fd: RawFd) {
         self.stdin_writes.lock().unwrap().insert(fd, vec![]);
     }
     pub fn add_sigwinch_event(&mut self, new_position_and_size: PositionAndSize) {
@@ -225,7 +225,7 @@ impl ClientOsApi for FakeInputOutput {
 }
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_fd(&mut self, pid: RawFd, cols: u16, rows: u16) {
+    fn set_terminal_size_using_fd(&self, pid: RawFd, cols: u16, rows: u16) {
         let terminal_input = self
             .possible_tty_inputs
             .get(&cols)
@@ -239,12 +239,15 @@ impl ServerOsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn spawn_terminal(&mut self, _file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(&self, _file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
         let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
-        (next_terminal_id as i32, next_terminal_id + 1000) // secondary number is arbitrary here
+        (
+            next_terminal_id as i32,
+            Pid::from_raw(next_terminal_id + 1000),
+        ) // secondary number is arbitrary here
     }
-    fn write_to_tty_stdin(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, pid: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         let mut stdin_writes = self.stdin_writes.lock().unwrap();
         let write_buffer = stdin_writes.get_mut(&pid).unwrap();
         let mut bytes_written = 0;
@@ -254,7 +257,7 @@ impl ServerOsApi for FakeInputOutput {
         }
         Ok(bytes_written)
     }
-    fn read_from_tty_stdout(&mut self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
         let mut bytes_read = 0;
         match read_buffers.get_mut(&pid) {
@@ -271,15 +274,15 @@ impl ServerOsApi for FakeInputOutput {
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
     }
-    fn tcdrain(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, pid: RawFd) -> Result<(), nix::Error> {
         self.io_events.lock().unwrap().push(IoEvent::TcDrain(pid));
         Ok(())
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn kill(&mut self, fd: RawFd) -> Result<(), nix::Error> {
-        self.io_events.lock().unwrap().push(IoEvent::Kill(fd));
+    fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
+        self.io_events.lock().unwrap().push(IoEvent::Kill(pid));
         Ok(())
     }
     fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
@@ -292,7 +295,7 @@ impl ServerOsApi for FakeInputOutput {
     fn send_to_client(&self, msg: ServerToClientMsg) {
         self.send_instructions_to_client.send(msg).unwrap();
     }
-    fn add_client_sender(&mut self) {}
+    fn add_client_sender(&self) {}
     fn update_receiver(&mut self, _stream: LocalSocketStream) {}
     fn load_palette(&self) -> Palette {
         default_palette()

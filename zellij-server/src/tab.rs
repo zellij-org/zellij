@@ -232,7 +232,7 @@ impl Tab {
         position: usize,
         name: String,
         full_screen_ws: &PositionAndSize,
-        mut os_api: Box<dyn ServerOsApi>,
+        os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
@@ -624,9 +624,9 @@ impl Tab {
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self.panes.get(&pane_id).unwrap();
-                let mut adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
+                let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
                 self.os_api
-                    .write_to_tty_stdin(active_terminal_id, &mut adjusted_input)
+                    .write_to_tty_stdin(active_terminal_id, &adjusted_input)
                     .expect("failed to write to terminal");
                 self.os_api
                     .tcdrain(active_terminal_id)

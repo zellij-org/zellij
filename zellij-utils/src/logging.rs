@@ -71,7 +71,7 @@ pub fn _delete_log_dir() -> io::Result<()> {
     }
 }
 
-pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
+pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(&*ZELLIJ_TMP_LOG_DIR);
     path.push(format!("zellij-{}.log", pid.to_string()));
@@ -81,5 +81,5 @@ pub fn debug_to_file(message: u8, pid: RawFd) -> io::Result<()> {
         .create(true)
         .open(&path)?;
     set_permissions(&path)?;
-    file.write_all(&[message])
+    file.write_all(message)
 }

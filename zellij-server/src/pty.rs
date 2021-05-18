@@ -8,7 +8,7 @@ use std::pin::*;
 use std::time::{Duration, Instant};
 
 use crate::{
-    os_input_output::ServerOsApi,
+    os_input_output::{Pid, ServerOsApi},
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
@@ -37,7 +37,7 @@ impl ReadFromPid {
 
 impl Stream for ReadFromPid {
     type Item = Vec<u8>;
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut read_buffer = [0; 65535];
         let pid = self.pid;
         let read_result = &self.os_input.read_from_tty_stdout(pid, &mut read_buffer);
@@ -97,7 +97,7 @@ impl From<&PtyInstruction> for PtyContext {
 
 pub(crate) struct Pty {
     pub bus: Bus<PtyInstruction>,
-    pub id_to_child_pid: HashMap<RawFd, RawFd>,
+    pub id_to_child_pid: HashMap<RawFd, Pid>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -177,9 +177,7 @@ fn stream_terminal_bytes(
             while let Some(bytes) = terminal_bytes.next().await {
                 let bytes_is_empty = bytes.is_empty();
                 if debug {
-                    for byte in bytes.iter() {
-                        debug_to_file(*byte, pid).unwrap();
-                    }
+                    debug_to_file(&bytes, pid).unwrap();
                 }
                 if !bytes_is_empty {
                     let _ = senders.send_to_screen(ScreenInstruction::PtyBytes(pid, bytes));
@@ -235,7 +233,7 @@ impl Pty {
         }
     }
     pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, RawFd) = self
+        let (pid_primary, pid_secondary): (RawFd, Pid) = self
             .bus
             .os_input
             .as_mut()
@@ -255,7 +253,7 @@ impl Pty {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, RawFd) =
+            let (pid_primary, pid_secondary): (RawFd, Pid) =
                 self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);

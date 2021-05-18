@@ -4,7 +4,7 @@ use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
-use nix::unistd::{self, ForkResult, Pid};
+use nix::unistd::{self, ForkResult};
 use signal_hook::consts::*;
 use std::env;
 use std::os::unix::io::RawFd;
@@ -18,6 +18,7 @@ use zellij_utils::ipc::{
 };
 use zellij_utils::shared::default_palette;
 
+pub use nix::unistd::Pid;
 pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
@@ -76,8 +77,8 @@ fn handle_command_exit(mut child: Child) {
 /// set.
 // FIXME this should probably be split into different functions, or at least have less levels
 // of indentation in some way
-fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, RawFd) {
-    let (pid_primary, pid_secondary): (RawFd, RawFd) = {
+fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, Pid) {
+    let (pid_primary, pid_secondary): (RawFd, Pid) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
@@ -112,7 +113,7 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
                         }
                     },
                 };
-                (pid_primary, pid_secondary.as_raw())
+                (pid_primary, pid_secondary)
             }
             Err(e) => {
                 panic!("failed to fork {:?}", e);
@@ -133,20 +134,17 @@ pub struct ServerOsInputOutput {
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
-    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16);
+    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with an optional file to open in a terminal program.
-    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd);
+    fn spawn_terminal(&self, file_to_open: Option<PathBuf>) -> (RawFd, Pid);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
-    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
-    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
-    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error>;
+    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error>;
     /// Terminate the process with process ID `pid`.
-    // FIXME `RawFd` is semantically the wrong type here. It should either be a raw libc::pid_t,
-    // or a nix::unistd::Pid. See `man kill.3`, nix::sys::signal::kill (both take an argument
-    // called `pid` and of type `pid_t`, and not `fd`)
-    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error>;
+    fn kill(&self, pid: Pid) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     /// Receives a message on server-side IPC channel
@@ -154,41 +152,41 @@ pub trait ServerOsApi: Send + Sync {
     /// Sends a message to client
     fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
-    fn add_client_sender(&mut self);
+    fn add_client_sender(&self);
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
-    fn set_terminal_size_using_fd(&mut self, fd: RawFd, cols: u16, rows: u16) {
+    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(fd, cols, rows);
     }
-    fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> (RawFd, RawFd) {
+    fn spawn_terminal(&self, file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(file_to_open, orig_termios.clone())
     }
-    fn read_from_tty_stdout(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
     }
-    fn write_to_tty_stdin(&mut self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         unistd::write(fd, buf)
     }
-    fn tcdrain(&mut self, fd: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error> {
         termios::tcdrain(fd)
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn kill(&mut self, pid: RawFd) -> Result<(), nix::Error> {
+    fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
         // TODO:
         // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
         // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
         // that's why we're sending SIGKILL here
         // A better solution would be to send SIGINT here and not wait for it, and then have
         // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
-        kill(Pid::from_raw(pid), Some(Signal::SIGKILL)).unwrap();
-        waitpid(Pid::from_raw(pid), None).unwrap();
+        kill(pid, Some(Signal::SIGKILL)).unwrap();
+        waitpid(pid, None).unwrap();
         Ok(())
     }
     fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
@@ -207,7 +205,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap()
             .send(msg);
     }
-    fn add_client_sender(&mut self) {
+    fn add_client_sender(&self) {
         assert!(self.send_instructions_to_client.lock().unwrap().is_none());
         let sender = self
             .receive_instructions_from_client
