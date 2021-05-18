@@ -1,5 +1,6 @@
-use crate::panes::PositionAndSize;
-use crate::panes::TerminalPane;
+use zellij_server::{panes::TerminalPane, tab::Pane};
+use zellij_tile::data::Palette;
+use zellij_utils::pane_size::PositionAndSize;
 
 pub fn get_output_frame_snapshots(
     output_frames: &[Vec<u8>],
@@ -7,7 +8,7 @@ pub fn get_output_frame_snapshots(
 ) -> Vec<String> {
     let mut vte_parser = vte::Parser::new();
     let main_pid = 0;
-    let mut terminal_output = TerminalPane::new(main_pid, *win_size);
+    let mut terminal_output = TerminalPane::new(main_pid, *win_size, Palette::default());
 
     let mut snapshots = vec![];
     for frame in output_frames.iter() {

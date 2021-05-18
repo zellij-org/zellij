@@ -1,4 +1,5 @@
-use crate::panes::PositionAndSize;
+use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
+use crate::tests::utils::commands::{QUIT, SLEEP};
 use interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
@@ -6,15 +7,16 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
-
-use crate::common::ipc::{ClientToServerMsg, ServerToClientMsg};
-use crate::common::thread_bus::{ChannelWithContext, SenderType, SenderWithContext};
-use crate::errors::ErrorContext;
-use crate::os_input_output::{ClientOsApi, ServerOsApi};
-use crate::tests::possible_tty_inputs::{get_possible_tty_inputs, Bytes};
-use crate::tests::utils::commands::{QUIT, SLEEP};
-use crate::utils::shared::default_palette;
+use zellij_client::os_input_output::ClientOsApi;
+use zellij_server::os_input_output::ServerOsApi;
 use zellij_tile::data::Palette;
+use zellij_utils::{
+    channels::{ChannelWithContext, SenderType, SenderWithContext},
+    errors::ErrorContext,
+    ipc::{ClientToServerMsg, ServerToClientMsg},
+    pane_size::PositionAndSize,
+    shared::default_palette,
+};
 
 const MIN_TIME_BETWEEN_SNAPSHOTS: Duration = Duration::from_millis(150);
 
@@ -217,6 +219,9 @@ impl ClientOsApi for FakeInputOutput {
         }
     }
     fn connect_to_server(&self, _path: &std::path::Path) {}
+    fn load_palette(&self) -> Palette {
+        default_palette()
+    }
 }
 
 impl ServerOsApi for FakeInputOutput {
