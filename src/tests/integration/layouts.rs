@@ -25,7 +25,7 @@ pub fn accepts_basic_layout() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     let mut opts = CliArgs::default();
-    opts.layout = Some(PathBuf::from(
+    opts.layout_path = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
 

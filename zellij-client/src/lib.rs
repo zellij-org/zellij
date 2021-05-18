@@ -111,8 +111,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
     os_input.send_to_server(ClientToServerMsg::NewClient(
         client_attributes,
-        opts,
-        config_options,
+        Box::new(opts),
+        Box::new(config_options),
     ));
     os_input.set_raw_mode(0);
     let _ = os_input

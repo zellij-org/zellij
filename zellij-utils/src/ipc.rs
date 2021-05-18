@@ -56,7 +56,7 @@ pub enum ClientToServerMsg {
     DisconnectFromSession,*/
     ClientExit,
     TerminalResize(PositionAndSize),
-    NewClient(ClientAttributes, CliArgs, Options),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
     Action(Action),
 }
 

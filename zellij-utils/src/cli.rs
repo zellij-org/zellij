@@ -24,6 +24,10 @@ pub struct CliArgs {
     #[structopt(short, long, parse(from_os_str))]
     pub layout: Option<PathBuf>,
 
+    /// Path to a layout yaml file
+    #[structopt(long, parse(from_os_str))]
+    pub layout_path: Option<PathBuf>,
+
     /// Change where zellij looks for the configuration
     #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
     pub config: Option<PathBuf>,

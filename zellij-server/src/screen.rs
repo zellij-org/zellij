@@ -380,11 +380,14 @@ impl Screen {
     }
 }
 
+// The box is here in order to make the
+// NewClient enum smaller
+#[allow(clippy::boxed_local)]
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
-    config_options: Options,
+    config_options: Box<Options>,
 ) {
     let capabilities = config_options.simplified_ui;
 

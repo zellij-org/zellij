@@ -36,7 +36,7 @@ use zellij_utils::{
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(ClientAttributes, CliArgs, Options),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -213,8 +213,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
-    opts: CliArgs,
-    config_options: Options,
+    opts: Box<CliArgs>,
+    config_options: Box<Options>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
 ) -> SessionMetaData {
@@ -241,10 +241,13 @@ fn init_session(
     let default_layout = Some(PathBuf::from("default"));
     #[cfg(any(feature = "test", test))]
     let default_layout = None;
+    let layout_path = opts.layout_path;
     let maybe_layout = opts
         .layout
-        .map(|p| Layout::new(&p, &data_dir))
-        .or_else(|| default_layout.map(|p| Layout::from_defaults(&p, &data_dir)));
+        .as_ref()
+        .map(|p| Layout::from_dir(&p, &data_dir))
+        .or_else(|| layout_path.map(|p| Layout::new(&p)))
+        .or_else(|| default_layout.map(|p| Layout::from_dir(&p, &data_dir)));
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())

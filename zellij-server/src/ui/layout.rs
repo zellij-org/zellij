@@ -190,10 +190,9 @@ pub(crate) struct Layout {
 }
 
 impl Layout {
-    pub fn new(layout_path: &Path, data_dir: &Path) -> Self {
-        let layout_dir = data_dir.join("layouts/");
+    pub fn new(layout_path: &Path) -> Self {
         let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_dir.join(&layout_path).with_extension("yaml")))
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
             .unwrap_or_else(|_| panic!("cannot find layout {}", &layout_path.display()));
 
         let mut layout = String::new();
@@ -207,14 +206,8 @@ impl Layout {
 
     // It wants to use Path here, but that doesn't compile.
     #[allow(clippy::ptr_arg)]
-    pub fn from_defaults(layout_path: &PathBuf, data_dir: &Path) -> Self {
-        Self::new(
-            &data_dir
-                .join("layouts/")
-                .join(layout_path)
-                .with_extension("yaml"),
-            &data_dir,
-        )
+    pub fn from_dir(layout: &PathBuf, data_dir: &Path) -> Self {
+        Self::new(&data_dir.join("layouts/").join(layout))
     }
 
     pub fn total_terminal_panes(&self) -> usize {
