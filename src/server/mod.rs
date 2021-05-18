@@ -27,7 +27,7 @@ use route::route_thread_main;
 /// ones sent by client to server
 #[derive(Debug, Clone)]
 pub enum ServerInstruction {
-    NewClient(PositionAndSize, CliArgs, Options),
+    NewClient(PositionAndSize, Box<CliArgs>, Box<Options>),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -186,8 +186,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
-    opts: CliArgs,
-    config_options: Options,
+    opts: Box<CliArgs>,
+    config_options: Box<Options>,
     to_server: SenderWithContext<ServerInstruction>,
     full_screen_ws: PositionAndSize,
 ) -> SessionMetaData {

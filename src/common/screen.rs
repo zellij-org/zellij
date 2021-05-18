@@ -325,11 +325,14 @@ impl Screen {
     }
 }
 
+// The box is here in order to make the
+// NewClient enum smaller
+#[allow(clippy::boxed_local)]
 pub fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
     full_screen_ws: PositionAndSize,
-    config_options: Options,
+    config_options: Box<Options>,
 ) {
     let colors = bus.os_input.as_ref().unwrap().load_palette();
     let capabilities = config_options.simplified_ui;
