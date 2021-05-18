@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Restructuring cargo workspace: Separate client, server and utils into separate crates (https://github.com/zellij-org/zellij/pull/515)
 * Terminal compatibility: handle most OSC sequences (https://github.com/zellij-org/zellij/pull/517)
 * Split `layout` flag into `layout` and `layout-path` (https://github.com/zellij-org/zellij/pull/514)
+* Fix behaviour of the `clean` flag (https://github.com/zellij-org/zellij/pull/519)
 
 ## [0.11.0] - 2021-05-15
 

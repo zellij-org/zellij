@@ -146,30 +146,38 @@ pub struct Setup {
 
 impl Setup {
     /// Entrypoint from main
-    pub fn from_cli(&self, opts: CliArgs) -> std::io::Result<()> {
+    pub fn from_cli(&self, opts: &CliArgs) -> std::io::Result<()> {
+        if self.clean {
+            return Ok(());
+        }
+
         if self.dump_config {
             dump_default_config()?;
+            std::process::exit(0);
         }
 
         if self.check {
-            Setup::check_defaults_config(opts)?;
+            Setup::check_defaults_config(&opts)?;
+            std::process::exit(0);
         }
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell.into());
+            std::process::exit(0);
         }
 
         Ok(())
     }
 
-    pub fn check_defaults_config(opts: CliArgs) -> std::io::Result<()> {
-        let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
-        let config_dir = opts.config_dir.or_else(find_default_config_dir);
+    pub fn check_defaults_config(opts: &CliArgs) -> std::io::Result<()> {
+        let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+        let config_dir = opts.config_dir.clone().or_else(find_default_config_dir);
         let plugin_dir = data_dir.join("plugins");
         let layout_dir = data_dir.join("layouts");
         let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
         let config_file = opts
             .config
+            .clone()
             .or_else(|| config_dir.clone().map(|p| p.join(CONFIG_NAME)));
 
         let mut message = String::new();
