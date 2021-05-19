@@ -17,7 +17,7 @@ use crate::{
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{SenderType, SenderWithContext, SyncChannelWithContext},
-    consts::ZELLIJ_IPC_PIPE,
+    consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::config::Config,
     input::options::Options,
@@ -95,6 +95,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
+    std::env::set_var(&"ZELLIJ_SESSION_NAME", &*SESSION_NAME);
 
     #[cfg(not(any(feature = "test", test)))]
     spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
