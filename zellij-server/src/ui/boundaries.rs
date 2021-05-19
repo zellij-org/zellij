@@ -1,3 +1,5 @@
+use zellij_utils::zellij_tile;
+
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;

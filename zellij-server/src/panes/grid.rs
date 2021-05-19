@@ -5,11 +5,12 @@ use std::{
     str,
 };
 
-use vte::{Params, Perform};
+use zellij_utils::{vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
 
+use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 

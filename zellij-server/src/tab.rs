@@ -1,6 +1,8 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+use zellij_utils::{serde, zellij_tile};
+
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
@@ -78,6 +80,7 @@ pub(crate) struct Tab {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(crate = "self::serde")]
 pub(crate) struct TabData {
     /* subset of fields to publish to plugins */
     pub position: usize,

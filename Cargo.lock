@@ -453,9 +453,9 @@ dependencies = [
 
 [[package]]
 name = "crossterm"
-version = "0.18.2"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e86d73f2a0b407b5768d10a8c720cf5d2df49a9efc10ca09176d201ead4b7fb"
+checksum = "7c36c10130df424b2f3552fcc2ddcd9b28a27b1e54b358b45874f88d1ca6888c"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
@@ -469,9 +469,9 @@ dependencies = [
 
 [[package]]
 name = "crossterm_winapi"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2265c3f8e080075d9b6417aa72293fc71662f34b4af2612d8d1b074d29510db"
+checksum = "0da8964ace4d3e4a044fd027919b2237000b24315a37c916f61809f1ff2140b9"
 dependencies = [
  "winapi",
 ]
@@ -1709,9 +1709,9 @@ dependencies = [
 
 [[package]]
 name = "termbg"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "133c09f40b7a6a10616bb46d2b7d78d50cb8c6c475c84f3c02fe261957d9e0e0"
+checksum = "7e7fa67e879d2b5c902517367809bfab4e69ee6cabc03909141003721bd64282"
 dependencies = [
  "crossterm",
  "thiserror",
@@ -2290,13 +2290,8 @@ name = "zellij"
 version = "0.12.0"
 dependencies = [
  "insta",
- "interprocess",
- "nix",
- "structopt",
- "vte 0.10.1",
  "zellij-client",
  "zellij-server",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2304,13 +2299,7 @@ dependencies = [
 name = "zellij-client"
 version = "0.12.0"
 dependencies = [
- "interprocess",
- "libc",
- "nix",
- "signal-hook 0.3.8",
  "termbg",
- "termion",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2319,22 +2308,12 @@ name = "zellij-server"
 version = "0.12.0"
 dependencies = [
  "ansi_term 0.12.1",
- "async-std",
  "daemonize",
  "insta",
- "interprocess",
- "libc",
- "nix",
- "serde",
  "serde_json",
- "serde_yaml",
- "signal-hook 0.3.8",
- "termion",
  "unicode-width",
- "vte 0.10.1",
  "wasmer",
  "wasmer-wasi",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -2366,14 +2345,17 @@ dependencies = [
  "directories-next",
  "interprocess",
  "lazy_static",
+ "libc",
  "names",
  "nix",
  "serde",
  "serde_yaml",
+ "signal-hook 0.3.8",
  "strip-ansi-escapes",
  "structopt",
  "strum",
  "tempfile",
  "termion",
+ "vte 0.10.1",
  "zellij-tile",
 ]

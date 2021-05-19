@@ -2,7 +2,6 @@
 mod tests;
 
 use std::convert::TryFrom;
-use structopt::StructOpt;
 use zellij_client::{os_input_output::get_client_os_input, start_client};
 use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
@@ -11,6 +10,7 @@ use zellij_utils::{
     input::config::Config,
     logging::*,
     setup::Setup,
+    structopt::StructOpt,
 };
 
 pub fn main() {

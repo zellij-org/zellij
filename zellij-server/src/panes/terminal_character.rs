@@ -3,8 +3,8 @@ use unicode_width::UnicodeWidthChar;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
-use vte::ParamsIter;
 use zellij_utils::logging::debug_log_to_file;
+use zellij_utils::vte::ParamsIter;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',

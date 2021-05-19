@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_tile::data::Event;
+use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,

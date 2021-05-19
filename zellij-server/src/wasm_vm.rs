@@ -7,6 +7,8 @@ use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use zellij_utils::{serde, zellij_tile};
+
 use serde::{de::DeserializeOwned, Serialize};
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,

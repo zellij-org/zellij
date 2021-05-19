@@ -1,3 +1,5 @@
+use zellij_utils::{vte, zellij_tile};
+
 use zellij_server::{panes::TerminalPane, tab::Pane};
 use zellij_tile::data::Palette;
 use zellij_utils::pane_size::PositionAndSize;
