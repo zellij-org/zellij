@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use zellij_utils::{serde, zellij_tile};
+use zellij_utils::{input::mouse::Point, serde, zellij_tile};
 
 #[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;
@@ -30,6 +30,8 @@ use zellij_utils::{
     pane_size::PositionAndSize,
     shared::adjust_to_size,
 };
+
+use super::panes::TerminalCharacter;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -143,7 +145,9 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
-    fn get_char_at(&self, x: usize, y: usize) -> Option<char>;
+    fn get_char_at(&self, point: &Point) -> Option<TerminalCharacter>;
+    fn start_selection(&mut self, start: &Point);
+    fn end_selection(&mut self, end: &Point);
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -789,32 +793,6 @@ impl Tab {
         self.senders
             .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
-    }
-    pub fn focus_pane_at(&mut self, x: u16, y: u16) {
-        // find the pane at x and y, and focus it
-        let x = x as usize;
-        let y = y as usize;
-        let mut pane_id: Option<PaneId> = self.get_active_pane_id();
-        dbg!(format!("\nchecking for panes at ({},{})", x, y));
-        for (&id, pane) in self.get_panes() {
-            let pos = pane.position_and_size();
-            dbg!(format!(
-                "pane {:?} at ({},{}) with size ({},{})",
-                id, pos.x, pos.y, pos.rows, pos.columns
-            ));
-
-            if pos.contains(x, y) {
-                dbg!(format!("({},{}) is inside pane {:?}", x, y, id));
-                pane_id = Some(id);
-                // make this relative position
-                let char_at = pane.get_char_at(x - pos.x, y - pos.y);
-                dbg!(format!("char at ({},{})={:?}", x, y, char_at));
-                break;
-            }
-        }
-        self.active_terminal = pane_id;
-        dbg!(format!("focused pane {:?} at ({}, {})", pane_id, x, y));
-        self.render();
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
@@ -2297,6 +2275,68 @@ impl Tab {
                 .unwrap();
             active_terminal.clear_scroll();
         }
+    }
+    pub fn scroll_terminal_up(&mut self, point: &Point, lines: usize) {
+        let pane_id = self
+            .get_selectable_panes()
+            .find(|(_, p)| p.position_and_size().contains(point))
+            .map(|(&id, _)| id);
+
+        if let Some(pane_id) = pane_id {
+            self.panes.get_mut(&pane_id).unwrap().scroll_up(lines);
+            self.render();
+        }
+    }
+    fn get_pane_id_at(&self, point: &Point) -> Option<PaneId> {
+        self.get_selectable_panes()
+            .find(|(_, p)| p.position_and_size().contains(point))
+            .map(|(&id, _)| id)
+    }
+
+    pub fn scroll_terminal_down(&mut self, point: &Point, lines: usize) {
+        if let Some(pane_id) = self.get_pane_id_at(point) {
+            self.panes.get_mut(&pane_id).unwrap().scroll_down(lines);
+            self.render();
+        }
+    }
+    pub fn handle_left_click(&mut self, point: &Point) {
+        self.focus_pane_at(point);
+
+        let pane_id = self.get_pane_id_at(point);
+        if pane_id.is_none() {
+            return;
+        }
+        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
+            let c = pane.get_char_at(&point);
+            dbg!(format!("left click on char {:?} at {:?}", c, point));
+            pane.start_selection(&point);
+        };
+        self.render();
+    }
+    fn focus_pane_at(&mut self, point: &Point) {
+        if let Some(clicked_pane) = self.get_pane_id_at(point) {
+            self.active_terminal = Some(clicked_pane);
+        }
+    }
+    pub fn handle_mouse_release(&mut self, point: &Point) {
+        let pane_id = self.get_pane_id_at(point);
+        if pane_id.is_none() {
+            return;
+        }
+        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
+            pane.end_selection(point);
+        }
+        self.render();
+    }
+    pub fn handle_mouse_hold(&mut self, point: &Point) {
+        let pane_id = self.get_pane_id_at(point);
+        if pane_id.is_none() {
+            return;
+        }
+        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
+            pane.end_selection(point);
+        }
+        self.render();
     }
 }
 

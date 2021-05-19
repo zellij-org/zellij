@@ -1,4 +1,4 @@
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::{input::mouse::Point, vte, zellij_tile};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
@@ -15,6 +15,8 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 
+use super::selection::Selection;
+
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
     Terminal(RawFd),
@@ -30,15 +32,22 @@ pub struct TerminalPane {
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
+    pub selection: Selection,
 }
 
 impl Pane for TerminalPane {
-    fn get_char_at(&self, x: usize, y: usize) -> Option<char> {
-        let line = &self.grid.as_character_lines()[y - 1];
+    fn get_char_at(&self, point: &Point) -> Option<TerminalCharacter> {
+        dbg!(format!(
+            "accessing point {:?} in pane with pos_and_size {:?}",
+            point, self.position_and_size
+        ));
+        let row = point.line.0 as usize - self.position_and_size.y;
+        let col = point.column.0 as usize - self.position_and_size.x;
+        let line = &self.grid.as_character_lines()[row];
         let mut current_char_col = 0;
         for char in line {
-            if x >= current_char_col && x <= current_char_col + char.width() {
-                return Some(char.character);
+            if col >= current_char_col && col <= current_char_col + char.width() {
+                return Some(*char);
             }
             current_char_col += char.width();
         }
@@ -297,6 +306,22 @@ impl Pane for TerminalPane {
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
+
+    fn start_selection(&mut self, start: &Point) {
+        self.selection.start(*start);
+        dbg!(format!(
+            "start selection at {:?}, selection: {:?}",
+            start, self.selection
+        ));
+    }
+
+    fn end_selection(&mut self, end: &Point) {
+        self.selection.to(*end);
+        dbg!(format!(
+            "end selection at {:?}, selection: {:?}",
+            end, self.selection
+        ));
+    }
 }
 
 impl TerminalPane {
@@ -311,6 +336,7 @@ impl TerminalPane {
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
+            selection: Selection::default(),
         }
     }
     pub fn get_x(&self) -> usize {

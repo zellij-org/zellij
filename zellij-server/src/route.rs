@@ -85,12 +85,6 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::FocusPreviousPane)
                 .unwrap();
         }
-        Action::FocusPaneAt((x, y)) => {
-            session
-                .senders
-                .send_to_screen(ScreenInstruction::FocusPaneAt((x, y)))
-                .unwrap();
-        }
         Action::MoveFocus(direction) => {
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeft,
@@ -114,10 +108,22 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::ScrollUp)
                 .unwrap();
         }
+        Action::ScrollUpAt(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollUpAt(point))
+                .unwrap();
+        }
         Action::ScrollDown => {
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ScrollDown)
+                .unwrap();
+        }
+        Action::ScrollDownAt(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollDownAt(point))
                 .unwrap();
         }
         Action::PageScrollUp => {
@@ -201,6 +207,24 @@ fn route_action(
         Action::Detach => {
             to_server.send(ServerInstruction::DetachSession).unwrap();
             should_break = true;
+        }
+        Action::LeftClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::LeftClick(point))
+                .unwrap();
+        }
+        Action::MouseRelease(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseRelease(point))
+                .unwrap();
+        }
+        Action::MouseHold(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseHold(point))
+                .unwrap();
         }
         Action::NoOp => {}
     }

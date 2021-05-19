@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::{input::layout::Layout, zellij_tile};
+use zellij_utils::{input::layout::Layout, input::mouse::Point, zellij_tile};
 
 use crate::{
     panes::PaneId,
@@ -39,7 +39,6 @@ pub(crate) enum ScreenInstruction {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
-    FocusPaneAt((u16, u16)),
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
     MoveFocusDown,
@@ -48,7 +47,9 @@ pub(crate) enum ScreenInstruction {
     MoveFocusRightOrNextTab,
     Exit,
     ScrollUp,
+    ScrollUpAt(Point),
     ScrollDown,
+    ScrollDownAt(Point),
     PageScrollUp,
     PageScrollDown,
     ClearScroll,
@@ -69,6 +70,9 @@ pub(crate) enum ScreenInstruction {
     UpdateTabName(Vec<u8>),
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
+    LeftClick(Point),
+    MouseRelease(Point),
+    MouseHold(Point),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -87,7 +91,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchFocus => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane => ScreenContext::FocusPreviousPane,
-            ScreenInstruction::FocusPaneAt(_) => ScreenContext::FocusPaneAt,
             ScreenInstruction::MoveFocusLeft => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusLeftOrPreviousTab => {
                 ScreenContext::MoveFocusLeftOrPreviousTab
@@ -121,6 +124,11 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab => ScreenContext::ToggleActiveSyncTab,
+            ScreenInstruction::ScrollUpAt(_) => ScreenContext::ScrollUpAt,
+            ScreenInstruction::ScrollDownAt(_) => ScreenContext::ScrollDownAt,
+            ScreenInstruction::LeftClick(_) => ScreenContext::LeftClick,
+            ScreenInstruction::MouseRelease(_) => ScreenContext::MouseRelease,
+            ScreenInstruction::MouseHold(_) => ScreenContext::MouseHold,
         }
     }
 }
@@ -515,9 +523,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::FocusPreviousPane => {
                 screen.get_active_tab_mut().unwrap().focus_previous_pane();
             }
-            ScreenInstruction::FocusPaneAt((x, y)) => {
-                screen.get_active_tab_mut().unwrap().focus_pane_at(x, y);
-            }
             ScreenInstruction::MoveFocusLeft => {
                 screen.get_active_tab_mut().unwrap().move_focus_left();
             }
@@ -552,11 +557,25 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .scroll_active_terminal_up();
             }
+            ScreenInstruction::ScrollUpAt(point) => {
+                dbg!(format!("got scroll down at {:?}", point));
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_terminal_up(&point, 3);
+            }
             ScreenInstruction::ScrollDown => {
                 screen
                     .get_active_tab_mut()
                     .unwrap()
                     .scroll_active_terminal_down();
+            }
+            ScreenInstruction::ScrollDownAt(point) => {
+                dbg!(format!("got scroll down at {:?}", point));
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_terminal_down(&point, 3);
             }
             ScreenInstruction::PageScrollUp => {
                 screen
@@ -678,6 +697,24 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .toggle_sync_panes_is_active();
                 screen.update_tabs();
+            }
+            ScreenInstruction::LeftClick(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_left_click(&point);
+            }
+            ScreenInstruction::MouseRelease(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_mouse_release(&point);
+            }
+            ScreenInstruction::MouseHold(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_mouse_hold(&point);
             }
             ScreenInstruction::Exit => {
                 break;
