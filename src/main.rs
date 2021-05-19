@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use zellij_client::{os_input_output::get_client_os_input, start_client};
 use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
-    cli::{CliArgs, ConfigCli},
+    cli::{CliArgs, Command},
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     input::config::Config,
     logging::*,
@@ -16,8 +16,8 @@ use zellij_utils::{
 pub fn main() {
     let opts = CliArgs::from_args();
 
-    if let Some(ConfigCli::Setup(setup)) = opts.option.clone() {
-        Setup::from_cli(&setup, &opts).expect("Failed to print to stdout");
+    if let Some(Command::Setup(ref setup)) = opts.command {
+        Setup::from_cli(setup, &opts).expect("Failed to print to stdout");
     }
 
     let config = match Config::try_from(&opts) {
