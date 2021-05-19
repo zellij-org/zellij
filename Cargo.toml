@@ -23,9 +23,6 @@ zellij-utils = { path = "zellij-utils/", version = "*", features = ["test"] }
 zellij-client = { path = "zellij-client/", version = "*", features = ["test"] }
 zellij-server = { path = "zellij-server/", version = "*", features = ["test"] }
 
-[build-dependencies]
-structopt = "0.3"
-
 [workspace]
 members = [
     "zellij-client",

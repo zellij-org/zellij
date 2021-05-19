@@ -9,7 +9,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-termbg = "0.2.0"
+termbg = "0.2.3"
 zellij-utils = { path = "../zellij-utils/", version = "0.12.0" }
 
 [features]
