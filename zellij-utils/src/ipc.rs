@@ -58,6 +58,7 @@ pub enum ClientToServerMsg {
     TerminalResize(PositionAndSize),
     NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
     Action(Action),
+    DetachSession,
 }
 
 // Types of messages sent from the server to the client

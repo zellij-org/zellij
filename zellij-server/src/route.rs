@@ -188,16 +188,16 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
 }
 
 pub(crate) fn route_thread_main(
-    sessions: Arc<RwLock<Option<SessionMetaData>>>,
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
     loop {
         let (instruction, err_ctx) = os_input.recv_from_client();
         err_ctx.update_thread_ctx();
-        let rlocked_sessions = sessions.read().unwrap();
+        let rlocked_sessions = session_data.read().unwrap();
         match instruction {
-            ClientToServerMsg::ClientExit => {
+            ClientToServerMsg::ClientExit | ClientToServerMsg::DetachSession => {
                 to_server.send(instruction.into()).unwrap();
                 break;
             }

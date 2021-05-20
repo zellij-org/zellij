@@ -58,7 +58,7 @@ fn list_sessions() {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut is_empty = true;
-            let session_name = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or("".into());
+            let session_name = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
             files.for_each(|file| {
                 let file = file.unwrap();
                 if file.file_type().unwrap().is_socket() {

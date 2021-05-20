@@ -10,11 +10,11 @@ use crate::{
     thread_bus::ThreadSenders,
     ui::{boundaries::Boundaries, layout::Layout, pane_resizer::PaneResizer},
     wasm_vm::PluginInstruction,
-    ServerInstruction,
+    ServerInstruction, SessionState,
 };
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
-use std::sync::mpsc::channel;
+use std::sync::{mpsc::channel, Arc, RwLock};
 use std::time::Instant;
 use std::{
     cmp::Reverse,
@@ -74,6 +74,7 @@ pub(crate) struct Tab {
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
+    session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
     pub colors: Palette,
@@ -242,6 +243,7 @@ impl Tab {
         mode_info: ModeInfo,
         input_mode: InputMode,
         colors: Palette,
+        session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors);
@@ -273,6 +275,7 @@ impl Tab {
             mode_info,
             input_mode,
             colors,
+            session_state,
         }
     }
 
@@ -722,7 +725,9 @@ impl Tab {
         self.panes.iter().any(|(_, p)| p.contains_widechar())
     }
     pub fn render(&mut self) {
-        if self.active_terminal.is_none() {
+        if self.active_terminal.is_none()
+            || *self.session_state.read().unwrap() != SessionState::Attached
+        {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
             return;

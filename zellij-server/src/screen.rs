@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::os::unix::io::RawFd;
 use std::str;
+use std::sync::{Arc, RwLock};
 
 use zellij_utils::zellij_tile;
 
@@ -13,7 +14,7 @@ use crate::{
     thread_bus::Bus,
     ui::layout::Layout,
     wasm_vm::PluginInstruction,
-    ServerInstruction,
+    ServerInstruction, SessionState,
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 use zellij_utils::{
@@ -137,6 +138,7 @@ pub(crate) struct Screen {
     mode_info: ModeInfo,
     input_mode: InputMode,
     colors: Palette,
+    session_state: Arc<RwLock<SessionState>>,
 }
 
 impl Screen {
@@ -147,6 +149,7 @@ impl Screen {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         input_mode: InputMode,
+        session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
         Screen {
             bus,
@@ -157,6 +160,7 @@ impl Screen {
             tabs: BTreeMap::new(),
             mode_info,
             input_mode,
+            session_state,
         }
     }
 
@@ -177,6 +181,7 @@ impl Screen {
             self.mode_info.clone(),
             self.input_mode,
             self.colors,
+            self.session_state.clone(),
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -261,10 +266,12 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.bus
-                .senders
-                .send_to_server(ServerInstruction::Render(None))
-                .unwrap();
+            if *self.session_state.read().unwrap() == SessionState::Attached {
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::Render(None))
+                    .unwrap();
+            }
         } else {
             for t in self.tabs.values_mut() {
                 if t.position > active_tab.position {
@@ -286,6 +293,9 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
+        if *self.session_state.read().unwrap() != SessionState::Attached {
+            return;
+        }
         if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_pane().is_some() {
                 active_tab.render();
@@ -333,6 +343,7 @@ impl Screen {
             self.mode_info.clone(),
             self.input_mode,
             self.colors,
+            self.session_state.clone(),
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -390,6 +401,7 @@ pub(crate) fn screen_thread_main(
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
+    session_state: Arc<RwLock<SessionState>>,
 ) {
     let capabilities = config_options.simplified_ui;
 
@@ -405,6 +417,7 @@ pub(crate) fn screen_thread_main(
             ..ModeInfo::default()
         },
         InputMode::Normal,
+        session_state,
     );
     loop {
         let (event, mut err_ctx) = screen

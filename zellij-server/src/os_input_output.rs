@@ -156,6 +156,8 @@ pub trait ServerOsApi: Send + Sync {
     fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
     fn add_client_sender(&self);
+    /// Removes the sender to client
+    fn remove_client_sender(&self);
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
@@ -218,6 +220,10 @@ impl ServerOsApi for ServerOsInputOutput {
             .unwrap()
             .get_sender();
         *self.send_instructions_to_client.lock().unwrap() = Some(sender);
+    }
+    fn remove_client_sender(&self) {
+        assert!(self.send_instructions_to_client.lock().unwrap().is_some());
+        *self.send_instructions_to_client.lock().unwrap() = None;
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
         self.receive_instructions_from_client =
