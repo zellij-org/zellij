@@ -45,6 +45,9 @@ pub fn get_mode_info(
         InputMode::RenameTab => {
             keybinds.push(("Enter".to_string(), "when done".to_string()));
         }
+        InputMode::Session => {
+            keybinds.push(("d".to_string(), "Detach".to_string()));
+        }
     }
     ModeInfo {
         mode,
