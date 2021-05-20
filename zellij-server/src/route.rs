@@ -15,7 +15,13 @@ use zellij_utils::{
     ipc::ClientToServerMsg,
 };
 
-fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn ServerOsApi) {
+fn route_action(
+    action: Action,
+    session: &SessionMetaData,
+    os_input: &dyn ServerOsApi,
+    to_server: &SenderWithContext<ServerInstruction>,
+) -> bool {
+    let mut should_break = false;
     match action {
         Action::Write(val) => {
             session
@@ -182,9 +188,17 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .send_to_screen(ScreenInstruction::UpdateTabName(c))
                 .unwrap();
         }
+        Action::Quit => {
+            to_server.send(ServerInstruction::ClientExit).unwrap();
+            should_break = true;
+        }
+        Action::Detach => {
+            to_server.send(ServerInstruction::DetachSession).unwrap();
+            should_break = true;
+        }
         Action::NoOp => {}
-        Action::Quit => panic!("Received unexpected action"),
     }
+    should_break
 }
 
 pub(crate) fn route_thread_main(
@@ -197,13 +211,11 @@ pub(crate) fn route_thread_main(
         err_ctx.update_thread_ctx();
         let rlocked_sessions = session_data.read().unwrap();
         match instruction {
-            ClientToServerMsg::ClientExit | ClientToServerMsg::DetachSession => {
-                to_server.send(instruction.into()).unwrap();
-                break;
-            }
             ClientToServerMsg::Action(action) => {
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                    route_action(action, rlocked_sessions, &*os_input);
+                    if route_action(action, rlocked_sessions, &*os_input, &to_server) {
+                        break;
+                    }
                 }
             }
             ClientToServerMsg::TerminalResize(new_size) => {

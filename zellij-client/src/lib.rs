@@ -19,8 +19,7 @@ use zellij_utils::{
     channels::{SenderType, SenderWithContext, SyncChannelWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::config::Config,
-    input::options::Options,
+    input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -226,7 +225,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         match client_instruction {
             ClientInstruction::Exit => break,
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::ClientExit);
+                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
                 handle_error(backtrace);
             }
             ClientInstruction::ServerError(backtrace) => {
@@ -248,7 +247,6 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         }
     }
 
-    let _ = os_input.send_to_server(ClientToServerMsg::ClientExit);
     router_thread.join().unwrap();
 
     // cleanup();

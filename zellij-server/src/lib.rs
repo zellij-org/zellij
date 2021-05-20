@@ -49,11 +49,9 @@ pub(crate) enum ServerInstruction {
 impl From<ClientToServerMsg> for ServerInstruction {
     fn from(instruction: ClientToServerMsg) -> Self {
         match instruction {
-            ClientToServerMsg::ClientExit => ServerInstruction::ClientExit,
             ClientToServerMsg::NewClient(pos, opts, options) => {
                 ServerInstruction::NewClient(pos, opts, options)
             }
-            ClientToServerMsg::DetachSession => ServerInstruction::DetachSession,
             _ => unreachable!(),
         }
     }

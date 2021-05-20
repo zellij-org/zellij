@@ -54,11 +54,9 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
-    ClientExit,
     TerminalResize(PositionAndSize),
     NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
     Action(Action),
-    DetachSession,
 }
 
 // Types of messages sent from the server to the client
