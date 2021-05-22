@@ -241,12 +241,10 @@ pub fn start_client(
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
         match client_instruction {
             ClientInstruction::Exit(reason) => {
-                match reason {
-                    ExitReason::Error(_) => handle_error(format!("{}", reason)),
-                    ExitReason::ForceDetached => {
-                        os_input.send_to_server(ClientToServerMsg::ClientDetached);
-                    }
-                    _ => {}
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+
+                if let ExitReason::Error(_) = reason {
+                    handle_error(format!("{}", reason));
                 }
                 exit_msg = format!("{}", reason);
                 break;

@@ -233,20 +233,20 @@ pub(crate) fn route_thread_main(
                     os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::Error(
                         "Cannot add new client".into(),
                     )));
-                    break;
+                } else {
+                    os_input.add_client_sender();
+                    to_server.send(instruction.into()).unwrap();
                 }
-                os_input.add_client_sender();
-                to_server.send(instruction.into()).unwrap();
             }
             ClientToServerMsg::AttachClient(_, force) => {
                 if *session_state.read().unwrap() == SessionState::Attached && !force {
                     os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::CannotAttach));
-                    break;
+                } else {
+                    os_input.add_client_sender();
+                    to_server.send(instruction.into()).unwrap();
                 }
-                os_input.add_client_sender();
-                to_server.send(instruction.into()).unwrap();
             }
-            ClientToServerMsg::ClientDetached => break,
+            ClientToServerMsg::ClientExited => break,
         }
     }
 }

@@ -11,7 +11,7 @@ mod wasm_vm;
 
 use zellij_utils::zellij_tile;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc};
 use wasmer::Store;
@@ -132,18 +132,22 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         })
     });
 
-    #[cfg(any(feature = "test", test))]
-    thread::Builder::new()
-        .name("server_router".to_string())
-        .spawn({
-            let session_data = session_data.clone();
-            let os_input = os_input.clone();
-            let to_server = to_server.clone();
-            let session_state = session_state.clone();
+    let thread_handles = Arc::new(Mutex::new(Vec::new()));
 
-            move || route_thread_main(session_data, session_state, os_input, to_server)
-        })
-        .unwrap();
+    #[cfg(any(feature = "test", test))]
+    thread_handles.lock().unwrap().push(
+        thread::Builder::new()
+            .name("server_router".to_string())
+            .spawn({
+                let session_data = session_data.clone();
+                let os_input = os_input.clone();
+                let to_server = to_server.clone();
+                let session_state = session_state.clone();
+
+                move || route_thread_main(session_data, session_state, os_input, to_server)
+            })
+            .unwrap(),
+    );
     #[cfg(not(any(feature = "test", test)))]
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
@@ -157,6 +161,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
+            let thread_handles = thread_handles.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
@@ -169,23 +174,25 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread::Builder::new()
-                                .name("server_router".to_string())
-                                .spawn({
-                                    let session_data = session_data.clone();
-                                    let os_input = os_input.clone();
-                                    let to_server = to_server.clone();
+                            thread_handles.lock().unwrap().push(
+                                thread::Builder::new()
+                                    .name("server_router".to_string())
+                                    .spawn({
+                                        let session_data = session_data.clone();
+                                        let os_input = os_input.clone();
+                                        let to_server = to_server.clone();
 
-                                    move || {
-                                        route_thread_main(
-                                            session_data,
-                                            session_state,
-                                            os_input,
-                                            to_server,
-                                        )
-                                    }
-                                })
-                                .unwrap();
+                                        move || {
+                                            route_thread_main(
+                                                session_data,
+                                                session_state,
+                                                os_input,
+                                                to_server,
+                                            )
+                                        }
+                                    })
+                                    .unwrap(),
+                            );
                         }
                         Err(err) => {
                             panic!("err {:?}", err);
@@ -274,6 +281,11 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
         }
     }
+    thread_handles
+        .lock()
+        .unwrap()
+        .drain(..)
+        .for_each(|h| drop(h.join()));
     #[cfg(not(any(feature = "test", test)))]
     drop(std::fs::remove_file(&socket_path));
 }

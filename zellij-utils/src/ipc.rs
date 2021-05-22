@@ -59,7 +59,7 @@ pub enum ClientToServerMsg {
     NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
     AttachClient(ClientAttributes, bool),
     Action(Action),
-    ClientDetached,
+    ClientExited,
 }
 
 // Types of messages sent from the server to the client
