@@ -125,10 +125,7 @@ impl FakeInputOutput {
         self
     }
     pub fn add_terminal_input(&mut self, input: &[&[u8]]) {
-        let mut stdin_commands: VecDeque<Vec<u8>> = VecDeque::new();
-        for command in input.iter() {
-            stdin_commands.push_back(command.iter().copied().collect())
-        }
+        let stdin_commands = input.iter().map(|i| i.to_vec()).collect();
         self.stdin_commands = Arc::new(Mutex::new(stdin_commands));
     }
     pub fn add_terminal(&self, fd: RawFd) {
