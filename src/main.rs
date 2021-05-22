@@ -50,7 +50,20 @@ pub fn main() {
                 process::exit(1);
             }
         };
-        start_client(Box::new(os_input), opts, config);
+        if let Some(Command::Sessions(Sessions::Attach {
+            session_name,
+            force,
+        })) = opts.command.clone()
+        {
+            start_client(
+                Box::new(os_input),
+                opts,
+                config,
+                Some((session_name, force)),
+            );
+        } else {
+            start_client(Box::new(os_input), opts, config, None);
+        }
     }
 }
 

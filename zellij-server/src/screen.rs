@@ -386,6 +386,7 @@ impl Screen {
         self.update_tabs();
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo) {
+        self.colors = mode_info.palette;
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();

@@ -4,6 +4,7 @@ use crate::shared::set_permissions;
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
 use nix::unistd::Uid;
+use once_cell::sync::OnceCell;
 use std::path::PathBuf;
 use std::{env, fs};
 
@@ -24,7 +25,7 @@ const fn system_default_data_dir() -> &'static str {
 
 lazy_static! {
     static ref UID: Uid = Uid::current();
-    pub static ref SESSION_NAME: String = names::Generator::default().next().unwrap();
+    pub static ref SESSION_NAME: OnceCell<String> = OnceCell::new();
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
@@ -43,7 +44,7 @@ lazy_static! {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
         set_permissions(&sock_dir).unwrap();
-        sock_dir.push(&*SESSION_NAME);
+        sock_dir.push(SESSION_NAME.get().unwrap());
         sock_dir
     };
     pub static ref ZELLIJ_TMP_DIR: PathBuf =

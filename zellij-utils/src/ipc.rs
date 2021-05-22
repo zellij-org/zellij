@@ -9,6 +9,7 @@ use crate::{
 use interprocess::local_socket::LocalSocketStream;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -34,7 +35,7 @@ pub enum ClientType {
     Writer,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ClientAttributes {
     pub position_and_size: PositionAndSize,
     pub palette: Palette,
@@ -56,7 +57,9 @@ pub enum ClientToServerMsg {
     DisconnectFromSession,*/
     TerminalResize(PositionAndSize),
     NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
+    AttachClient(ClientAttributes, bool),
     Action(Action),
+    ClientDetached,
 }
 
 // Types of messages sent from the server to the client
@@ -66,10 +69,34 @@ pub enum ServerToClientMsg {
     SessionInfo(Session),
     // A list of sessions
     SessionList(HashSet<Session>),*/
-    Render(Option<String>),
+    Render(String),
     UnblockInputThread,
-    Exit,
-    ServerError(String),
+    Exit(ExitReason),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ExitReason {
+    Normal,
+    ForceDetached,
+    CannotAttach,
+    Error(String),
+}
+
+impl Display for ExitReason {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            Self::Normal => write!(f, "Bye from Zellij!"),
+            Self::ForceDetached => write!(
+                f,
+                "Session was detach from this client (possibly because another client connected)"
+            ),
+            Self::CannotAttach => write!(
+                f,
+                "Session attached to another client. Use --force flag to force connect."
+            ),
+            Self::Error(e) => write!(f, "Error occured in server:\n{}", e),
+        }
+    }
 }
 
 /// Sends messages on a stream socket, along with an [`ErrorContext`].

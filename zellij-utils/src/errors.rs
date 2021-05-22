@@ -261,4 +261,5 @@ pub enum ServerContext {
     ClientExit,
     Error,
     DetachSession,
+    AttachClient,
 }

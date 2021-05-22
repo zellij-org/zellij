@@ -2299,6 +2299,7 @@ dependencies = [
 name = "zellij-client"
 version = "0.12.0"
 dependencies = [
+ "names",
  "termbg",
  "zellij-utils",
 ]
@@ -2346,8 +2347,8 @@ dependencies = [
  "interprocess",
  "lazy_static",
  "libc",
- "names",
  "nix",
+ "once_cell",
  "serde",
  "serde_yaml",
  "signal-hook 0.3.8",

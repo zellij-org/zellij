@@ -20,26 +20,24 @@ use zellij_utils::{
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
-    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ClientInstruction {
     Error(String),
-    Render(Option<String>),
+    Render(String),
     UnblockInputThread,
-    Exit,
-    ServerError(String),
+    Exit(ExitReason),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
     fn from(instruction: ServerToClientMsg) -> Self {
         match instruction {
-            ServerToClientMsg::Exit => ClientInstruction::Exit,
+            ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::ServerError(backtrace) => ClientInstruction::ServerError(backtrace),
         }
     }
 }
@@ -47,9 +45,8 @@ impl From<ServerToClientMsg> for ClientInstruction {
 impl From<&ClientInstruction> for ClientContext {
     fn from(client_instruction: &ClientInstruction) -> Self {
         match *client_instruction {
-            ClientInstruction::Exit => ClientContext::Exit,
+            ClientInstruction::Exit(_) => ClientContext::Exit,
             ClientInstruction::Error(_) => ClientContext::Error,
-            ClientInstruction::ServerError(_) => ClientContext::ServerError,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
         }
@@ -79,7 +76,12 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
     }
 }
 
-pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: Config) {
+pub fn start_client(
+    mut os_input: Box<dyn ClientOsApi>,
+    opts: CliArgs,
+    config: Config,
+    attach_to: Option<(String, bool)>,
+) {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
@@ -94,12 +96,6 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
-    std::env::set_var(&"ZELLIJ_SESSION_NAME", &*SESSION_NAME);
-
-    #[cfg(not(any(feature = "test", test)))]
-    spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
-
-    let mut command_is_executing = CommandIsExecuting::new();
 
     let config_options = Options::from_cli(&config.options, opts.command.clone());
 
@@ -108,12 +104,34 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         position_and_size: full_screen_ws,
         palette,
     };
+
+    #[cfg(not(any(feature = "test", test)))]
+    let first_msg = if let Some((name, force)) = attach_to {
+        SESSION_NAME.set(name).unwrap();
+        std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+
+        ClientToServerMsg::AttachClient(client_attributes, force)
+    } else {
+        SESSION_NAME
+            .set(names::Generator::default().next().unwrap())
+            .unwrap();
+        std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+
+        spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
+
+        ClientToServerMsg::NewClient(client_attributes, Box::new(opts), Box::new(config_options))
+    };
+    #[cfg(any(feature = "test", test))]
+    let first_msg = {
+        let _ = SESSION_NAME.set("".into());
+        ClientToServerMsg::NewClient(client_attributes, Box::new(opts), Box::new(config_options))
+    };
+
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
-    os_input.send_to_server(ClientToServerMsg::NewClient(
-        client_attributes,
-        Box::new(opts),
-        Box::new(config_options),
-    ));
+    os_input.send_to_server(first_msg);
+
+    let mut command_is_executing = CommandIsExecuting::new();
+
     os_input.set_raw_mode(0);
     let _ = os_input
         .get_stdout_writer()
@@ -170,7 +188,7 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
                         let send_client_instructions = send_client_instructions.clone();
                         move || {
                             send_client_instructions
-                                .send(ClientInstruction::Exit)
+                                .send(ClientInstruction::Exit(ExitReason::Normal))
                                 .unwrap()
                         }
                     }),
@@ -187,11 +205,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
             move || loop {
                 let (instruction, err_ctx) = os_input.recv_from_server();
                 err_ctx.update_thread_ctx();
-                match instruction {
-                    ServerToClientMsg::Exit | ServerToClientMsg::ServerError(_) => {
-                        should_break = true;
-                    }
-                    _ => {}
+                if let ServerToClientMsg::Exit(_) = instruction {
+                    should_break = true;
                 }
                 send_client_instructions.send(instruction.into()).unwrap();
                 if should_break {
@@ -216,6 +231,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
         std::process::exit(1);
     };
 
+    let exit_msg: String;
+
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
             .recv()
@@ -223,21 +240,25 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
 
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
         match client_instruction {
-            ClientInstruction::Exit => break,
+            ClientInstruction::Exit(reason) => {
+                match reason {
+                    ExitReason::Error(_) => handle_error(format!("{}", reason)),
+                    ExitReason::ForceDetached => {
+                        os_input.send_to_server(ClientToServerMsg::ClientDetached);
+                    }
+                    _ => {}
+                }
+                exit_msg = format!("{}", reason);
+                break;
+            }
             ClientInstruction::Error(backtrace) => {
                 let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
                 handle_error(backtrace);
             }
-            ClientInstruction::ServerError(backtrace) => {
-                handle_error(backtrace);
-            }
             ClientInstruction::Render(output) => {
-                if output.is_none() {
-                    break;
-                }
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
-                    .write_all(&output.unwrap().as_bytes())
+                    .write_all(&output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }
@@ -255,8 +276,8 @@ pub fn start_client(mut os_input: Box<dyn ClientOsApi>, opts: CliArgs, config: C
     let restore_snapshot = "\u{1b}[?1049l";
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
     let goodbye_message = format!(
-        "{}\n{}{}{}Bye from Zellij!\n",
-        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor
+        "{}\n{}{}{}{}\n",
+        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
     );
 
     os_input.unset_raw_mode(0);

@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::{path::PathBuf, sync::mpsc};
 use wasmer::Store;
-use zellij_tile::data::PluginCapabilities;
+use zellij_tile::data::{Event, InputMode, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -30,8 +30,8 @@ use zellij_utils::{
     channels::{ChannelWithContext, SenderType, SenderWithContext, SyncChannelWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
-    input::options::Options,
-    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
+    input::{get_mode_info, options::Options},
+    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::{get_default_data_dir, install::populate_data_dir},
 };
 
@@ -44,13 +44,17 @@ pub(crate) enum ServerInstruction {
     ClientExit,
     Error(String),
     DetachSession,
+    AttachClient(ClientAttributes, bool),
 }
 
 impl From<ClientToServerMsg> for ServerInstruction {
     fn from(instruction: ClientToServerMsg) -> Self {
         match instruction {
-            ClientToServerMsg::NewClient(pos, opts, options) => {
-                ServerInstruction::NewClient(pos, opts, options)
+            ClientToServerMsg::NewClient(attrs, opts, options) => {
+                ServerInstruction::NewClient(attrs, opts, options)
+            }
+            ClientToServerMsg::AttachClient(attrs, force) => {
+                ServerInstruction::AttachClient(attrs, force)
             }
             _ => unreachable!(),
         }
@@ -66,6 +70,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ClientExit => ServerContext::ClientExit,
             ServerInstruction::Error(_) => ServerContext::Error,
             ServerInstruction::DetachSession => ServerContext::DetachSession,
+            ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
         }
     }
 }
@@ -134,8 +139,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let session_data = session_data.clone();
             let os_input = os_input.clone();
             let to_server = to_server.clone();
+            let session_state = session_state.clone();
 
-            move || route_thread_main(session_data, os_input, to_server)
+            move || route_thread_main(session_data, session_state, os_input, to_server)
         })
         .unwrap();
     #[cfg(not(any(feature = "test", test)))]
@@ -148,6 +154,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
             let os_input = os_input.clone();
             let session_data = session_data.clone();
+            let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
             move || {
@@ -160,6 +167,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             let mut os_input = os_input.clone();
                             os_input.update_receiver(stream);
                             let session_data = session_data.clone();
+                            let session_state = session_state.clone();
                             let to_server = to_server.clone();
                             thread::Builder::new()
                                 .name("server_router".to_string())
@@ -168,7 +176,14 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                     let os_input = os_input.clone();
                                     let to_server = to_server.clone();
 
-                                    move || route_thread_main(session_data, os_input, to_server)
+                                    move || {
+                                        route_thread_main(
+                                            session_data,
+                                            session_state,
+                                            os_input,
+                                            to_server,
+                                        )
+                                    }
                                 })
                                 .unwrap();
                         }
@@ -204,6 +219,28 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_pty(PtyInstruction::NewTab)
                     .unwrap();
             }
+            ServerInstruction::AttachClient(attrs, _) => {
+                *session_state.write().unwrap() = SessionState::Attached;
+                let rlock = session_data.read().unwrap();
+                let session_data = rlock.as_ref().unwrap();
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.position_and_size))
+                    .unwrap();
+                let mode_info =
+                    get_mode_info(InputMode::Normal, attrs.palette, session_data.capabilities);
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone()))
+                    .unwrap();
+                session_data
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(
+                        None,
+                        Event::ModeUpdate(mode_info),
+                    ))
+                    .unwrap();
+            }
             ServerInstruction::UnblockInputThread => {
                 if *session_state.read().unwrap() == SessionState::Attached {
                     os_input.send_to_client(ServerToClientMsg::UnblockInputThread);
@@ -211,22 +248,26 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
             ServerInstruction::ClientExit => {
                 *session_data.write().unwrap() = None;
-                os_input.send_to_client(ServerToClientMsg::Exit);
+                os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
                 break;
             }
             ServerInstruction::DetachSession => {
                 *session_state.write().unwrap() = SessionState::Detached;
-                os_input.send_to_client(ServerToClientMsg::Exit);
+                os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
                 os_input.remove_client_sender();
             }
             ServerInstruction::Render(output) => {
                 if *session_state.read().unwrap() == SessionState::Attached {
-                    os_input.send_to_client(ServerToClientMsg::Render(output));
+                    os_input.send_to_client(
+                        output.map_or(ServerToClientMsg::Exit(ExitReason::Normal), |op| {
+                            ServerToClientMsg::Render(op)
+                        }),
+                    );
                 }
             }
             ServerInstruction::Error(backtrace) => {
                 if *session_state.read().unwrap() == SessionState::Attached {
-                    os_input.send_to_client(ServerToClientMsg::ServerError(backtrace));
+                    os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Error(backtrace)));
                 }
                 break;
             }

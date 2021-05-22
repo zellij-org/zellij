@@ -21,6 +21,6 @@ pub fn start(
             start_server(server_os_input, PathBuf::from(""));
         })
         .unwrap();
-    start_client(client_os_input, opts, config);
+    start_client(client_os_input, opts, config, None);
     let _ = server_thread.join();
 }

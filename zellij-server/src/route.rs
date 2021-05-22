@@ -4,7 +4,7 @@ use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData,
+    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
@@ -12,7 +12,7 @@ use zellij_utils::{
         actions::{Action, Direction},
         get_mode_info,
     },
-    ipc::ClientToServerMsg,
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
 
 fn route_action(
@@ -203,6 +203,7 @@ fn route_action(
 
 pub(crate) fn route_thread_main(
     session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
@@ -210,6 +211,7 @@ pub(crate) fn route_thread_main(
         let (instruction, err_ctx) = os_input.recv_from_client();
         err_ctx.update_thread_ctx();
         let rlocked_sessions = session_data.read().unwrap();
+
         match instruction {
             ClientToServerMsg::Action(action) => {
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
@@ -227,9 +229,24 @@ pub(crate) fn route_thread_main(
                     .unwrap();
             }
             ClientToServerMsg::NewClient(..) => {
+                if *session_state.read().unwrap() != SessionState::Uninitialized {
+                    os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::Error(
+                        "Cannot add new client".into(),
+                    )));
+                    break;
+                }
                 os_input.add_client_sender();
                 to_server.send(instruction.into()).unwrap();
             }
+            ClientToServerMsg::AttachClient(_, force) => {
+                if *session_state.read().unwrap() == SessionState::Attached && !force {
+                    os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::CannotAttach));
+                    break;
+                }
+                os_input.add_client_sender();
+                to_server.send(instruction.into()).unwrap();
+            }
+            ClientToServerMsg::ClientDetached => break,
         }
     }
 }
