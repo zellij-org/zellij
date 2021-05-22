@@ -276,19 +276,16 @@ impl ServerOsApi for FakeInputOutput {
         let write_buffer = stdin_writes.get_mut(&pid).unwrap();
         Ok(write_buffer.write(buf).unwrap())
     }
-    fn read_from_tty_stdout(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, pid: RawFd, mut buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
-        let mut bytes_read = 0;
         match read_buffers.get_mut(&pid) {
             Some(bytes) => {
-                for i in bytes.read_position..bytes.content.len() {
-                    bytes_read += 1;
-                    buf[i] = bytes.content[i];
+                let available_range = bytes.read_position..bytes.content.len();
+                let len = buf.write(&bytes.content[available_range]).unwrap();
+                if len > bytes.read_position {
+                    bytes.set_read_position(len);
                 }
-                if bytes_read > bytes.read_position {
-                    bytes.set_read_position(bytes_read);
-                }
-                return Ok(bytes_read);
+                return Ok(len);
             }
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }
