@@ -24,7 +24,7 @@ env = { "SKIP_TEST" = true }
 [tasks.test]
 condition = { env_false = ["SKIP_TEST"] }
 dependencies = ["pre-test"]
-args = ["test"]
+args = ["test", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.post-test]
 env = { "SKIP_TEST" = false }
@@ -39,10 +39,10 @@ run_task = "launch"
 run_task = { name = "build", fork = true }
 
 [tasks.build]
-args = ["build"]
+args = ["build", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.build-release]
-args = ["build", "--release"]
+args = ["build", "--release", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.build-dev-data-dir]
 script_runner = "@duckscript"
