@@ -2,28 +2,18 @@
 
 use async_std::task_local;
 use std::cell::RefCell;
-use std::sync::mpsc;
 
 use crate::errors::{get_current_ctx, ErrorContext};
+pub use crossbeam::channel::{bounded, unbounded, Receiver, RecvError, SendError, Sender};
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
-pub type ChannelWithContext<T> = (
-    mpsc::Sender<(T, ErrorContext)>,
-    mpsc::Receiver<(T, ErrorContext)>,
-);
-/// An [MPSC](mpsc) synchronous channel with added error context.
-pub type SyncChannelWithContext<T> = (
-    mpsc::SyncSender<(T, ErrorContext)>,
-    mpsc::Receiver<(T, ErrorContext)>,
-);
+pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorContext)>);
 
 /// Wrappers around the two standard [MPSC](mpsc) sender types, [`mpsc::Sender`] and [`mpsc::SyncSender`], with an additional [`ErrorContext`].
 #[derive(Clone)]
 pub enum SenderType<T: Clone> {
     /// A wrapper around an [`mpsc::Sender`], adding an [`ErrorContext`].
-    Sender(mpsc::Sender<(T, ErrorContext)>),
-    /// A wrapper around an [`mpsc::SyncSender`], adding an [`ErrorContext`].
-    SyncSender(mpsc::SyncSender<(T, ErrorContext)>),
+    Sender(Sender<(T, ErrorContext)>),
 }
 
 /// Sends messages on an [MPSC](std::sync::mpsc) channel, along with an [`ErrorContext`],
@@ -40,11 +30,10 @@ impl<T: Clone> SenderWithContext<T> {
 
     /// Sends an event, along with the current [`ErrorContext`], on this
     /// [`SenderWithContext`]'s channel.
-    pub fn send(&self, event: T) -> Result<(), mpsc::SendError<(T, ErrorContext)>> {
+    pub fn send(&self, event: T) -> Result<(), SendError<(T, ErrorContext)>> {
         let err_ctx = get_current_ctx();
         match self.sender {
             SenderType::Sender(ref s) => s.send((event, err_ctx)),
-            SenderType::SyncSender(ref s) => s.send((event, err_ctx)),
         }
     }
 }

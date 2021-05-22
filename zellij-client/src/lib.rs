@@ -7,7 +7,6 @@ use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
-use std::sync::mpsc;
 use std::thread;
 
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
 };
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{SenderType, SenderWithContext, SyncChannelWithContext},
+    channels::{self, ChannelWithContext, SenderType, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
@@ -149,11 +148,11 @@ pub fn start_client(
         .write(bracketed_paste.as_bytes())
         .unwrap();
 
-    let (send_client_instructions, receive_client_instructions): SyncChannelWithContext<
+    let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
-    > = mpsc::sync_channel(50);
+    > = channels::bounded(50);
     let send_client_instructions =
-        SenderWithContext::new(SenderType::SyncSender(send_client_instructions));
+        SenderWithContext::new(SenderType::Sender(send_client_instructions));
 
     #[cfg(not(any(feature = "test", test)))]
     std::panic::set_hook({

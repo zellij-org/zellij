@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use zellij_utils::{nix, zellij_tile};
@@ -14,7 +14,7 @@ use zellij_server::os_input_output::{async_trait, AsyncReader, Pid, ServerOsApi}
 use zellij_tile::data::Palette;
 use zellij_utils::{
     async_std,
-    channels::{ChannelWithContext, SenderType, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderType, SenderWithContext},
     errors::ErrorContext,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
@@ -79,9 +79,11 @@ pub struct FakeInputOutput {
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
     send_instructions_to_client: SenderWithContext<ServerToClientMsg>,
-    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ServerToClientMsg, ErrorContext)>>>,
+    receive_instructions_from_server:
+        Arc<Mutex<channels::Receiver<(ServerToClientMsg, ErrorContext)>>>,
     send_instructions_to_server: SenderWithContext<ClientToServerMsg>,
-    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ClientToServerMsg, ErrorContext)>>>,
+    receive_instructions_from_client:
+        Arc<Mutex<channels::Receiver<(ClientToServerMsg, ErrorContext)>>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
 }
@@ -92,10 +94,10 @@ impl FakeInputOutput {
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         let (client_sender, client_receiver): ChannelWithContext<ServerToClientMsg> =
-            mpsc::channel();
+            channels::unbounded();
         let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
         let (server_sender, server_receiver): ChannelWithContext<ClientToServerMsg> =
-            mpsc::channel();
+            channels::unbounded();
         let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
