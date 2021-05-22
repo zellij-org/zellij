@@ -274,12 +274,7 @@ impl ServerOsApi for FakeInputOutput {
     fn write_to_tty_stdin(&self, pid: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         let mut stdin_writes = self.stdin_writes.lock().unwrap();
         let write_buffer = stdin_writes.get_mut(&pid).unwrap();
-        let mut bytes_written = 0;
-        for byte in buf {
-            bytes_written += 1;
-            write_buffer.push(*byte);
-        }
-        Ok(bytes_written)
+        Ok(write_buffer.write(buf).unwrap())
     }
     fn read_from_tty_stdout(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
