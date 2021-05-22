@@ -258,11 +258,12 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
             ServerInstruction::Render(output) => {
                 if *session_state.read().unwrap() == SessionState::Attached {
-                    os_input.send_to_client(
-                        output.map_or(ServerToClientMsg::Exit(ExitReason::Normal), |op| {
-                            ServerToClientMsg::Render(op)
-                        }),
-                    );
+                    if let Some(op) = output {
+                        os_input.send_to_client(ServerToClientMsg::Render(op));
+                    } else {
+                        os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
+                        break;
+                    }
                 }
             }
             ServerInstruction::Error(backtrace) => {
