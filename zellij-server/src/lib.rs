@@ -337,7 +337,7 @@ fn init_session(
         .spawn({
             let pty = Pty::new(
                 Bus::new(
-                    pty_receiver,
+                    vec![pty_receiver],
                     Some(&to_screen),
                     None,
                     Some(&to_plugin),
@@ -355,7 +355,7 @@ fn init_session(
         .name("screen".to_string())
         .spawn({
             let screen_bus = Bus::new(
-                screen_receiver,
+                vec![screen_receiver],
                 None,
                 Some(&to_pty),
                 Some(&to_plugin),
@@ -380,7 +380,7 @@ fn init_session(
         .name("wasm".to_string())
         .spawn({
             let plugin_bus = Bus::new(
-                plugin_receiver,
+                vec![plugin_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
                 None,

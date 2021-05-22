@@ -47,14 +47,14 @@ impl ThreadSenders {
 
 /// A container for a receiver, OS input and the senders to a given thread
 pub(crate) struct Bus<T> {
-    pub receiver: channels::Receiver<(T, ErrorContext)>,
+    receivers: Vec<channels::Receiver<(T, ErrorContext)>>,
     pub senders: ThreadSenders,
     pub os_input: Option<Box<dyn ServerOsApi>>,
 }
 
 impl<T> Bus<T> {
     pub fn new(
-        receiver: channels::Receiver<(T, ErrorContext)>,
+        receivers: Vec<channels::Receiver<(T, ErrorContext)>>,
         to_screen: Option<&SenderWithContext<ScreenInstruction>>,
         to_pty: Option<&SenderWithContext<PtyInstruction>>,
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
@@ -62,7 +62,7 @@ impl<T> Bus<T> {
         os_input: Option<Box<dyn ServerOsApi>>,
     ) -> Self {
         Bus {
-            receiver,
+            receivers,
             senders: ThreadSenders {
                 to_screen: to_screen.cloned(),
                 to_pty: to_pty.cloned(),
@@ -74,6 +74,12 @@ impl<T> Bus<T> {
     }
 
     pub fn recv(&self) -> Result<(T, ErrorContext), channels::RecvError> {
-        self.receiver.recv()
+        let mut selector = channels::Select::new();
+        self.receivers.iter().for_each(|r| {
+            selector.recv(r);
+        });
+        let oper = selector.select();
+        let idx = oper.index();
+        oper.recv(&self.receivers[idx])
     }
 }
