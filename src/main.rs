@@ -1,8 +1,8 @@
-mod list_sessions;
+mod sessions;
 #[cfg(test)]
 mod tests;
 
-use list_sessions::{assert_session, assert_session_ne, list_sessions};
+use sessions::{assert_session, assert_session_ne, list_sessions};
 use std::convert::TryFrom;
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
