@@ -220,7 +220,7 @@ impl Setup {
 
         message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
         message.push_str(&" Is the [ARROW_SEPARATOR] displayed correctly?\n");
-        message.push_str(&" If not you may want to either start zellij with a compatible mode 'zellij options --simple-ui'\n");
+        message.push_str(&" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
         message.push_str(&" Or check the font that is in use:\n https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly\n");
 
         message.push_str(&format!("[FEATURES]: {:?}\n", FEATURES));

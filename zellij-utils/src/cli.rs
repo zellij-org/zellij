@@ -20,7 +20,7 @@ pub struct CliArgs {
     #[structopt(long, parse(from_os_str))]
     pub server: Option<PathBuf>,
 
-    /// Path to a layout yaml file
+    /// Name of a layout file in the layout directory
     #[structopt(short, long, parse(from_os_str))]
     pub layout: Option<PathBuf>,
 
@@ -28,11 +28,11 @@ pub struct CliArgs {
     #[structopt(long, parse(from_os_str))]
     pub layout_path: Option<PathBuf>,
 
-    /// Change where zellij looks for the configuration
+    /// Change where zellij looks for the configuration file
     #[structopt(short, long, env=ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
     pub config: Option<PathBuf>,
 
-    /// Change where zellij looks for the configuration
+    /// Change where zellij looks for the configuration directory
     #[structopt(long, env=ZELLIJ_CONFIG_DIR_ENV, parse(from_os_str))]
     pub config_dir: Option<PathBuf>,
 
