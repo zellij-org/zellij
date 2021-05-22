@@ -52,13 +52,9 @@ impl FakeStdoutWriter {
 
 impl Write for FakeStdoutWriter {
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        let mut bytes_written = 0;
         let mut output_buffer = self.output_buffer.lock().unwrap();
-        for byte in buf {
-            bytes_written += 1;
-            output_buffer.push(*byte);
-        }
-        Ok(bytes_written)
+        output_buffer.extend_from_slice(buf);
+        Ok(buf.len())
     }
     fn flush(&mut self) -> Result<(), std::io::Error> {
         let mut output_buffer = self.output_buffer.lock().unwrap();
