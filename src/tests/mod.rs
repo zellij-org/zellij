@@ -5,7 +5,7 @@ pub mod tty_inputs;
 pub mod utils;
 
 use std::path::PathBuf;
-use zellij_client::{os_input_output::ClientOsApi, start_client};
+use zellij_client::{os_input_output::ClientOsApi, start_client, ClientInfo};
 use zellij_server::{os_input_output::ServerOsApi, start_server};
 use zellij_utils::{cli::CliArgs, input::config::Config};
 
@@ -21,6 +21,6 @@ pub fn start(
             start_server(server_os_input, PathBuf::from(""));
         })
         .unwrap();
-    start_client(client_os_input, opts, config, None);
+    start_client(client_os_input, opts, config, ClientInfo::New("".into()));
     let _ = server_thread.join();
 }

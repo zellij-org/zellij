@@ -76,11 +76,17 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ClientInfo {
+    Attach(String, bool),
+    New(String),
+}
+
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
     config: Config,
-    attach_to: Option<(String, bool)>,
+    info: ClientInfo,
 ) {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
@@ -106,20 +112,25 @@ pub fn start_client(
     };
 
     #[cfg(not(any(feature = "test", test)))]
-    let first_msg = if let Some((name, force)) = attach_to {
-        SESSION_NAME.set(name).unwrap();
-        std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+    let first_msg = match info {
+        ClientInfo::Attach(name, force) => {
+            SESSION_NAME.set(name).unwrap();
+            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
 
-        ClientToServerMsg::AttachClient(client_attributes, force)
-    } else {
-        SESSION_NAME
-            .set(names::Generator::default().next().unwrap())
-            .unwrap();
-        std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+            ClientToServerMsg::AttachClient(client_attributes, force)
+        }
+        ClientInfo::New(name) => {
+            SESSION_NAME.set(name).unwrap();
+            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
 
-        spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
+            spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 
-        ClientToServerMsg::NewClient(client_attributes, Box::new(opts), Box::new(config_options))
+            ClientToServerMsg::NewClient(
+                client_attributes,
+                Box::new(opts),
+                Box::new(config_options),
+            )
+        }
     };
     #[cfg(any(feature = "test", test))]
     let first_msg = {

@@ -2,10 +2,10 @@ mod list_sessions;
 #[cfg(test)]
 mod tests;
 
-use list_sessions::{assert_session, list_sessions};
+use list_sessions::{assert_session, assert_session_ne, list_sessions};
 use std::convert::TryFrom;
 use std::process;
-use zellij_client::{os_input_output::get_client_os_input, start_client};
+use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
 use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
     cli::{CliArgs, Command, Sessions},
@@ -61,10 +61,20 @@ pub fn main() {
                 Box::new(os_input),
                 opts,
                 config,
-                Some((session_name, force)),
+                ClientInfo::Attach(session_name, force),
             );
         } else {
-            start_client(Box::new(os_input), opts, config, None);
+            let session_name = opts
+                .session
+                .clone()
+                .unwrap_or_else(|| names::Generator::default().next().unwrap());
+            assert_session_ne(&session_name);
+            start_client(
+                Box::new(os_input),
+                opts,
+                config,
+                ClientInfo::New(session_name),
+            );
         }
     }
 }

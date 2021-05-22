@@ -2290,6 +2290,7 @@ name = "zellij"
 version = "0.12.0"
 dependencies = [
  "insta",
+ "names",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -2299,7 +2300,6 @@ dependencies = [
 name = "zellij-client"
 version = "0.12.0"
 dependencies = [
- "names",
  "termbg",
  "zellij-utils",
 ]

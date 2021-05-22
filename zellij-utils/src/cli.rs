@@ -20,6 +20,10 @@ pub struct CliArgs {
     #[structopt(long, parse(from_os_str), hidden = true)]
     pub server: Option<PathBuf>,
 
+    /// Specify name of a new session
+    #[structopt(long, short)]
+    pub session: Option<String>,
+
     /// Name of a layout file in the layout directory
     #[structopt(short, long, parse(from_os_str))]
     pub layout: Option<PathBuf>,

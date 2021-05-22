@@ -67,3 +67,20 @@ pub(crate) fn assert_session(name: &str) {
     };
     process::exit(exit_code);
 }
+
+pub(crate) fn assert_session_ne(name: &str) {
+    let exit_code = match get_sessions() {
+        Ok(sessions) => {
+            if sessions.iter().all(|s| s != name) {
+                return;
+            }
+            println!("Session with name {:?} aleady exists. Use attach command to connect to it or specify a different name.", name);
+            0
+        }
+        Err(e) => {
+            eprintln!("Error occured: {:?}", e);
+            1
+        }
+    };
+    process::exit(exit_code);
+}
