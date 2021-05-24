@@ -39,10 +39,10 @@ run_task = "launch"
 run_task = { name = "build", fork = true }
 
 [tasks.build]
-args = ["build", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["build"]
 
 [tasks.build-release]
-args = ["build", "--release", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["build", "--release"]
 
 [tasks.build-dev-data-dir]
 script_runner = "@duckscript"
