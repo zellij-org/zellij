@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::zellij_tile::data::Event;
+use zellij_utils::{logging::debug_log_to_file, zellij_tile::data::Event};
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
@@ -224,6 +224,13 @@ fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::MouseHold(point))
+                .unwrap();
+        }
+        Action::Copy => {
+            debug_log_to_file(String::from("got copy action"));
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::Copy)
                 .unwrap();
         }
         Action::NoOp => {}

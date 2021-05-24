@@ -1,21 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Point {
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
+pub struct Position {
     pub line: Line,
     pub column: Column,
 }
 
-impl Point {
-    pub fn new(line: Line, column: Column) -> Self {
-        Self { line, column }
+impl Position {
+    pub fn new(line: u16, column: u16) -> Self {
+        Self {
+            line: Line(line as usize),
+            column: Column(column as usize),
+        }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Line(pub u16);
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Column(pub u16);
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd)]
+pub struct Line(pub usize);
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd)]
+pub struct Column(pub usize);
 
 /// A mouse related event
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -23,30 +26,25 @@ pub enum MouseEvent {
     /// A mouse button was pressed.
     ///
     /// The coordinates are zero-based.
-    Press(MouseButton, Point),
+    Press(MouseButton, Position),
     /// A mouse button was released.
     ///
     /// The coordinates are zero-based.
-    Release(Point),
+    Release(Position),
     /// A mouse button is held over the given coordinates.
     ///
     /// The coordinates are zero-based.
-    Hold(Point),
+    Hold(Position),
 }
 
 impl From<termion::event::MouseEvent> for MouseEvent {
     fn from(event: termion::event::MouseEvent) -> Self {
         match event {
-            termion::event::MouseEvent::Press(button, x, y) => Self::Press(
-                MouseButton::from(button),
-                Point::new(Line(y - 1), Column(x - 1)),
-            ),
-            termion::event::MouseEvent::Release(x, y) => {
-                Self::Release(Point::new(Line(y - 1), Column(x - 1)))
+            termion::event::MouseEvent::Press(button, x, y) => {
+                Self::Press(MouseButton::from(button), Position::new(y - 1, x - 1))
             }
-            termion::event::MouseEvent::Hold(x, y) => {
-                Self::Hold(Point::new(Line(y - 1), Column(x - 1)))
-            }
+            termion::event::MouseEvent::Release(x, y) => Self::Release(Position::new(y - 1, x - 1)),
+            termion::event::MouseEvent::Hold(x, y) => Self::Hold(Position::new(y - 1, x - 1)),
         }
     }
 }

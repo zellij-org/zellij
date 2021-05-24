@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
-use super::mouse::Point;
+use super::mouse::Position;
 
 /// The four directions (left, right, up, down).
 #[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -41,11 +41,11 @@ pub enum Action {
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
-    ScrollUpAt(Point),
+    ScrollUpAt(Position),
     /// Scroll down in focus pane.
     ScrollDown,
     /// Scroll down at point
-    ScrollDownAt(Point),
+    ScrollDownAt(Position),
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -73,7 +73,8 @@ pub enum Action {
     TabNameInput(Vec<u8>),
     /// Detach session and exit
     Detach,
-    LeftClick(Point),
-    MouseRelease(Point),
-    MouseHold(Point),
+    LeftClick(Position),
+    MouseRelease(Position),
+    MouseHold(Position),
+    Copy,
 }

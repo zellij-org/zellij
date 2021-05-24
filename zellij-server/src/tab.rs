@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use zellij_utils::{input::mouse::Point, serde, zellij_tile};
+use zellij_utils::{input::mouse::Position, serde, zellij_tile};
 
 #[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;
@@ -145,9 +145,10 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
-    fn get_char_at(&self, point: &Point) -> Option<TerminalCharacter>;
-    fn start_selection(&mut self, start: &Point);
-    fn end_selection(&mut self, end: &Point);
+    fn get_char_at(&self, point: &Position) -> Option<TerminalCharacter>;
+    fn start_selection(&mut self, start: &Position);
+    fn end_selection(&mut self, end: &Position);
+    fn get_selected_text(&self) -> String;
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -2276,7 +2277,7 @@ impl Tab {
             active_terminal.clear_scroll();
         }
     }
-    pub fn scroll_terminal_up(&mut self, point: &Point, lines: usize) {
+    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
         let pane_id = self
             .get_selectable_panes()
             .find(|(_, p)| p.position_and_size().contains(point))
@@ -2287,19 +2288,19 @@ impl Tab {
             self.render();
         }
     }
-    fn get_pane_id_at(&self, point: &Point) -> Option<PaneId> {
+    fn get_pane_id_at(&self, point: &Position) -> Option<PaneId> {
         self.get_selectable_panes()
             .find(|(_, p)| p.position_and_size().contains(point))
             .map(|(&id, _)| id)
     }
 
-    pub fn scroll_terminal_down(&mut self, point: &Point, lines: usize) {
+    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
         if let Some(pane_id) = self.get_pane_id_at(point) {
             self.panes.get_mut(&pane_id).unwrap().scroll_down(lines);
             self.render();
         }
     }
-    pub fn handle_left_click(&mut self, point: &Point) {
+    pub fn handle_left_click(&mut self, point: &Position) {
         self.focus_pane_at(point);
 
         let pane_id = self.get_pane_id_at(point);
@@ -2313,12 +2314,12 @@ impl Tab {
         };
         self.render();
     }
-    fn focus_pane_at(&mut self, point: &Point) {
+    fn focus_pane_at(&mut self, point: &Position) {
         if let Some(clicked_pane) = self.get_pane_id_at(point) {
             self.active_terminal = Some(clicked_pane);
         }
     }
-    pub fn handle_mouse_release(&mut self, point: &Point) {
+    pub fn handle_mouse_release(&mut self, point: &Position) {
         let pane_id = self.get_pane_id_at(point);
         if pane_id.is_none() {
             return;
@@ -2328,7 +2329,7 @@ impl Tab {
         }
         self.render();
     }
-    pub fn handle_mouse_hold(&mut self, point: &Point) {
+    pub fn handle_mouse_hold(&mut self, point: &Position) {
         let pane_id = self.get_pane_id_at(point);
         if pane_id.is_none() {
             return;
@@ -2337,6 +2338,10 @@ impl Tab {
             pane.end_selection(point);
         }
         self.render();
+    }
+
+    pub fn copy_selection(&self) -> Option<String> {
+        self.get_active_pane().map(|pane| pane.get_selected_text())
     }
 }
 

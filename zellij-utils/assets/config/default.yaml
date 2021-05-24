@@ -30,6 +30,8 @@ keybinds:
           key: [ Alt: '[',]
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
+        - action: [Copy,]
+          key: [ Ctrl: 'b']
     locked:
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 'g',]

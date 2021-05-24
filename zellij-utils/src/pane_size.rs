@@ -1,7 +1,7 @@
 use nix::pty::Winsize;
 use serde::{Deserialize, Serialize};
 
-use crate::input::mouse::Point;
+use crate::input::mouse::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
@@ -29,7 +29,7 @@ impl From<Winsize> for PositionAndSize {
 }
 
 impl PositionAndSize {
-    pub fn contains(&self, point: &Point) -> bool {
+    pub fn contains(&self, point: &Position) -> bool {
         let col = point.column.0 as usize;
         let row = point.line.0 as usize;
         self.x <= col && col <= self.x + self.columns && self.y <= row && row <= self.y + self.rows

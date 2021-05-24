@@ -2,6 +2,7 @@
 
 use zellij_utils::{
     input::mouse::{MouseButton, MouseEvent},
+    logging::debug_log_to_file,
     termion, zellij_tile,
 };
 
@@ -75,6 +76,7 @@ impl InputHandler {
                         }
                         termion::event::Event::Mouse(me) => {
                             let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+                            debug_log_to_file(format!("got mouse event: {:?}", mouse_event));
                             self.handle_mouse_event(&mouse_event);
 
                             // only handle mouse wheel scrolling for now

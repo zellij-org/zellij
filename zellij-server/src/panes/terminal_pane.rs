@@ -1,4 +1,8 @@
-use zellij_utils::{input::mouse::Point, vte, zellij_tile};
+use zellij_utils::{
+    input::mouse::{Column, Line, Position},
+    logging::debug_log_to_file,
+    vte, zellij_tile,
+};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
@@ -11,6 +15,7 @@ use crate::panes::{
     terminal_character::{
         CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
+    AnsiCode, NamedColor,
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -36,22 +41,76 @@ pub struct TerminalPane {
 }
 
 impl Pane for TerminalPane {
-    fn get_char_at(&self, point: &Point) -> Option<TerminalCharacter> {
-        dbg!(format!(
+    fn get_char_at(&self, point: &Position) -> Option<TerminalCharacter> {
+        debug_log_to_file(format!(
             "accessing point {:?} in pane with pos_and_size {:?}",
             point, self.position_and_size
         ));
-        let row = point.line.0 as usize - self.position_and_size.y;
-        let col = point.column.0 as usize - self.position_and_size.x;
+        let row = point.line.0 - self.position_and_size.y;
+        let col = point.column.0 - self.position_and_size.x;
         let line = &self.grid.as_character_lines()[row];
+        debug_log_to_file(format!("current line: {:?}", line));
+        debug_log_to_file(format!("relative position in pane: ({},{})", row, col));
         let mut current_char_col = 0;
         for char in line {
-            if col >= current_char_col && col <= current_char_col + char.width() {
+            if col >= current_char_col && col < current_char_col + char.width() {
                 return Some(*char);
             }
             current_char_col += char.width();
         }
         None
+    }
+
+    fn get_selected_text(&self) -> String {
+        let mut selection = String::new();
+
+        debug_log_to_file(format!("getting text from selection: {:?}", self.selection));
+
+        if let Some(range) = &self.selection.range {
+            let start = if range.start <= range.end {
+                range.start
+            } else {
+                range.end
+            };
+
+            let end = if range.end > range.start {
+                range.end
+            } else {
+                range.start
+            };
+
+            for l in start.line.0..=end.line.0 {
+                let start_column = if l == range.start.line.0 {
+                    range.start.column.0
+                } else {
+                    0
+                };
+
+                let end_column = if l == range.end.line.0 {
+                    range.end.column.0
+                } else {
+                    self.position_and_size.columns
+                };
+
+                debug_log_to_file(format!(
+                    "line #{}, start_col: {}, end_col: {}",
+                    l, start_column, end_column
+                ));
+
+                for c in start_column..=end_column {
+                    let c = self.get_char_at(&Position {
+                        line: Line(l),
+                        column: Column(c),
+                    });
+                    if let Some(c) = c {
+                        selection.push(c.character);
+                    }
+                }
+            }
+            return selection;
+        }
+
+        String::from("")
     }
 
     fn x(&self) -> usize {
@@ -307,7 +366,7 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn start_selection(&mut self, start: &Point) {
+    fn start_selection(&mut self, start: &Position) {
         self.selection.start(*start);
         dbg!(format!(
             "start selection at {:?}, selection: {:?}",
@@ -315,7 +374,7 @@ impl Pane for TerminalPane {
         ));
     }
 
-    fn end_selection(&mut self, end: &Point) {
+    fn end_selection(&mut self, end: &Position) {
         self.selection.to(*end);
         dbg!(format!(
             "end selection at {:?}, selection: {:?}",

@@ -5,7 +5,9 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::{input::layout::Layout, input::mouse::Point, zellij_tile};
+use zellij_utils::{
+    input::layout::Layout, input::mouse::Position, logging::debug_log_to_file, zellij_tile,
+};
 
 use crate::{
     panes::PaneId,
@@ -47,9 +49,9 @@ pub(crate) enum ScreenInstruction {
     MoveFocusRightOrNextTab,
     Exit,
     ScrollUp,
-    ScrollUpAt(Point),
+    ScrollUpAt(Position),
     ScrollDown,
-    ScrollDownAt(Point),
+    ScrollDownAt(Position),
     PageScrollUp,
     PageScrollDown,
     ClearScroll,
@@ -70,9 +72,10 @@ pub(crate) enum ScreenInstruction {
     UpdateTabName(Vec<u8>),
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
-    LeftClick(Point),
-    MouseRelease(Point),
-    MouseHold(Point),
+    LeftClick(Position),
+    MouseRelease(Position),
+    MouseHold(Position),
+    Copy,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -129,6 +132,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::LeftClick(_) => ScreenContext::LeftClick,
             ScreenInstruction::MouseRelease(_) => ScreenContext::MouseRelease,
             ScreenInstruction::MouseHold(_) => ScreenContext::MouseHold,
+            ScreenInstruction::Copy => ScreenContext::Copy,
         }
     }
 }
@@ -715,6 +719,11 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .handle_mouse_hold(&point);
+            }
+            ScreenInstruction::Copy => {
+                debug_log_to_file(String::from("received copy screeninstruction"));
+                let sel = screen.get_active_tab().unwrap().copy_selection();
+                debug_log_to_file(format!("current selection: {:?}", sel));
             }
             ScreenInstruction::Exit => {
                 break;
