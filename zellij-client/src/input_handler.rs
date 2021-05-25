@@ -7,7 +7,7 @@ use zellij_utils::{
     channels::{SenderWithContext, OPENCALLS},
     errors::ContextType,
     input::{actions::Action, cast_termion_key, config::Config, keybinds::Keybinds},
-    ipc::ClientToServerMsg,
+    ipc::{ClientToServerMsg, ExitReason},
 };
 
 use termion::input::TermReadEventsAndRaw;
@@ -132,7 +132,9 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
-            Action::Quit => {
+            Action::Quit | Action::Detach => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::Action(action));
                 self.exit();
                 should_break = true;
             }
@@ -167,7 +169,7 @@ impl InputHandler {
     /// same as quitting Zellij).
     fn exit(&mut self) {
         self.send_client_instructions
-            .send(ClientInstruction::Exit)
+            .send(ClientInstruction::Exit(ExitReason::Normal))
             .unwrap();
     }
 }

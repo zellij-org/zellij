@@ -2301,6 +2301,7 @@ name = "zellij"
 version = "0.12.0"
 dependencies = [
  "insta",
+ "names",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -2358,8 +2359,8 @@ dependencies = [
  "interprocess",
  "lazy_static",
  "libc",
- "names",
  "nix",
+ "once_cell",
  "serde",
  "serde_yaml",
  "signal-hook 0.3.8",

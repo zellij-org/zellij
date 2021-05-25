@@ -260,4 +260,6 @@ pub enum ServerContext {
     UnblockInputThread,
     ClientExit,
     Error,
+    DetachSession,
+    AttachClient,
 }

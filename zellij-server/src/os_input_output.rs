@@ -18,7 +18,10 @@ use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
     shared::default_palette,
 };
 
@@ -189,6 +192,14 @@ pub trait ServerOsApi: Send + Sync {
     fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
     fn add_client_sender(&self);
+    /// Send to the temporary client
+    // A temporary client is the one that hasn't been registered as a client yet.
+    // Only the corresponding router thread has access to send messages to it.
+    // This can be the case when the client cannot attach to the session,
+    // so it tries to connect and then exits, hence temporary.
+    fn send_to_temp_client(&self, msg: ServerToClientMsg);
+    /// Removes the sender to client
+    fn remove_client_sender(&self);
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
@@ -245,7 +256,6 @@ impl ServerOsApi for ServerOsInputOutput {
             .send(msg);
     }
     fn add_client_sender(&self) {
-        assert!(self.send_instructions_to_client.lock().unwrap().is_none());
         let sender = self
             .receive_instructions_from_client
             .as_ref()
@@ -253,7 +263,27 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .unwrap()
             .get_sender();
-        *self.send_instructions_to_client.lock().unwrap() = Some(sender);
+        let old_sender = self
+            .send_instructions_to_client
+            .lock()
+            .unwrap()
+            .replace(sender);
+        if let Some(mut sender) = old_sender {
+            sender.send(ServerToClientMsg::Exit(ExitReason::ForceDetached));
+        }
+    }
+    fn send_to_temp_client(&self, msg: ServerToClientMsg) {
+        self.receive_instructions_from_client
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .get_sender()
+            .send(msg);
+    }
+    fn remove_client_sender(&self) {
+        assert!(self.send_instructions_to_client.lock().unwrap().is_some());
+        *self.send_instructions_to_client.lock().unwrap() = None;
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
         self.receive_instructions_from_client =

@@ -333,6 +333,8 @@ impl ServerOsApi for FakeInputOutput {
         self.send_instructions_to_client.send(msg).unwrap();
     }
     fn add_client_sender(&self) {}
+    fn remove_client_sender(&self) {}
+    fn send_to_temp_client(&self, _msg: ServerToClientMsg) {}
     fn update_receiver(&mut self, _stream: LocalSocketStream) {}
     fn load_palette(&self) -> Palette {
         default_palette()

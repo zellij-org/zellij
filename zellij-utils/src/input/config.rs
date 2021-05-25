@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
-use crate::cli::{CliArgs, ConfigCli};
+use crate::cli::{CliArgs, Command};
 use crate::setup;
 
 use serde::{Deserialize, Serialize};
@@ -60,7 +60,7 @@ impl TryFrom<&CliArgs> for Config {
             return Config::new(&path);
         }
 
-        if let Some(ConfigCli::Setup(setup)) = opts.option.clone() {
+        if let Some(Command::Setup(ref setup)) = opts.command {
             if setup.clean {
                 return Config::from_default_assets();
             }
@@ -179,7 +179,7 @@ mod config_test {
     fn try_from_cli_args_with_option_clean() {
         use crate::setup::Setup;
         let mut opts = CliArgs::default();
-        opts.option = Some(ConfigCli::Setup(Setup {
+        opts.command = Some(Command::Setup(Setup {
             clean: true,
             ..Setup::default()
         }));
