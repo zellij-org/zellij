@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix behaviour of the `clean` flag (https://github.com/zellij-org/zellij/pull/519)
 * Make distinction clearer between certain configuration flags (https://github.com/zellij-org/zellij/pull/529)
 * Resource usage and performance improvements (https://github.com/zellij-org/zellij/pull/523)
+* Feature: Detachable/Persistent sessions (https://github.com/zellij-org/zellij/pull/531)
 
 ## [0.11.0] - 2021-05-15
 
