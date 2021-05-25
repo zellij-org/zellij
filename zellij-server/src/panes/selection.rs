@@ -13,12 +13,14 @@ impl Default for Selection {
 
 impl Selection {
     pub fn start(&mut self, start: Position) {
-        debug_log_to_file(format!("setting selection start to {:?}", start));
+        debug_log_to_file(format!("setting selection start to {:?}", start))
+            .expect("could not write to log file");
         self.range = Some(Range { start, end: start })
     }
 
     pub fn to(&mut self, to: Position) {
-        debug_log_to_file(format!("setting selection end to {:?}", to));
+        debug_log_to_file(format!("setting selection end to {:?}", to))
+            .expect("could not write to log file");
         if let Some(range) = &mut self.range {
             range.end = to;
         }
@@ -59,11 +61,11 @@ impl Range {
         if start.line == end.line {
             return row == start.line.0 as usize
                 && start.column.0 as usize <= col
-                && col <= end.column.0 as usize;
+                && col < end.column.0 as usize;
         }
         if start.line.0 as usize == row && col >= start.column.0 as usize {
             return true;
         }
-        end.line.0 as usize == row && col <= end.column.0 as usize
+        end.line.0 as usize == row && col < end.column.0 as usize
     }
 }

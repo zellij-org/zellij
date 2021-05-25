@@ -76,25 +76,9 @@ impl InputHandler {
                         }
                         termion::event::Event::Mouse(me) => {
                             let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
-                            debug_log_to_file(format!("got mouse event: {:?}", mouse_event));
+                            debug_log_to_file(format!("got mouse event: {:?}", mouse_event))
+                                .expect("could not write to log file");
                             self.handle_mouse_event(&mouse_event);
-
-                            // only handle mouse wheel scrolling for now
-                            // if let termion::event::MouseEvent::Press(button, x, y) = me {
-                            //     dbg!(format!("mouse button '{:?}'press at ({},{})", button, x, y));
-                            //     match button {
-                            //         termion::event::MouseButton::WheelUp => {
-                            //             self.dispatch_action(Action::ScrollUp);
-                            //         }
-                            //         termion::event::MouseButton::WheelDown => {
-                            //             self.dispatch_action(Action::ScrollDown);
-                            //         }
-                            //         termion::event::MouseButton::Left => {
-                            //             self.dispatch_action(Action::FocusPaneAt((x, y)));
-                            //         }
-                            //         _ => {}
-                            //     }
-                            // }
                         }
                         termion::event::Event::Unsupported(unsupported_key) => {
                             // we have to do this because of a bug in termion

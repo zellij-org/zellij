@@ -721,9 +721,9 @@ pub(crate) fn screen_thread_main(
                     .handle_mouse_hold(&point);
             }
             ScreenInstruction::Copy => {
-                debug_log_to_file(String::from("received copy screeninstruction"));
                 let sel = screen.get_active_tab().unwrap().copy_selection();
-                debug_log_to_file(format!("current selection: {:?}", sel));
+                debug_log_to_file(format!("current selection: {:?}", sel))
+                    .expect("could not write to log file");
             }
             ScreenInstruction::Exit => {
                 break;

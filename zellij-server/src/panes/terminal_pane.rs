@@ -45,12 +45,15 @@ impl Pane for TerminalPane {
         debug_log_to_file(format!(
             "accessing point {:?} in pane with pos_and_size {:?}",
             point, self.position_and_size
-        ));
+        ))
+        .expect("could not write to log file");
         let row = point.line.0 - self.position_and_size.y;
         let col = point.column.0 - self.position_and_size.x;
         let line = &self.grid.as_character_lines()[row];
-        debug_log_to_file(format!("current line: {:?}", line));
-        debug_log_to_file(format!("relative position in pane: ({},{})", row, col));
+        debug_log_to_file(format!("current line: {:?}", line))
+            .expect("could not write to log file");
+        debug_log_to_file(format!("relative position in pane: ({},{})", row, col))
+            .expect("could not write to log file");
         let mut current_char_col = 0;
         for char in line {
             if col >= current_char_col && col < current_char_col + char.width() {
@@ -64,7 +67,8 @@ impl Pane for TerminalPane {
     fn get_selected_text(&self) -> String {
         let mut selection = String::new();
 
-        debug_log_to_file(format!("getting text from selection: {:?}", self.selection));
+        debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
+            .expect("could not write to log file");
 
         if let Some(range) = &self.selection.range {
             let start = if range.start <= range.end {
@@ -95,7 +99,8 @@ impl Pane for TerminalPane {
                 debug_log_to_file(format!(
                     "line #{}, start_col: {}, end_col: {}",
                     l, start_column, end_column
-                ));
+                ))
+                .expect("could not write to log file");
 
                 for c in start_column..=end_column {
                     let c = self.get_char_at(&Position {

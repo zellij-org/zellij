@@ -43,11 +43,11 @@ impl PluginPane {
 }
 
 impl Pane for PluginPane {
-    fn get_char_at(&self, point: &Position) -> Option<TerminalCharacter> {
+    fn get_char_at(&self, _point: &Position) -> Option<TerminalCharacter> {
         None
     }
-    fn start_selection(&mut self, start: &Position) {}
-    fn end_selection(&mut self, end: &Position) {}
+    fn start_selection(&mut self, _start: &Position) {}
+    fn end_selection(&mut self, _end: &Position) {}
     fn get_selected_text(&self) -> String {
         String::from("")
     }
