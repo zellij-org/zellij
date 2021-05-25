@@ -159,6 +159,11 @@ pub trait ServerOsApi: Send + Sync {
     fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
     fn add_client_sender(&self);
+    /// Send to the temporary client
+    // A temporary client is the one that hasn't been registered as a client yet.
+    // Only the corresponding router thread has access to send messages to it.
+    // This can be the case when the client cannot attach to the session,
+    // so it tries to connect and then exits, hence temporary.
     fn send_to_temp_client(&self, msg: ServerToClientMsg);
     /// Removes the sender to client
     fn remove_client_sender(&self);

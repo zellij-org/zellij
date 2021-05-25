@@ -730,6 +730,7 @@ impl Tab {
         {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
+            // or if this session is not attached to a client, we do not have to render
             return;
         }
         // if any pane contain widechar, all pane in the same row will messup. We should render them every time
