@@ -1,6 +1,10 @@
 use std::os::unix::fs::FileTypeExt;
 use std::{fs, io, process};
-use zellij_utils::consts::ZELLIJ_SOCK_DIR;
+use zellij_utils::{
+    consts::ZELLIJ_SOCK_DIR,
+    interprocess::local_socket::LocalSocketStream,
+    ipc::{ClientToServerMsg, IpcSenderWithContext},
+};
 
 fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
@@ -8,8 +12,9 @@ fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
             let mut sessions = Vec::new();
             files.for_each(|file| {
                 let file = file.unwrap();
-                if file.file_type().unwrap().is_socket() {
-                    sessions.push(file.file_name().into_string().unwrap());
+                let file_name = file.file_name().into_string().unwrap();
+                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
+                    sessions.push(file_name);
                 }
             });
             Ok(sessions)
@@ -83,4 +88,22 @@ pub(crate) fn assert_session_ne(name: &str) {
         }
     };
     process::exit(exit_code);
+}
+
+fn assert_socket(name: &str) -> bool {
+    let path = &*ZELLIJ_SOCK_DIR.join(name);
+    match LocalSocketStream::connect(path) {
+        Ok(stream) => {
+            IpcSenderWithContext::new(stream).send(ClientToServerMsg::ClientExited);
+            true
+        }
+        Err(e) => {
+            if e.kind() == io::ErrorKind::ConnectionRefused {
+                drop(fs::remove_file(path));
+                false
+            } else {
+                true
+            }
+        }
+    }
 }
