@@ -265,7 +265,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
             ServerInstruction::Render(output) => {
                 if *session_state.read().unwrap() == SessionState::Attached {
-                    // Here output is of type Option<String> sent by screen thread.
+                    // Here output is of the type Option<String> sent by screen thread.
                     // If `Some(_)`- unwrap it and forward it to the client to render.
                     // If `None`- Send an exit instruction. This is the case when the user closes last Tab/Pane.
                     if let Some(op) = output {
