@@ -1746,7 +1746,7 @@ impl Row {
         let mut drained_part: Vec<TerminalCharacter> = vec![];
         let mut drained_part_len = 0;
         loop {
-            if self.columns.len() == 0 {
+            if self.columns.is_empty() {
                 break;
             }
             let next_character_len = self.columns.get(0).unwrap().width;
