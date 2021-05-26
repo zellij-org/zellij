@@ -14,7 +14,7 @@ use zellij_server::os_input_output::{async_trait, AsyncReader, Pid, ServerOsApi}
 use zellij_tile::data::Palette;
 use zellij_utils::{
     async_std,
-    channels::{self, ChannelWithContext, SenderType, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     errors::ErrorContext,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
@@ -95,10 +95,10 @@ impl FakeInputOutput {
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         let (client_sender, client_receiver): ChannelWithContext<ServerToClientMsg> =
             channels::unbounded();
-        let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
+        let send_instructions_to_client = SenderWithContext::new(client_sender);
         let (server_sender, server_receiver): ChannelWithContext<ClientToServerMsg> =
             channels::unbounded();
-        let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
+        let send_instructions_to_server = SenderWithContext::new(server_sender);
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),

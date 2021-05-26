@@ -15,7 +15,7 @@ use crate::{
 };
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{self, ChannelWithContext, SenderType, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
@@ -151,8 +151,7 @@ pub fn start_client(
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
     > = channels::bounded(50);
-    let send_client_instructions =
-        SenderWithContext::new(SenderType::Sender(send_client_instructions));
+    let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     #[cfg(not(any(feature = "test", test)))]
     std::panic::set_hook({

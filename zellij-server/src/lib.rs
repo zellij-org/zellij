@@ -28,7 +28,7 @@ use crate::{
 use route::route_thread_main;
 use zellij_utils::{
     channels,
-    channels::{ChannelWithContext, SenderType, SenderWithContext},
+    channels::{ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{get_mode_info, options::Options},
@@ -119,7 +119,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     std::env::set_var(&"ZELLIJ", "0");
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
-    let to_server = SenderWithContext::new(SenderType::Sender(to_server));
+    let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::Uninitialized));
 
@@ -302,12 +302,11 @@ fn init_session(
     session_state: Arc<RwLock<SessionState>>,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
-    let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
-
+    let to_screen = SenderWithContext::new(to_screen);
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
-    let to_plugin = SenderWithContext::new(SenderType::Sender(to_plugin));
+    let to_plugin = SenderWithContext::new(to_plugin);
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
-    let to_pty = SenderWithContext::new(SenderType::Sender(to_pty));
+    let to_pty = SenderWithContext::new(to_pty);
 
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
