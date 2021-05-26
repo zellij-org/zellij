@@ -31,8 +31,6 @@ use zellij_utils::{
     shared::adjust_to_size,
 };
 
-use super::panes::TerminalCharacter;
-
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 // MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
@@ -145,7 +143,6 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
-    fn get_char_at(&self, point: &Position) -> Option<TerminalCharacter>;
     fn start_selection(&mut self, start: &Position);
     fn end_selection(&mut self, end: &Position);
     fn get_selected_text(&self) -> String;
@@ -2308,8 +2305,6 @@ impl Tab {
             return;
         }
         if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
-            let c = pane.get_char_at(&point);
-            dbg!(format!("left click on char {:?} at {:?}", c, point));
             pane.start_selection(&point);
         };
         self.render();

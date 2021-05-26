@@ -1,8 +1,4 @@
-use zellij_utils::{
-    input::mouse::{Column, Line, Position},
-    logging::debug_log_to_file,
-    vte, zellij_tile,
-};
+use zellij_utils::{input::mouse::Position, logging::debug_log_to_file, vte, zellij_tile};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
@@ -41,29 +37,6 @@ pub struct TerminalPane {
 }
 
 impl Pane for TerminalPane {
-    fn get_char_at(&self, point: &Position) -> Option<TerminalCharacter> {
-        debug_log_to_file(format!(
-            "accessing point {:?} in pane with pos_and_size {:?}",
-            point, self.position_and_size
-        ))
-        .expect("could not write to log file");
-        let row = point.line.0 - self.position_and_size.y;
-        let col = point.column.0 - self.position_and_size.x;
-        let line = &self.grid.as_character_lines()[row];
-        debug_log_to_file(format!("current line: {:?}", line))
-            .expect("could not write to log file");
-        debug_log_to_file(format!("relative position in pane: ({},{})", row, col))
-            .expect("could not write to log file");
-        let mut current_char_col = 0;
-        for char in line {
-            if col >= current_char_col && col < current_char_col + char.width() {
-                return Some(*char);
-            }
-            current_char_col += char.width();
-        }
-        None
-    }
-
     fn get_selected_text(&self) -> String {
         let mut selection = String::new();
 
@@ -102,14 +75,15 @@ impl Pane for TerminalPane {
                 ))
                 .expect("could not write to log file");
 
-                for c in start_column..=end_column {
-                    let c = self.get_char_at(&Position {
-                        line: Line(l),
-                        column: Column(c),
-                    });
-                    if let Some(c) = c {
-                        selection.push(c.character);
+                let line = &self.grid.as_character_lines()[l - self.position_and_size.y];
+
+                let mut terminal_col = 0;
+                for terminal_character in line {
+                    if terminal_col >= start_column && terminal_col < end_column {
+                        selection.push(terminal_character.character);
                     }
+
+                    terminal_col += terminal_character.width();
                 }
             }
             return selection;

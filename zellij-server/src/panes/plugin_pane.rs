@@ -10,8 +10,6 @@ use zellij_utils::{
     channels::SenderWithContext, input::mouse::Position, pane_size::PositionAndSize,
 };
 
-use super::TerminalCharacter;
-
 pub(crate) struct PluginPane {
     pub pid: u32,
     pub should_render: bool,
@@ -43,9 +41,6 @@ impl PluginPane {
 }
 
 impl Pane for PluginPane {
-    fn get_char_at(&self, _point: &Position) -> Option<TerminalCharacter> {
-        None
-    }
     fn start_selection(&mut self, _start: &Position) {}
     fn end_selection(&mut self, _end: &Position) {}
     fn get_selected_text(&self) -> String {

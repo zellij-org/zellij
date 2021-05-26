@@ -227,7 +227,8 @@ fn route_action(
                 .unwrap();
         }
         Action::Copy => {
-            debug_log_to_file(String::from("got copy action"));
+            debug_log_to_file(String::from("got copy action"))
+                .expect("could not write to log file");
             session
                 .senders
                 .send_to_screen(ScreenInstruction::Copy)
