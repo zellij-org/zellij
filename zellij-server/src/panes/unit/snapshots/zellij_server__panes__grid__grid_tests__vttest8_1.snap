@@ -3,7 +3,7 @@ source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
 
 ---
-00 (C): A******************************************************************************BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA                 
+00 (C): A******************************************************************************BAAAAAAAAAAAAAAAAA
 01 (C):                                                                                                  
 02 (C):                                                                                                  
 03 (C): Test of 'Insert Mode'. The top line should be 'A*** ... ***B'. Push <RETURN>                     

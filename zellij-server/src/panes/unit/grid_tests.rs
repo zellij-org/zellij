@@ -396,3 +396,162 @@ fn terminal_reports() {
     }
     assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
 }
+
+#[test]
+fn wide_characters() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "wide_characters";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn wide_characters_line_wrap() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "wide_characters_line_wrap";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn fish_wide_characters_override_clock() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "fish_wide_characters_override_clock";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn bash_delete_wide_characters() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "bash_delete_wide_characters";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn delete_wide_characters_before_cursor() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "delete_wide_characters_before_cursor";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn delete_wide_character_under_cursor() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "delete_wide_character_under_cursor";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn replace_wide_character_under_cursor() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "replace_wide_character_under_cursor";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn wrap_wide_characters() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 90, Palette::default());
+    let fixture_name = "wide_characters_full";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn wrap_wide_characters_on_size_change() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 93, Palette::default());
+    let fixture_name = "wide_characters_full";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.change_size(21, 90);
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn unwrap_wide_characters_on_size_change() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 93, Palette::default());
+    let fixture_name = "wide_characters_full";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.change_size(21, 90);
+    grid.change_size(21, 93);
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn wrap_wide_characters_in_the_middle_of_the_line() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 91, Palette::default());
+    let fixture_name = "wide_characters_line_middle";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn wrap_wide_characters_at_the_end_of_the_line() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 90, Palette::default());
+    let fixture_name = "wide_characters_line_end";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

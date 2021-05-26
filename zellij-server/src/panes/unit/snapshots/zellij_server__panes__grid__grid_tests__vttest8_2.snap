@@ -3,7 +3,7 @@ source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
 
 ---
-00 (C): ABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA                                                                                               
+00 (C): ABAAAAAAAAAAAAAAAAA
 01 (C):                                                                                                  
 02 (C):                                                                                                  
 03 (C): Test of 'Delete Character'. The top line should be 'AB'. Push <RETURN>

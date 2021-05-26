@@ -1,0 +1,9 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): Welcome to fish, the friendly interactive shell                                                         
+01 (C): ⋊> ~/c/zellij on wide-char ⨯ bash                                                               15:35:20
+02 (C): [aram@green zellij]$ ＨＨＨＨＨＨ                                                                             
+
