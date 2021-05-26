@@ -9,6 +9,8 @@ use zellij_utils::{
     input::layout::Layout, input::mouse::Position, logging::debug_log_to_file, zellij_tile,
 };
 
+use wl_clipboard_rs::copy::{MimeType, Options as ClipBoardOptions, Source};
+
 use crate::{
     panes::PaneId,
     pty::{PtyInstruction, VteBytes},
@@ -721,9 +723,15 @@ pub(crate) fn screen_thread_main(
                     .handle_mouse_hold(&point);
             }
             ScreenInstruction::Copy => {
-                let sel = screen.get_active_tab().unwrap().copy_selection();
-                debug_log_to_file(format!("current selection: {:?}", sel))
-                    .expect("could not write to log file");
+                if let Some(selection) = screen.get_active_tab().unwrap().copy_selection() {
+                    debug_log_to_file(format!("current selection: {:?}", selection))
+                        .expect("could not write to log file");
+                    let opts = ClipBoardOptions::new();
+                    opts.copy(
+                        Source::Bytes(selection.into_bytes().into()),
+                        MimeType::Autodetect,
+                    );
+                }
             }
             ScreenInstruction::Exit => {
                 break;

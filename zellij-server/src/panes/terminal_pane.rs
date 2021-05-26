@@ -83,7 +83,7 @@ impl Pane for TerminalPane {
                         selection.push(terminal_character.character);
                     }
 
-                    terminal_col += terminal_character.width();
+                    terminal_col += terminal_character.width;
                 }
             }
             return selection;

@@ -59,8 +59,7 @@ impl InputHandler {
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
 
-        // should add a way to disable this, and store it somewhere (os_input_output?)
-        // mouse support goes away if it's dropped
+        // move this somewhere else?
         self.os_input.enable_mouse();
         loop {
             if self.should_exit {
