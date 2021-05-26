@@ -29,9 +29,6 @@ impl<T: Clone> SenderWithContext<T> {
     }
 }
 
-unsafe impl<T: Clone> Send for SenderWithContext<T> {}
-unsafe impl<T: Clone> Sync for SenderWithContext<T> {}
-
 thread_local!(
     /// A key to some thread local storage (TLS) that holds a representation of the thread's call
     /// stack in the form of an [`ErrorContext`].
