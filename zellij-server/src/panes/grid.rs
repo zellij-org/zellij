@@ -18,7 +18,7 @@ use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_
 
 use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
-    EMPTY_TERMINAL_CHARACTER
+    EMPTY_TERMINAL_CHARACTER,
 };
 
 // this was copied verbatim from alacritty
@@ -524,7 +524,10 @@ impl Grid {
                 let excess_width = r.excess_width();
                 let mut line: Vec<TerminalCharacter> = r.columns.iter().copied().collect();
                 // pad line
-                line.resize(self.width.saturating_sub(excess_width), EMPTY_TERMINAL_CHARACTER);
+                line.resize(
+                    self.width.saturating_sub(excess_width),
+                    EMPTY_TERMINAL_CHARACTER,
+                );
                 line
             })
             .collect();
@@ -657,7 +660,11 @@ impl Grid {
             }
         }
     }
-    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter, max_width: usize) {
+    pub fn add_character_at_cursor_position(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        max_width: usize,
+    ) {
         match self.viewport.get_mut(self.cursor.y) {
             Some(row) => {
                 if self.insert_mode {
@@ -719,8 +726,8 @@ impl Grid {
             .replace_and_pad_end(self.cursor.x, self.width, replace_with);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
-         let row = self.viewport.get_mut(self.cursor.y).unwrap();
-         row.replace_and_pad_beginning(self.cursor.x, replace_with);
+        let row = self.viewport.get_mut(self.cursor.y).unwrap();
+        row.replace_and_pad_beginning(self.cursor.x, replace_with);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
         if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y) {
@@ -941,7 +948,10 @@ impl Grid {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in 0..count {
             let deleted_character = current_row.delete_and_return_character(self.cursor.x);
-            let excess_width = deleted_character.map(|terminal_character| terminal_character.width).unwrap_or(0).saturating_sub(1);
+            let excess_width = deleted_character
+                .map(|terminal_character| terminal_character.width)
+                .unwrap_or(0)
+                .saturating_sub(1);
             for _ in 0..excess_width {
                 current_row.insert_character_at(empty_character, self.cursor.x);
             }
@@ -1654,7 +1664,8 @@ impl Row {
             }
             Ordering::Less => {
                 let width_offset = self.excess_width_until(x);
-                self.columns.resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
+                self.columns
+                    .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
                 self.columns.push(terminal_character);
             }
             Ordering::Greater => {
@@ -1686,7 +1697,6 @@ impl Row {
             for _ in 0..excess_width {
                 self.columns.insert(x, terminal_character);
             }
-
         }
     }
     pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
@@ -1714,12 +1724,19 @@ impl Row {
         }
         position
     }
-    pub fn replace_and_pad_end(&mut self, from: usize, to: usize, terminal_character: TerminalCharacter) {
+    pub fn replace_and_pad_end(
+        &mut self,
+        from: usize,
+        to: usize,
+        terminal_character: TerminalCharacter,
+    ) {
         let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
         let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
-        let replacement_length = to_position_accounting_for_widechars.saturating_sub(from_position_accounting_for_widechars);
+        let replacement_length = to_position_accounting_for_widechars
+            .saturating_sub(from_position_accounting_for_widechars);
         let mut replace_with = vec![terminal_character; replacement_length];
-        self.columns.truncate(from_position_accounting_for_widechars);
+        self.columns
+            .truncate(from_position_accounting_for_widechars);
         self.columns.append(&mut replace_with);
     }
     pub fn append(&mut self, to_append: &mut Vec<TerminalCharacter>) {
@@ -1744,7 +1761,11 @@ impl Row {
     }
     pub fn replace_and_pad_beginning(&mut self, to: usize, terminal_character: TerminalCharacter) {
         let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
-        let width_of_current_character = self.columns.get(to_position_accounting_for_widechars).map(|character| character.width).unwrap_or(1);
+        let width_of_current_character = self
+            .columns
+            .get(to_position_accounting_for_widechars)
+            .map(|character| character.width)
+            .unwrap_or(1);
         let mut replace_with = vec![terminal_character; to + width_of_current_character];
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
