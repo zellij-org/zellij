@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
-use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
 
+use async_std::fs::File as AsyncFile;
+use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
@@ -17,11 +18,18 @@ use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
     shared::default_palette,
 };
 
+use async_std::io::ReadExt;
+pub use async_trait::async_trait;
+
 pub use nix::unistd::Pid;
+
 pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
@@ -88,8 +96,6 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
                         // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
-                        fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))
-                            .expect("could not fcntl");
                         child
                     }
                     ForkResult::Child => match file_to_open {
@@ -133,6 +139,34 @@ pub struct ServerOsInputOutput {
     send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ServerToClientMsg>>>>,
 }
 
+// async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
+// used. See https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/
+#[async_trait]
+pub trait AsyncReader: Send + Sync {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error>;
+}
+
+/// An `AsyncReader` that wraps a `RawFd`
+struct RawFdAsyncReader {
+    fd: async_std::fs::File,
+}
+
+impl RawFdAsyncReader {
+    fn new(fd: RawFd) -> RawFdAsyncReader {
+        RawFdAsyncReader {
+            /// The supplied `RawFd` is consumed by the created `RawFdAsyncReader`, closing it when dropped
+            fd: unsafe { AsyncFile::from_raw_fd(fd) },
+        }
+    }
+}
+
+#[async_trait]
+impl AsyncReader for RawFdAsyncReader {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        self.fd.read(buf).await
+    }
+}
+
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
@@ -142,6 +176,8 @@ pub trait ServerOsApi: Send + Sync {
     fn spawn_terminal(&self, file_to_open: Option<PathBuf>) -> (RawFd, Pid);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
+    fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
     fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
@@ -156,6 +192,14 @@ pub trait ServerOsApi: Send + Sync {
     fn send_to_client(&self, msg: ServerToClientMsg);
     /// Adds a sender to client
     fn add_client_sender(&self);
+    /// Send to the temporary client
+    // A temporary client is the one that hasn't been registered as a client yet.
+    // Only the corresponding router thread has access to send messages to it.
+    // This can be the case when the client cannot attach to the session,
+    // so it tries to connect and then exits, hence temporary.
+    fn send_to_temp_client(&self, msg: ServerToClientMsg);
+    /// Removes the sender to client
+    fn remove_client_sender(&self);
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
@@ -171,6 +215,9 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
+    }
+    fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
+        Box::new(RawFdAsyncReader::new(fd))
     }
     fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         unistd::write(fd, buf)
@@ -209,7 +256,6 @@ impl ServerOsApi for ServerOsInputOutput {
             .send(msg);
     }
     fn add_client_sender(&self) {
-        assert!(self.send_instructions_to_client.lock().unwrap().is_none());
         let sender = self
             .receive_instructions_from_client
             .as_ref()
@@ -217,7 +263,27 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .unwrap()
             .get_sender();
-        *self.send_instructions_to_client.lock().unwrap() = Some(sender);
+        let old_sender = self
+            .send_instructions_to_client
+            .lock()
+            .unwrap()
+            .replace(sender);
+        if let Some(mut sender) = old_sender {
+            sender.send(ServerToClientMsg::Exit(ExitReason::ForceDetached));
+        }
+    }
+    fn send_to_temp_client(&self, msg: ServerToClientMsg) {
+        self.receive_instructions_from_client
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .get_sender()
+            .send(msg);
+    }
+    fn remove_client_sender(&self) {
+        assert!(self.send_instructions_to_client.lock().unwrap().is_some());
+        *self.send_instructions_to_client.lock().unwrap() = None;
     }
     fn update_receiver(&mut self, stream: LocalSocketStream) {
         self.receive_instructions_from_client =

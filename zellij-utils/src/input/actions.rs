@@ -12,6 +12,10 @@ pub enum Direction {
     Down,
 }
 
+// As these actions are bound to the default config, please
+// do take care when refactoring - or renaming.
+// They might need to be adjusted in the default config
+// as well `../../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
@@ -61,4 +65,6 @@ pub enum Action {
     CloseTab,
     GoToTab(u32),
     TabNameInput(Vec<u8>),
+    /// Detach session and exit
+    Detach,
 }

@@ -4,7 +4,7 @@ use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData,
+    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
@@ -12,10 +12,16 @@ use zellij_utils::{
         actions::{Action, Direction},
         get_mode_info,
     },
-    ipc::ClientToServerMsg,
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
 
-fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn ServerOsApi) {
+fn route_action(
+    action: Action,
+    session: &SessionMetaData,
+    os_input: &dyn ServerOsApi,
+    to_server: &SenderWithContext<ServerInstruction>,
+) -> bool {
+    let mut should_break = false;
     match action {
         Action::Write(val) => {
             session
@@ -182,28 +188,36 @@ fn route_action(action: Action, session: &SessionMetaData, os_input: &dyn Server
                 .send_to_screen(ScreenInstruction::UpdateTabName(c))
                 .unwrap();
         }
+        Action::Quit => {
+            to_server.send(ServerInstruction::ClientExit).unwrap();
+            should_break = true;
+        }
+        Action::Detach => {
+            to_server.send(ServerInstruction::DetachSession).unwrap();
+            should_break = true;
+        }
         Action::NoOp => {}
-        Action::Quit => panic!("Received unexpected action"),
     }
+    should_break
 }
 
 pub(crate) fn route_thread_main(
-    sessions: Arc<RwLock<Option<SessionMetaData>>>,
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
     loop {
         let (instruction, err_ctx) = os_input.recv_from_client();
         err_ctx.update_thread_ctx();
-        let rlocked_sessions = sessions.read().unwrap();
+        let rlocked_sessions = session_data.read().unwrap();
+
         match instruction {
-            ClientToServerMsg::ClientExit => {
-                to_server.send(instruction.into()).unwrap();
-                break;
-            }
             ClientToServerMsg::Action(action) => {
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                    route_action(action, rlocked_sessions, &*os_input);
+                    if route_action(action, rlocked_sessions, &*os_input, &to_server) {
+                        break;
+                    }
                 }
             }
             ClientToServerMsg::TerminalResize(new_size) => {
@@ -215,9 +229,24 @@ pub(crate) fn route_thread_main(
                     .unwrap();
             }
             ClientToServerMsg::NewClient(..) => {
-                os_input.add_client_sender();
-                to_server.send(instruction.into()).unwrap();
+                if *session_state.read().unwrap() != SessionState::Uninitialized {
+                    os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::Error(
+                        "Cannot add new client".into(),
+                    )));
+                } else {
+                    os_input.add_client_sender();
+                    to_server.send(instruction.into()).unwrap();
+                }
             }
+            ClientToServerMsg::AttachClient(_, force) => {
+                if *session_state.read().unwrap() == SessionState::Attached && !force {
+                    os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::CannotAttach));
+                } else {
+                    os_input.add_client_sender();
+                    to_server.send(instruction.into()).unwrap();
+                }
+            }
+            ClientToServerMsg::ClientExited => break,
         }
     }
 }

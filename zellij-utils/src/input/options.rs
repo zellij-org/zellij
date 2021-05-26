@@ -1,5 +1,5 @@
 //! Handles cli and configuration options
-use crate::cli::ConfigCli;
+use crate::cli::Command;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
@@ -35,8 +35,8 @@ impl Options {
         Options { simplified_ui }
     }
 
-    pub fn from_cli(&self, other: Option<ConfigCli>) -> Options {
-        if let Some(ConfigCli::Options(options)) = other {
+    pub fn from_cli(&self, other: Option<Command>) -> Options {
+        if let Some(Command::Options(options)) = other {
             Options::merge(&self, options)
         } else {
             self.to_owned()
