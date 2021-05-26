@@ -1,5 +1,3 @@
-use unicode_width::UnicodeWidthChar;
-
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
@@ -8,6 +6,7 @@ use zellij_utils::vte::ParamsIter;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
+    width: 1,
     styles: CharacterStyles {
         foreground: Some(AnsiCode::Reset),
         background: Some(AnsiCode::Reset),
@@ -750,21 +749,12 @@ impl Cursor {
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
+    pub width: usize,
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.character)
-    }
-}
-
-impl TerminalCharacter {
-    pub fn width(&self) -> usize {
-        self.character.width().unwrap_or(0)
-    }
-
-    pub fn is_widechar(&self) -> bool {
-        self.width() > 1
     }
 }
 

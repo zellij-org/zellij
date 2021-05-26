@@ -123,9 +123,6 @@ impl Pane for TerminalPane {
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
         self.position_and_size_override
     }
-    fn contains_widechar(&self) -> bool {
-        self.grid.contains_widechar()
-    }
     fn should_render(&self) -> bool {
         self.grid.should_render
     }

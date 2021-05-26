@@ -108,9 +108,6 @@ pub trait Pane {
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
-    // FIXME: this method is used to trigger a force render to hide widechar problem
-    // it should be removed when we can handle widechars
-    fn contains_widechar(&self) -> bool;
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
@@ -721,9 +718,6 @@ impl Tab {
     pub fn toggle_sync_panes_is_active(&mut self) {
         self.synchronize_is_active = !self.synchronize_is_active;
     }
-    pub fn panes_contain_widechar(&self) -> bool {
-        self.panes.iter().any(|(_, p)| p.contains_widechar())
-    }
     pub fn render(&mut self) {
         if self.active_terminal.is_none()
             || *self.session_state.read().unwrap() != SessionState::Attached
@@ -732,11 +726,6 @@ impl Tab {
             // in that case, we should not render as the app is exiting
             // or if this session is not attached to a client, we do not have to render
             return;
-        }
-        // if any pane contain widechar, all pane in the same row will messup. We should render them every time
-        // FIXME: remove this when we can handle widechars correctly
-        if self.panes_contain_widechar() {
-            self.set_force_render()
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(
