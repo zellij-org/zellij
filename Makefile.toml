@@ -129,7 +129,7 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit", "build-release", "publish-zellij-tile", "publish-zellij-tile-utils"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit", "build-release", "publish-zellij-tile", "publish-zellij-tile-utils", "publish-zellij-utils", "publish-zellij-client", "publish-zellij-server"]
 run_task = "publish-zellij"
 
 [tasks.release-commit]
@@ -148,6 +148,24 @@ args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
 [tasks.publish-zellij-tile]
 ignore_errors = true
 cwd = "zellij-tile"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij-client]
+ignore_errors = true
+cwd = "zellij-client"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij-server]
+ignore_errors = true
+cwd = "zellij-server"
+command = "cargo"
+args = ["publish"]
+
+[tasks.publish-zellij-utils]
+ignore_errors = true
+cwd = "zellij-utils"
 command = "cargo"
 args = ["publish"]
 
