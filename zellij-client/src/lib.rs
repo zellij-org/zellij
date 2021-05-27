@@ -135,7 +135,11 @@ pub fn start_client(
     #[cfg(any(feature = "test", test))]
     let first_msg = {
         let _ = SESSION_NAME.set("".into());
-        ClientToServerMsg::NewClient(client_attributes, Box::new(opts), Box::new(config_options.clone()))
+        ClientToServerMsg::NewClient(
+            client_attributes,
+            Box::new(opts),
+            Box::new(config_options.clone()),
+        )
     };
 
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
