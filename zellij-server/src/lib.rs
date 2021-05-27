@@ -32,7 +32,7 @@ use zellij_utils::{
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    setup::{get_default_data_dir, install::populate_data_dir},
+    setup::get_default_data_dir,
 };
 
 /// Instructions related to server-side application
@@ -311,9 +311,6 @@ fn init_session(
 
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
-
-    #[cfg(not(disable_automatic_asset_installation))]
-    populate_data_dir(&data_dir);
 
     let capabilities = PluginCapabilities {
         arrow_fonts: config_options.simplified_ui,

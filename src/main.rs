@@ -1,7 +1,9 @@
+mod install;
 mod sessions;
 #[cfg(test)]
 mod tests;
 
+use crate::install::populate_data_dir;
 use sessions::{assert_session, assert_session_ne, list_sessions};
 use std::convert::TryFrom;
 use std::process;
@@ -12,7 +14,7 @@ use zellij_utils::{
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     input::config::Config,
     logging::*,
-    setup::Setup,
+    setup::{get_default_data_dir, Setup},
     structopt::StructOpt,
 };
 
@@ -69,6 +71,12 @@ pub fn main() {
                 .clone()
                 .unwrap_or_else(|| names::Generator::default().next().unwrap());
             assert_session_ne(&session_name);
+            // Determine and initialize the data directory
+            let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+
+            #[cfg(not(disable_automatic_asset_installation))]
+            populate_data_dir(&data_dir);
+
             start_client(
                 Box::new(os_input),
                 opts,
