@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use zellij_utils::{nix, zellij_tile};
@@ -14,7 +14,7 @@ use zellij_server::os_input_output::{async_trait, AsyncReader, Pid, ServerOsApi}
 use zellij_tile::data::Palette;
 use zellij_utils::{
     async_std,
-    channels::{ChannelWithContext, SenderType, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     errors::ErrorContext,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
@@ -52,13 +52,9 @@ impl FakeStdoutWriter {
 
 impl Write for FakeStdoutWriter {
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        let mut bytes_written = 0;
         let mut output_buffer = self.output_buffer.lock().unwrap();
-        for byte in buf {
-            bytes_written += 1;
-            output_buffer.push(*byte);
-        }
-        Ok(bytes_written)
+        output_buffer.extend_from_slice(buf);
+        Ok(buf.len())
     }
     fn flush(&mut self) -> Result<(), std::io::Error> {
         let mut output_buffer = self.output_buffer.lock().unwrap();
@@ -83,9 +79,11 @@ pub struct FakeInputOutput {
     possible_tty_inputs: HashMap<u16, Bytes>,
     last_snapshot_time: Arc<Mutex<Instant>>,
     send_instructions_to_client: SenderWithContext<ServerToClientMsg>,
-    receive_instructions_from_server: Arc<Mutex<mpsc::Receiver<(ServerToClientMsg, ErrorContext)>>>,
+    receive_instructions_from_server:
+        Arc<Mutex<channels::Receiver<(ServerToClientMsg, ErrorContext)>>>,
     send_instructions_to_server: SenderWithContext<ClientToServerMsg>,
-    receive_instructions_from_client: Arc<Mutex<mpsc::Receiver<(ClientToServerMsg, ErrorContext)>>>,
+    receive_instructions_from_client:
+        Arc<Mutex<channels::Receiver<(ClientToServerMsg, ErrorContext)>>>,
     should_trigger_sigwinch: Arc<(Mutex<bool>, Condvar)>,
     sigwinch_event: Option<PositionAndSize>,
 }
@@ -96,11 +94,11 @@ impl FakeInputOutput {
         let last_snapshot_time = Arc::new(Mutex::new(Instant::now()));
         let stdout_writer = FakeStdoutWriter::new(last_snapshot_time.clone());
         let (client_sender, client_receiver): ChannelWithContext<ServerToClientMsg> =
-            mpsc::channel();
-        let send_instructions_to_client = SenderWithContext::new(SenderType::Sender(client_sender));
+            channels::unbounded();
+        let send_instructions_to_client = SenderWithContext::new(client_sender);
         let (server_sender, server_receiver): ChannelWithContext<ClientToServerMsg> =
-            mpsc::channel();
-        let send_instructions_to_server = SenderWithContext::new(SenderType::Sender(server_sender));
+            channels::unbounded();
+        let send_instructions_to_server = SenderWithContext::new(server_sender);
         win_sizes.insert(0, winsize); // 0 is the current terminal
         FakeInputOutput {
             read_buffers: Arc::new(Mutex::new(HashMap::new())),
@@ -125,10 +123,7 @@ impl FakeInputOutput {
         self
     }
     pub fn add_terminal_input(&mut self, input: &[&[u8]]) {
-        let mut stdin_commands: VecDeque<Vec<u8>> = VecDeque::new();
-        for command in input.iter() {
-            stdin_commands.push_back(command.iter().copied().collect())
-        }
+        let stdin_commands = input.iter().map(|i| i.to_vec()).collect();
         self.stdin_commands = Arc::new(Mutex::new(stdin_commands));
     }
     pub fn add_terminal(&self, fd: RawFd) {
@@ -281,26 +276,18 @@ impl ServerOsApi for FakeInputOutput {
     fn write_to_tty_stdin(&self, pid: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         let mut stdin_writes = self.stdin_writes.lock().unwrap();
         let write_buffer = stdin_writes.get_mut(&pid).unwrap();
-        let mut bytes_written = 0;
-        for byte in buf {
-            bytes_written += 1;
-            write_buffer.push(*byte);
-        }
-        Ok(bytes_written)
+        Ok(write_buffer.write(buf).unwrap())
     }
-    fn read_from_tty_stdout(&self, pid: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, pid: RawFd, mut buf: &mut [u8]) -> Result<usize, nix::Error> {
         let mut read_buffers = self.read_buffers.lock().unwrap();
-        let mut bytes_read = 0;
         match read_buffers.get_mut(&pid) {
             Some(bytes) => {
-                for i in bytes.read_position..bytes.content.len() {
-                    bytes_read += 1;
-                    buf[i] = bytes.content[i];
+                let available_range = bytes.read_position..bytes.content.len();
+                let len = buf.write(&bytes.content[available_range]).unwrap();
+                if len > bytes.read_position {
+                    bytes.set_read_position(len);
                 }
-                if bytes_read > bytes.read_position {
-                    bytes.set_read_position(bytes_read);
-                }
-                return Ok(bytes_read);
+                return Ok(len);
             }
             None => Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)),
         }

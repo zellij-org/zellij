@@ -11,9 +11,9 @@ mod wasm_vm;
 
 use zellij_utils::zellij_tile;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::{path::PathBuf, sync::mpsc};
 use wasmer::Store;
 use zellij_tile::data::{Event, InputMode, PluginCapabilities};
 
@@ -27,7 +27,8 @@ use crate::{
 };
 use route::route_thread_main;
 use zellij_utils::{
-    channels::{ChannelWithContext, SenderType, SenderWithContext, SyncChannelWithContext},
+    channels,
+    channels::{ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{get_mode_info, options::Options},
@@ -117,9 +118,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
     std::env::set_var(&"ZELLIJ", "0");
 
-    let (to_server, server_receiver): SyncChannelWithContext<ServerInstruction> =
-        mpsc::sync_channel(50);
-    let to_server = SenderWithContext::new(SenderType::SyncSender(to_server));
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
+    let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::Uninitialized));
 
@@ -301,13 +301,12 @@ fn init_session(
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
 ) -> SessionMetaData {
-    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = mpsc::channel();
-    let to_screen = SenderWithContext::new(SenderType::Sender(to_screen));
-
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = mpsc::channel();
-    let to_plugin = SenderWithContext::new(SenderType::Sender(to_plugin));
-    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = mpsc::channel();
-    let to_pty = SenderWithContext::new(SenderType::Sender(to_pty));
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let to_screen = SenderWithContext::new(to_screen);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    let to_plugin = SenderWithContext::new(to_plugin);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    let to_pty = SenderWithContext::new(to_pty);
 
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
@@ -334,7 +333,7 @@ fn init_session(
         .spawn({
             let pty = Pty::new(
                 Bus::new(
-                    pty_receiver,
+                    vec![pty_receiver],
                     Some(&to_screen),
                     None,
                     Some(&to_plugin),
@@ -352,7 +351,7 @@ fn init_session(
         .name("screen".to_string())
         .spawn({
             let screen_bus = Bus::new(
-                screen_receiver,
+                vec![screen_receiver],
                 None,
                 Some(&to_pty),
                 Some(&to_plugin),
@@ -377,7 +376,7 @@ fn init_session(
         .name("wasm".to_string())
         .spawn({
             let plugin_bus = Bus::new(
-                plugin_receiver,
+                vec![plugin_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
                 None,
