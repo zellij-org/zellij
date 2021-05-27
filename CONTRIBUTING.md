@@ -18,9 +18,6 @@ To build Zellij, we're using cargo-make – you can install it by running `cargo
 install --force cargo-make`. To edit a manpage mandown crate (`cargo install
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
-Zellij has a hard dependency on a package from `x11` most likely called
-`libX11`, or similarly on your system.
-
 Here are some of the commands currently supported by the build system:
 
 ```sh
@@ -44,8 +41,8 @@ cargo make publish
 cargo make manpage
 ```
 
-To run `install` or `publish`, you'll need `binaryen --version` > 97, for it's
-command `wasm-opt`.
+To run `install` or `publish`, you'll need the package `binaryen` in the
+version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 
 ## Looking for something to work on?
 

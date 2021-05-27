@@ -1,8 +1,8 @@
-use crate::panes::PositionAndSize;
 use ::insta::assert_snapshot;
+use zellij_utils::pane_size::PositionAndSize;
 
-use crate::common::input::{config::Config, options::Options};
 use crate::tests::fakes::FakeInputOutput;
+use crate::tests::start;
 use crate::tests::utils::commands::{
     BRACKETED_PASTE_END, BRACKETED_PASTE_START, PANE_MODE, QUIT, SCROLL_DOWN_IN_SCROLL_MODE,
     SCROLL_MODE, SCROLL_PAGE_DOWN_IN_SCROLL_MODE, SCROLL_PAGE_UP_IN_SCROLL_MODE,
@@ -10,7 +10,8 @@ use crate::tests::utils::commands::{
     SPLIT_RIGHT_IN_PANE_MODE, TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
 };
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{start, CliArgs};
+use crate::CliArgs;
+use zellij_utils::input::config::Config;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -32,7 +33,6 @@ pub fn starts_with_one_terminal() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -61,7 +61,6 @@ pub fn split_terminals_vertically() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -90,7 +89,6 @@ pub fn split_terminals_horizontally() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -126,7 +124,6 @@ pub fn split_largest_terminal() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -155,7 +152,6 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -184,7 +180,6 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -213,7 +208,6 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -250,7 +244,6 @@ pub fn scrolling_up_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -289,7 +282,6 @@ pub fn scrolling_down_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -325,7 +317,6 @@ pub fn scrolling_page_up_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -364,7 +355,6 @@ pub fn scrolling_page_down_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -404,7 +394,6 @@ pub fn max_panes() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -442,7 +431,6 @@ pub fn toggle_focused_pane_fullscreen() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -483,7 +471,6 @@ pub fn bracketed_paste() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer

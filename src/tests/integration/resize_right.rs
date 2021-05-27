@@ -1,15 +1,16 @@
 use ::insta::assert_snapshot;
 
-use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
+use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{start, CliArgs};
+use crate::CliArgs;
+use zellij_utils::pane_size::PositionAndSize;
 
-use crate::common::input::{config::Config, options::Options};
 use crate::tests::utils::commands::{
     MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT, RESIZE_MODE, RESIZE_RIGHT_IN_RESIZE_MODE,
     RESIZE_UP_IN_RESIZE_MODE, SLEEP, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
 };
+use zellij_utils::input::config::Config;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(*fake_win_size)
@@ -44,7 +45,6 @@ pub fn resize_right_with_pane_to_the_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -88,7 +88,6 @@ pub fn resize_right_with_pane_to_the_right() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -134,7 +133,6 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -183,7 +181,6 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -234,7 +231,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -282,7 +278,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -332,7 +327,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -381,7 +375,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -435,7 +428,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -491,7 +483,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -564,7 +555,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -639,7 +629,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -682,7 +671,6 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output

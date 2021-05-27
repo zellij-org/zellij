@@ -1,12 +1,13 @@
 use insta::assert_snapshot;
 use std::path::PathBuf;
 
-use crate::common::input::{config::Config, options::Options};
-use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
+use crate::tests::start;
 use crate::tests::utils::commands::QUIT;
 use crate::tests::utils::get_output_frame_snapshots;
-use crate::{start, CliArgs};
+use crate::CliArgs;
+use zellij_utils::input::config::Config;
+use zellij_utils::pane_size::PositionAndSize;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -24,7 +25,7 @@ pub fn accepts_basic_layout() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     let mut opts = CliArgs::default();
-    opts.layout = Some(PathBuf::from(
+    opts.layout_path = Some(PathBuf::from(
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
 
@@ -33,7 +34,6 @@ pub fn accepts_basic_layout() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
     let output_frames = fake_input_output
         .stdout_writer

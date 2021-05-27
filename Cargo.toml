@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
@@ -8,51 +8,27 @@ license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/plugins/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ansi_term = "0.12.1"
-backtrace = "0.3.55"
-bincode = "1.3.1"
-directories-next = "2.0"
-futures = "0.3.5"
-libc = "0.2"
-nix = "0.19.1"
-nom = "6.0.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.8"
-signal-hook = "0.3"
-strip-ansi-escapes = "0.1.0"
-structopt = "0.3"
-termion = "1.5.0"
-termios = "0.3"
-unicode-truncate = "0.2.0"
-unicode-width = "0.1.8"
-vte = "0.10.1"
-strum = "0.20.0"
-lazy_static = "1.4.0"
-wasmer = "1.0.0"
-wasmer-wasi = "1.0.0"
-interprocess = "1.1.1"
 names = "0.11.0"
-colors-transform = "0.2.5"
-zellij-tile = { path = "zellij-tile/", version = "0.11.0" }
-
-[dependencies.async-std]
-version = "1.3.0"
-features = ["unstable"]
+zellij-client = { path = "zellij-client/", version = "0.12.0" }
+zellij-server = { path = "zellij-server/", version = "0.12.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.12.0" }
 
 [dev-dependencies]
 insta = "1.6.0"
-tempfile = "3.2.0"
-
-[build-dependencies]
-structopt = "0.3"
+zellij-utils = { path = "zellij-utils/", version = "*", features = ["test"] }
+zellij-client = { path = "zellij-client/", version = "*", features = ["test"] }
+zellij-server = { path = "zellij-server/", version = "*", features = ["test"] }
 
 [workspace]
 members = [
+    "zellij-client",
+    "zellij-server",
+    "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
     "default-plugins/status-bar",
@@ -80,5 +56,4 @@ assets = [
 ]
 
 [features]
-default = [ "enable_automatic_asset_installation", ]
-enable_automatic_asset_installation = []
+disable_automatic_asset_installation = []

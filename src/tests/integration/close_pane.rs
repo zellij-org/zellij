@@ -1,16 +1,17 @@
-use crate::panes::PositionAndSize;
 use ::insta::assert_snapshot;
+use zellij_utils::pane_size::PositionAndSize;
 
 use crate::tests::fakes::FakeInputOutput;
+use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{start, CliArgs};
+use crate::CliArgs;
 
-use crate::common::input::{config::Config, options::Options};
 use crate::tests::utils::commands::{
     CLOSE_PANE_IN_PANE_MODE, ESC, MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT,
     RESIZE_DOWN_IN_RESIZE_MODE, RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, RESIZE_UP_IN_RESIZE_MODE,
     SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
 };
+use zellij_utils::input::config::Config;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(fake_win_size.clone())
@@ -45,7 +46,6 @@ pub fn close_pane_with_another_pane_above_it() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -89,7 +89,6 @@ pub fn close_pane_with_another_pane_below_it() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -130,7 +129,6 @@ pub fn close_pane_with_another_pane_to_the_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -172,7 +170,6 @@ pub fn close_pane_with_another_pane_to_the_right() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -219,7 +216,6 @@ pub fn close_pane_with_multiple_panes_above_it() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -264,7 +260,6 @@ pub fn close_pane_with_multiple_panes_below_it() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -311,7 +306,6 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -356,7 +350,6 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -423,7 +416,6 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -486,7 +478,6 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -551,7 +542,6 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -616,7 +606,6 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -654,7 +643,6 @@ pub fn closing_last_pane_exits_app() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output

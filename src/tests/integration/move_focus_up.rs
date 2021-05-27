@@ -1,15 +1,16 @@
 use ::insta::assert_snapshot;
 
-use crate::panes::PositionAndSize;
 use crate::tests::fakes::FakeInputOutput;
+use crate::tests::start;
 use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots};
-use crate::{start, CliArgs};
+use crate::CliArgs;
+use zellij_utils::pane_size::PositionAndSize;
 
-use crate::common::input::{config::Config, options::Options};
 use crate::tests::utils::commands::{
     MOVE_FOCUS_DOWN_IN_PANE_MODE, MOVE_FOCUS_UP_IN_PANE_MODE, PANE_MODE, QUIT,
     SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
 };
+use zellij_utils::input::config::Config;
 
 fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
     FakeInputOutput::new(*fake_win_size)
@@ -36,7 +37,6 @@ pub fn move_focus_up() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output
@@ -75,7 +75,6 @@ pub fn move_focus_up_to_the_most_recently_used_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
-        Options::default(),
     );
 
     let output_frames = fake_input_output

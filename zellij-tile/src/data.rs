@@ -60,6 +60,9 @@ pub enum InputMode {
     Scroll,
     #[serde(alias = "renametab")]
     RenameTab,
+    /// `Session` mode allows detaching sessions
+    #[serde(alias = "session")]
+    Session,
 }
 
 impl Default for InputMode {
