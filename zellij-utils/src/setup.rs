@@ -74,7 +74,7 @@ pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
 pub const DEFAULT_CONFIG: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "../assets/config/default.yaml"
+    "assets/config/default.yaml"
 ));
 
 pub fn dump_default_config() -> std::io::Result<()> {
