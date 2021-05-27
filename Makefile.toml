@@ -135,7 +135,7 @@ run_task = "publish-zellij"
 [tasks.release-commit]
 dependencies = ["commit-all", "tag-release"]
 command = "git"
-args = ["push", "--atomic", "origin", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
+args = ["push", "--atomic", "upstream", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.commit-all]
 command = "git"
