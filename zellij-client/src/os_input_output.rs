@@ -161,10 +161,10 @@ impl ClientOsApi for ClientOsInputOutput {
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
     fn load_palette(&self) -> Palette {
-        let palette = default_palette();
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of
         // windows terminal and FreeBSD): https://github.com/zellij-org/zellij/issues/538
         //
+        // let palette = default_palette();
         // let timeout = std::time::Duration::from_millis(100);
         // if let Ok(rgb) = termbg::rgb(timeout) {
         //     palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));
@@ -172,7 +172,7 @@ impl ClientOsApi for ClientOsInputOutput {
         //     // this should be done in the same method (OSC ]11), but there might be other
         //     // considerations here, hence using the library
         // };
-        palette
+        default_palette()
     }
 }
 
