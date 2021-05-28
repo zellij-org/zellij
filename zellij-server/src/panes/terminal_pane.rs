@@ -351,6 +351,7 @@ impl Pane for TerminalPane {
             "start selection at {:?}, selection: {:?}",
             start, self.selection
         ));
+        self.set_should_render(true);
     }
 
     fn end_selection(&mut self, end: &Position) {
@@ -359,6 +360,7 @@ impl Pane for TerminalPane {
             "end selection at {:?}, selection: {:?}",
             end, self.selection
         ));
+        self.set_should_render(true);
     }
 }
 
