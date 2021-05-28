@@ -9,7 +9,7 @@ use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use zellij_tile::data::{Palette, PaletteColor};
+use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
@@ -161,14 +161,17 @@ impl ClientOsApi for ClientOsInputOutput {
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
     fn load_palette(&self) -> Palette {
-        let timeout = std::time::Duration::from_millis(100);
-        let mut palette = default_palette();
-        if let Ok(rgb) = termbg::rgb(timeout) {
-            palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));
-            // TODO: also dynamically get all other colors from the user's terminal
-            // this should be done in the same method (OSC ]11), but there might be other
-            // considerations here, hence using the library
-        };
+        let palette = default_palette();
+        // this was removed because termbg doesn't release stdin in certain scenarios (we know of
+        // windows terminal and FreeBSD): https://github.com/zellij-org/zellij/issues/538
+        //
+        // let timeout = std::time::Duration::from_millis(100);
+        // if let Ok(rgb) = termbg::rgb(timeout) {
+        //     palette.bg = PaletteColor::Rgb((rgb.r as u8, rgb.g as u8, rgb.b as u8));
+        //     // TODO: also dynamically get all other colors from the user's terminal
+        //     // this should be done in the same method (OSC ]11), but there might be other
+        //     // considerations here, hence using the library
+        // };
         palette
     }
 }
