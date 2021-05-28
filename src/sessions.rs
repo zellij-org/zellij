@@ -29,67 +29,6 @@ fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn list_sessions() {
-    let exit_code = match get_sessions() {
-        Ok(sessions) => {
-            if sessions.is_empty() {
-                println!("No active zellij sessions found.");
-            } else {
-                let curr_session =
-                    std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
-                sessions.iter().for_each(|session| {
-                    let suffix = if curr_session == *session {
-                        " (current)"
-                    } else {
-                        ""
-                    };
-                    println!("{}{}", session, suffix);
-                })
-            }
-            0
-        }
-        Err(e) => {
-            eprintln!("Error occured: {:?}", e);
-            1
-        }
-    };
-    process::exit(exit_code);
-}
-
-pub(crate) fn assert_session(name: &str) {
-    let exit_code = match get_sessions() {
-        Ok(sessions) => {
-            if sessions.iter().any(|s| s == name) {
-                return;
-            }
-            println!("No session named {:?} found.", name);
-            0
-        }
-        Err(e) => {
-            eprintln!("Error occured: {:?}", e);
-            1
-        }
-    };
-    process::exit(exit_code);
-}
-
-pub(crate) fn assert_session_ne(name: &str) {
-    let exit_code = match get_sessions() {
-        Ok(sessions) => {
-            if sessions.iter().all(|s| s != name) {
-                return;
-            }
-            println!("Session with name {:?} aleady exists. Use attach command to connect to it or specify a different name.", name);
-            0
-        }
-        Err(e) => {
-            eprintln!("Error occured: {:?}", e);
-            1
-        }
-    };
-    process::exit(exit_code);
-}
-
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
@@ -106,4 +45,78 @@ fn assert_socket(name: &str) -> bool {
             }
         }
     }
+}
+
+fn print_sessions(sessions: Vec<String>) {
+    let curr_session = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
+    sessions.iter().for_each(|session| {
+        let suffix = if curr_session == *session {
+            " (current)"
+        } else {
+            ""
+        };
+        println!("{}{}", session, suffix);
+    })
+}
+
+pub(crate) fn get_active_session() -> String {
+    match get_sessions() {
+        Ok(mut sessions) => {
+            if sessions.len() == 1 {
+                return sessions.pop().unwrap();
+            }
+            if sessions.is_empty() {
+                println!("No active zellij sessions found.");
+            } else {
+                println!("Please specify the session name to attach to. The following sessions are active:");
+                print_sessions(sessions);
+            }
+        }
+        Err(e) => eprintln!("Error occured: {:?}", e),
+    }
+    process::exit(1);
+}
+
+pub(crate) fn list_sessions() {
+    let exit_code = match get_sessions() {
+        Ok(sessions) => {
+            if sessions.is_empty() {
+                println!("No active zellij sessions found.");
+            } else {
+                print_sessions(sessions);
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("Error occured: {:?}", e);
+            1
+        }
+    };
+    process::exit(exit_code);
+}
+
+pub(crate) fn assert_session(name: &str) {
+    match get_sessions() {
+        Ok(sessions) => {
+            if sessions.iter().any(|s| s == name) {
+                return;
+            }
+            println!("No session named {:?} found.", name);
+        }
+        Err(e) => eprintln!("Error occured: {:?}", e),
+    };
+    process::exit(1);
+}
+
+pub(crate) fn assert_session_ne(name: &str) {
+    match get_sessions() {
+        Ok(sessions) => {
+            if sessions.iter().all(|s| s != name) {
+                return;
+            }
+            println!("Session with name {:?} aleady exists. Use attach command to connect to it or specify a different name.", name);
+        }
+        Err(e) => eprintln!("Error occured: {:?}", e),
+    };
+    process::exit(1);
 }
