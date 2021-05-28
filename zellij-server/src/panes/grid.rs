@@ -1770,7 +1770,11 @@ impl Row {
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
         } else {
-            drop(self.columns.drain(0..=to_position_accounting_for_widechars));
+            if to_position_accounting_for_widechars >= self.columns.len() {
+                drop(self.columns.drain(0..to_position_accounting_for_widechars));
+            } else {
+                drop(self.columns.drain(0..=to_position_accounting_for_widechars));
+            }
         }
         replace_with.append(&mut self.columns);
         self.columns = replace_with;
