@@ -72,7 +72,7 @@ pub enum Sessions {
     #[structopt(alias = "a")]
     Attach {
         /// Name of the session to attach to.
-        session_name: String,
+        session_name: Option<String>,
 
         /// Force attach- session will detach from the other
         /// zellij client (if any) and attach to this.

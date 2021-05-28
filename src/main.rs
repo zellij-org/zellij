@@ -4,7 +4,7 @@ mod sessions;
 mod tests;
 
 use crate::install::populate_data_dir;
-use sessions::{assert_session, assert_session_ne, list_sessions};
+use sessions::{assert_session, assert_session_ne, get_active_session, list_sessions};
 use std::convert::TryFrom;
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
@@ -54,16 +54,20 @@ pub fn main() {
             }
         };
         if let Some(Command::Sessions(Sessions::Attach {
-            session_name,
+            mut session_name,
             force,
         })) = opts.command.clone()
         {
-            assert_session(&session_name);
+            if let Some(session) = session_name.as_ref() {
+                assert_session(session);
+            } else {
+                session_name = Some(get_active_session());
+            }
             start_client(
                 Box::new(os_input),
                 opts,
                 config,
-                ClientInfo::Attach(session_name, force),
+                ClientInfo::Attach(session_name.unwrap(), force),
             );
         } else {
             let session_name = opts

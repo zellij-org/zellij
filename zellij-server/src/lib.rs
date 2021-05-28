@@ -27,8 +27,7 @@ use crate::{
 };
 use route::route_thread_main;
 use zellij_utils::{
-    channels,
-    channels::{ChannelWithContext, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{get_mode_info, options::Options},
