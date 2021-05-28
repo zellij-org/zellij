@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)
- 
+* Do not lag when reading input too fast (https://github.com/zellij-org/zellij/pull/536)
+
 ## [0.12.1] - 2021-05-28
 * HOTFIX: fix Zellij not responding to input on certain terminals (https://github.com/zellij-org/zellij/issues/538)
 
