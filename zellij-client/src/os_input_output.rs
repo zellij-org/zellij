@@ -45,7 +45,7 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
         ws_ypixel: 0,
     };
 
-    unsafe { ioctl(fd, TIOCGWINSZ, &mut winsize) };
+    unsafe { ioctl(fd, TIOCGWINSZ.into(), &mut winsize) };
     PositionAndSize::from(winsize)
 }
 

@@ -41,7 +41,7 @@ pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    unsafe { ioctl(fd, TIOCSWINSZ, &winsize) };
+    unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
 }
 
 /// Handle some signals for the child process. This will loop until the child
