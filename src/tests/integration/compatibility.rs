@@ -8,7 +8,7 @@ use crate::tests::utils::{get_next_to_last_snapshot, get_output_frame_snapshots}
 use crate::CliArgs;
 use zellij_utils::pane_size::PositionAndSize;
 
-use crate::tests::utils::commands::QUIT;
+use crate::tests::utils::commands::{QUIT, SLEEP};
 use zellij_utils::input::config::Config;
 
 /*
@@ -607,7 +607,7 @@ pub fn top_and_quit() {
     };
     let fixture_name = "top_and_quit";
     let mut fake_input_output = get_fake_os_input(&fake_win_size, fixture_name);
-    fake_input_output.add_terminal_input(&[&QUIT]);
+    fake_input_output.add_terminal_input(&[&SLEEP, &QUIT]);
     start(
         Box::new(fake_input_output.clone()),
         CliArgs::default(),

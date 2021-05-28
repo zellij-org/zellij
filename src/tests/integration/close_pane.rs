@@ -9,7 +9,7 @@ use crate::CliArgs;
 use crate::tests::utils::commands::{
     CLOSE_PANE_IN_PANE_MODE, ESC, MOVE_FOCUS_IN_PANE_MODE, PANE_MODE, QUIT,
     RESIZE_DOWN_IN_RESIZE_MODE, RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, RESIZE_UP_IN_RESIZE_MODE,
-    SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
+    SLEEP, SPLIT_DOWN_IN_PANE_MODE, SPLIT_RIGHT_IN_PANE_MODE,
 };
 use zellij_utils::input::config::Config;
 
@@ -404,6 +404,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
+        &SLEEP,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -464,6 +465,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
+        &SLEEP,
         &SPLIT_RIGHT_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -530,6 +532,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
+        &SLEEP,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
@@ -592,6 +595,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         &PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
+        &SLEEP,
         &SPLIT_DOWN_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,
         &MOVE_FOCUS_IN_PANE_MODE,

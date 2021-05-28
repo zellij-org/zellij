@@ -303,6 +303,11 @@ fn init_session(
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
+
+    let (to_screen_bounded, bounded_screen_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::bounded(50);
+    let to_screen_bounded = SenderWithContext::new(to_screen_bounded);
+
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
     let to_plugin = SenderWithContext::new(to_plugin);
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
@@ -334,7 +339,7 @@ fn init_session(
             let pty = Pty::new(
                 Bus::new(
                     vec![pty_receiver],
-                    Some(&to_screen),
+                    Some(&to_screen_bounded),
                     None,
                     Some(&to_plugin),
                     Some(&to_server),
@@ -351,7 +356,7 @@ fn init_session(
         .name("screen".to_string())
         .spawn({
             let screen_bus = Bus::new(
-                vec![screen_receiver],
+                vec![screen_receiver, bounded_screen_receiver],
                 None,
                 Some(&to_pty),
                 Some(&to_plugin),
