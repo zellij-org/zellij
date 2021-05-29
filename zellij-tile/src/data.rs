@@ -62,6 +62,9 @@ pub enum InputMode {
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
+    /// `Search` mode allows search in the scrollback buffer.
+    #[serde(alias = "search")]
+    Search,
 }
 
 impl Default for InputMode {
