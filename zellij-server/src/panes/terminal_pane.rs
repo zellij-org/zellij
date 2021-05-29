@@ -37,67 +37,64 @@ pub struct TerminalPane {
 }
 
 impl Pane for TerminalPane {
-    fn get_selected_text(&self) -> String {
+    fn get_selected_text(&self) -> Option<String> {
+        if self.selection.is_empty() {
+            return None;
+        }
         let mut selection: Vec<String> = vec![];
 
         debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
             .expect("could not write to log file");
 
-        if let Some(range) = &self.selection.range {
-            let start = if range.start <= range.end {
-                range.start
+        let (start, end) = if self.selection.start <= self.selection.end {
+            (self.selection.start, self.selection.end)
+        } else {
+            (self.selection.end, self.selection.start)
+        };
+
+        for l in start.line.0..=end.line.0 {
+            let mut line_selection = String::new();
+
+            // on the first line of the selection, use the selection start column
+            // otherwise, start at the beginning of the line
+            let start_column = if l == self.selection.start.line.0 {
+                self.selection.start.column.0
             } else {
-                range.end
+                0
             };
 
-            let end = if range.end > range.start {
-                range.end
+            // same thing on the last line, but with the selection end column
+            let end_column = if l == self.selection.end.line.0 {
+                self.selection.end.column.0
             } else {
-                range.start
+                self.position_and_size.columns
             };
 
-            for l in start.line.0..=end.line.0 {
-                let mut line_selection = String::new();
+            debug_log_to_file(format!(
+                "line #{}, start_col: {}, end_col: {}",
+                l, start_column, end_column
+            ))
+            .expect("could not write to log file");
 
-                let start_column = if l == range.start.line.0 {
-                    range.start.column.0
-                } else {
-                    0
-                };
-
-                let end_column = if l == range.end.line.0 {
-                    range.end.column.0
-                } else {
-                    self.position_and_size.columns
-                };
-
-                debug_log_to_file(format!(
-                    "line #{}, start_col: {}, end_col: {}",
-                    l, start_column, end_column
-                ))
-                .expect("could not write to log file");
-
-                if start_column == end_column {
-                    continue;
-                }
-
-                let line = &self.grid.as_character_lines()[l - self.position_and_size.y];
-
-                let mut terminal_col = 0;
-                for terminal_character in line {
-                    if (start_column..end_column).contains(&terminal_col) {
-                        //if terminal_col >= start_column && terminal_col < end_column {
-                        line_selection.push(terminal_character.character);
-                    }
-
-                    terminal_col += terminal_character.width;
-                }
-                selection.push(String::from(line_selection.trim_end()));
+            if start_column == end_column {
+                continue;
             }
-            return selection.join("\n");
+
+            let line = &self.grid.as_character_lines()[l - self.position_and_size.y];
+
+            let mut terminal_col = 0;
+            for terminal_character in line {
+                if (start_column..end_column).contains(&terminal_col) {
+                    //if terminal_col >= start_column && terminal_col < end_column {
+                    line_selection.push(terminal_character.character);
+                }
+
+                terminal_col += terminal_character.width;
+            }
+            selection.push(String::from(line_selection.trim_end()));
         }
 
-        String::from("")
+        Some(selection.join("\n"))
     }
 
     fn x(&self) -> usize {

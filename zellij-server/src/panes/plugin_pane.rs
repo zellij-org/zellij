@@ -43,8 +43,8 @@ impl PluginPane {
 impl Pane for PluginPane {
     fn start_selection(&mut self, _start: &Position) {}
     fn end_selection(&mut self, _end: &Position) {}
-    fn get_selected_text(&self) -> String {
-        String::from("")
+    fn get_selected_text(&self) -> Option<String> {
+        None
     }
     // FIXME: These position and size things should all be moved to default trait implementations,
     // with something like a get_pos_and_sz() method underpinning all of them. Alternatively and

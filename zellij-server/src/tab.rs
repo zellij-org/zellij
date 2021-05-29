@@ -145,7 +145,7 @@ pub trait Pane {
     }
     fn start_selection(&mut self, start: &Position);
     fn end_selection(&mut self, end: &Position);
-    fn get_selected_text(&self) -> String;
+    fn get_selected_text(&self) -> Option<String>;
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -2336,7 +2336,7 @@ impl Tab {
     }
 
     pub fn copy_selection(&self) -> Option<String> {
-        self.get_active_pane().map(|pane| pane.get_selected_text())
+        self.get_active_pane().and_then(|p| p.get_selected_text())
     }
 }
 
