@@ -16,8 +16,6 @@ pub(crate) struct PluginPane {
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
-    pub max_height: Option<usize>,
-    pub max_width: Option<usize>,
     pub active_at: Instant,
 }
 
@@ -35,8 +33,6 @@ impl PluginPane {
             position_and_size,
             position_and_size_override: None,
             send_plugin_instructions,
-            max_height: None,
-            max_width: None,
             active_at: Instant::now(),
         }
     }
@@ -95,7 +91,9 @@ impl Pane for PluginPane {
     fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
         unimplemented!() // FIXME: Shouldn't need this implmented?
     }
-
+    fn position_and_size(&self) -> PositionAndSize {
+        self.position_and_size
+    }
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
         self.position_and_size_override
     }
@@ -114,11 +112,13 @@ impl Pane for PluginPane {
     fn set_invisible_borders(&mut self, invisible_borders: bool) {
         self.invisible_borders = invisible_borders;
     }
-    fn set_max_height(&mut self, max_height: usize) {
-        self.max_height = Some(max_height);
+    fn set_fixed_height(&mut self, fixed_height: usize) {
+        self.position_and_size.rows = fixed_height;
+        self.position_and_size.rows_fixed = true;
     }
-    fn set_max_width(&mut self, max_width: usize) {
-        self.max_width = Some(max_width);
+    fn set_fixed_width(&mut self, fixed_width: usize) {
+        self.position_and_size.columns = fixed_width;
+        self.position_and_size.cols_fixed = true;
     }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
@@ -204,11 +204,21 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         unimplemented!()
     }
+    // FIXME: This need to be reevaluated and deleted if possible.
+    // `max` doesn't make sense when things are fixed...
     fn max_height(&self) -> Option<usize> {
-        self.max_height
+        if self.position_and_size.rows_fixed {
+            Some(self.position_and_size.rows)
+        } else {
+            None
+        }
     }
     fn max_width(&self) -> Option<usize> {
-        self.max_width
+        if self.position_and_size.cols_fixed {
+            Some(self.position_and_size.columns)
+        } else {
+            None
+        }
     }
     fn invisible_borders(&self) -> bool {
         self.invisible_borders

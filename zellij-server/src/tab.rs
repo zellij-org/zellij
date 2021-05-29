@@ -104,15 +104,15 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
-
+    fn position_and_size(&self) -> PositionAndSize;
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
-    fn set_max_height(&mut self, max_height: usize);
-    fn set_max_width(&mut self, max_width: usize);
+    fn set_fixed_height(&mut self, fixed_height: usize);
+    fn set_fixed_width(&mut self, fixed_width: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: usize);
@@ -177,15 +177,6 @@ pub trait Pane {
     fn get_vertical_overlap_with(&self, other: &dyn Pane) -> usize {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
-    }
-    fn position_and_size(&self) -> PositionAndSize {
-        PositionAndSize {
-            x: self.x(),
-            y: self.y(),
-            columns: self.columns(),
-            rows: self.rows(),
-            ..Default::default()
-        }
     }
     fn can_increase_height_by(&self, increase_by: usize) -> bool {
         self.max_height()
@@ -294,12 +285,6 @@ impl Tab {
                 match positions_and_size.next() {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
-                        if let Some(max_rows) = position_and_size.max_rows {
-                            terminal_pane.set_max_height(max_rows);
-                        }
-                        if let Some(max_columns) = position_and_size.max_columns {
-                            terminal_pane.set_max_width(max_columns);
-                        }
                         terminal_pane.change_pos_and_size(&position_and_size);
                         self.os_api.set_terminal_size_using_fd(
                             *pid,
@@ -317,24 +302,18 @@ impl Tab {
         }
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
-            // Just a regular terminal
+            // A plugin pane
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let mut new_plugin = PluginPane::new(
+                let new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                 );
-                if let Some(max_rows) = position_and_size.max_rows {
-                    new_plugin.set_max_height(max_rows);
-                }
-                if let Some(max_columns) = position_and_size.max_columns {
-                    new_plugin.set_max_width(max_columns);
-                }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -2121,9 +2100,14 @@ impl Tab {
             pane.set_invisible_borders(invisible_borders);
         }
     }
-    pub fn set_pane_max_height(&mut self, id: PaneId, max_height: usize) {
+    pub fn set_pane_fixed_height(&mut self, id: PaneId, fixed_height: usize) {
         if let Some(pane) = self.panes.get_mut(&id) {
-            pane.set_max_height(max_height);
+            pane.set_fixed_height(fixed_height);
+        }
+    }
+    pub fn set_pane_fixed_width(&mut self, id: PaneId, fixed_width: usize) {
+        if let Some(pane) = self.panes.get_mut(&id) {
+            pane.set_fixed_width(fixed_width);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
