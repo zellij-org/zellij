@@ -67,4 +67,5 @@ pub enum Action {
     TabNameInput(Vec<u8>),
     /// Detach session and exit
     Detach,
+    TabSearchInput(Vec<u8>),
 }

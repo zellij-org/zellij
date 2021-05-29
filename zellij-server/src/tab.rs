@@ -78,6 +78,7 @@ pub(crate) struct Tab {
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
     pub colors: Palette,
+    pub search_string: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -90,6 +91,7 @@ pub(crate) struct TabData {
     pub mode_info: ModeInfo,
     pub input_mode: InputMode,
     pub colors: Palette,
+    pub search_string: String,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -241,6 +243,7 @@ impl Tab {
         input_mode: InputMode,
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
+        search_string: String,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors);
@@ -273,6 +276,7 @@ impl Tab {
             input_mode,
             colors,
             session_state,
+            search_string,
         }
     }
 

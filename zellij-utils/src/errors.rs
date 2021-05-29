@@ -218,6 +218,7 @@ pub enum ScreenContext {
     UpdateTabName,
     TerminalResize,
     ChangeMode,
+    UpdateTabSearchString,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

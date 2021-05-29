@@ -48,6 +48,12 @@ pub fn get_mode_info(
         InputMode::Session => {
             keybinds.push(("d".to_string(), "Detach".to_string()));
         }
+        InputMode::Search => {
+            keybinds.push(("c".to_string(), "Change search text".to_string()));
+        }
+        InputMode::SearchInputTab => {
+            keybinds.push(("Enter".to_string(), "when done".to_string()));
+        }
     }
     ModeInfo {
         mode,

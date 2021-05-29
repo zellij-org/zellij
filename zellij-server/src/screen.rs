@@ -68,6 +68,7 @@ pub(crate) enum ScreenInstruction {
     UpdateTabName(Vec<u8>),
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
+    UpdateTabSearchString(Vec<u8>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -118,6 +119,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab => ScreenContext::ToggleActiveSyncTab,
+            ScreenInstruction::UpdateTabSearchString(_) => ScreenContext::UpdateTabSearchString,
         }
     }
 }
@@ -182,6 +184,7 @@ impl Screen {
             self.input_mode,
             self.colors,
             self.session_state.clone(),
+            String::new(),
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -344,6 +347,7 @@ impl Screen {
             self.input_mode,
             self.colors,
             self.session_state.clone(),
+            String::new(),
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -360,6 +364,7 @@ impl Screen {
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,
                 is_sync_panes_active: tab.is_sync_panes_active(),
+                search_string: tab.search_string.clone(),
             });
         }
         self.bus
@@ -391,6 +396,21 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();
         }
+    }
+
+    pub fn update_active_tab_search_string(&mut self, buf: Vec<u8>) {
+        let s = str::from_utf8(&buf).unwrap();
+        let active_tab = self.get_active_tab_mut().unwrap();
+        match s {
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                active_tab.search_string.pop();
+            }
+            c => {
+                active_tab.search_string.push_str(c);
+            }
+        }
+        self.update_tabs();
     }
 }
 
@@ -658,6 +678,9 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .toggle_sync_panes_is_active();
                 screen.update_tabs();
+            }
+            ScreenInstruction::UpdateTabSearchString(c) => {
+                screen.update_active_tab_search_string(c);
             }
             ScreenInstruction::Exit => {
                 break;
