@@ -45,7 +45,9 @@ pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // some platforms. When checked on Linux, clippy will complain about
     // useless conversion.
     #[allow(clippy::useless_conversion)]
-    unsafe { ioctl(fd, TIOCSWINSZ.into(), &winsize) };
+    unsafe {
+        ioctl(fd, TIOCSWINSZ.into(), &winsize)
+    };
 }
 
 /// Handle some signals for the child process. This will loop until the child
