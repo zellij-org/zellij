@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
+use super::theme::ThemesFromYaml;
 use crate::cli::{CliArgs, Command};
 use crate::setup;
 
@@ -23,6 +24,7 @@ pub struct ConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
+    pub themes: Option<ThemesFromYaml>,
 }
 
 /// Main configuration.
@@ -30,6 +32,7 @@ pub struct ConfigFromYaml {
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
+    pub themes: Option<ThemesFromYaml>,
 }
 
 #[derive(Debug)]
@@ -48,7 +51,13 @@ impl Default for Config {
     fn default() -> Self {
         let keybinds = Keybinds::default();
         let options = Options::default();
-        Config { keybinds, options }
+        let themes = None;
+
+        Config {
+            keybinds,
+            options,
+            themes,
+        }
     }
 }
 
@@ -90,7 +99,13 @@ impl Config {
         let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(&yaml_config)?;
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
         let options = Options::from_yaml(config_from_yaml.options);
-        Ok(Config { keybinds, options })
+        let themes = config_from_yaml.themes;
+
+        Ok(Config {
+            keybinds,
+            options,
+            themes,
+        })
     }
 
     /// Deserializes from given path.

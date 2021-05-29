@@ -11,6 +11,9 @@ pub struct Options {
     /// that is compatible with more fonts
     #[structopt(long)]
     pub simplified_ui: bool,
+    /// Set the default theme
+    #[structopt(long)]
+    pub theme: Option<String>,
 }
 
 impl Options {
@@ -32,7 +35,12 @@ impl Options {
             self.simplified_ui
         };
 
-        Options { simplified_ui }
+        let theme = None;
+
+        Options {
+            simplified_ui,
+            theme,
+        }
     }
 
     pub fn from_cli(&self, other: Option<Command>) -> Options {

@@ -18,7 +18,7 @@ use zellij_utils::{
 fn route_action(
     action: Action,
     session: &SessionMetaData,
-    os_input: &dyn ServerOsApi,
+    _os_input: &dyn ServerOsApi,
     to_server: &SenderWithContext<ServerInstruction>,
 ) -> bool {
     let mut should_break = false;
@@ -34,7 +34,7 @@ fn route_action(
                 .unwrap();
         }
         Action::SwitchToMode(mode) => {
-            let palette = os_input.load_palette();
+            let palette = session.palette;
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around
             // to allow for this
