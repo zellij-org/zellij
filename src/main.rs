@@ -13,6 +13,7 @@ use zellij_utils::{
     cli::{CliArgs, Command, Sessions},
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     input::config::Config,
+    input::options::Options,
     logging::*,
     setup::{get_default_data_dir, Setup},
     structopt::StructOpt,
@@ -63,11 +64,14 @@ pub fn main() {
             } else {
                 session_name = Some(get_active_session());
             }
+
+            let config_options = Options::from_cli(&config.options, opts.command.clone());
+
             start_client(
                 Box::new(os_input),
                 opts,
                 config,
-                ClientInfo::Attach(session_name.unwrap(), force),
+                ClientInfo::Attach(session_name.unwrap(), force, config_options),
             );
         } else {
             let session_name = opts

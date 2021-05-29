@@ -77,7 +77,7 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
 
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
-    Attach(String, bool),
+    Attach(String, bool, Options),
     New(String),
 }
 
@@ -112,11 +112,11 @@ pub fn start_client(
 
     #[cfg(not(any(feature = "test", test)))]
     let first_msg = match info {
-        ClientInfo::Attach(name, force) => {
+        ClientInfo::Attach(name, force, config_options) => {
             SESSION_NAME.set(name).unwrap();
             std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
 
-            ClientToServerMsg::AttachClient(client_attributes, force)
+            ClientToServerMsg::AttachClient(client_attributes, force, config_options)
         }
         ClientInfo::New(name) => {
             SESSION_NAME.set(name).unwrap();
