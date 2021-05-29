@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use wasmer::Store;
-use zellij_tile::data::{Event, InputMode, PluginCapabilities};
+use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -44,7 +44,7 @@ pub(crate) enum ServerInstruction {
     ClientExit,
     Error(String),
     DetachSession,
-    AttachClient(ClientAttributes, bool),
+    AttachClient(ClientAttributes, bool, Options),
 }
 
 impl From<ClientToServerMsg> for ServerInstruction {
@@ -53,8 +53,8 @@ impl From<ClientToServerMsg> for ServerInstruction {
             ClientToServerMsg::NewClient(attrs, opts, options) => {
                 ServerInstruction::NewClient(attrs, opts, options)
             }
-            ClientToServerMsg::AttachClient(attrs, force) => {
-                ServerInstruction::AttachClient(attrs, force)
+            ClientToServerMsg::AttachClient(attrs, force, options) => {
+                ServerInstruction::AttachClient(attrs, force, options)
             }
             _ => unreachable!(),
         }
@@ -225,7 +225,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_pty(PtyInstruction::NewTab)
                     .unwrap();
             }
-            ServerInstruction::AttachClient(attrs, _) => {
+            ServerInstruction::AttachClient(attrs, _, options) => {
                 *session_state.write().unwrap() = SessionState::Attached;
                 let rlock = session_data.read().unwrap();
                 let session_data = rlock.as_ref().unwrap();
@@ -233,8 +233,9 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::TerminalResize(attrs.position_and_size))
                     .unwrap();
+                let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
-                    get_mode_info(InputMode::Normal, attrs.palette, session_data.capabilities);
+                    get_mode_info(default_mode, attrs.palette, session_data.capabilities);
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone()))
