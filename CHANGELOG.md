@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Session name optional in attach command (https://github.com/zellij-org/zellij/pull/542)
 * Fix build on platforms with TIOCGWINSZ / ioctl() integer type mismatch (https://github.com/zellij-org/zellij/pull/547)
 * Fix(ui): session mode should be disabled in locked mode (https://github.com/zellij-org/zellij/pull/548)
+* Add option to start in arbitrary modes (https://github.com/zellij-org/zellij/pull/513)
 
 ## [0.12.1] - 2021-05-28
 * HOTFIX: fix Zellij not responding to input on certain terminals (https://github.com/zellij-org/zellij/issues/538)
