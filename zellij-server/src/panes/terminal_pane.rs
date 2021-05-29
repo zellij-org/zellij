@@ -38,7 +38,7 @@ pub struct TerminalPane {
 
 impl Pane for TerminalPane {
     fn get_selected_text(&self) -> String {
-        let mut selection = String::new();
+        let mut selection: Vec<String> = vec![];
 
         debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
             .expect("could not write to log file");
@@ -57,6 +57,8 @@ impl Pane for TerminalPane {
             };
 
             for l in start.line.0..=end.line.0 {
+                let mut line_selection = String::new();
+
                 let start_column = if l == range.start.line.0 {
                     range.start.column.0
                 } else {
@@ -75,18 +77,24 @@ impl Pane for TerminalPane {
                 ))
                 .expect("could not write to log file");
 
+                if start_column == end_column {
+                    continue;
+                }
+
                 let line = &self.grid.as_character_lines()[l - self.position_and_size.y];
 
                 let mut terminal_col = 0;
                 for terminal_character in line {
-                    if terminal_col >= start_column && terminal_col < end_column {
-                        selection.push(terminal_character.character);
+                    if (start_column..end_column).contains(&terminal_col) {
+                        //if terminal_col >= start_column && terminal_col < end_column {
+                        line_selection.push(terminal_character.character);
                     }
 
                     terminal_col += terminal_character.width;
                 }
+                selection.push(String::from(line_selection.trim_end()));
             }
-            return selection;
+            return selection.join("\n");
         }
 
         String::from("")
