@@ -405,6 +405,7 @@ pub(crate) fn screen_thread_main(
     session_state: Arc<RwLock<SessionState>>,
 ) {
     let capabilities = config_options.simplified_ui;
+    let default_mode = config_options.default_mode.unwrap_or_default();
 
     let mut screen = Screen::new(
         bus,
@@ -415,9 +416,10 @@ pub(crate) fn screen_thread_main(
             capabilities: PluginCapabilities {
                 arrow_fonts: capabilities,
             },
+            mode: default_mode,
             ..ModeInfo::default()
         },
-        InputMode::Normal,
+        default_mode,
         session_state,
     );
     loop {

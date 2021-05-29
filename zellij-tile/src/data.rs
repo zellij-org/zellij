@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -89,6 +90,23 @@ pub enum PaletteColor {
 impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
+    }
+}
+
+impl FromStr for InputMode {
+    type Err = Box<dyn std::error::Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "normal" => Ok(InputMode::Normal),
+            "resize" => Ok(InputMode::Resize),
+            "locked" => Ok(InputMode::Locked),
+            "pane" => Ok(InputMode::Pane),
+            "tab" => Ok(InputMode::Tab),
+            "scroll" => Ok(InputMode::Scroll),
+            "renametab" => Ok(InputMode::RenameTab),
+            e => Err(e.to_string().into()),
+        }
     }
 }
 
