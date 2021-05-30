@@ -77,7 +77,7 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
 
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
-    Attach(String, bool),
+    Attach(String, bool, Options),
     New(String),
 }
 
@@ -117,11 +117,11 @@ pub fn start_client(
 
     #[cfg(not(any(feature = "test", test)))]
     let first_msg = match info {
-        ClientInfo::Attach(name, force) => {
+        ClientInfo::Attach(name, force, config_options) => {
             SESSION_NAME.set(name).unwrap();
             std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
 
-            ClientToServerMsg::AttachClient(client_attributes, force)
+            ClientToServerMsg::AttachClient(client_attributes, force, config_options)
         }
         ClientInfo::New(name) => {
             SESSION_NAME.set(name).unwrap();
@@ -132,14 +132,18 @@ pub fn start_client(
             ClientToServerMsg::NewClient(
                 client_attributes,
                 Box::new(opts),
-                Box::new(config_options),
+                Box::new(config_options.clone()),
             )
         }
     };
     #[cfg(any(feature = "test", test))]
     let first_msg = {
         let _ = SESSION_NAME.set("".into());
-        ClientToServerMsg::NewClient(client_attributes, Box::new(opts), Box::new(config_options))
+        ClientToServerMsg::NewClient(
+            client_attributes,
+            Box::new(opts),
+            Box::new(config_options.clone()),
+        )
     };
 
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
@@ -173,12 +177,14 @@ pub fn start_client(
             let send_client_instructions = send_client_instructions.clone();
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
+            let default_mode = config_options.default_mode.unwrap_or_default();
             move || {
                 input_loop(
                     os_input,
                     config,
                     command_is_executing,
                     send_client_instructions,
+                    default_mode,
                 )
             }
         });

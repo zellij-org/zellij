@@ -254,7 +254,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Tab),
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Scroll),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
+                CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Session),
                 CtrlKeyShortcut::new(CtrlKeyMode::Disabled, CtrlKeyAction::Quit),
             ],
             colored_elements,

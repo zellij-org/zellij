@@ -45,7 +45,13 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
         ws_ypixel: 0,
     };
 
-    unsafe { ioctl(fd, TIOCGWINSZ, &mut winsize) };
+    // TIOCGWINSZ is an u32, but the second argument to ioctl is u64 on
+    // some platforms. When checked on Linux, clippy will complain about
+    // useless conversion.
+    #[allow(clippy::useless_conversion)]
+    unsafe {
+        ioctl(fd, TIOCGWINSZ.into(), &mut winsize)
+    };
     PositionAndSize::from(winsize)
 }
 

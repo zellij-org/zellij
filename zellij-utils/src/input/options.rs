@@ -2,6 +2,7 @@
 use crate::cli::Command;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use zellij_tile::data::InputMode;
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
@@ -14,6 +15,9 @@ pub struct Options {
     /// Set the default theme
     #[structopt(long)]
     pub theme: Option<String>,
+    /// Set the default mode
+    #[structopt(long)]
+    pub default_mode: Option<InputMode>,
 }
 
 impl Options {
@@ -35,11 +39,20 @@ impl Options {
             self.simplified_ui
         };
 
-        let theme = None;
+        let default_mode = match other.default_mode {
+            None => self.default_mode,
+            other => other,
+        };
+
+        let theme = match other.theme {
+            None => self.theme.clone(),
+            other => other,
+        };
 
         Options {
             simplified_ui,
             theme,
+            default_mode,
         }
     }
 

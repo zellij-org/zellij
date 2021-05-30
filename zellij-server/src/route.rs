@@ -238,7 +238,7 @@ pub(crate) fn route_thread_main(
                     to_server.send(instruction.into()).unwrap();
                 }
             }
-            ClientToServerMsg::AttachClient(_, force) => {
+            ClientToServerMsg::AttachClient(_, force, _) => {
                 if *session_state.read().unwrap() == SessionState::Attached && !force {
                     os_input.send_to_temp_client(ServerToClientMsg::Exit(ExitReason::CannotAttach));
                 } else {
