@@ -105,6 +105,7 @@ impl FromStr for InputMode {
             "tab" => Ok(InputMode::Tab),
             "scroll" => Ok(InputMode::Scroll),
             "renametab" => Ok(InputMode::RenameTab),
+            "session" => Ok(InputMode::Session),
             e => Err(e.to_string().into()),
         }
     }
