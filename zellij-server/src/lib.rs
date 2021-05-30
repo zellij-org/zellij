@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use wasmer::Store;
-use zellij_tile::data::{Event, PluginCapabilities};
+use zellij_tile::data::{Event, Palette, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -84,6 +84,7 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
+    pub palette: Palette,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
@@ -401,6 +402,7 @@ fn init_session(
             to_server: None,
         },
         capabilities,
+        palette: client_attributes.palette,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),

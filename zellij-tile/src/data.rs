@@ -72,13 +72,13 @@ impl Default for InputMode {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum Theme {
+pub enum ThemeHue {
     Light,
     Dark,
 }
-impl Default for Theme {
-    fn default() -> Theme {
-        Theme::Dark
+impl Default for ThemeHue {
+    fn default() -> ThemeHue {
+        ThemeHue::Dark
     }
 }
 
@@ -123,7 +123,7 @@ impl Default for PaletteSource {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct Palette {
     pub source: PaletteSource,
-    pub theme: Theme,
+    pub theme_hue: ThemeHue,
     pub fg: PaletteColor,
     pub bg: PaletteColor,
     pub black: PaletteColor,

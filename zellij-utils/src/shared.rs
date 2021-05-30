@@ -8,7 +8,7 @@ use colors_transform::{Color, Rgb};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
-use zellij_tile::data::{Palette, PaletteColor, PaletteSource, Theme};
+use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 
 const UNIX_PERMISSIONS: u32 = 0o700;
 
@@ -64,7 +64,7 @@ pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
 pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
-        theme: Theme::Dark,
+        theme_hue: ThemeHue::Dark,
         fg: PaletteColor::EightBit(colors::BRIGHT_GRAY),
         bg: PaletteColor::EightBit(colors::GRAY),
         black: PaletteColor::EightBit(colors::BLACK),
@@ -80,7 +80,7 @@ pub fn default_palette() -> Palette {
 }
 
 // Dark magic
-pub fn _detect_theme(bg: PaletteColor) -> Theme {
+pub fn _detect_theme_hue(bg: PaletteColor) -> ThemeHue {
     match bg {
         PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness
@@ -89,11 +89,11 @@ pub fn _detect_theme(bg: PaletteColor) -> Theme {
                 + 0.114 * (b as f64 * b as f64))
                 .sqrt();
             match hsp > 127.5 {
-                true => Theme::Light,
-                false => Theme::Dark,
+                true => ThemeHue::Light,
+                false => ThemeHue::Dark,
             }
         }
-        _ => Theme::Dark,
+        _ => ThemeHue::Dark,
     }
 }
 

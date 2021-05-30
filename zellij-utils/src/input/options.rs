@@ -12,7 +12,10 @@ pub struct Options {
     /// that is compatible with more fonts
     #[structopt(long)]
     pub simplified_ui: bool,
-    /// Allows to specify the default mode
+    /// Set the default theme
+    #[structopt(long)]
+    pub theme: Option<String>,
+    /// Set the default mode
     #[structopt(long)]
     pub default_mode: Option<InputMode>,
 }
@@ -41,8 +44,14 @@ impl Options {
             other => other,
         };
 
+        let theme = match other.theme {
+            None => self.theme.clone(),
+            other => other,
+        };
+
         Options {
             simplified_ui,
+            theme,
             default_mode,
         }
     }

@@ -91,7 +91,14 @@ pub fn start_client(
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
-    let palette = os_input.load_palette();
+    let config_options = Options::from_cli(&config.options, opts.command.clone());
+    let palette = config.themes.clone().map_or_else(
+        || os_input.load_palette(),
+        |t| {
+            t.theme_config(&config_options)
+                .unwrap_or_else(|| os_input.load_palette())
+        },
+    );
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
@@ -101,8 +108,6 @@ pub fn start_client(
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
-
-    let config_options = Options::from_cli(&config.options, opts.command.clone());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
