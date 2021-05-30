@@ -13,6 +13,9 @@ and screen), but this is merely its infrastructure layer.
 Zellij includes a layout system, and a plugin system allowing one to create
 plugins in any language that compiles to WebAssembly.
 
+To list currently running sessions run: `zellij list-sessions`
+To attach to a currently running session run: `zellij attach [session-name]`
+
 OPTIONS
 =======
 
@@ -24,9 +27,12 @@ CONFIGURATION
 Zellij looks for configuration file in the following order:
 
 1. the file provided with _--config_
-2. under the path provided in *ZELLIJ_CONFIG* environment variable
+2. under the path provided in *ZELLIJ_CONFIG_FILE* environment variable
 3. the default location (see FILES section)
+4. the system location
 
+Run `zellij setup --check` in order to see possible issues with the
+configuration.
 
 LAYOUTS
 =======
@@ -85,7 +91,7 @@ KEYBINDINGS
 ===========
 
 Zellij comes with a default set of keybindings which aims to fit as many users
-as possible but that behaviour can be overidden or modified in user
+as possible but that behaviour can be overridden or modified in user
 configuration files. The information about bindings is available in the
 _keybinds_ section of configuration. For example, to introduce a keybinding that
 will create a new tab and go to tab 1 after pressing 'c' one can write:
@@ -147,6 +153,8 @@ ACTIONS
   Right, Up, Down).
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
 * __ScrollDown__ - scrolls down 1 line in the focused pane.
+* __PageScrollUp__ - scrolls up 1 page in the focused pane.
+* __PageScrollDown__ - scrolls down 1 page in the focused pane.
 * __ToggleFocusFullscreen__ - toggles between fullscreen focus pane and normal
   layout.
 * __NewPane: <Direction\>__ - opens a new pane in the specified direction (Left,
@@ -157,6 +165,10 @@ ACTIONS
 * __GoToPreviousTab__ - goes to previous tab.
 * __CloseTab__ - closes current tab.
 * __GoToTab: <Index\>__ - goes to the tab with the specified index number.
+* __Detach__ - detach session and exit.
+* __ToggleActiveSyncTab__ - toggle between sending text commands to all panes
+  on the current tab and normal mode.
+
 
 KEYS
 ----
@@ -190,8 +202,45 @@ MODES
   moving, closing).
 * __resize__ - allows resizing of the focused pane.
 * __scroll__ - allows scrolling within the focused pane.
-* __RenameTab__ - is a "hidden" mode that can be passed to _SwitchToMode_
+* __renametab__ - is a "hidden" mode that can be passed to _SwitchToMode_
   action. It will trigger renaming of a tab.
+* __session__ - allows detaching from a session.
+
+
+Theme
+=====
+A color theme can be defined either in truecolor, or 256 format.
+Truecolor:
+```
+fg: [0, 0, 0]
+```
+256:
+```
+fg: 0
+```
+The color theme can be specified in the following way:
+```
+themes:
+  default:
+    fg: [0,0,0]
+    bg: [0,0,0]
+    black: [0,0,0]
+    red: [0,0,0]
+    green: [0,0,0]
+    yellow: [0,0,0]
+    blue: [0,0,0]
+    magenta: [0,0,0]
+    cyan: [0,0,0]
+    white: [0,0,0]
+    orange: [0,0,0]
+```
+
+If the theme is called `default`, then zellij will pick it on startup.
+To specify a different theme, run zellij with:
+```
+zellij options --theme [NAME]
+```
+or put the name in the configuration file with `theme: [NAME]`.
 
 PLUGINS
 =======
@@ -210,8 +259,11 @@ Default user configuration file location:
 
 ENVIRONMENT
 ===========
-ZELLIJ_CONFIG
-  Path of Zellij config to load. 
+ZELLIJ_CONFIG_FILE
+  Path of Zellij config to load.
+ZELLIJ_CONFIG_DIR
+  Path of the Zellij config directory.
+
 
 
 NOTES
