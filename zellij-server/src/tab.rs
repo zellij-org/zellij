@@ -2336,9 +2336,9 @@ impl Tab {
     }
 
     pub fn copy_selection(&self) {
-        let s = self.get_active_pane().and_then(|p| p.get_selected_text());
-        if let Some(s) = s {
-            let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(s));
+        let selected_text = self.get_active_pane().and_then(|p| p.get_selected_text());
+        if let Some(selected_text) = selected_text {
+            let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selected_text));
             self.senders
                 .send_to_server(ServerInstruction::Render(Some(output)))
                 .unwrap();

@@ -46,26 +46,25 @@ impl Pane for TerminalPane {
         debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
             .expect("could not write to log file");
 
-        let (start, end) = if self.selection.start <= self.selection.end {
+        let (mut start, mut end) = if self.selection.start <= self.selection.end {
             (self.selection.start, self.selection.end)
         } else {
             (self.selection.end, self.selection.start)
         };
+
+        start.column.0 -= self.x();
+        end.column.0 -= self.x();
 
         for l in start.line.0..=end.line.0 {
             let mut line_selection = String::new();
 
             // on the first line of the selection, use the selection start column
             // otherwise, start at the beginning of the line
-            let start_column = if l == self.selection.start.line.0 {
-                self.selection.start.column.0
-            } else {
-                0
-            };
+            let start_column = if l == start.line.0 { start.column.0 } else { 0 };
 
             // same thing on the last line, but with the selection end column
-            let end_column = if l == self.selection.end.line.0 {
-                self.selection.end.column.0
+            let end_column = if l == end.line.0 {
+                end.column.0
             } else {
                 self.position_and_size.columns
             };
@@ -80,7 +79,7 @@ impl Pane for TerminalPane {
                 continue;
             }
 
-            let line = &self.grid.as_character_lines()[l - self.position_and_size.y];
+            let line = &self.grid.as_character_lines()[l - self.y()];
 
             let mut terminal_col = 0;
             for terminal_character in line {
