@@ -29,11 +29,18 @@ pub fn accepts_basic_layout() {
         "src/tests/fixtures/layouts/three-panes-with-nesting.yaml",
     ));
 
+    let layout = zellij_utils::input::layout::Layout::from_path_or_default(
+        None,
+        opts.layout_path.as_ref(),
+        std::path::Path::new("unused"),
+    );
+
     start(
         Box::new(fake_input_output.clone()),
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        layout,
     );
     let output_frames = fake_input_output
         .stdout_writer

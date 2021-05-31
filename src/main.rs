@@ -13,6 +13,7 @@ use zellij_utils::{
     cli::{CliArgs, Command, Sessions},
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     input::config::Config,
+    input::layout::Layout,
     input::options::Options,
     logging::*,
     setup::{get_default_data_dir, Setup},
@@ -72,6 +73,7 @@ pub fn main() {
                 opts,
                 config,
                 ClientInfo::Attach(session_name.unwrap(), force, config_options),
+                None,
             );
         } else {
             let session_name = opts
@@ -85,11 +87,18 @@ pub fn main() {
             #[cfg(not(disable_automatic_asset_installation))]
             populate_data_dir(&data_dir);
 
+            let layout = Layout::from_path_or_default(
+                opts.layout.as_ref(),
+                opts.layout_path.as_ref(),
+                &data_dir,
+            );
+
             start_client(
                 Box::new(os_input),
                 opts,
                 config,
                 ClientInfo::New(session_name),
+                layout,
             );
         }
     }

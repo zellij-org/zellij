@@ -5,14 +5,13 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::zellij_tile;
+use zellij_utils::{input::layout::Layout, zellij_tile};
 
 use crate::{
     panes::PaneId,
     pty::{PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
-    ui::layout::Layout,
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };

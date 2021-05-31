@@ -49,6 +49,7 @@ pub fn resize_down_with_pane_above() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -94,6 +95,7 @@ pub fn resize_down_with_pane_below() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -145,6 +147,7 @@ pub fn resize_down_with_panes_above_and_below() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -195,6 +198,7 @@ pub fn resize_down_with_multiple_panes_above() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -247,6 +251,7 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -298,6 +303,7 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -347,6 +353,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -397,6 +404,7 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -451,6 +459,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -507,6 +516,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -581,6 +591,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -656,6 +667,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -698,6 +710,7 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output

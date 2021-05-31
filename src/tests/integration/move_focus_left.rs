@@ -38,6 +38,7 @@ pub fn move_focus_left() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -76,6 +77,7 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -114,6 +116,7 @@ pub fn move_focus_left_changes_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
