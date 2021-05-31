@@ -259,7 +259,11 @@ impl Tab {
             index,
             position,
             panes,
-            name,
+            name: if name.is_empty() {
+                format!("Tab #{} (unnamed)", position + 1)
+            } else {
+                name
+            },
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
