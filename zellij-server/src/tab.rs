@@ -255,15 +255,18 @@ impl Tab {
         } else {
             BTreeMap::new()
         };
+
+        let name = if name.is_empty() {
+            format!("Tab #{} (unnamed)", position + 1)
+        } else {
+            name
+        };
+
         Tab {
             index,
             position,
             panes,
-            name: if name.is_empty() {
-                format!("Tab #{} (unnamed)", position + 1)
-            } else {
-                name
-            },
+            name,
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
