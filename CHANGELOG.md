@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add option to start in arbitrary modes (https://github.com/zellij-org/zellij/pull/513)
 * Attaching to a session respects the `default_mode` setting of the client (https://github.com/zellij-org/zellij/pull/549)
 * Add option to specify a color theme in the config (https://github.com/zellij-org/zellij/pull/550)
+* Fix config options to not depend on `simplified_ui` (https://github.com/zellij-org/zellij/pull/556)
 
 ## [0.12.1] - 2021-05-28
 * HOTFIX: fix Zellij not responding to input on certain terminals (https://github.com/zellij-org/zellij/issues/538)
