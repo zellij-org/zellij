@@ -257,7 +257,7 @@ impl Tab {
         };
 
         let name = if name.is_empty() {
-            format!("Tab #{} (unnamed)", position + 1)
+            format!("Tab #{}", position + 1)
         } else {
             name
         };
