@@ -4,6 +4,7 @@ pub mod actions;
 pub mod config;
 pub mod keybinds;
 pub mod options;
+pub mod theme;
 
 use termion::input::TermRead;
 use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};

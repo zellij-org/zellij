@@ -46,11 +46,7 @@ pub fn tab_style(
     capabilities: PluginCapabilities,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
-    let mut tab_text = if text.is_empty() {
-        format!("Tab #{}", position + 1)
-    } else {
-        text
-    };
+    let mut tab_text = text;
     if is_sync_panes_active {
         tab_text.push_str(" (Sync)");
     }

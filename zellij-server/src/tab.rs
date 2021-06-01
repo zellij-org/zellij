@@ -246,6 +246,13 @@ impl Tab {
         } else {
             BTreeMap::new()
         };
+
+        let name = if name.is_empty() {
+            format!("Tab #{}", position + 1)
+        } else {
+            name
+        };
+
         Tab {
             index,
             position,
