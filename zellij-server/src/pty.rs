@@ -168,7 +168,7 @@ fn stream_terminal_bytes(
             // After a successful read, we keep on reading additional data up to a duration of
             // `render_pause`. This is in order to batch up PtyBytes before rendering them.
             // Once `render_deadline` has elapsed, we send Render.
-            let render_pause = Duration::from_millis(10);
+            let render_pause = Duration::from_millis(30);
             let mut render_deadline = None;
 
             let mut buf = [0u8; 65536];

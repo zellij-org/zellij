@@ -226,6 +226,7 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn render_full_viewport(&mut self) {}
 }
 
 impl Tab {
@@ -704,6 +705,7 @@ impl Tab {
                     active_terminal.rows() as u16,
                 );
             }
+            self.set_force_render();
             self.render();
             self.toggle_fullscreen_is_active();
         }
@@ -714,6 +716,7 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
+            pane.render_full_viewport();
         }
     }
     pub fn is_sync_panes_active(&self) -> bool {
