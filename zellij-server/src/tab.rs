@@ -23,6 +23,9 @@ use std::{
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 use zellij_utils::{input::parse_keys, pane_size::PositionAndSize, shared::adjust_to_size};
 
+
+use zellij_utils::logging::debug_log_to_file;
+
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 // MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
@@ -612,6 +615,7 @@ impl Tab {
             for message in messages_to_pty {
                 self.write_to_pane_id(message, PaneId::Terminal(pid));
             }
+            // self.render();
         }
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {

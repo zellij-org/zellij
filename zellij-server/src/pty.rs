@@ -162,7 +162,7 @@ fn stream_terminal_bytes(
             // After a successful read, we keep on reading additional data up to a duration of
             // `render_pause`. This is in order to batch up PtyBytes before rendering them.
             // Once `render_deadline` has elapsed, we send Render.
-            let render_pause = Duration::from_millis(30);
+            let render_pause = Duration::from_millis(10);
             let mut render_deadline = None;
 
             let mut buf = [0u8; 65536];
@@ -177,6 +177,15 @@ fn stream_terminal_bytes(
 
                         // yield so Screen thread has some time to render before send additional
                         // PtyBytes.
+                        // TODO: CONTINUE HERE (end of day 01/06)- play with these a little more
+                        // (the sleeps) to see if it makes sense to squeeze mroe
+                        // performance/smoothness from them
+                        // then see what's rendered by debugging the OutputBuffer (goal is to make xterm fast)
+                        //
+                        // test by:
+                        // * cargo build --release
+                        // * target/release/zellij
+                        // * q
                         task::sleep(Duration::from_millis(10)).await;
                     }
                     ReadResult::Ok(n_bytes) => {
