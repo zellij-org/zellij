@@ -148,6 +148,12 @@ async fn deadline_read(
     }
 }
 
+async fn async_send_to_screen(senders: ThreadSenders, screen_instruction: ScreenInstruction) {
+    task::spawn_blocking(move || senders.send_to_screen(screen_instruction))
+        .await
+        .unwrap()
+}
+
 fn stream_terminal_bytes(
     pid: RawFd,
     senders: ThreadSenders,
@@ -171,45 +177,34 @@ fn stream_terminal_bytes(
                 match deadline_read(async_reader.as_mut(), render_deadline, &mut buf).await {
                     ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                     ReadResult::Timeout => {
-                        let _ = senders.send_to_screen(ScreenInstruction::Render);
+                        async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
                         // next read does not need a deadline as we just rendered everything
                         render_deadline = None;
-
-                        // yield so Screen thread has some time to render before send additional
-                        // PtyBytes.
-                        // TODO: CONTINUE HERE (end of day 01/06)- play with these a little more
-                        // (the sleeps) to see if it makes sense to squeeze mroe
-                        // performance/smoothness from them
-                        // then see what's rendered by debugging the OutputBuffer (goal is to make xterm fast)
-                        //
-                        // test by:
-                        // * cargo build --release
-                        // * target/release/zellij
-                        // * q
-                        task::sleep(Duration::from_millis(10)).await;
                     }
                     ReadResult::Ok(n_bytes) => {
                         let bytes = &buf[..n_bytes];
                         if debug {
                             let _ = debug_to_file(bytes, pid);
                         }
-                        let _ = senders
-                            .send_to_screen(ScreenInstruction::PtyBytes(pid, bytes.to_vec()));
+                        async_send_to_screen(
+                            senders.clone(),
+                            ScreenInstruction::PtyBytes(pid, bytes.to_vec()),
+                        )
+                        .await;
                         // if we already have a render_deadline we keep it, otherwise we set it
                         // to the duration of `render_pause`.
                         render_deadline.get_or_insert(Instant::now() + render_pause);
                     }
                 }
             }
-            let _ = senders.send_to_screen(ScreenInstruction::Render);
+            async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
 
             #[cfg(not(any(feature = "test", test)))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
-            senders
-                .send_to_screen(ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
-                .unwrap();
+            async_send_to_screen(senders, ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
+                .await;
         }
     })
 }

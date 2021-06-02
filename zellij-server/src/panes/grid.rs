@@ -2022,6 +2022,8 @@ impl Row {
         let mut replace_with = vec![terminal_character; to + width_of_current_character];
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
+        } else if to_position_accounting_for_widechars >= self.columns.len() {
+            drop(self.columns.drain(0..to_position_accounting_for_widechars));
         } else {
             drop(self.columns.drain(0..=to_position_accounting_for_widechars));
         }
