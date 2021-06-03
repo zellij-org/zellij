@@ -113,6 +113,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)
+        // FIXME: My cherished `dbg!` was broken, so this is a hack to bring it back
+        //.stderr(std::fs::File::create("dbg.log").unwrap())
         .start()
         .expect("could not daemonize the server process");
 

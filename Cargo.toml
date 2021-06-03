@@ -57,3 +57,4 @@ assets = [
 
 [features]
 disable_automatic_asset_installation = []
+parametric_resize_beta = []

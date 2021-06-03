@@ -16,7 +16,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 #[test]
 pub fn accepts_basic_layout() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,

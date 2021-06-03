@@ -55,7 +55,8 @@ pub(crate) enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     SetSelectable(PaneId, bool),
-    SetMaxHeight(PaneId, usize),
+    SetFixedHeight(PaneId, usize),
+    SetFixedWidth(PaneId, usize),
     SetInvisibleBorders(PaneId, bool),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
@@ -106,7 +107,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
-            ScreenInstruction::SetMaxHeight(..) => ScreenContext::SetMaxHeight,
+            ScreenInstruction::SetFixedHeight(..) => ScreenContext::SetFixedHeight,
+            ScreenInstruction::SetFixedWidth(..) => ScreenContext::SetFixedWidth,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
@@ -574,11 +576,17 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .set_pane_selectable(id, selectable);
             }
-            ScreenInstruction::SetMaxHeight(id, max_height) => {
+            ScreenInstruction::SetFixedHeight(id, fixed_height) => {
                 screen
                     .get_active_tab_mut()
                     .unwrap()
-                    .set_pane_max_height(id, max_height);
+                    .set_pane_fixed_height(id, fixed_height);
+            }
+            ScreenInstruction::SetFixedWidth(id, fixed_width) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .set_pane_fixed_width(id, fixed_width);
             }
             ScreenInstruction::SetInvisibleBorders(id, invisible_borders) => {
                 screen

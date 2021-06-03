@@ -26,7 +26,7 @@ impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
-        set_max_height(1);
+        set_fixed_height(1);
         subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
     }
 
@@ -57,7 +57,6 @@ impl ZellijPlugin for State {
             let tab = tab_style(
                 tabname,
                 t.active,
-                t.position,
                 t.is_sync_panes_active,
                 self.mode_info.palette,
                 self.mode_info.capabilities,

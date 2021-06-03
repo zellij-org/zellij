@@ -29,37 +29,35 @@ impl<'a> PaneResizer<'a> {
         let mut successfully_resized = false;
         let mut column_difference: isize = 0;
         let mut row_difference: isize = 0;
-        match new_size.columns.cmp(&current_size.columns) {
+        match new_size.cols.cmp(&current_size.cols) {
             Ordering::Greater => {
-                let increase_by = new_size.columns - current_size.columns;
+                let increase_by = new_size.cols - current_size.cols;
                 if let Some(panes_to_resize) = find_increasable_vertical_chain(
                     &self.panes,
                     increase_by,
-                    current_size.columns,
+                    current_size.cols,
                     current_size.rows,
                 ) {
                     self.increase_panes_right_and_push_adjacents_right(
                         panes_to_resize,
                         increase_by,
                     );
-                    column_difference = new_size.columns as isize - current_size.columns as isize;
-                    current_size.columns =
-                        (current_size.columns as isize + column_difference) as usize;
+                    column_difference = new_size.cols as isize - current_size.cols as isize;
+                    current_size.cols = (current_size.cols as isize + column_difference) as usize;
                     successfully_resized = true;
                 };
             }
             Ordering::Less => {
-                let reduce_by = current_size.columns - new_size.columns;
+                let reduce_by = current_size.cols - new_size.cols;
                 if let Some(panes_to_resize) = find_reducible_vertical_chain(
                     &self.panes,
                     reduce_by,
-                    current_size.columns,
+                    current_size.cols,
                     current_size.rows,
                 ) {
                     self.reduce_panes_left_and_pull_adjacents_left(panes_to_resize, reduce_by);
-                    column_difference = new_size.columns as isize - current_size.columns as isize;
-                    current_size.columns =
-                        (current_size.columns as isize + column_difference) as usize;
+                    column_difference = new_size.cols as isize - current_size.cols as isize;
+                    current_size.cols = (current_size.cols as isize + column_difference) as usize;
                     successfully_resized = true;
                 };
             }
@@ -71,7 +69,7 @@ impl<'a> PaneResizer<'a> {
                 if let Some(panes_to_resize) = find_increasable_horizontal_chain(
                     &self.panes,
                     increase_by,
-                    current_size.columns,
+                    current_size.cols,
                     current_size.rows,
                 ) {
                     self.increase_panes_down_and_push_down_adjacents(panes_to_resize, increase_by);
@@ -85,7 +83,7 @@ impl<'a> PaneResizer<'a> {
                 if let Some(panes_to_resize) = find_reducible_horizontal_chain(
                     &self.panes,
                     reduce_by,
-                    current_size.columns,
+                    current_size.cols,
                     current_size.rows,
                 ) {
                     self.reduce_panes_up_and_pull_adjacents_up(panes_to_resize, reduce_by);
