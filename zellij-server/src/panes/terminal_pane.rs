@@ -178,8 +178,12 @@ impl Pane for TerminalPane {
                 let chunk_absolute_x = pane_x + character_chunk.x;
                 let chunk_absolute_y = pane_y + character_chunk.y;
                 let terminal_characters = character_chunk.terminal_characters;
-                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", chunk_absolute_y + 1, chunk_absolute_x + 1)); // goto row/col and reset styles
-                
+                vte_output.push_str(&format!(
+                    "\u{1b}[{};{}H\u{1b}[m",
+                    chunk_absolute_y + 1,
+                    chunk_absolute_x + 1
+                )); // goto row/col and reset styles
+
                 let mut chunk_width = character_chunk.x;
                 let max_width = self.columns();
                 for t_character in terminal_characters {
