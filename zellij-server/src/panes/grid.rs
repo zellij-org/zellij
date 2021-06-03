@@ -229,7 +229,7 @@ impl OutputBuffer {
     }
     pub fn changed_chunks_in_viewport(
         &self,
-        viewport: &Vec<Row>,
+        viewport: &[Row],
         viewport_width: usize,
         viewport_height: usize,
     ) -> Vec<CharacterChunk> {
@@ -247,7 +247,7 @@ impl OutputBuffer {
             changed_chunks
         } else {
             let mut line_changes = self.changed_lines.to_vec();
-            line_changes.sort();
+            line_changes.sort_unstable();
             line_changes.dedup();
             let mut changed_chunks = Vec::with_capacity(line_changes.len());
             for line_index in line_changes {
@@ -279,7 +279,7 @@ impl OutputBuffer {
     fn extract_line_from_viewport(
         &self,
         line_index: usize,
-        viewport: &Vec<Row>,
+        viewport: &[Row],
         viewport_width: usize,
     ) -> Vec<TerminalCharacter> {
         match viewport.get(line_index) {

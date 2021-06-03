@@ -172,6 +172,7 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
+            let max_width = self.columns();
             for character_chunk in self.grid.read_changes() {
                 let pane_x = self.get_x();
                 let pane_y = self.get_y();
@@ -185,7 +186,6 @@ impl Pane for TerminalPane {
                 )); // goto row/col and reset styles
 
                 let mut chunk_width = character_chunk.x;
-                let max_width = self.columns();
                 for t_character in terminal_characters {
                     chunk_width += t_character.width;
                     if chunk_width > max_width {
