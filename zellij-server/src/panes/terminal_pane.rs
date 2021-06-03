@@ -15,8 +15,6 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 
-use zellij_utils::logging::debug_log_to_file;
-
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
     Terminal(RawFd),
@@ -336,9 +334,9 @@ impl TerminalPane {
         self.grid.change_size(rows, columns);
         self.set_should_render(true);
     }
-//     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
-//         self.grid.as_character_lines()
-//     }
+    pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
+        self.grid.as_character_lines()
+    }
     #[cfg(any(feature = "test", test))]
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
