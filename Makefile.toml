@@ -148,34 +148,30 @@ args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
 [tasks.publish-zellij-tile]
 ignore_errors = true
 cwd = "zellij-tile"
-command = "cargo"
-args = ["publish"]
+command = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-client]
-ignore_errors = true
+dependencies = ["publish-zellij-utils"]
 cwd = "zellij-client"
-command = "cargo"
-args = ["publish"]
+command = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-server]
-ignore_errors = true
+dependencies = ["publish-zellij-utils"]
 cwd = "zellij-server"
-command = "cargo"
-args = ["publish"]
+command = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-utils]
-ignore_errors = true
+dependencies = ["publish-zellij-tile"]
 cwd = "zellij-utils"
-command = "cargo"
-args = ["publish"]
+command = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-tile-utils]
 ignore_errors = true
 cwd = "zellij-tile-utils"
-command = "cargo"
-args = ["publish"]
+command = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
+dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils"]
 command = "cargo"
 args = ["publish"]
 
