@@ -3,12 +3,16 @@
 
 use zellij_utils::{serde, zellij_tile};
 
+#[cfg(not(feature = "parametric_resize_beta"))]
+use crate::ui::pane_resizer::PaneResizer;
+#[cfg(feature = "parametric_resize_beta")]
+use crate::ui::pane_resizer_beta::PaneResizer;
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ui::{boundaries::Boundaries, layout::Layout, pane_resizer::PaneResizer},
+    ui::{boundaries::Boundaries, layout::Layout},
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };

@@ -1,247 +1,529 @@
 use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
-use cassowary::{
-    strength::{REQUIRED, STRONG},
-    Constraint, Solver, Variable,
-    WeightedRelation::*,
-};
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, HashSet},
-    ops::Not,
 };
 use zellij_utils::pane_size::PositionAndSize;
 
-const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
-
-pub struct PaneResizer<'a> {
+pub(crate) struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
-    vars: BTreeMap<PaneId, (Variable, Variable)>,
-    solver: Solver,
     os_api: &'a mut Box<dyn ServerOsApi>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Direction {
-    Horizontal,
-    Vertical,
-}
-
-impl Not for Direction {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        match self {
-            Direction::Horizontal => Direction::Vertical,
-            Direction::Vertical => Direction::Horizontal,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Span {
-    pid: PaneId,
-    direction: Direction,
-    fixed: bool,
-    pos: usize,
-    size: usize,
-    pos_var: Variable,
-    size_var: Variable,
 }
 
 // TODO: currently there are some functions here duplicated with Tab
 // all resizing functions should move here
-
-// FIXME:
-// 1. Rounding causes a loss of ratios, I need to store an internal f64 for
-//    each pane as well as the displayed usize and add custom rounding logic.
-// 2. Vertical resizing doesn't seem to respect the space consumed by the tab
-//    and status bars?
-// 3. A 2x2 layout and simultaneous vertical + horizontal resizing sometimes
-//    leads to unsolvable constraints? Maybe related to 2 (and possibly 1).
-//    I should sanity-check the `spans_in_boundary()` here!
 
 impl<'a> PaneResizer<'a> {
     pub fn new(
         panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
         os_api: &'a mut Box<dyn ServerOsApi>,
     ) -> Self {
-        let mut vars = BTreeMap::new();
-        for &k in panes.keys() {
-            vars.insert(k, (Variable::new(), Variable::new()));
-        }
-        PaneResizer {
-            panes,
-            vars,
-            solver: Solver::new(),
-            os_api,
-        }
+        PaneResizer { panes, os_api }
     }
-
     pub fn resize(
         &mut self,
-        current_size: PositionAndSize,
+        mut current_size: PositionAndSize,
         new_size: PositionAndSize,
     ) -> Option<(isize, isize)> {
-        let col_delta = new_size.cols as isize - current_size.cols as isize;
-        let row_delta = new_size.rows as isize - current_size.rows as isize;
-        if col_delta != 0 {
-            let spans = self.solve_direction(Direction::Horizontal, new_size.cols)?;
-            self.collapse_spans(&spans);
+        // (column_difference, row_difference)
+        let mut successfully_resized = false;
+        let mut column_difference: isize = 0;
+        let mut row_difference: isize = 0;
+        match new_size.cols.cmp(&current_size.cols) {
+            Ordering::Greater => {
+                let increase_by = new_size.cols - current_size.cols;
+                if let Some(panes_to_resize) = find_increasable_vertical_chain(
+                    &self.panes,
+                    increase_by,
+                    current_size.cols,
+                    current_size.rows,
+                ) {
+                    self.increase_panes_right_and_push_adjacents_right(
+                        panes_to_resize,
+                        increase_by,
+                    );
+                    column_difference = new_size.cols as isize - current_size.cols as isize;
+                    current_size.cols = (current_size.cols as isize + column_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Less => {
+                let reduce_by = current_size.cols - new_size.cols;
+                if let Some(panes_to_resize) = find_reducible_vertical_chain(
+                    &self.panes,
+                    reduce_by,
+                    current_size.cols,
+                    current_size.rows,
+                ) {
+                    self.reduce_panes_left_and_pull_adjacents_left(panes_to_resize, reduce_by);
+                    column_difference = new_size.cols as isize - current_size.cols as isize;
+                    current_size.cols = (current_size.cols as isize + column_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Equal => (),
         }
-        self.solver.reset();
-        if row_delta != 0 {
-            let spans = self.solve_direction(Direction::Vertical, new_size.rows)?;
-            self.collapse_spans(&spans);
+        match new_size.rows.cmp(&current_size.rows) {
+            Ordering::Greater => {
+                let increase_by = new_size.rows - current_size.rows;
+                if let Some(panes_to_resize) = find_increasable_horizontal_chain(
+                    &self.panes,
+                    increase_by,
+                    current_size.cols,
+                    current_size.rows,
+                ) {
+                    self.increase_panes_down_and_push_down_adjacents(panes_to_resize, increase_by);
+                    row_difference = new_size.rows as isize - current_size.rows as isize;
+                    current_size.rows = (current_size.rows as isize + row_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Less => {
+                let reduce_by = current_size.rows - new_size.rows;
+                if let Some(panes_to_resize) = find_reducible_horizontal_chain(
+                    &self.panes,
+                    reduce_by,
+                    current_size.cols,
+                    current_size.rows,
+                ) {
+                    self.reduce_panes_up_and_pull_adjacents_up(panes_to_resize, reduce_by);
+                    row_difference = new_size.rows as isize - current_size.rows as isize;
+                    current_size.rows = (current_size.rows as isize + row_difference) as usize;
+                    successfully_resized = true;
+                };
+            }
+            Ordering::Equal => (),
         }
-        Some((col_delta, row_delta))
+        if successfully_resized {
+            Some((column_difference, row_difference))
+        } else {
+            None
+        }
     }
-
-    fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
-        let mut grid = Vec::new();
-        for boundary in self.grid_boundaries(direction) {
-            grid.push(self.spans_in_boundary(direction, boundary));
+    fn reduce_panes_left_and_pull_adjacents_left(
+        &mut self,
+        panes_to_reduce: Vec<PaneId>,
+        reduce_by: usize,
+    ) {
+        let mut pulled_panes: HashSet<PaneId> = HashSet::new();
+        for pane_id in panes_to_reduce {
+            let (pane_x, pane_y, pane_columns, pane_rows) = {
+                let pane = self.panes.get(&pane_id).unwrap();
+                (pane.x(), pane.y(), pane.columns(), pane.rows())
+            };
+            let panes_to_pull = self.panes.values_mut().filter(|p| {
+                p.x() > pane_x + pane_columns
+                    && (p.y() <= pane_y && p.y() + p.rows() >= pane_y
+                        || p.y() >= pane_y && p.y() + p.rows() <= pane_y + pane_rows)
+            });
+            for pane in panes_to_pull {
+                if !pulled_panes.contains(&pane.pid()) {
+                    pane.pull_left(reduce_by);
+                    pulled_panes.insert(pane.pid());
+                }
+            }
+            self.reduce_pane_width_left(&pane_id, reduce_by);
         }
-
-        let constraints: Vec<_> = grid
-            .iter()
-            .flat_map(|s| constrain_spans(space, s))
-            .collect();
-
-        // FIXME: This line needs to be restored before merging!
-        //self.solver.add_constraints(&constraints).ok()?;
-        self.solver.add_constraints(&constraints).unwrap();
-        Some(grid.into_iter().flatten().collect())
     }
+    fn reduce_panes_up_and_pull_adjacents_up(
+        &mut self,
+        panes_to_reduce: Vec<PaneId>,
+        reduce_by: usize,
+    ) {
+        let mut pulled_panes: HashSet<PaneId> = HashSet::new();
+        for pane_id in panes_to_reduce {
+            let (pane_x, pane_y, pane_columns, pane_rows) = {
+                let pane = self.panes.get(&pane_id).unwrap();
+                (pane.x(), pane.y(), pane.columns(), pane.rows())
+            };
+            let panes_to_pull = self.panes.values_mut().filter(|p| {
+                p.y() > pane_y + pane_rows
+                    && (p.x() <= pane_x && p.x() + p.columns() >= pane_x
+                        || p.x() >= pane_x && p.x() + p.columns() <= pane_x + pane_columns)
+            });
+            for pane in panes_to_pull {
+                if !pulled_panes.contains(&pane.pid()) {
+                    pane.pull_up(reduce_by);
+                    pulled_panes.insert(pane.pid());
+                }
+            }
+            self.reduce_pane_height_up(&pane_id, reduce_by);
+        }
+    }
+    fn increase_panes_down_and_push_down_adjacents(
+        &mut self,
+        panes_to_increase: Vec<PaneId>,
+        increase_by: usize,
+    ) {
+        let mut pushed_panes: HashSet<PaneId> = HashSet::new();
+        for pane_id in panes_to_increase {
+            let (pane_x, pane_y, pane_columns, pane_rows) = {
+                let pane = self.panes.get(&pane_id).unwrap();
+                (pane.x(), pane.y(), pane.columns(), pane.rows())
+            };
+            let panes_to_push = self.panes.values_mut().filter(|p| {
+                p.y() > pane_y + pane_rows
+                    && (p.x() <= pane_x && p.x() + p.columns() >= pane_x
+                        || p.x() >= pane_x && p.x() + p.columns() <= pane_x + pane_columns)
+            });
+            for pane in panes_to_push {
+                if !pushed_panes.contains(&pane.pid()) {
+                    pane.push_down(increase_by);
+                    pushed_panes.insert(pane.pid());
+                }
+            }
+            self.increase_pane_height_down(&pane_id, increase_by);
+        }
+    }
+    fn increase_panes_right_and_push_adjacents_right(
+        &mut self,
+        panes_to_increase: Vec<PaneId>,
+        increase_by: usize,
+    ) {
+        let mut pushed_panes: HashSet<PaneId> = HashSet::new();
+        for pane_id in panes_to_increase {
+            let (pane_x, pane_y, pane_columns, pane_rows) = {
+                let pane = self.panes.get(&pane_id).unwrap();
+                (pane.x(), pane.y(), pane.columns(), pane.rows())
+            };
+            let panes_to_push = self.panes.values_mut().filter(|p| {
+                p.x() > pane_x + pane_columns
+                    && (p.y() <= pane_y && p.y() + p.rows() >= pane_y
+                        || p.y() >= pane_y && p.y() + p.rows() <= pane_y + pane_rows)
+            });
+            for pane in panes_to_push {
+                if !pushed_panes.contains(&pane.pid()) {
+                    pane.push_right(increase_by);
+                    pushed_panes.insert(pane.pid());
+                }
+            }
+            self.increase_pane_width_right(&pane_id, increase_by);
+        }
+    }
+    fn reduce_pane_height_up(&mut self, id: &PaneId, count: usize) {
+        let pane = self.panes.get_mut(id).unwrap();
+        pane.reduce_height_up(count);
+        if let PaneId::Terminal(pid) = id {
+            self.os_api
+                .set_terminal_size_using_fd(*pid, pane.columns() as u16, pane.rows() as u16);
+        }
+    }
+    fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
+        let pane = self.panes.get_mut(id).unwrap();
+        pane.increase_height_down(count);
+        if let PaneId::Terminal(pid) = pane.pid() {
+            self.os_api
+                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+        }
+    }
+    fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
+        let pane = self.panes.get_mut(id).unwrap();
+        pane.increase_width_right(count);
+        if let PaneId::Terminal(pid) = pane.pid() {
+            self.os_api
+                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+        }
+    }
+    fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
+        let pane = self.panes.get_mut(id).unwrap();
+        pane.reduce_width_left(count);
+        if let PaneId::Terminal(pid) = pane.pid() {
+            self.os_api
+                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+        }
+    }
+}
 
-    fn grid_boundaries(&self, direction: Direction) -> Vec<(usize, usize)> {
-        // Select the spans running *perpendicular* to the direction of resize
-        let spans: Vec<Span> = self
-            .panes
-            .values()
-            .map(|p| self.get_span(!direction, p.as_ref()))
-            .collect();
-
-        let mut last_edge = 0;
-        let mut bounds = Vec::new();
-        loop {
-            let mut spans_on_edge: Vec<&Span> =
-                spans.iter().filter(|p| p.pos == last_edge).collect();
-            spans_on_edge.sort_unstable_by_key(|s| s.size);
-            if let Some(next) = spans_on_edge.first() {
-                let next_edge = last_edge + next.size;
-                bounds.push((last_edge, next_edge));
-                last_edge = next_edge + GAP_SIZE;
+fn find_next_increasable_horizontal_pane(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    right_of: &dyn Pane,
+    increase_by: usize,
+) -> Option<PaneId> {
+    let next_pane_candidates = panes.values().filter(
+        |p| {
+            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
+        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+    );
+    let resizable_candidates =
+        next_pane_candidates.filter(|p| p.can_increase_height_by(increase_by));
+    resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
+        Some(next_pane) => {
+            let next_pane = panes.get(&next_pane).unwrap();
+            if next_pane.y() < p.y() {
+                next_pane_id
             } else {
-                break;
+                Some(p.pid())
             }
         }
-        bounds
-    }
+        None => Some(p.pid()),
+    })
+}
 
-    fn spans_in_boundary(&self, direction: Direction, boundary: (usize, usize)) -> Vec<Span> {
-        let (start, end) = boundary;
-        let bwn = |v| start <= v && v < end;
-        let mut spans: Vec<_> = self
-            .panes
+fn find_next_increasable_vertical_pane(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    below: &dyn Pane,
+    increase_by: usize,
+) -> Option<PaneId> {
+    let next_pane_candidates = panes.values().filter(
+        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+    );
+    let resizable_candidates =
+        next_pane_candidates.filter(|p| p.can_increase_width_by(increase_by));
+    resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
+        Some(next_pane) => {
+            let next_pane = panes.get(&next_pane).unwrap();
+            if next_pane.x() < p.x() {
+                next_pane_id
+            } else {
+                Some(p.pid())
+            }
+        }
+        None => Some(p.pid()),
+    })
+}
+
+fn find_next_reducible_vertical_pane(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    below: &dyn Pane,
+    reduce_by: usize,
+) -> Option<PaneId> {
+    let next_pane_candidates = panes.values().filter(
+        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+    );
+    let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_width_by(reduce_by));
+    resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
+        Some(next_pane) => {
+            let next_pane = panes.get(&next_pane).unwrap();
+            if next_pane.x() < p.x() {
+                next_pane_id
+            } else {
+                Some(p.pid())
+            }
+        }
+        None => Some(p.pid()),
+    })
+}
+
+fn find_next_reducible_horizontal_pane(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    right_of: &dyn Pane,
+    reduce_by: usize,
+) -> Option<PaneId> {
+    let next_pane_candidates = panes.values().filter(
+        |p| {
+            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
+        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+    );
+    let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_height_by(reduce_by));
+    resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
+        Some(next_pane) => {
+            let next_pane = panes.get(&next_pane).unwrap();
+            if next_pane.y() < p.y() {
+                next_pane_id
+            } else {
+                Some(p.pid())
+            }
+        }
+        None => Some(p.pid()),
+    })
+}
+
+fn find_increasable_horizontal_chain(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    increase_by: usize,
+    screen_width: usize,
+    screen_height: usize, // TODO: this is the previous size (make this clearer)
+) -> Option<Vec<PaneId>> {
+    let mut horizontal_coordinate = 0;
+    loop {
+        if horizontal_coordinate == screen_height {
+            return None;
+        }
+
+        match panes
             .values()
-            .filter(|p| {
-                let s = self.get_span(!direction, p.as_ref());
-                bwn(s.pos) || bwn(s.pos + s.size)
-            })
-            .map(|p| self.get_span(direction, p.as_ref()))
-            .collect();
-        spans.sort_unstable_by_key(|s| s.pos);
-        spans
-    }
-
-    fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
-        let pas = pane.position_and_size();
-        let (pos_var, size_var) = self.vars[&pane.pid()];
-        match direction {
-            Direction::Horizontal => Span {
-                pid: pane.pid(),
-                direction,
-                fixed: pas.cols_fixed,
-                pos: pas.x,
-                size: pas.cols,
-                pos_var,
-                size_var,
-            },
-            Direction::Vertical => Span {
-                pid: pane.pid(),
-                direction,
-                fixed: pas.rows_fixed,
-                pos: pas.y,
-                size: pas.rows,
-                pos_var,
-                size_var,
-            },
-        }
-    }
-
-    fn collapse_spans(&mut self, spans: &[Span]) {
-        for span in spans {
-            let solver = &self.solver; // Hand-holding the borrow-checker
-            let pane = self.panes.get_mut(&span.pid).unwrap();
-            let fetch_usize = |v| solver.get_value(v).round() as usize;
-            match span.direction {
-                Direction::Horizontal => pane.change_pos_and_size(&PositionAndSize {
-                    x: fetch_usize(span.pos_var),
-                    cols: fetch_usize(span.size_var),
-                    ..pane.position_and_size()
-                }),
-                Direction::Vertical => pane.change_pos_and_size(&PositionAndSize {
-                    y: fetch_usize(span.pos_var),
-                    rows: fetch_usize(span.size_var),
-                    ..pane.position_and_size()
-                }),
+            .find(|p| p.x() == 0 && p.y() == horizontal_coordinate)
+        {
+            Some(leftmost_pane) => {
+                if !leftmost_pane.can_increase_height_by(increase_by) {
+                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                    continue;
+                }
+                let mut panes_to_resize = vec![];
+                let mut current_pane = leftmost_pane;
+                loop {
+                    panes_to_resize.push(current_pane.pid());
+                    if current_pane.x() + current_pane.columns() == screen_width {
+                        return Some(panes_to_resize);
+                    }
+                    match find_next_increasable_horizontal_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
+                        Some(next_pane_id) => {
+                            current_pane = panes.get(&next_pane_id).unwrap();
+                        }
+                        None => {
+                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                            break;
+                        }
+                    };
+                }
             }
-            if let PaneId::Terminal(pid) = pane.pid() {
-                self.os_api.set_terminal_size_using_fd(
-                    pid,
-                    pane.columns() as u16,
-                    pane.rows() as u16,
-                );
+            None => {
+                return None;
             }
         }
     }
 }
 
-fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
-    let mut constraints = HashSet::new();
+fn find_increasable_vertical_chain(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    increase_by: usize,
+    screen_width: usize,
+    screen_height: usize, // TODO: this is the previous size (make this clearer)
+) -> Option<Vec<PaneId>> {
+    let mut vertical_coordinate = 0;
+    loop {
+        if vertical_coordinate == screen_width {
+            return None;
+        }
 
-    // The first span needs to start at 0
-    constraints.insert(spans[0].pos_var | EQ(REQUIRED) | 0.0);
-
-    // Calculating "flexible" space (space not consumed by fixed-size spans)
-    let gap_space = GAP_SIZE * (spans.len() - 1);
-    let old_flex_space = spans
-        .iter()
-        .fold(0, |a, s| if !s.fixed { a + s.size } else { a });
-    let new_flex_space = spans.iter().fold(
-        space - gap_space,
-        |a, s| if s.fixed { a - s.size } else { a },
-    );
-
-    // Keep spans stuck together
-    for pair in spans.windows(2) {
-        let (ls, rs) = (pair[0], pair[1]);
-        constraints
-            .insert((ls.pos_var + ls.size_var + GAP_SIZE as f64) | EQ(REQUIRED) | rs.pos_var);
-    }
-
-    // Try to maintain ratios and lock non-flexible sizes
-    for span in spans {
-        if span.fixed {
-            constraints.insert(span.size_var | EQ(REQUIRED) | span.size as f64);
-        } else {
-            let ratio = span.size as f64 / old_flex_space as f64;
-            constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | ratio);
+        match panes
+            .values()
+            .find(|p| p.y() == 0 && p.x() == vertical_coordinate)
+        {
+            Some(topmost_pane) => {
+                if !topmost_pane.can_increase_width_by(increase_by) {
+                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                    continue;
+                }
+                let mut panes_to_resize = vec![];
+                let mut current_pane = topmost_pane;
+                loop {
+                    panes_to_resize.push(current_pane.pid());
+                    if current_pane.y() + current_pane.rows() == screen_height {
+                        return Some(panes_to_resize);
+                    }
+                    match find_next_increasable_vertical_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
+                        Some(next_pane_id) => {
+                            current_pane = panes.get(&next_pane_id).unwrap();
+                        }
+                        None => {
+                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                            break;
+                        }
+                    };
+                }
+            }
+            None => {
+                return None;
+            }
         }
     }
+}
 
-    // The last pane needs to end at the end of the space
-    let last = spans.last().unwrap();
-    constraints.insert((last.pos_var + last.size_var) | EQ(REQUIRED) | space as f64);
+fn find_reducible_horizontal_chain(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    reduce_by: usize,
+    screen_width: usize,
+    screen_height: usize, // TODO: this is the previous size (make this clearer)
+) -> Option<Vec<PaneId>> {
+    let mut horizontal_coordinate = 0;
+    loop {
+        if horizontal_coordinate == screen_height {
+            return None;
+        }
 
-    constraints
+        match panes
+            .values()
+            .find(|p| p.x() == 0 && p.y() == horizontal_coordinate)
+        {
+            Some(leftmost_pane) => {
+                if !leftmost_pane.can_reduce_height_by(reduce_by) {
+                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                    continue;
+                }
+                let mut panes_to_resize = vec![];
+                let mut current_pane = leftmost_pane;
+                loop {
+                    panes_to_resize.push(current_pane.pid());
+                    if current_pane.x() + current_pane.columns() == screen_width {
+                        return Some(panes_to_resize);
+                    }
+                    match find_next_reducible_horizontal_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        reduce_by,
+                    ) {
+                        Some(next_pane_id) => {
+                            current_pane = panes.get(&next_pane_id).unwrap();
+                        }
+                        None => {
+                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                            break;
+                        }
+                    };
+                }
+            }
+            None => {
+                return None;
+            }
+        }
+    }
+}
+
+fn find_reducible_vertical_chain(
+    panes: &BTreeMap<PaneId, Box<dyn Pane>>,
+    increase_by: usize,
+    screen_width: usize,
+    screen_height: usize, // TODO: this is the previous size (make this clearer)
+) -> Option<Vec<PaneId>> {
+    let mut vertical_coordinate = 0;
+    loop {
+        if vertical_coordinate == screen_width {
+            return None;
+        }
+
+        match panes
+            .values()
+            .find(|p| p.y() == 0 && p.x() == vertical_coordinate)
+        {
+            Some(topmost_pane) => {
+                if !topmost_pane.can_reduce_width_by(increase_by) {
+                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                    continue;
+                }
+                let mut panes_to_resize = vec![];
+                let mut current_pane = topmost_pane;
+                loop {
+                    panes_to_resize.push(current_pane.pid());
+                    if current_pane.y() + current_pane.rows() == screen_height {
+                        return Some(panes_to_resize);
+                    }
+                    match find_next_reducible_vertical_pane(
+                        panes,
+                        current_pane.as_ref(),
+                        increase_by,
+                    ) {
+                        Some(next_pane_id) => {
+                            current_pane = panes.get(&next_pane_id).unwrap();
+                        }
+                        None => {
+                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                            break;
+                        }
+                    };
+                }
+            }
+            None => {
+                return None;
+            }
+        }
+    }
 }
