@@ -33,16 +33,16 @@ const MIN_TERMINAL_WIDTH: usize = 4;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
-    let width_of_each_half = (rect.columns - 1) / 2;
+    let width_of_each_half = (rect.cols - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
-    if rect.columns % 2 == 0 {
-        first_rect.columns = width_of_each_half + 1;
+    if rect.cols % 2 == 0 {
+        first_rect.cols = width_of_each_half + 1;
     } else {
-        first_rect.columns = width_of_each_half;
+        first_rect.cols = width_of_each_half;
     }
-    second_rect.x = first_rect.x + first_rect.columns + 1;
-    second_rect.columns = width_of_each_half;
+    second_rect.x = first_rect.x + first_rect.cols + 1;
+    second_rect.cols = width_of_each_half;
     (first_rect, second_rect)
 }
 
@@ -280,7 +280,7 @@ impl Tab {
             x: 0,
             y: 0,
             rows: self.full_screen_ws.rows,
-            columns: self.full_screen_ws.columns,
+            cols: self.full_screen_ws.cols,
             ..Default::default()
         };
         self.panes_to_hide.clear();
@@ -295,7 +295,7 @@ impl Tab {
                         terminal_pane.change_pos_and_size(&position_and_size);
                         self.os_api.set_terminal_size_using_fd(
                             *pid,
-                            position_and_size.columns as u16,
+                            position_and_size.cols as u16,
                             position_and_size.rows as u16,
                         );
                     }
@@ -400,7 +400,7 @@ impl Tab {
             let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
             let terminal_ws = PositionAndSize {
                 rows: terminal_to_split.rows(),
-                columns: terminal_to_split.columns(),
+                cols: terminal_to_split.columns(),
                 x: terminal_to_split.x(),
                 y: terminal_to_split.y(),
                 ..Default::default()
@@ -413,7 +413,7 @@ impl Tab {
                     let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        bottom_winsize.columns as u16,
+                        bottom_winsize.cols as u16,
                         bottom_winsize.rows as u16,
                     );
                     terminal_to_split.change_pos_and_size(&top_winsize);
@@ -421,7 +421,7 @@ impl Tab {
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            top_winsize.columns as u16,
+                            top_winsize.cols as u16,
                             top_winsize.rows as u16,
                         );
                     }
@@ -433,7 +433,7 @@ impl Tab {
                     let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        right_winsize.columns as u16,
+                        right_winsize.cols as u16,
                         right_winsize.rows as u16,
                     );
                     terminal_to_split.change_pos_and_size(&left_winsize);
@@ -441,7 +441,7 @@ impl Tab {
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            left_winsize.columns as u16,
+                            left_winsize.cols as u16,
                             left_winsize.rows as u16,
                         );
                     }
@@ -481,7 +481,7 @@ impl Tab {
                 x: active_pane.x(),
                 y: active_pane.y(),
                 rows: active_pane.rows(),
-                columns: active_pane.columns(),
+                cols: active_pane.columns(),
                 ..Default::default()
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
@@ -491,7 +491,7 @@ impl Tab {
             let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                bottom_winsize.columns as u16,
+                bottom_winsize.cols as u16,
                 bottom_winsize.rows as u16,
             );
             self.panes.insert(pid, Box::new(new_terminal));
@@ -499,7 +499,7 @@ impl Tab {
             if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     *active_terminal_pid,
-                    top_winsize.columns as u16,
+                    top_winsize.cols as u16,
                     top_winsize.rows as u16,
                 );
             }
@@ -538,7 +538,7 @@ impl Tab {
                 x: active_pane.x(),
                 y: active_pane.y(),
                 rows: active_pane.rows(),
-                columns: active_pane.columns(),
+                cols: active_pane.columns(),
                 ..Default::default()
             };
             let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
@@ -548,7 +548,7 @@ impl Tab {
             let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                right_winsize.columns as u16,
+                right_winsize.cols as u16,
                 right_winsize.rows as u16,
             );
             self.panes.insert(pid, Box::new(new_terminal));
@@ -556,7 +556,7 @@ impl Tab {
             if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     *active_terminal_pid,
-                    left_winsize.columns as u16,
+                    left_winsize.cols as u16,
                     left_winsize.rows as u16,
                 );
             }
@@ -715,7 +715,7 @@ impl Tab {
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(
-            self.full_screen_ws.columns as u16,
+            self.full_screen_ws.cols as u16,
             self.full_screen_ws.rows as u16,
         );
         let hide_cursor = "\u{1b}[?25l";
@@ -1126,7 +1126,7 @@ impl Tab {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.columns;
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_above
@@ -1204,7 +1204,7 @@ impl Tab {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.columns;
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_below
@@ -1546,7 +1546,7 @@ impl Tab {
             return false;
         }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.columns += increase_by;
+        new_pos_and_size_for_pane.cols += increase_by;
 
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
@@ -1714,8 +1714,8 @@ impl Tab {
                 .resize(self.full_screen_ws, new_screen_size)
         {
             self.should_clear_display_before_rendering = true;
-            self.full_screen_ws.columns =
-                (self.full_screen_ws.columns as isize + column_difference) as usize;
+            self.full_screen_ws.cols =
+                (self.full_screen_ws.cols as isize + column_difference) as usize;
             self.full_screen_ws.rows =
                 (self.full_screen_ws.rows as isize + row_difference) as usize;
         };

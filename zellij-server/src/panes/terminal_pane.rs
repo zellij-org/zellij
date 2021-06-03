@@ -58,7 +58,7 @@ impl Pane for TerminalPane {
             x,
             y,
             rows: size.rows,
-            columns: size.columns,
+            cols: size.cols,
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
@@ -139,7 +139,7 @@ impl Pane for TerminalPane {
         self.position_and_size.rows_fixed = true;
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.columns = fixed_width;
+        self.position_and_size.cols = fixed_width;
         self.position_and_size.cols_fixed = true;
     }
     fn set_invisible_borders(&mut self, _invisible_borders: bool) {
@@ -217,20 +217,20 @@ impl Pane for TerminalPane {
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.reflow_lines();
     }
     fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.reflow_lines();
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.reflow_lines();
     }
     fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.reflow_lines();
     }
     fn push_down(&mut self, count: usize) {
@@ -282,7 +282,7 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.columns, palette);
+        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
         TerminalPane {
             pid,
             grid,
@@ -308,8 +308,8 @@ impl TerminalPane {
     }
     pub fn get_columns(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.columns,
-            None => self.position_and_size.columns as usize,
+            Some(position_and_size_override) => position_and_size_override.cols,
+            None => self.position_and_size.cols as usize,
         }
     }
     pub fn get_rows(&self) -> usize {

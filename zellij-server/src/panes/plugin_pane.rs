@@ -60,7 +60,7 @@ impl Pane for PluginPane {
     fn columns(&self) -> usize {
         self.position_and_size_override
             .unwrap_or(self.position_and_size)
-            .columns
+            .cols
     }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
@@ -76,7 +76,7 @@ impl Pane for PluginPane {
             x,
             y,
             rows: size.rows,
-            columns: size.columns,
+            cols: size.cols,
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
@@ -117,7 +117,7 @@ impl Pane for PluginPane {
         self.position_and_size.rows_fixed = true;
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.columns = fixed_width;
+        self.position_and_size.cols = fixed_width;
         self.position_and_size.cols_fixed = true;
     }
     fn render(&mut self) -> Option<String> {
@@ -167,20 +167,20 @@ impl Pane for PluginPane {
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.should_render = true;
     }
     fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.should_render = true;
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.should_render = true;
     }
     fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.should_render = true;
     }
     fn push_down(&mut self, count: usize) {
@@ -215,7 +215,7 @@ impl Pane for PluginPane {
     }
     fn max_width(&self) -> Option<usize> {
         if self.position_and_size.cols_fixed {
-            Some(self.position_and_size.columns)
+            Some(self.position_and_size.cols)
         } else {
             None
         }

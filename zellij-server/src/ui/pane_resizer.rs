@@ -81,10 +81,10 @@ impl<'a> PaneResizer<'a> {
         current_size: PositionAndSize,
         new_size: PositionAndSize,
     ) -> Option<(isize, isize)> {
-        let col_delta = new_size.columns as isize - current_size.columns as isize;
+        let col_delta = new_size.cols as isize - current_size.cols as isize;
         let row_delta = new_size.rows as isize - current_size.rows as isize;
         if col_delta != 0 {
-            let spans = self.solve_direction(Direction::Horizontal, new_size.columns)?;
+            let spans = self.solve_direction(Direction::Horizontal, new_size.cols)?;
             self.collapse_spans(&spans);
         }
         self.solver.reset();
@@ -162,7 +162,7 @@ impl<'a> PaneResizer<'a> {
                 direction,
                 fixed: pas.cols_fixed,
                 pos: pas.x,
-                size: pas.columns,
+                size: pas.cols,
                 pos_var,
                 size_var,
             },
@@ -186,7 +186,7 @@ impl<'a> PaneResizer<'a> {
             match span.direction {
                 Direction::Horizontal => pane.change_pos_and_size(&PositionAndSize {
                     x: fetch_usize(span.pos_var),
-                    columns: fetch_usize(span.size_var),
+                    cols: fetch_usize(span.size_var),
                     ..pane.position_and_size()
                 }),
                 Direction::Vertical => pane.change_pos_and_size(&PositionAndSize {

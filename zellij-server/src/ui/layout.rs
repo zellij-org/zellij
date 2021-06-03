@@ -13,7 +13,7 @@ fn split_space_to_parts_vertically(
     let mut split_parts = Vec::new();
     let mut current_x_position = space_to_split.x;
     let mut current_width = 0;
-    let max_width = space_to_split.columns - (sizes.len() - 1); // minus space for gaps
+    let max_width = space_to_split.cols - (sizes.len() - 1); // minus space for gaps
 
     let mut parts_to_grow = Vec::new();
 
@@ -32,7 +32,7 @@ fn split_space_to_parts_vertically(
         split_parts.push(PositionAndSize {
             x: current_x_position,
             y: space_to_split.y,
-            columns,
+            cols: columns,
             rows: space_to_split.rows,
             ..Default::default()
         });
@@ -51,11 +51,11 @@ fn split_space_to_parts_vertically(
         for (idx, part) in split_parts.iter_mut().enumerate() {
             part.x = current_x_position;
             if parts_to_grow.contains(&part.x) {
-                part.columns = new_columns;
+                part.cols = new_columns;
                 last_flexible_index = idx;
             }
-            current_width += part.columns;
-            current_x_position += part.columns + 1; // 1 for gap
+            current_width += part.cols;
+            current_x_position += part.cols + 1; // 1 for gap
         }
     }
 
@@ -63,7 +63,7 @@ fn split_space_to_parts_vertically(
         // we have some extra space left, let's add it to the last flexible part
         let extra = max_width - current_width;
         let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.columns += extra;
+        last_part.cols += extra;
         for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
             part.x += extra;
         }
@@ -96,7 +96,7 @@ fn split_space_to_parts_horizontally(
         split_parts.push(PositionAndSize {
             x: space_to_split.x,
             y: current_y_position,
-            columns: space_to_split.columns,
+            cols: space_to_split.cols,
             rows,
             ..Default::default()
         });

@@ -40,7 +40,6 @@ pub fn non_active_tab(text: String, palette: Palette, separator: &str) -> LinePa
 pub fn tab_style(
     text: String,
     is_active_tab: bool,
-    position: usize,
     is_sync_panes_active: bool,
     palette: Palette,
     capabilities: PluginCapabilities,
