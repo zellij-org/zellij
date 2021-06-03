@@ -82,7 +82,7 @@ end
 '''
 
 [tasks.build-plugins-release]
-env = { "CARGO_MAKE_WORKSPACE_SKIP_MEMBERS" = ["."] }
+env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
 run_task = { name = "build-release", fork = true }
 
 [tasks.wasm-opt-plugins]
@@ -129,15 +129,16 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit", "build-release", "publish-zellij-tile", "publish-zellij-tile-utils", "publish-zellij-utils", "publish-zellij-client", "publish-zellij-server"]
+dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit"]
 run_task = "publish-zellij"
 
 [tasks.release-commit]
 dependencies = ["commit-all", "tag-release"]
 command = "git"
-args = ["push", "--atomic", "upstream", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
+args = ["push", "--atomic", "origin", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.commit-all]
+ignore_errors = true
 command = "git"
 args = ["commit", "-aem", "chore(release): v${CARGO_MAKE_CRATE_VERSION}"]
 
@@ -148,31 +149,32 @@ args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
 [tasks.publish-zellij-tile]
 ignore_errors = true
 cwd = "zellij-tile"
-command = "cargo publish && sleep 15"
+script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-client]
+ignore_errors = true
 dependencies = ["publish-zellij-utils"]
 cwd = "zellij-client"
-command = "cargo publish && sleep 15"
+script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-server]
+ignore_errors = true
 dependencies = ["publish-zellij-utils"]
 cwd = "zellij-server"
-command = "cargo publish && sleep 15"
+script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-utils]
+ignore_errors = true
 dependencies = ["publish-zellij-tile"]
 cwd = "zellij-utils"
-command = "cargo publish && sleep 15"
+script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-tile-utils]
 ignore_errors = true
 cwd = "zellij-tile-utils"
-command = "cargo publish && sleep 15"
+script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
 dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils"]
 command = "cargo"
 args = ["publish"]
-
-
