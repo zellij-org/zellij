@@ -238,7 +238,7 @@ pub fn start_client(
 
     let handle_error = |backtrace: String| {
         os_input.unset_raw_mode(0);
-        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows.as_usize(), 1);
         let restore_snapshot = "\u{1b}[?1049l";
         let error = format!(
             "{}\n{}{}",
@@ -292,7 +292,7 @@ pub fn start_client(
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";
     let restore_snapshot = "\u{1b}[?1049l";
-    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows.as_usize(), 1);
     let goodbye_message = format!(
         "{}\n{}{}{}{}\n",
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg

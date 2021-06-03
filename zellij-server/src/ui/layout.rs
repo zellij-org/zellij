@@ -34,7 +34,6 @@ fn split_space_to_parts_vertically(
             y: space_to_split.y,
             cols: columns,
             rows: space_to_split.rows,
-            ..Default::default()
         });
         current_width += columns;
         current_x_position += columns + 1; // 1 for gap
@@ -98,7 +97,6 @@ fn split_space_to_parts_horizontally(
             y: current_y_position,
             cols: space_to_split.cols,
             rows,
-            ..Default::default()
         });
         current_height += rows;
         current_y_position += rows + 1; // 1 for gap

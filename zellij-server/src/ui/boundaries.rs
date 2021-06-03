@@ -590,7 +590,7 @@ impl Boundaries {
         vte_output
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
-        rect.x() + rect.columns() < self.columns
+        rect.x() + rect.cols() < self.columns
     }
     fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.y() + rect.rows() < self.rows
@@ -620,7 +620,7 @@ impl Boundaries {
         }
     }
     fn rect_bottom_boundary_col_end(&self, rect: &dyn Pane) -> usize {
-        let rect_right_col = rect.x() + rect.columns();
+        let rect_right_col = rect.x() + rect.cols();
         // we do this because unless we're on the screen edge, we'd like to go one extra column to
         // connect to whatever boundary is right of us
         if rect_right_col == self.columns {

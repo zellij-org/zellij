@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
@@ -11,10 +11,33 @@ pub struct PositionAndSize {
     pub cols: Dimension,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum Dimension {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Dimension {
+    constraint: Constraint,
+    inner: usize,
+}
+
+impl Dimension {
+    pub fn fixed(inner: usize) -> Dimension {
+        Self {
+            constraint: Constraint::Fixed,
+            inner,
+        }
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.inner
+    }
+
+    pub fn is_fixed(&self) -> bool {
+        self.constraint == Constraint::Fixed
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Constraint {
     /// Constrains the dimension to a fixed, integer number of rows / columns
-    Fixed(usize),
+    Fixed,
     /// Constrains the dimension to a flexible percent size of the total screen
     Percent(u8),
 }
@@ -24,8 +47,8 @@ impl From<Winsize> for PositionAndSize {
         PositionAndSize {
             x: 0,
             y: 0,
-            cols: Dimension::Fixed(winsize.ws_col as usize),
-            rows: Dimension::Fixed(winsize.ws_row as usize),
+            cols: Dimension::fixed(winsize.ws_col as usize),
+            rows: Dimension::fixed(winsize.ws_row as usize),
         }
     }
 }

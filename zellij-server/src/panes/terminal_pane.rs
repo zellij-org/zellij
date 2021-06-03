@@ -1,10 +1,11 @@
-use zellij_utils::{vte, zellij_tile};
-
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::Instant;
 use zellij_tile::data::Palette;
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::{
+    pane_size::{Dimension, PositionAndSize},
+    vte, zellij_tile,
+};
 
 use crate::panes::{
     grid::Grid,
@@ -42,7 +43,7 @@ impl Pane for TerminalPane {
     fn rows(&self) -> usize {
         self.get_rows()
     }
-    fn columns(&self) -> usize {
+    fn cols(&self) -> usize {
         self.get_columns()
     }
     fn reset_size_and_position_override(&mut self) {
@@ -59,7 +60,6 @@ impl Pane for TerminalPane {
             y,
             rows: size.rows,
             cols: size.cols,
-            ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.reflow_lines();
@@ -138,12 +138,10 @@ impl Pane for TerminalPane {
         self.selectable = selectable;
     }
     fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = fixed_height;
-        self.position_and_size.rows_fixed = true;
+        self.position_and_size.rows = Dimension::fixed(fixed_height);
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = fixed_width;
-        self.position_and_size.cols_fixed = true;
+        self.position_and_size.cols = Dimension::fixed(fixed_width);
     }
     fn set_invisible_borders(&mut self, _invisible_borders: bool) {
         unimplemented!();
@@ -167,7 +165,7 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            let max_width = self.columns();
+            let max_width = self.cols();
             for character_chunk in self.grid.read_changes() {
                 let pane_x = self.get_x();
                 let pane_y = self.get_y();
@@ -289,7 +287,11 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
+        let grid = Grid::new(
+            position_and_size.rows.as_usize(),
+            position_and_size.cols.as_usize(),
+            palette,
+        );
         TerminalPane {
             pid,
             grid,
@@ -314,15 +316,15 @@ impl TerminalPane {
         }
     }
     pub fn get_columns(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.cols,
-            None => self.position_and_size.cols as usize,
+        match self.position_and_size_override {
+            Some(position_and_size_override) => position_and_size_override.cols.as_usize(),
+            None => self.position_and_size.cols.as_usize(),
         }
     }
     pub fn get_rows(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows as usize,
+        match self.position_and_size_override {
+            Some(position_and_size_override) => position_and_size_override.rows.as_usize(),
+            None => self.position_and_size.rows.as_usize(),
         }
     }
     fn reflow_lines(&mut self) {

@@ -197,11 +197,8 @@ impl<'a> PaneResizer<'a> {
                 }),
             }
             if let PaneId::Terminal(pid) = pane.pid() {
-                self.os_api.set_terminal_size_using_fd(
-                    pid,
-                    pane.columns() as u16,
-                    pane.rows() as u16,
-                );
+                self.os_api
+                    .set_terminal_size_using_fd(pid, pane.cols() as u16, pane.rows() as u16);
             }
         }
     }

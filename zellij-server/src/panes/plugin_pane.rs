@@ -6,7 +6,10 @@ use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
-use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize};
+use zellij_utils::{
+    channels::SenderWithContext,
+    pane_size::{Dimension, PositionAndSize},
+};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -56,11 +59,13 @@ impl Pane for PluginPane {
         self.position_and_size_override
             .unwrap_or(self.position_and_size)
             .rows
+            .as_usize()
     }
-    fn columns(&self) -> usize {
+    fn cols(&self) -> usize {
         self.position_and_size_override
             .unwrap_or(self.position_and_size)
             .cols
+            .as_usize()
     }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
@@ -77,7 +82,6 @@ impl Pane for PluginPane {
             y,
             rows: size.rows,
             cols: size.cols,
-            ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
         self.should_render = true;
@@ -113,12 +117,10 @@ impl Pane for PluginPane {
         self.invisible_borders = invisible_borders;
     }
     fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = fixed_height;
-        self.position_and_size.rows_fixed = true;
+        self.position_and_size.rows = Dimension::fixed(fixed_height);
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = fixed_width;
-        self.position_and_size.cols_fixed = true;
+        self.position_and_size.cols = Dimension::fixed(fixed_width);
     }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
@@ -134,7 +136,7 @@ impl Pane for PluginPane {
                     buf_tx,
                     self.pid,
                     self.rows(),
-                    self.columns(),
+                    self.cols(),
                 ))
                 .unwrap();
 
@@ -207,15 +209,15 @@ impl Pane for PluginPane {
     // FIXME: This need to be reevaluated and deleted if possible.
     // `max` doesn't make sense when things are fixed...
     fn max_height(&self) -> Option<usize> {
-        if self.position_and_size.rows_fixed {
-            Some(self.position_and_size.rows)
+        if self.position_and_size.rows.is_fixed() {
+            Some(self.position_and_size.rows.as_usize())
         } else {
             None
         }
     }
     fn max_width(&self) -> Option<usize> {
-        if self.position_and_size.cols_fixed {
-            Some(self.position_and_size.cols)
+        if self.position_and_size.cols.is_fixed() {
+            Some(self.position_and_size.cols.as_usize())
         } else {
             None
         }
