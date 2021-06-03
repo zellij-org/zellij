@@ -42,8 +42,11 @@ impl<'a> PaneResizer<'a> {
                         panes_to_resize,
                         increase_by,
                     );
-                    column_difference = new_size.cols.as_usize() as isize - current_size.cols.as_usize() as isize;
-                    current_size.cols = Dimension::fixed((current_size.cols.as_usize() as isize + column_difference) as usize);
+                    column_difference =
+                        new_size.cols.as_usize() as isize - current_size.cols.as_usize() as isize;
+                    current_size.cols = Dimension::fixed(
+                        (current_size.cols.as_usize() as isize + column_difference) as usize,
+                    );
                     successfully_resized = true;
                 };
             }
@@ -56,8 +59,11 @@ impl<'a> PaneResizer<'a> {
                     current_size.rows.as_usize(),
                 ) {
                     self.reduce_panes_left_and_pull_adjacents_left(panes_to_resize, reduce_by);
-                    column_difference = new_size.cols.as_usize() as isize - current_size.cols.as_usize() as isize;
-                    current_size.cols = Dimension::fixed((current_size.cols.as_usize() as isize + column_difference) as usize);
+                    column_difference =
+                        new_size.cols.as_usize() as isize - current_size.cols.as_usize() as isize;
+                    current_size.cols = Dimension::fixed(
+                        (current_size.cols.as_usize() as isize + column_difference) as usize,
+                    );
                     successfully_resized = true;
                 };
             }
@@ -73,8 +79,11 @@ impl<'a> PaneResizer<'a> {
                     current_size.rows.as_usize(),
                 ) {
                     self.increase_panes_down_and_push_down_adjacents(panes_to_resize, increase_by);
-                    row_difference = new_size.rows.as_usize() as isize - current_size.rows.as_usize() as isize;
-                    current_size.rows = Dimension::fixed((current_size.rows.as_usize() as isize + row_difference) as usize);
+                    row_difference =
+                        new_size.rows.as_usize() as isize - current_size.rows.as_usize() as isize;
+                    current_size.rows = Dimension::fixed(
+                        (current_size.rows.as_usize() as isize + row_difference) as usize,
+                    );
                     successfully_resized = true;
                 };
             }
@@ -87,8 +96,11 @@ impl<'a> PaneResizer<'a> {
                     current_size.rows.as_usize(),
                 ) {
                     self.reduce_panes_up_and_pull_adjacents_up(panes_to_resize, reduce_by);
-                    row_difference = new_size.rows.as_usize() as isize - current_size.rows.as_usize() as isize;
-                    current_size.rows = Dimension::fixed((current_size.rows.as_usize() as isize + row_difference) as usize);
+                    row_difference =
+                        new_size.rows.as_usize() as isize - current_size.rows.as_usize() as isize;
+                    current_size.rows = Dimension::fixed(
+                        (current_size.rows.as_usize() as isize + row_difference) as usize,
+                    );
                     successfully_resized = true;
                 };
             }
