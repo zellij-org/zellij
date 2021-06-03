@@ -128,6 +128,9 @@ impl Pane for TerminalPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.grid.should_render = should_render;
     }
+    fn render_full_viewport(&mut self) {
+        self.grid.render_full_viewport();
+    }
     fn selectable(&self) -> bool {
         self.selectable
     }
@@ -148,8 +151,6 @@ impl Pane for TerminalPane {
     fn render(&mut self) -> Option<String> {
         if self.should_render() {
             let mut vte_output = String::new();
-            let buffer_lines = &self.read_buffer_as_lines();
-            let display_cols = self.get_columns();
             let mut character_styles = CharacterStyles::new();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
@@ -166,25 +167,31 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            for (row, line) in buffer_lines.iter().enumerate() {
-                let x = self.get_x();
-                let y = self.get_y();
-                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + row + 1, x + 1)); // goto row/col and reset styles
-                for (col, t_character) in line.iter().enumerate() {
-                    if col < display_cols {
-                        // in some cases (eg. while resizing) some characters will spill over
-                        // before they are corrected by the shell (for the prompt) or by reflowing
-                        // lines
-                        if let Some(new_styles) =
-                            character_styles.update_and_return_diff(&t_character.styles)
-                        {
-                            // the terminal keeps the previous styles as long as we're in the same
-                            // line, so we only want to update the new styles here (this also
-                            // includes resetting previous styles as needed)
-                            vte_output.push_str(&new_styles.to_string());
-                        }
-                        vte_output.push(t_character.character);
+            let max_width = self.columns();
+            for character_chunk in self.grid.read_changes() {
+                let pane_x = self.get_x();
+                let pane_y = self.get_y();
+                let chunk_absolute_x = pane_x + character_chunk.x;
+                let chunk_absolute_y = pane_y + character_chunk.y;
+                let terminal_characters = character_chunk.terminal_characters;
+                vte_output.push_str(&format!(
+                    "\u{1b}[{};{}H\u{1b}[m",
+                    chunk_absolute_y + 1,
+                    chunk_absolute_x + 1
+                )); // goto row/col and reset styles
+
+                let mut chunk_width = character_chunk.x;
+                for t_character in terminal_characters {
+                    chunk_width += t_character.width;
+                    if chunk_width > max_width {
+                        break;
                     }
+                    if let Some(new_styles) =
+                        character_styles.update_and_return_diff(&t_character.styles)
+                    {
+                        vte_output.push_str(&new_styles.to_string());
+                    }
+                    vte_output.push(t_character.character);
                 }
                 character_styles.clear();
             }
