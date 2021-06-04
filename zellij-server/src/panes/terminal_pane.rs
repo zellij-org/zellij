@@ -66,7 +66,7 @@ impl Pane for TerminalPane {
             let end_column = if l == end.line.0 {
                 end.column.0
             } else {
-                self.position_and_size.columns
+                self.position_and_size.cols
             };
 
             debug_log_to_file(format!(
