@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)
 * Do not lag when reading input too fast (https://github.com/zellij-org/zellij/pull/536)
 * Session name optional in attach command (https://github.com/zellij-org/zellij/pull/542)
