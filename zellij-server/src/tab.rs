@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use zellij_utils::{input::mouse::Position, serde, zellij_tile};
+use zellij_utils::{input::mouse::Position, logging::debug_log_to_file, serde, zellij_tile};
 
 #[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;
@@ -143,6 +143,12 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
+    fn contains(&self, position: &Position) -> bool {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position_and_size.contains(position),
+            None => self.position_and_size().contains(position),
+        }
+    }
     fn start_selection(&mut self, start: &Position);
     fn end_selection(&mut self, end: &Position);
     fn get_selected_text(&self) -> Option<String>;
@@ -226,6 +232,12 @@ pub trait Pane {
         vec![]
     }
     fn render_full_viewport(&mut self) {}
+    fn relative_position(&self, position: &Position) -> Position {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position.relative_to(&position_and_size),
+            None => position.relative_to(&self.position_and_size()),
+        }
+    }
 }
 
 impl Tab {
@@ -2275,62 +2287,60 @@ impl Tab {
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
-        let pane_id = self
-            .get_selectable_panes()
-            .find(|(_, p)| p.position_and_size().contains(point))
-            .map(|(&id, _)| id);
-
-        if let Some(pane_id) = pane_id {
-            self.panes.get_mut(&pane_id).unwrap().scroll_up(lines);
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_up(lines);
             self.render();
+        }
+    }
+    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_down(lines);
+            self.render();
+        }
+    }
+    fn get_pane_at(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
+        if let Some(pane_id) = self.get_pane_id_at(point) {
+            self.panes.get_mut(&pane_id)
+        } else {
+            None
         }
     }
     fn get_pane_id_at(&self, point: &Position) -> Option<PaneId> {
+        if self.fullscreen_is_active {
+            return self.get_active_pane_id();
+        }
+
         self.get_selectable_panes()
-            .find(|(_, p)| p.position_and_size().contains(point))
+            .find(|(_, p)| p.contains(point))
             .map(|(&id, _)| id)
     }
+    pub fn handle_left_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
 
-    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
-        if let Some(pane_id) = self.get_pane_id_at(point) {
-            self.panes.get_mut(&pane_id).unwrap().scroll_down(lines);
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.start_selection(&relative_position);
             self.render();
-        }
-    }
-    pub fn handle_left_click(&mut self, point: &Position) {
-        self.focus_pane_at(point);
-
-        let pane_id = self.get_pane_id_at(point);
-        if pane_id.is_none() {
-            return;
-        }
-        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
-            pane.start_selection(&point);
         };
-        self.render();
     }
     fn focus_pane_at(&mut self, point: &Position) {
         if let Some(clicked_pane) = self.get_pane_id_at(point) {
+            debug_log_to_file(format!("focusing pane {:?}", clicked_pane));
             self.active_terminal = Some(clicked_pane);
+            self.render();
         }
     }
-    pub fn handle_mouse_release(&mut self, point: &Position) {
-        let pane_id = self.get_pane_id_at(point);
-        if pane_id.is_none() {
-            return;
+    pub fn handle_mouse_release(&mut self, position: &Position) {
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.end_selection(&relative_position);
+            self.render();
         }
-        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
-            pane.end_selection(point);
-        }
-        self.render();
     }
-    pub fn handle_mouse_hold(&mut self, point: &Position) {
-        let pane_id = self.get_pane_id_at(point);
-        if pane_id.is_none() {
-            return;
-        }
-        if let Some(pane) = self.panes.get_mut(&pane_id.unwrap()) {
-            pane.end_selection(point);
+    pub fn handle_mouse_hold(&mut self, position: &Position) {
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.end_selection(&relative_position);
         }
         self.render();
     }

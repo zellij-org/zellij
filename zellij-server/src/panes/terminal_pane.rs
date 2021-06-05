@@ -11,7 +11,6 @@ use crate::panes::{
     terminal_character::{
         CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
-    AnsiCode, NamedColor,
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -46,14 +45,11 @@ impl Pane for TerminalPane {
         debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
             .expect("could not write to log file");
 
-        let (mut start, mut end) = if self.selection.start <= self.selection.end {
+        let (start, end) = if self.selection.start <= self.selection.end {
             (self.selection.start, self.selection.end)
         } else {
             (self.selection.end, self.selection.start)
         };
-
-        start.column.0 -= self.x();
-        end.column.0 -= self.x();
 
         for l in start.line.0..=end.line.0 {
             let mut line_selection = String::new();
@@ -79,7 +75,7 @@ impl Pane for TerminalPane {
                 continue;
             }
 
-            let line = &self.grid.as_character_lines()[l - self.y()];
+            let line = &self.grid.as_character_lines()[l];
 
             let mut terminal_col = 0;
             for terminal_character in line {
