@@ -1147,7 +1147,6 @@ impl Grid {
         self.selection.start(*start);
         self.mark_for_rerender();
     }
-
     pub fn end_selection(&mut self, end: &Position) {
         // TODO: make this more efficient, redraw changed lines only
         // mark currently selected lines for update, so that selection hightlight will be cleared
@@ -1163,15 +1162,12 @@ impl Grid {
         }
         let mut selection: Vec<String> = vec![];
 
-        let (start, end) = if self.selection.start <= self.selection.end {
-            (self.selection.start, self.selection.end)
-        } else {
-            (self.selection.end, self.selection.start)
-        };
+        let sorted_selection = self.selection.sorted();
+        let (start, end) = (sorted_selection.start, sorted_selection.end);
 
         let lines = self.as_character_lines();
 
-        for l in start.line.0..=end.line.0 {
+        for l in sorted_selection.line_indices() {
             let mut line_selection = String::new();
 
             // on the first line of the selection, use the selection start column
@@ -1194,7 +1190,6 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in line {
                 if (start_column..end_column).contains(&terminal_col) {
-                    //if terminal_col >= start_column && terminal_col < end_column {
                     line_selection.push(terminal_character.character);
                 }
 
@@ -1206,13 +1201,7 @@ impl Grid {
         Some(selection.join("\n"))
     }
     fn update_selected_lines(&mut self) {
-        let (start, end) = if self.selection.start <= self.selection.end {
-            (self.selection.start, self.selection.end)
-        } else {
-            (self.selection.end, self.selection.start)
-        };
-
-        for l in start.line.0..=end.line.0 {
+        for l in self.selection.line_indices() {
             self.output_buffer.update_line(l);
         }
     }

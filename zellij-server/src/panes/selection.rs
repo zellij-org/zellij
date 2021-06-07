@@ -60,4 +60,18 @@ impl Selection {
         self.end.line.0 = 0;
         self.end.column.0 = 0;
     }
+
+    pub fn sorted(&self) -> Self {
+        let (start, end) = if self.start <= self.end {
+            (self.start, self.end)
+        } else {
+            (self.end, self.start)
+        };
+        Self { start, end }
+    }
+
+    pub fn line_indices(&self) -> std::ops::RangeInclusive<usize> {
+        let sorted = self.sorted();
+        sorted.start.line.0..=sorted.end.line.0
+    }
 }
