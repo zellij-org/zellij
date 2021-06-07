@@ -1,4 +1,4 @@
-use zellij_utils::{input::mouse::Position, logging::debug_log_to_file, vte, zellij_tile};
+use zellij_utils::{input::mouse::Position, vte, zellij_tile};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
@@ -6,6 +6,8 @@ use std::time::Instant;
 use zellij_tile::data::Palette;
 use zellij_utils::pane_size::PositionAndSize;
 
+use crate::panes::AnsiCode;
+use crate::panes::NamedColor;
 use crate::panes::{
     grid::Grid,
     terminal_character::{
@@ -14,8 +16,6 @@ use crate::panes::{
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-
-use super::selection::Selection;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -32,66 +32,9 @@ pub struct TerminalPane {
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
-    pub selection: Selection,
 }
 
 impl Pane for TerminalPane {
-    fn get_selected_text(&self) -> Option<String> {
-        if self.selection.is_empty() {
-            return None;
-        }
-        let mut selection: Vec<String> = vec![];
-
-        debug_log_to_file(format!("getting text from selection: {:?}", self.selection))
-            .expect("could not write to log file");
-
-        let (start, end) = if self.selection.start <= self.selection.end {
-            (self.selection.start, self.selection.end)
-        } else {
-            (self.selection.end, self.selection.start)
-        };
-
-        for l in start.line.0..=end.line.0 {
-            let mut line_selection = String::new();
-
-            // on the first line of the selection, use the selection start column
-            // otherwise, start at the beginning of the line
-            let start_column = if l == start.line.0 { start.column.0 } else { 0 };
-
-            // same thing on the last line, but with the selection end column
-            let end_column = if l == end.line.0 {
-                end.column.0
-            } else {
-                self.position_and_size.cols
-            };
-
-            debug_log_to_file(format!(
-                "line #{}, start_col: {}, end_col: {}",
-                l, start_column, end_column
-            ))
-            .expect("could not write to log file");
-
-            if start_column == end_column {
-                continue;
-            }
-
-            let line = &self.grid.as_character_lines()[l];
-
-            let mut terminal_col = 0;
-            for terminal_character in line {
-                if (start_column..end_column).contains(&terminal_col) {
-                    //if terminal_col >= start_column && terminal_col < end_column {
-                    line_selection.push(terminal_character.character);
-                }
-
-                terminal_col += terminal_character.width;
-            }
-            selection.push(String::from(line_selection.trim_end()));
-        }
-
-        Some(selection.join("\n"))
-    }
-
     fn x(&self) -> usize {
         self.get_x()
     }
@@ -240,11 +183,17 @@ impl Pane for TerminalPane {
                 )); // goto row/col and reset styles
 
                 let mut chunk_width = character_chunk.x;
-                for t_character in terminal_characters {
+                for mut t_character in terminal_characters {
+                    if self.grid.selection.contains(character_chunk.y, chunk_width) {
+                        t_character.styles = t_character
+                            .styles
+                            .background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+                    }
                     chunk_width += t_character.width;
                     if chunk_width > max_width {
                         break;
                     }
+
                     if let Some(new_styles) =
                         character_styles.update_and_return_diff(&t_character.styles)
                     {
@@ -346,21 +295,17 @@ impl Pane for TerminalPane {
     }
 
     fn start_selection(&mut self, start: &Position) {
-        self.selection.start(*start);
-        dbg!(format!(
-            "start selection at {:?}, selection: {:?}",
-            start, self.selection
-        ));
+        self.grid.start_selection(start);
         self.set_should_render(true);
     }
 
     fn end_selection(&mut self, end: &Position) {
-        self.selection.to(*end);
-        dbg!(format!(
-            "end selection at {:?}, selection: {:?}",
-            end, self.selection
-        ));
+        self.grid.end_selection(end);
         self.set_should_render(true);
+    }
+
+    fn get_selected_text(&self) -> Option<String> {
+        self.grid.get_selected_text()
     }
 }
 
@@ -376,7 +321,6 @@ impl TerminalPane {
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
-            selection: Selection::default(),
         }
     }
     pub fn get_x(&self) -> usize {

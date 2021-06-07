@@ -7,7 +7,7 @@ use std::{
     str,
 };
 
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::{input::mouse::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
@@ -20,6 +20,8 @@ use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
     EMPTY_TERMINAL_CHARACTER,
 };
+
+use super::selection::Selection;
 
 // this was copied verbatim from alacritty
 fn parse_number(input: &[u8]) -> Option<u8> {
@@ -315,6 +317,7 @@ pub struct Grid {
     pub width: usize,
     pub height: usize,
     pub pending_messages_to_pty: Vec<Vec<u8>>,
+    pub selection: Selection,
 }
 
 impl Debug for Grid {
@@ -354,6 +357,7 @@ impl Grid {
             pending_messages_to_pty: vec![],
             colors,
             output_buffer: Default::default(),
+            selection: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -492,6 +496,8 @@ impl Grid {
         }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
+        // TODO: recalculate selection after resize, for now reset selection to empty
+        self.selection.reset();
         if new_columns != self.width {
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -1134,6 +1140,81 @@ impl Grid {
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
+    }
+    pub fn start_selection(&mut self, start: &Position) {
+        // mark currently selected lines for update, so that selection hightlight will be cleared
+        self.update_selected_lines();
+        self.selection.start(*start);
+        self.mark_for_rerender();
+    }
+
+    pub fn end_selection(&mut self, end: &Position) {
+        // TODO: make this more efficient, redraw changed lines only
+        // mark currently selected lines for update, so that selection hightlight will be cleared
+        self.update_selected_lines();
+        self.selection.to(*end);
+        // mark newly selected lines for update, so that they will be highlighted
+        self.update_selected_lines();
+        self.mark_for_rerender();
+    }
+    pub fn get_selected_text(&self) -> Option<String> {
+        if self.selection.is_empty() {
+            return None;
+        }
+        let mut selection: Vec<String> = vec![];
+
+        let (start, end) = if self.selection.start <= self.selection.end {
+            (self.selection.start, self.selection.end)
+        } else {
+            (self.selection.end, self.selection.start)
+        };
+
+        let lines = self.as_character_lines();
+
+        for l in start.line.0..=end.line.0 {
+            let mut line_selection = String::new();
+
+            // on the first line of the selection, use the selection start column
+            // otherwise, start at the beginning of the line
+            let start_column = if l == start.line.0 { start.column.0 } else { 0 };
+
+            // same thing on the last line, but with the selection end column
+            let end_column = if l == end.line.0 {
+                end.column.0
+            } else {
+                self.width
+            };
+
+            if start_column == end_column {
+                continue;
+            }
+
+            let line = &lines[l];
+
+            let mut terminal_col = 0;
+            for terminal_character in line {
+                if (start_column..end_column).contains(&terminal_col) {
+                    //if terminal_col >= start_column && terminal_col < end_column {
+                    line_selection.push(terminal_character.character);
+                }
+
+                terminal_col += terminal_character.width;
+            }
+            selection.push(String::from(line_selection.trim_end()));
+        }
+
+        Some(selection.join("\n"))
+    }
+    fn update_selected_lines(&mut self) {
+        let (start, end) = if self.selection.start <= self.selection.end {
+            (self.selection.start, self.selection.end)
+        } else {
+            (self.selection.end, self.selection.start)
+        };
+
+        for l in start.line.0..=end.line.0 {
+            self.output_buffer.update_line(l);
+        }
     }
 }
 

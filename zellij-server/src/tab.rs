@@ -2331,6 +2331,9 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position) {
+        if self.get_active_pane_id() != self.get_pane_id_at(position) {
+            return;
+        }
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
             pane.end_selection(&relative_position);
@@ -2338,6 +2341,9 @@ impl Tab {
         }
     }
     pub fn handle_mouse_hold(&mut self, position: &Position) {
+        if self.get_active_pane_id() != self.get_pane_id_at(position) {
+            return;
+        }
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
             pane.end_selection(&relative_position);

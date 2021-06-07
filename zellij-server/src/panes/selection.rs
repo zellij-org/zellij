@@ -1,6 +1,6 @@
 use zellij_utils::{input::mouse::Position, logging::debug_log_to_file};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Selection {
     pub start: Position,
     pub end: Position,
@@ -52,5 +52,12 @@ impl Selection {
 
     pub fn is_empty(&self) -> bool {
         self.start == self.end
+    }
+
+    pub fn reset(&mut self) {
+        self.start.line.0 = 0;
+        self.start.column.0 = 0;
+        self.end.line.0 = 0;
+        self.end.column.0 = 0;
     }
 }
