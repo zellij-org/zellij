@@ -477,6 +477,7 @@ impl Grid {
             self.lines_below.insert(0, line_to_push_down);
             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
+            self.selection.move_up(1);
         }
         self.output_buffer.update_all_lines();
     }
@@ -492,6 +493,7 @@ impl Grid {
             }
             let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
             self.viewport.push(line_to_insert_at_viewport_bottom);
+            self.selection.move_down(1);
             self.output_buffer.update_all_lines();
         }
     }
@@ -1185,7 +1187,26 @@ impl Grid {
                 continue;
             }
 
-            let line = &lines[l];
+            let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+
+            let row = if l < 0 {
+                let offset_from_end = l.abs();
+                &self.lines_above[self.lines_above.len() - (offset_from_end as usize)]
+            } else if l >= 0 && (l as usize) < self.viewport.len() {
+                &self.viewport[l as usize]
+            } else if (l as usize) < self.height {
+                &empty_row
+            } else {
+                &self.lines_below[(l as usize) - self.viewport.len()]
+            };
+
+            let excess_width = row.excess_width();
+            let mut line: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
+            // pad line
+            line.resize(
+                self.width.saturating_sub(excess_width),
+                EMPTY_TERMINAL_CHARACTER,
+            );
 
             let mut terminal_col = 0;
             for terminal_character in line {
@@ -1202,7 +1223,9 @@ impl Grid {
     }
     fn update_selected_lines(&mut self) {
         for l in self.selection.line_indices() {
-            self.output_buffer.update_line(l);
+            if l >= 0 && l as usize <= self.height {
+                self.output_buffer.update_line(l as usize);
+            }
         }
     }
 }

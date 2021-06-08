@@ -30,24 +30,23 @@ impl Selection {
     }
 
     pub fn contains(&self, row: usize, col: usize) -> bool {
+        let row = row as isize;
         let (start, end) = if self.start <= self.end {
             (self.start, self.end)
         } else {
             (self.end, self.start)
         };
 
-        if (start.line.0 as usize) < row && row < end.line.0 as usize {
+        if (start.line.0) < row && row < end.line.0 {
             return true;
         }
         if start.line == end.line {
-            return row == start.line.0 as usize
-                && start.column.0 as usize <= col
-                && col < end.column.0 as usize;
+            return row == start.line.0 && start.column.0 <= col && col < end.column.0;
         }
-        if start.line.0 as usize == row && col >= start.column.0 as usize {
+        if start.line.0 == row && col >= start.column.0 {
             return true;
         }
-        end.line.0 as usize == row && col < end.column.0 as usize
+        end.line.0 == row && col < end.column.0
     }
 
     pub fn is_empty(&self) -> bool {
@@ -70,8 +69,18 @@ impl Selection {
         Self { start, end }
     }
 
-    pub fn line_indices(&self) -> std::ops::RangeInclusive<usize> {
+    pub fn line_indices(&self) -> std::ops::RangeInclusive<isize> {
         let sorted = self.sorted();
         sorted.start.line.0..=sorted.end.line.0
+    }
+
+    pub fn move_down(&mut self, lines: usize) {
+        self.start.line.0 -= lines as isize;
+        self.end.line.0 -= lines as isize;
+    }
+
+    pub fn move_up(&mut self, lines: usize) {
+        self.start.line.0 += lines as isize;
+        self.end.line.0 += lines as isize;
     }
 }
