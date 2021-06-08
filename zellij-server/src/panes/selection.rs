@@ -74,12 +74,12 @@ impl Selection {
         sorted.start.line.0..=sorted.end.line.0
     }
 
-    pub fn move_down(&mut self, lines: usize) {
+    pub fn move_up(&mut self, lines: usize) {
         self.start.line.0 -= lines as isize;
         self.end.line.0 -= lines as isize;
     }
 
-    pub fn move_up(&mut self, lines: usize) {
+    pub fn move_up_old(&mut self, lines: usize) {
         self.start.line.0 += lines as isize;
         self.end.line.0 += lines as isize;
     }

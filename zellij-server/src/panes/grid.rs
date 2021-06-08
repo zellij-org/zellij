@@ -477,7 +477,7 @@ impl Grid {
             self.lines_below.insert(0, line_to_push_down);
             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
-            self.selection.move_up(1);
+            self.selection.move_up_old(1);
         }
         self.output_buffer.update_all_lines();
     }
@@ -493,7 +493,7 @@ impl Grid {
             }
             let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
             self.viewport.push(line_to_insert_at_viewport_bottom);
-            self.selection.move_down(1);
+            self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         }
     }
@@ -772,6 +772,7 @@ impl Grid {
                 Some(self.width),
                 None,
             );
+            self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -848,6 +849,7 @@ impl Grid {
                 );
                 let wrapped_row = Row::new(self.width);
                 self.viewport.push(wrapped_row);
+                self.selection.move_up(1);
                 self.output_buffer.update_all_lines();
             } else {
                 self.cursor.y += 1;
