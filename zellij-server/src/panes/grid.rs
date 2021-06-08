@@ -777,7 +777,6 @@ impl Grid {
         match self.viewport.get_mut(self.cursor.y) {
             Some(row) => {
                 row.insert_character_at(terminal_character, self.cursor.x);
-                // if row.len() > self.width {
                 if row.width() > self.width {
                     row.truncate(self.width);
                 }
@@ -1131,7 +1130,6 @@ impl Grid {
         self.erasure_mode = false;
         self.disable_linewrap = false;
         self.cursor.change_shape(CursorShape::Block);
-        //debug_log_to_file(format!("u20"));
         self.output_buffer.update_all_lines();
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
@@ -1142,8 +1140,6 @@ impl Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
-        // TODO: CONTINUE HERE - the slowness is coming from this function, do some debugging to
-        // see if it can be mitigated somehow?
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
         let terminal_character = TerminalCharacter {
