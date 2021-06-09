@@ -4,6 +4,7 @@ use zellij_utils::{input::mouse::Position, logging::debug_log_to_file};
 pub struct Selection {
     pub start: Position,
     pub end: Position,
+    active: bool,
 }
 
 impl Default for Selection {
@@ -11,6 +12,7 @@ impl Default for Selection {
         Self {
             start: Position::new(0, 0),
             end: Position::new(0, 0),
+            active: false,
         }
     }
 }
@@ -19,6 +21,7 @@ impl Selection {
     pub fn start(&mut self, start: Position) {
         debug_log_to_file(format!("setting selection start to {:?}", start))
             .expect("could not write to log file");
+        self.active = true;
         self.start = start;
         self.end = start;
     }
@@ -26,6 +29,13 @@ impl Selection {
     pub fn to(&mut self, to: Position) {
         debug_log_to_file(format!("setting selection end to {:?}", to))
             .expect("could not write to log file");
+        self.end = to
+    }
+
+    pub fn end(&mut self, to: Position) {
+        debug_log_to_file(format!("setting selection end to {:?}", to))
+            .expect("could not write to log file");
+        self.active = false;
         self.end = to
     }
 
@@ -66,7 +76,11 @@ impl Selection {
         } else {
             (self.end, self.start)
         };
-        Self { start, end }
+        Self {
+            start,
+            end,
+            active: self.active,
+        }
     }
 
     pub fn line_indices(&self) -> std::ops::RangeInclusive<isize> {
@@ -76,11 +90,15 @@ impl Selection {
 
     pub fn move_up(&mut self, lines: usize) {
         self.start.line.0 -= lines as isize;
-        self.end.line.0 -= lines as isize;
+        if !self.active {
+            self.end.line.0 -= lines as isize;
+        }
     }
 
-    pub fn move_up_old(&mut self, lines: usize) {
+    pub fn move_down(&mut self, lines: usize) {
         self.start.line.0 += lines as isize;
-        self.end.line.0 += lines as isize;
+        if !self.active {
+            self.end.line.0 += lines as isize;
+        }
     }
 }

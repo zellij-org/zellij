@@ -150,6 +150,7 @@ pub trait Pane {
         }
     }
     fn start_selection(&mut self, start: &Position);
+    fn update_selection(&mut self, start: &Position);
     fn end_selection(&mut self, end: &Position);
     fn get_selected_text(&self) -> Option<String>;
 
@@ -2346,7 +2347,7 @@ impl Tab {
         }
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
-            pane.end_selection(&relative_position);
+            pane.update_selection(&relative_position);
         }
         self.render();
     }

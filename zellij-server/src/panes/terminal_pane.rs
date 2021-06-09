@@ -299,6 +299,11 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
+    fn update_selection(&mut self, to: &Position) {
+        self.grid.update_selection(to);
+        self.set_should_render(true);
+    }
+
     fn end_selection(&mut self, end: &Position) {
         self.grid.end_selection(end);
         self.set_should_render(true);

@@ -477,7 +477,7 @@ impl Grid {
             self.lines_below.insert(0, line_to_push_down);
             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
-            self.selection.move_up_old(1);
+            self.selection.move_down(1);
         }
         self.output_buffer.update_all_lines();
     }
@@ -1151,11 +1151,18 @@ impl Grid {
         self.selection.start(*start);
         self.mark_for_rerender();
     }
+    pub fn update_selection(&mut self, to: &Position) {
+        self.update_selected_lines();
+        self.selection.to(*to);
+        self.update_selected_lines();
+        self.mark_for_rerender();
+    }
+
     pub fn end_selection(&mut self, end: &Position) {
         // TODO: make this more efficient, redraw changed lines only
         // mark currently selected lines for update, so that selection hightlight will be cleared
         self.update_selected_lines();
-        self.selection.to(*end);
+        self.selection.end(*end);
         // mark newly selected lines for update, so that they will be highlighted
         self.update_selected_lines();
         self.mark_for_rerender();
