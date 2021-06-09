@@ -43,7 +43,7 @@ impl PluginPane {
 impl Pane for PluginPane {
     fn start_selection(&mut self, _start: &Position) {}
     fn update_selection(&mut self, _to: &Position) {}
-    fn end_selection(&mut self, _end: &Position) {}
+    fn end_selection(&mut self, _end: Option<&Position>) {}
     fn get_selected_text(&self) -> Option<String> {
         None
     }

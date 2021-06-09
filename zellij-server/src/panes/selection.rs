@@ -32,11 +32,13 @@ impl Selection {
         self.end = to
     }
 
-    pub fn end(&mut self, to: Position) {
+    pub fn end(&mut self, to: Option<&Position>) {
         debug_log_to_file(format!("setting selection end to {:?}", to))
             .expect("could not write to log file");
         self.active = false;
-        self.end = to
+        if let Some(to) = to {
+            self.end = *to
+        }
     }
 
     pub fn contains(&self, row: usize, col: usize) -> bool {

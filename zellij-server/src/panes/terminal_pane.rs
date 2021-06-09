@@ -184,6 +184,8 @@ impl Pane for TerminalPane {
 
                 let mut chunk_width = character_chunk.x;
                 for mut t_character in terminal_characters {
+                    // adjust the background of currently selected characters
+                    // doing it here is much easier than in grid
                     if self.grid.selection.contains(character_chunk.y, chunk_width) {
                         t_character.styles = t_character
                             .styles
@@ -304,7 +306,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: &Position) {
+    fn end_selection(&mut self, end: Option<&Position>) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }

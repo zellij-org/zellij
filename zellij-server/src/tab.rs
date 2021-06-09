@@ -151,7 +151,7 @@ pub trait Pane {
     }
     fn start_selection(&mut self, start: &Position);
     fn update_selection(&mut self, start: &Position);
-    fn end_selection(&mut self, end: &Position);
+    fn end_selection(&mut self, end: Option<&Position>);
     fn get_selected_text(&self) -> Option<String>;
 
     fn right_boundary_x_coords(&self) -> usize {
@@ -2332,12 +2332,20 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position) {
-        if self.get_active_pane_id() != self.get_pane_id_at(position) {
+        let active_pane_id = self.get_active_pane_id();
+        // if the release event is outside the active pane, end the selection
+        if active_pane_id != self.get_pane_id_at(position) {
+            if let Some(active_pane_id) = active_pane_id {
+                if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                    active_pane.end_selection(None);
+                }
+            }
+
             return;
         }
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
-            pane.end_selection(&relative_position);
+            pane.end_selection(Some(&relative_position));
             self.render();
         }
     }

@@ -1158,11 +1158,11 @@ impl Grid {
         self.mark_for_rerender();
     }
 
-    pub fn end_selection(&mut self, end: &Position) {
+    pub fn end_selection(&mut self, end: Option<&Position>) {
         // TODO: make this more efficient, redraw changed lines only
         // mark currently selected lines for update, so that selection hightlight will be cleared
         self.update_selected_lines();
-        self.selection.end(*end);
+        self.selection.end(end);
         // mark newly selected lines for update, so that they will be highlighted
         self.update_selected_lines();
         self.mark_for_rerender();
