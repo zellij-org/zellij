@@ -29,14 +29,8 @@ lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
-        let mut ipc_dir = env::var("ZELLIJ_SOCKET_DIR").map_or_else(
-            |_| {
-                ZELLIJ_PROJ_DIR
-                    .runtime_dir()
-                    .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
-            },
-            PathBuf::from,
-        );
+        let mut ipc_dir = env::var("ZELLIJ_SOCKET_DIR")
+            .map_or_else(|_| ZELLIJ_PROJ_DIR.data_dir().to_path_buf(), PathBuf::from);
         ipc_dir.push(VERSION);
         ipc_dir
     };
