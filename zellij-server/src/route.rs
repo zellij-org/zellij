@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::{logging::debug_log_to_file, zellij_tile::data::Event};
+use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
@@ -227,8 +227,6 @@ fn route_action(
                 .unwrap();
         }
         Action::Copy => {
-            debug_log_to_file(String::from("got copy action"))
-                .expect("could not write to log file");
             session
                 .senders
                 .send_to_screen(ScreenInstruction::Copy)

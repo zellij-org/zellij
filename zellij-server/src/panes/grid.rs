@@ -1176,8 +1176,6 @@ impl Grid {
         let sorted_selection = self.selection.sorted();
         let (start, end) = (sorted_selection.start, sorted_selection.end);
 
-        let lines = self.as_character_lines();
-
         for l in sorted_selection.line_indices() {
             let mut line_selection = String::new();
 
@@ -1198,12 +1196,14 @@ impl Grid {
 
             let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
 
+            // get the row from lines_above, viewport, or lines below depending on index
             let row = if l < 0 {
                 let offset_from_end = l.abs();
                 &self.lines_above[self.lines_above.len() - (offset_from_end as usize)]
             } else if l >= 0 && (l as usize) < self.viewport.len() {
                 &self.viewport[l as usize]
             } else if (l as usize) < self.height {
+                // index is in viewport but there is no line
                 &empty_row
             } else {
                 &self.lines_below[(l as usize) - self.viewport.len()]

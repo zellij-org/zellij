@@ -1,4 +1,4 @@
-use zellij_utils::{input::mouse::Position, logging::debug_log_to_file};
+use zellij_utils::input::mouse::Position;
 
 #[derive(Debug, Clone)]
 pub struct Selection {
@@ -19,22 +19,16 @@ impl Default for Selection {
 
 impl Selection {
     pub fn start(&mut self, start: Position) {
-        debug_log_to_file(format!("setting selection start to {:?}", start))
-            .expect("could not write to log file");
         self.active = true;
         self.start = start;
         self.end = start;
     }
 
     pub fn to(&mut self, to: Position) {
-        debug_log_to_file(format!("setting selection end to {:?}", to))
-            .expect("could not write to log file");
         self.end = to
     }
 
     pub fn end(&mut self, to: Option<&Position>) {
-        debug_log_to_file(format!("setting selection end to {:?}", to))
-            .expect("could not write to log file");
         self.active = false;
         if let Some(to) = to {
             self.end = *to

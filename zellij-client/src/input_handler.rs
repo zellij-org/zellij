@@ -75,8 +75,6 @@ impl InputHandler {
                         }
                         termion::event::Event::Mouse(me) => {
                             let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
-                            debug_log_to_file(format!("got mouse event: {:?}", mouse_event))
-                                .expect("could not write to log file");
                             self.handle_mouse_event(&mouse_event);
                         }
                         termion::event::Event::Unsupported(unsupported_key) => {
