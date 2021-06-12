@@ -7,7 +7,7 @@ use std::{
     str,
 };
 
-use zellij_utils::{input::mouse::Position, vte, zellij_tile};
+use zellij_utils::{position::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;

@@ -2,7 +2,6 @@
 
 use zellij_utils::{
     input::mouse::{MouseButton, MouseEvent},
-    logging::debug_log_to_file,
     termion, zellij_tile,
 };
 

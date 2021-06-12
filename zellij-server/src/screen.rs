@@ -6,7 +6,7 @@ use std::str;
 use std::sync::{Arc, RwLock};
 
 use zellij_utils::{
-    input::layout::Layout, input::mouse::Position, logging::debug_log_to_file, zellij_tile,
+    input::layout::Layout, logging::debug_log_to_file, position::Position, zellij_tile,
 };
 
 use crate::{

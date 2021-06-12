@@ -1,4 +1,5 @@
-use zellij_utils::{input::mouse::Position, vte, zellij_tile};
+use zellij_utils::position::Position;
+use zellij_utils::{vte, zellij_tile};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;

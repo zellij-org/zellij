@@ -6,9 +6,7 @@ use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
-use zellij_utils::{
-    channels::SenderWithContext, input::mouse::Position, pane_size::PositionAndSize,
-};
+use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize, position::Position};
 
 pub(crate) struct PluginPane {
     pub pid: u32,

@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use zellij_utils::{input::mouse::Position, serde, zellij_tile};
+use zellij_utils::{position::Position, serde, zellij_tile};
 
 #[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;

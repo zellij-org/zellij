@@ -1,10 +1,12 @@
-use zellij_utils::input::mouse::Position;
+use zellij_utils::position::Position;
 
+// The selection is empty when start == end
+// it includes the character at start, and everything before end.
 #[derive(Debug, Clone)]
 pub struct Selection {
     pub start: Position,
     pub end: Position,
-    active: bool,
+    active: bool, // used to handle moving the selection up and down
 }
 
 impl Default for Selection {
@@ -60,10 +62,8 @@ impl Selection {
     }
 
     pub fn reset(&mut self) {
-        self.start.line.0 = 0;
-        self.start.column.0 = 0;
-        self.end.line.0 = 0;
-        self.end.column.0 = 0;
+        self.start = Position::new(0, 0);
+        self.end = self.start;
     }
 
     pub fn sorted(&self) -> Self {
@@ -98,3 +98,7 @@ impl Selection {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/selection_tests.rs"]
+mod selection_tests;

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
-use super::mouse::Position;
+use crate::position::Position;
 
 /// The four directions (left, right, up, down).
 #[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]

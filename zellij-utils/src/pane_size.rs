@@ -1,7 +1,7 @@
 use nix::pty::Winsize;
 use serde::{Deserialize, Serialize};
 
-use crate::input::mouse::Position;
+use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
