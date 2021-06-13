@@ -9,7 +9,7 @@ pub struct Position {
 }
 
 impl Position {
-    pub fn new(line: u16, column: u16) -> Self {
+    pub fn new(line: i32, column: u16) -> Self {
         Self {
             line: Line(line as isize),
             column: Column(column as usize),

@@ -146,13 +146,7 @@ fn move_up_inactive() {
     assert_eq!(inactive_selection.start, Position::new(8, 1));
     assert_eq!(inactive_selection.end, Position::new(18, 2));
     inactive_selection.move_up(10);
-    assert_eq!(
-        inactive_selection.start,
-        Position {
-            line: Line(-2),
-            column: Column(1),
-        }
-    );
+    assert_eq!(inactive_selection.start, Position::new(-2, 1));
     assert_eq!(inactive_selection.end, Position::new(8, 2));
 }
 

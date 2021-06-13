@@ -22,11 +22,16 @@ pub enum MouseEvent {
 impl From<termion::event::MouseEvent> for MouseEvent {
     fn from(event: termion::event::MouseEvent) -> Self {
         match event {
-            termion::event::MouseEvent::Press(button, x, y) => {
-                Self::Press(MouseButton::from(button), Position::new(y - 1, x - 1))
+            termion::event::MouseEvent::Press(button, x, y) => Self::Press(
+                MouseButton::from(button),
+                Position::new((y - 1) as i32, x - 1),
+            ),
+            termion::event::MouseEvent::Release(x, y) => {
+                Self::Release(Position::new((y - 1) as i32, x - 1))
             }
-            termion::event::MouseEvent::Release(x, y) => Self::Release(Position::new(y - 1, x - 1)),
-            termion::event::MouseEvent::Hold(x, y) => Self::Hold(Position::new(y - 1, x - 1)),
+            termion::event::MouseEvent::Hold(x, y) => {
+                Self::Hold(Position::new((y - 1) as i32, x - 1))
+            }
         }
     }
 }
