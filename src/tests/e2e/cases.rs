@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use ::insta::assert_snapshot;
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::{pane_size::PositionAndSize, position::Position};
 
 use rand::Rng;
 
@@ -53,6 +53,17 @@ pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
 pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
 pub const SLEEP: [u8; 0] = [];
+
+// simplified, slighty adapted version of alacritty mouse reporting code
+pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
+    let Position { line, column } = position;
+
+    let mut command = vec![b'\x1b', b'[', b'M', 32 + button];
+    command.push(32 + 1 + column.0 as u8);
+    command.push(32 + 1 + line.0 as u8);
+
+    command
+}
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
 // tests
