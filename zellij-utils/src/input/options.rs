@@ -11,6 +11,7 @@ pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts
     #[structopt(long)]
+    #[serde(default)]
     pub simplified_ui: bool,
     /// Set the default theme
     #[structopt(long)]

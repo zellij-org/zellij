@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)
 * Do not lag when reading input too fast (https://github.com/zellij-org/zellij/pull/536)
 * Session name optional in attach command (https://github.com/zellij-org/zellij/pull/542)
@@ -13,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add option to start in arbitrary modes (https://github.com/zellij-org/zellij/pull/513)
 * Attaching to a session respects the `default_mode` setting of the client (https://github.com/zellij-org/zellij/pull/549)
 * Add option to specify a color theme in the config (https://github.com/zellij-org/zellij/pull/550)
+* Fix config options to not depend on `simplified_ui` (https://github.com/zellij-org/zellij/pull/556)
+* Don't rename `unnamed` tabs upon deletion of other tabs (https://github.com/zellij-org/zellij/pull/554)
+* Add layout to disable the status bar (https://github.com/zellij-org/zellij/pull/555)
+* Significantly improve terminal pane performance (https://github.com/zellij-org/zellij/pull/567)
 
 ## [0.12.1] - 2021-05-28
 * HOTFIX: fix Zellij not responding to input on certain terminals (https://github.com/zellij-org/zellij/issues/538)

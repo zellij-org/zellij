@@ -1,6 +1,6 @@
 [package]
 name = "zellij-server"
-version = "0.13.0"
+version = "0.14.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2018"
 description = "The server-side library for Zellij"
@@ -16,7 +16,8 @@ serde_json = "1.0"
 unicode-width = "0.1.8"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
-zellij-utils = { path = "../zellij-utils/", version = "0.13.0" }
+cassowary = "0.3.0"
+zellij-utils = { path = "../zellij-utils/", version = "0.14.0" }
 
 [dev-dependencies]
 insta = "1.6.0"

@@ -28,7 +28,7 @@ pub fn close_pane_with_another_pane_above_it() {
     // └───────────┘            └───────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -71,7 +71,7 @@ pub fn close_pane_with_another_pane_below_it() {
     // └───────────┘            └───────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -113,7 +113,7 @@ pub fn close_pane_with_another_pane_to_the_left() {
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -154,7 +154,7 @@ pub fn close_pane_with_another_pane_to_the_right() {
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -198,7 +198,7 @@ pub fn close_pane_with_multiple_panes_above_it() {
     // └───────────┘            └─────┴─────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -245,7 +245,7 @@ pub fn close_pane_with_multiple_panes_below_it() {
     // └─────┴─────┘            └─────┴─────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -290,7 +290,7 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -337,7 +337,7 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -382,7 +382,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     // └───┴───────┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -450,7 +450,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     // └───┴───┴───┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -516,7 +516,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 30,
         x: 0,
         y: 0,
@@ -582,7 +582,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 30,
         x: 0,
         y: 0,
@@ -638,7 +638,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
 #[test]
 pub fn closing_last_pane_exits_app() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,

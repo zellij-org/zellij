@@ -8,15 +8,18 @@ pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
     pub rows: usize,
-    pub columns: usize,
-    pub max_rows: Option<usize>,
-    pub max_columns: Option<usize>,
+    pub cols: usize,
+    // FIXME: Honestly, these shouldn't exist and rows / columns should be enums like:
+    // Dimension::Flex(usize) / Dimension::Fixed(usize), but 400+ compiler errors is more than
+    // I'm in the mood for right now...
+    pub rows_fixed: bool,
+    pub cols_fixed: bool,
 }
 
 impl From<Winsize> for PositionAndSize {
     fn from(winsize: Winsize) -> PositionAndSize {
         PositionAndSize {
-            columns: winsize.ws_col as usize,
+            cols: winsize.ws_col as usize,
             rows: winsize.ws_row as usize,
             ..Default::default()
         }

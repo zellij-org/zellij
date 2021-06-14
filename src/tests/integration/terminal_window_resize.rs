@@ -15,7 +15,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 #[test]
 pub fn window_width_decrease_with_one_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -24,7 +24,7 @@ pub fn window_width_decrease_with_one_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     fake_input_output.add_sigwinch_event(PositionAndSize {
-        columns: 90,
+        cols: 90,
         rows: 20,
         x: 0,
         y: 0,
@@ -52,7 +52,7 @@ pub fn window_width_decrease_with_one_pane() {
 #[test]
 pub fn window_width_increase_with_one_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -61,7 +61,7 @@ pub fn window_width_increase_with_one_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     fake_input_output.add_sigwinch_event(PositionAndSize {
-        columns: 141,
+        cols: 141,
         rows: 20,
         x: 0,
         y: 0,
@@ -89,7 +89,7 @@ pub fn window_width_increase_with_one_pane() {
 #[test]
 pub fn window_height_increase_with_one_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -98,7 +98,7 @@ pub fn window_height_increase_with_one_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     fake_input_output.add_sigwinch_event(PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 30,
         x: 0,
         y: 0,
@@ -126,7 +126,7 @@ pub fn window_height_increase_with_one_pane() {
 #[test]
 pub fn window_width_and_height_decrease_with_one_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -135,7 +135,7 @@ pub fn window_width_and_height_decrease_with_one_pane() {
     let mut fake_input_output = get_fake_os_input(&fake_win_size);
     fake_input_output.add_terminal_input(&[&QUIT]);
     fake_input_output.add_sigwinch_event(PositionAndSize {
-        columns: 90,
+        cols: 90,
         rows: 10,
         x: 0,
         y: 0,

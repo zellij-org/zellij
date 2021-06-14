@@ -19,6 +19,7 @@ pub(crate) fn populate_data_dir(data_dir: &Path) {
     let mut assets = asset_map! {
         "assets/layouts/default.yaml" => "layouts/default.yaml",
         "assets/layouts/strider.yaml" => "layouts/strider.yaml",
+        "assets/layouts/disable-status-bar.yaml" => "layouts/disable-status-bar.yaml",
     };
     assets.extend(asset_map! {
         "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",

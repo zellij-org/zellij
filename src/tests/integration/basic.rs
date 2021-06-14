@@ -20,7 +20,7 @@ fn get_fake_os_input(fake_win_size: &PositionAndSize) -> FakeInputOutput {
 #[test]
 pub fn starts_with_one_terminal() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -49,7 +49,7 @@ pub fn starts_with_one_terminal() {
 #[test]
 pub fn split_terminals_vertically() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -78,7 +78,7 @@ pub fn split_terminals_vertically() {
 #[test]
 pub fn split_terminals_horizontally() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -108,7 +108,7 @@ pub fn split_terminals_horizontally() {
 pub fn split_largest_terminal() {
     // this finds the largest pane and splits along its longest edge (vertically or horizontally)
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -143,7 +143,7 @@ pub fn split_largest_terminal() {
 #[test]
 pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
     let fake_win_size = PositionAndSize {
-        columns: 8,
+        cols: 8,
         rows: 20,
         x: 0,
         y: 0,
@@ -172,7 +172,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
 #[test]
 pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 4,
         x: 0,
         y: 0,
@@ -201,7 +201,7 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
 #[test]
 pub fn cannot_split_largest_terminal_when_there_is_no_room() {
     let fake_win_size = PositionAndSize {
-        columns: 8,
+        cols: 8,
         rows: 4,
         x: 0,
         y: 0,
@@ -230,7 +230,7 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
 #[test]
 pub fn scrolling_up_inside_a_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -267,7 +267,7 @@ pub fn scrolling_up_inside_a_pane() {
 #[test]
 pub fn scrolling_down_inside_a_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -306,7 +306,7 @@ pub fn scrolling_down_inside_a_pane() {
 #[test]
 pub fn scrolling_page_up_inside_a_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -342,7 +342,7 @@ pub fn scrolling_page_up_inside_a_pane() {
 #[test]
 pub fn scrolling_page_down_inside_a_pane() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -383,7 +383,7 @@ pub fn max_panes() {
     // with the --max-panes option, we only allow a certain amount of panes on screen
     // simultaneously, new panes beyond this limit will close older panes on screen
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -421,7 +421,7 @@ pub fn max_panes() {
 #[test]
 pub fn toggle_focused_pane_fullscreen() {
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,
@@ -465,7 +465,7 @@ pub fn bracketed_paste() {
     // since it's inside a bracketed paste block, while the "QUIT" command is, since it is already
     // past the block
     let fake_win_size = PositionAndSize {
-        columns: 121,
+        cols: 121,
         rows: 20,
         x: 0,
         y: 0,

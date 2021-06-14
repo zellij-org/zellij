@@ -3,12 +3,16 @@
 
 use zellij_utils::{serde, zellij_tile};
 
+#[cfg(not(feature = "parametric_resize_beta"))]
+use crate::ui::pane_resizer::PaneResizer;
+#[cfg(feature = "parametric_resize_beta")]
+use crate::ui::pane_resizer_beta::PaneResizer;
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ui::{boundaries::Boundaries, pane_resizer::PaneResizer},
+    ui::boundaries::Boundaries,
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
@@ -37,16 +41,16 @@ const MIN_TERMINAL_WIDTH: usize = 4;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
-    let width_of_each_half = (rect.columns - 1) / 2;
+    let width_of_each_half = (rect.cols - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
-    if rect.columns % 2 == 0 {
-        first_rect.columns = width_of_each_half + 1;
+    if rect.cols % 2 == 0 {
+        first_rect.cols = width_of_each_half + 1;
     } else {
-        first_rect.columns = width_of_each_half;
+        first_rect.cols = width_of_each_half;
     }
-    second_rect.x = first_rect.x + first_rect.columns + 1;
-    second_rect.columns = width_of_each_half;
+    second_rect.x = first_rect.x + first_rect.cols + 1;
+    second_rect.cols = width_of_each_half;
     (first_rect, second_rect)
 }
 
@@ -108,15 +112,15 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
-
+    fn position_and_size(&self) -> PositionAndSize;
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
-    fn set_max_height(&mut self, max_height: usize);
-    fn set_max_width(&mut self, max_width: usize);
+    fn set_fixed_height(&mut self, fixed_height: usize);
+    fn set_fixed_width(&mut self, fixed_width: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: usize);
@@ -182,15 +186,6 @@ pub trait Pane {
         std::cmp::min(self.x() + self.columns(), other.x() + other.columns())
             - std::cmp::max(self.x(), other.x())
     }
-    fn position_and_size(&self) -> PositionAndSize {
-        PositionAndSize {
-            x: self.x(),
-            y: self.y(),
-            columns: self.columns(),
-            rows: self.rows(),
-            ..Default::default()
-        }
-    }
     fn can_increase_height_by(&self, increase_by: usize) -> bool {
         self.max_height()
             .map(|max_height| self.rows() + increase_by <= max_height)
@@ -227,6 +222,7 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn render_full_viewport(&mut self) {}
 }
 
 impl Tab {
@@ -259,6 +255,13 @@ impl Tab {
         } else {
             BTreeMap::new()
         };
+
+        let name = if name.is_empty() {
+            format!("Tab #{}", position + 1)
+        } else {
+            name
+        };
+
         Tab {
             index,
             position,
@@ -286,7 +289,7 @@ impl Tab {
             x: 0,
             y: 0,
             rows: self.full_screen_ws.rows,
-            columns: self.full_screen_ws.columns,
+            cols: self.full_screen_ws.cols,
             ..Default::default()
         };
         self.panes_to_hide.clear();
@@ -298,16 +301,10 @@ impl Tab {
                 match positions_and_size.next() {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
-                        if let Some(max_rows) = position_and_size.max_rows {
-                            terminal_pane.set_max_height(max_rows);
-                        }
-                        if let Some(max_columns) = position_and_size.max_columns {
-                            terminal_pane.set_max_width(max_columns);
-                        }
                         terminal_pane.change_pos_and_size(&position_and_size);
                         self.os_api.set_terminal_size_using_fd(
                             *pid,
-                            position_and_size.columns as u16,
+                            position_and_size.cols as u16,
                             position_and_size.rows as u16,
                         );
                     }
@@ -321,24 +318,18 @@ impl Tab {
         }
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
-            // Just a regular terminal
+            // A plugin pane
             if let Some(plugin) = &layout.plugin {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let mut new_plugin = PluginPane::new(
+                let new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                 );
-                if let Some(max_rows) = position_and_size.max_rows {
-                    new_plugin.set_max_height(max_rows);
-                }
-                if let Some(max_columns) = position_and_size.max_columns {
-                    new_plugin.set_max_width(max_columns);
-                }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -418,7 +409,7 @@ impl Tab {
             let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
             let terminal_ws = PositionAndSize {
                 rows: terminal_to_split.rows(),
-                columns: terminal_to_split.columns(),
+                cols: terminal_to_split.columns(),
                 x: terminal_to_split.x(),
                 y: terminal_to_split.y(),
                 ..Default::default()
@@ -431,7 +422,7 @@ impl Tab {
                     let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        bottom_winsize.columns as u16,
+                        bottom_winsize.cols as u16,
                         bottom_winsize.rows as u16,
                     );
                     terminal_to_split.change_pos_and_size(&top_winsize);
@@ -439,7 +430,7 @@ impl Tab {
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            top_winsize.columns as u16,
+                            top_winsize.cols as u16,
                             top_winsize.rows as u16,
                         );
                     }
@@ -451,7 +442,7 @@ impl Tab {
                     let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        right_winsize.columns as u16,
+                        right_winsize.cols as u16,
                         right_winsize.rows as u16,
                     );
                     terminal_to_split.change_pos_and_size(&left_winsize);
@@ -459,7 +450,7 @@ impl Tab {
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            left_winsize.columns as u16,
+                            left_winsize.cols as u16,
                             left_winsize.rows as u16,
                         );
                     }
@@ -499,7 +490,7 @@ impl Tab {
                 x: active_pane.x(),
                 y: active_pane.y(),
                 rows: active_pane.rows(),
-                columns: active_pane.columns(),
+                cols: active_pane.columns(),
                 ..Default::default()
             };
             let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
@@ -509,7 +500,7 @@ impl Tab {
             let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                bottom_winsize.columns as u16,
+                bottom_winsize.cols as u16,
                 bottom_winsize.rows as u16,
             );
             self.panes.insert(pid, Box::new(new_terminal));
@@ -517,7 +508,7 @@ impl Tab {
             if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     *active_terminal_pid,
-                    top_winsize.columns as u16,
+                    top_winsize.cols as u16,
                     top_winsize.rows as u16,
                 );
             }
@@ -556,7 +547,7 @@ impl Tab {
                 x: active_pane.x(),
                 y: active_pane.y(),
                 rows: active_pane.rows(),
-                columns: active_pane.columns(),
+                cols: active_pane.columns(),
                 ..Default::default()
             };
             let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
@@ -566,7 +557,7 @@ impl Tab {
             let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
-                right_winsize.columns as u16,
+                right_winsize.cols as u16,
                 right_winsize.rows as u16,
             );
             self.panes.insert(pid, Box::new(new_terminal));
@@ -574,7 +565,7 @@ impl Tab {
             if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     *active_terminal_pid,
-                    left_winsize.columns as u16,
+                    left_winsize.cols as u16,
                     left_winsize.rows as u16,
                 );
             }
@@ -616,6 +607,7 @@ impl Tab {
             for message in messages_to_pty {
                 self.write_to_pane_id(message, PaneId::Terminal(pid));
             }
+            // self.render();
         }
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
@@ -704,6 +696,7 @@ impl Tab {
                     active_terminal.rows() as u16,
                 );
             }
+            self.set_force_render();
             self.render();
             self.toggle_fullscreen_is_active();
         }
@@ -714,6 +707,7 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
+            pane.render_full_viewport();
         }
     }
     pub fn is_sync_panes_active(&self) -> bool {
@@ -733,7 +727,7 @@ impl Tab {
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(
-            self.full_screen_ws.columns as u16,
+            self.full_screen_ws.cols as u16,
             self.full_screen_ws.rows as u16,
         );
         let hide_cursor = "\u{1b}[?25l";
@@ -1144,7 +1138,7 @@ impl Tab {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.columns;
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_above
@@ -1222,7 +1216,7 @@ impl Tab {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.columns;
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_below
@@ -1564,7 +1558,7 @@ impl Tab {
             return false;
         }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.columns += increase_by;
+        new_pos_and_size_for_pane.cols += increase_by;
 
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
             return panes_to_the_right.iter().all(|id| {
@@ -1732,8 +1726,8 @@ impl Tab {
                 .resize(self.full_screen_ws, new_screen_size)
         {
             self.should_clear_display_before_rendering = true;
-            self.full_screen_ws.columns =
-                (self.full_screen_ws.columns as isize + column_difference) as usize;
+            self.full_screen_ws.cols =
+                (self.full_screen_ws.cols as isize + column_difference) as usize;
             self.full_screen_ws.rows =
                 (self.full_screen_ws.rows as isize + row_difference) as usize;
         };
@@ -2125,9 +2119,14 @@ impl Tab {
             pane.set_invisible_borders(invisible_borders);
         }
     }
-    pub fn set_pane_max_height(&mut self, id: PaneId, max_height: usize) {
+    pub fn set_pane_fixed_height(&mut self, id: PaneId, fixed_height: usize) {
         if let Some(pane) = self.panes.get_mut(&id) {
-            pane.set_max_height(max_height);
+            pane.set_fixed_height(fixed_height);
+        }
+    }
+    pub fn set_pane_fixed_width(&mut self, id: PaneId, fixed_width: usize) {
+        if let Some(pane) = self.panes.get_mut(&id) {
+            pane.set_fixed_width(fixed_width);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {

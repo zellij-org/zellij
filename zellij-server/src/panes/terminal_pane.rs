@@ -27,8 +27,6 @@ pub struct TerminalPane {
     pub selectable: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
-    pub max_height: Option<usize>,
-    pub max_width: Option<usize>,
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
@@ -52,8 +50,7 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
-        self.position_and_size.columns = position_and_size.columns;
-        self.position_and_size.rows = position_and_size.rows;
+        self.position_and_size = *position_and_size;
         self.reflow_lines();
     }
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
@@ -61,7 +58,7 @@ impl Pane for TerminalPane {
             x,
             y,
             rows: size.rows,
-            columns: size.columns,
+            cols: size.cols,
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
@@ -119,7 +116,9 @@ impl Pane for TerminalPane {
         };
         input_bytes
     }
-
+    fn position_and_size(&self) -> PositionAndSize {
+        self.position_and_size
+    }
     fn position_and_size_override(&self) -> Option<PositionAndSize> {
         self.position_and_size_override
     }
@@ -129,32 +128,29 @@ impl Pane for TerminalPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.grid.should_render = should_render;
     }
+    fn render_full_viewport(&mut self) {
+        self.grid.render_full_viewport();
+    }
     fn selectable(&self) -> bool {
         self.selectable
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_max_height(&mut self, max_height: usize) {
-        self.max_height = Some(max_height);
+    fn set_fixed_height(&mut self, fixed_height: usize) {
+        self.position_and_size.rows = fixed_height;
+        self.position_and_size.rows_fixed = true;
     }
-    fn set_max_width(&mut self, max_width: usize) {
-        self.max_width = Some(max_width);
+    fn set_fixed_width(&mut self, fixed_width: usize) {
+        self.position_and_size.cols = fixed_width;
+        self.position_and_size.cols_fixed = true;
     }
     fn set_invisible_borders(&mut self, _invisible_borders: bool) {
         unimplemented!();
     }
-    fn max_height(&self) -> Option<usize> {
-        self.max_height
-    }
-    fn max_width(&self) -> Option<usize> {
-        self.max_width
-    }
     fn render(&mut self) -> Option<String> {
         if self.should_render() {
             let mut vte_output = String::new();
-            let buffer_lines = &self.read_buffer_as_lines();
-            let display_cols = self.get_columns();
             let mut character_styles = CharacterStyles::new();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
@@ -171,25 +167,31 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            for (row, line) in buffer_lines.iter().enumerate() {
-                let x = self.get_x();
-                let y = self.get_y();
-                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + row + 1, x + 1)); // goto row/col and reset styles
-                for (col, t_character) in line.iter().enumerate() {
-                    if col < display_cols {
-                        // in some cases (eg. while resizing) some characters will spill over
-                        // before they are corrected by the shell (for the prompt) or by reflowing
-                        // lines
-                        if let Some(new_styles) =
-                            character_styles.update_and_return_diff(&t_character.styles)
-                        {
-                            // the terminal keeps the previous styles as long as we're in the same
-                            // line, so we only want to update the new styles here (this also
-                            // includes resetting previous styles as needed)
-                            vte_output.push_str(&new_styles.to_string());
-                        }
-                        vte_output.push(t_character.character);
+            let max_width = self.columns();
+            for character_chunk in self.grid.read_changes() {
+                let pane_x = self.get_x();
+                let pane_y = self.get_y();
+                let chunk_absolute_x = pane_x + character_chunk.x;
+                let chunk_absolute_y = pane_y + character_chunk.y;
+                let terminal_characters = character_chunk.terminal_characters;
+                vte_output.push_str(&format!(
+                    "\u{1b}[{};{}H\u{1b}[m",
+                    chunk_absolute_y + 1,
+                    chunk_absolute_x + 1
+                )); // goto row/col and reset styles
+
+                let mut chunk_width = character_chunk.x;
+                for t_character in terminal_characters {
+                    chunk_width += t_character.width;
+                    if chunk_width > max_width {
+                        break;
                     }
+                    if let Some(new_styles) =
+                        character_styles.update_and_return_diff(&t_character.styles)
+                    {
+                        vte_output.push_str(&new_styles.to_string());
+                    }
+                    vte_output.push(t_character.character);
                 }
                 character_styles.clear();
             }
@@ -222,20 +224,20 @@ impl Pane for TerminalPane {
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.reflow_lines();
     }
     fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.columns -= count;
+        self.position_and_size.cols -= count;
         self.reflow_lines();
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.reflow_lines();
     }
     fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.columns += count;
+        self.position_and_size.cols += count;
         self.reflow_lines();
     }
     fn push_down(&mut self, count: usize) {
@@ -287,15 +289,13 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.columns, palette);
+        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
         TerminalPane {
             pid,
             grid,
             selectable: true,
             position_and_size,
             position_and_size_override: None,
-            max_height: None,
-            max_width: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
@@ -315,8 +315,8 @@ impl TerminalPane {
     }
     pub fn get_columns(&self) -> usize {
         match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.columns,
-            None => self.position_and_size.columns as usize,
+            Some(position_and_size_override) => position_and_size_override.cols,
+            None => self.position_and_size.cols as usize,
         }
     }
     pub fn get_rows(&self) -> usize {
