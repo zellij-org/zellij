@@ -1,4 +1,5 @@
 use zellij_utils::position::Position;
+use zellij_utils::zellij_tile::prelude::PaletteColor;
 use zellij_utils::{vte, zellij_tile};
 
 use std::fmt::Debug;
@@ -8,7 +9,6 @@ use zellij_tile::data::Palette;
 use zellij_utils::pane_size::PositionAndSize;
 
 use crate::panes::AnsiCode;
-use crate::panes::NamedColor;
 use crate::panes::{
     grid::Grid,
     terminal_character::{
@@ -188,9 +188,12 @@ impl Pane for TerminalPane {
                     // adjust the background of currently selected characters
                     // doing it here is much easier than in grid
                     if self.grid.selection.contains(character_chunk.y, chunk_width) {
-                        t_character.styles = t_character
-                            .styles
-                            .background(Some(AnsiCode::NamedColor(NamedColor::Blue)));
+                        let color = match self.colors.bg {
+                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                        };
+
+                        t_character.styles = t_character.styles.background(Some(color));
                     }
                     chunk_width += t_character.width;
                     if chunk_width > max_width {
