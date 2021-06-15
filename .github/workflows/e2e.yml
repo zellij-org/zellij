@@ -16,7 +16,7 @@ jobs:
       - ./target/x86_64-unknown-linux-musl/debug:/usr/src/zellij
     steps:
       - name: stay online
-      - run: tail -f /dev/null
+        run: tail -f /dev/null
   build:
     name: Build & Test
     runs-on: ubuntu-latest
