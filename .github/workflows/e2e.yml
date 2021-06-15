@@ -9,6 +9,7 @@ env:
 
 jobs:
   tests_container:
+    runs-on: ubuntu-latest
     container: 
       image: ghcr.io/linuxserver/openssh-server
       ports:
