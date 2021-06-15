@@ -21,7 +21,7 @@ jobs:
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
     - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
+      run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
   tests_container:
@@ -34,6 +34,12 @@ jobs:
     steps:
       - name: create asset dir
         run: mkdir -p /usr/src/zellij
+      - name: debug
+        run: ls /github/workspace
+      - name: debug2
+        run: ls /github/workspace/target
+      - name: debug3
+        run: ls /github/workspace/target/x86_64-unknown-linux-musl
       - name: copy asset file
         run: cp /github/workspace/target/x86_64-unknown-linux-musl/zellij /usr/src/zellij
       - name: stay online
