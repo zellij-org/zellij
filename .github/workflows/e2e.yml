@@ -9,7 +9,8 @@ env:
 
 jobs:
   tests_container:
-    container: ghcr.io/linuxserver/openssh-server
+    container: 
+      image: ghcr.io/linuxserver/openssh-server
       ports:
         - 2222
       volumes:
