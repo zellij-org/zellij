@@ -36,10 +36,10 @@ jobs:
       ports:
         - 2222
     steps:
+      - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
-        #         with:
-        #           name: zellij
-        #           path: ./zellij
+        with:
+          name: zellij
       - name: stay online
         run: tail -f /dev/null
   build:
