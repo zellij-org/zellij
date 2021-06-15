@@ -27,7 +27,7 @@ jobs:
     - uses: actions/upload-artifact@v2
       with:
         name: zellij
-        path: target/x86_64-unknown-linux-musl/zellij
+        path: target/x86_64-unknown-linux-musl/debug/zellij
   tests_container:
     needs: create_generic_musl_asset
     runs-on: ubuntu-latest
