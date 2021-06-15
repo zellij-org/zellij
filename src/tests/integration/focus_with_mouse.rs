@@ -39,6 +39,7 @@ pub fn move_focus_with_mouse_horizontal_split() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -73,6 +74,7 @@ pub fn move_focus_with_mouse_vertical_split() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output

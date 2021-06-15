@@ -38,6 +38,7 @@ pub fn scroll_up_with_mouse() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -75,6 +76,7 @@ pub fn scroll_down_with_mouse() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
