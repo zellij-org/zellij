@@ -15,7 +15,7 @@ jobs:
       ports:
         - 2222
       volumes:
-        - target/x86_64-unknown-linux-musl/debug:/usr/src/zellij
+        - $GITHUB_WORKSPACE/target/x86_64-unknown-linux-musl/debug:/usr/src/zellij
     steps:
       - name: stay online
         run: tail -f /dev/null
