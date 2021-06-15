@@ -25,7 +25,7 @@ use ssh2::Session;
 use std::io::prelude::*;
 
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/zellij";
-const CONNECTION_STRING: &str = "localhost:1337";
+const CONNECTION_STRING: &str = "localhost:2222";
 const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
 

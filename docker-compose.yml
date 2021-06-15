@@ -17,5 +17,5 @@ services:
         source: ./target/x86_64-unknown-linux-musl/debug
         target: /usr/src/zellij
     ports:
-      - 1337:2222
+      - 2222:2222
     restart: unless-stopped
