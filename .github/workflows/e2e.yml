@@ -24,9 +24,11 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Add WASM target
       run: rustup target add wasm32-wasi
+    - name: Add musl target
+      run: rustup target add x86_64-unknown-linux-musl
     - name: Install cargo-make
       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
-    - name: Test
+    - name: Build asset
       run: cargo make build-e2e
   tests_container:
     needs: create_generic_musl_asset
