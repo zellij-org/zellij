@@ -3,6 +3,7 @@
 pub mod actions;
 pub mod config;
 pub mod keybinds;
+pub mod layout;
 pub mod options;
 pub mod theme;
 

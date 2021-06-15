@@ -33,6 +33,7 @@ pub fn starts_with_one_terminal() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -61,6 +62,7 @@ pub fn split_terminals_vertically() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -89,6 +91,7 @@ pub fn split_terminals_horizontally() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -124,6 +127,7 @@ pub fn split_largest_terminal() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -152,6 +156,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -180,6 +185,7 @@ pub fn cannot_split_terminals_horizontally_when_active_terminal_is_too_small() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -208,6 +214,7 @@ pub fn cannot_split_largest_terminal_when_there_is_no_room() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -244,6 +251,7 @@ pub fn scrolling_up_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -282,6 +290,7 @@ pub fn scrolling_down_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -317,6 +326,7 @@ pub fn scrolling_page_up_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -355,6 +365,7 @@ pub fn scrolling_page_down_inside_a_pane() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -394,6 +405,7 @@ pub fn max_panes() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -431,6 +443,7 @@ pub fn toggle_focused_pane_fullscreen() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -471,6 +484,7 @@ pub fn bracketed_paste() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer

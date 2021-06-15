@@ -1,10 +1,107 @@
-use zellij_utils::{serde, serde_yaml};
+//! The layout system.
+//  Layouts have been moved from [`zellij-server`] to
+//  [`zellij-utils`] in order to provide more helpful
+//  error messages to the user until a more general
+//  logging system is in place.
+//  In case there is a logging system in place evaluate,
+//  if [`zellij-utils`], or [`zellij-server`] is a proper
+//  place.
+//  If plugins should be able to depend on the layout system
+//  then [`zellij-utils`] could be a proper place.
+use crate::{input::config::ConfigError, pane_size::PositionAndSize};
+use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::{fs::File, io::prelude::*};
 
-use zellij_utils::pane_size::PositionAndSize;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(crate = "self::serde")]
+pub enum Direction {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(crate = "self::serde")]
+pub enum SplitSize {
+    Percent(u8), // 1 to 100
+    Fixed(u16),  // An absolute number of columns or rows
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(crate = "self::serde")]
+pub struct Layout {
+    pub direction: Direction,
+    #[serde(default)]
+    pub parts: Vec<Layout>,
+    pub split_size: Option<SplitSize>,
+    pub plugin: Option<PathBuf>,
+}
+
+type LayoutResult = Result<Layout, ConfigError>;
+
+impl Layout {
+    pub fn new(layout_path: &Path) -> LayoutResult {
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut layout = String::new();
+        layout_file.read_to_string(&mut layout)?;
+        let layout: Layout = serde_yaml::from_str(&layout)?;
+        Ok(layout)
+    }
+
+    // It wants to use Path here, but that doesn't compile.
+    #[allow(clippy::ptr_arg)]
+    pub fn from_dir(layout: &PathBuf, data_dir: &Path) -> LayoutResult {
+        Self::new(&data_dir.join("layouts/").join(layout))
+    }
+
+    pub fn from_path_or_default(
+        layout: Option<&PathBuf>,
+        layout_path: Option<&PathBuf>,
+        data_dir: &Path,
+    ) -> Option<Layout> {
+        let layout_result = layout
+            .map(|p| Layout::from_dir(&p, &data_dir))
+            .or_else(|| layout_path.map(|p| Layout::new(&p)))
+            .or_else(|| {
+                Some(Layout::from_dir(
+                    &std::path::PathBuf::from("default"),
+                    &data_dir,
+                ))
+            });
+
+        match layout_result {
+            None => None,
+            Some(Ok(layout)) => Some(layout),
+            Some(Err(e)) => {
+                eprintln!("There was an error in the layout file:\n{}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    pub fn total_terminal_panes(&self) -> usize {
+        let mut total_panes = 0;
+        total_panes += self.parts.len();
+        for part in self.parts.iter() {
+            if part.plugin.is_none() {
+                total_panes += part.total_terminal_panes();
+            }
+        }
+        total_panes
+    }
+
+    pub fn position_panes_in_space(
+        &self,
+        space: &PositionAndSize,
+    ) -> Vec<(Layout, PositionAndSize)> {
+        split_space(space, &self)
+    }
+}
 
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,
@@ -157,70 +254,4 @@ fn split_space(
         }
     }
     pane_positions
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(crate = "self::serde")]
-pub(crate) enum Direction {
-    Horizontal,
-    Vertical,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-#[serde(crate = "self::serde")]
-pub(crate) enum SplitSize {
-    Percent(u8), // 1 to 100
-    Fixed(u16),  // An absolute number of columns or rows
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(crate = "self::serde")]
-pub(crate) struct Layout {
-    pub direction: Direction,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub parts: Vec<Layout>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub split_size: Option<SplitSize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub plugin: Option<PathBuf>,
-}
-
-impl Layout {
-    pub fn new(layout_path: &Path) -> Self {
-        let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
-            .unwrap_or_else(|_| panic!("cannot find layout {}", &layout_path.display()));
-
-        let mut layout = String::new();
-        layout_file
-            .read_to_string(&mut layout)
-            .unwrap_or_else(|_| panic!("could not read layout {}", &layout_path.display()));
-        let layout: Layout = serde_yaml::from_str(&layout)
-            .unwrap_or_else(|_| panic!("could not parse layout {}", &layout_path.display()));
-        layout
-    }
-
-    // It wants to use Path here, but that doesn't compile.
-    #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, data_dir: &Path) -> Self {
-        Self::new(&data_dir.join("layouts/").join(layout))
-    }
-
-    pub fn total_terminal_panes(&self) -> usize {
-        let mut total_panes = 0;
-        total_panes += self.parts.len();
-        for part in self.parts.iter() {
-            if part.plugin.is_none() {
-                total_panes += part.total_terminal_panes();
-            }
-        }
-        total_panes
-    }
-
-    pub fn position_panes_in_space(
-        &self,
-        space: &PositionAndSize,
-    ) -> Vec<(Layout, PositionAndSize)> {
-        split_space(space, &self)
-    }
 }

@@ -12,7 +12,7 @@ use crate::{
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ui::{boundaries::Boundaries, layout::Layout},
+    ui::boundaries::Boundaries,
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
@@ -25,7 +25,11 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
-use zellij_utils::{input::parse_keys, pane_size::PositionAndSize, shared::adjust_to_size};
+use zellij_utils::{
+    input::{layout::Layout, parse_keys},
+    pane_size::PositionAndSize,
+    shared::adjust_to_size,
+};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
