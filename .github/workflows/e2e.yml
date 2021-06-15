@@ -31,10 +31,10 @@ jobs:
   tests_container:
     needs: create_generic_musl_asset
     runs-on: ubuntu-latest
-      container: 
-        image: ghcr.io/linuxserver/openssh-server
-        ports:
-          - 2222
+    container: 
+      image: ghcr.io/linuxserver/openssh-server
+      ports:
+        - 2222
     steps:
       #       - name: create asset dir
       #         run: mkdir -p /usr/src/zellij
