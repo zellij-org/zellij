@@ -36,11 +36,10 @@ jobs:
       ports:
         - 2222
     steps:
-      #       - name: create asset dir
-      #         run: mkdir -p /usr/src/zellij
       - uses: actions/download-artifact@v2
         with:
           name: zellij
+          path: ./zellij
       - name: stay online
         run: tail -f /dev/null
   build:
