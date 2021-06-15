@@ -41,7 +41,6 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: zellij
-          path: /usr/src/zellij/zellij
       - name: stay online
         run: tail -f /dev/null
   build:
