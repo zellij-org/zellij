@@ -1,3 +1,4 @@
+pub mod e2e;
 pub mod basic;
 pub mod close_pane;
 pub mod compatibility;
