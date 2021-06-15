@@ -24,6 +24,10 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
+    - uses: actions/upload-artifact@v2
+      with:
+        name: zellij
+        path: target/x86_64-unknown-linux-musl/zellij
   tests_container:
     needs: create_generic_musl_asset
     runs-on: ubuntu-latest
@@ -34,14 +38,10 @@ jobs:
     steps:
       - name: create asset dir
         run: mkdir -p /usr/src/zellij
-      - name: debug
-        run: ls /github/workspace
-      - name: debug2
-        run: ls /github/workspace/target
-      - name: debug3
-        run: ls /github/workspace/target/x86_64-unknown-linux-musl
-      - name: copy asset file
-        run: cp /github/workspace/target/x86_64-unknown-linux-musl/zellij /usr/src/zellij
+      - uses: actions/download-artifact@v2
+        with:
+          name: zellij
+          path: /usr/src/zellij
       - name: stay online
         run: tail -f /dev/null
   build:
