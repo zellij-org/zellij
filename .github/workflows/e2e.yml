@@ -9,7 +9,7 @@ env:
 
 jobs:
   create_generic_musl_asset:
-    name: Build & Test
+    name: Create Generic MUSL asset
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,7 @@ jobs:
       - name: create asset dir
         run: mkdir -p /usr/src/zellij
       - name: copy asset file
-        run: cp /github/workspace/target/debug/zellij /usr/src/zellij
+        run: cp /github/workspace/target/x86_64-unknown-linux-musl/zellij /usr/src/zellij
       - name: stay online
         run: tail -f /dev/null
   build:
@@ -66,4 +66,4 @@ jobs:
     - name: Install cargo-make
       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Test
-      run: cargo make e2e-test
+      run: cargo test -j 1 -- --ignored
