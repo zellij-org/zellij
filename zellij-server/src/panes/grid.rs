@@ -2,8 +2,9 @@ use unicode_width::UnicodeWidthChar;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     fmt::{self, Debug, Formatter},
+    ops::Range,
     str,
 };
 
@@ -1146,25 +1147,22 @@ impl Grid {
         self.preceding_char = Some(terminal_character);
     }
     pub fn start_selection(&mut self, start: &Position) {
-        // mark currently selected lines for update, so that selection hightlight will be cleared
-        self.update_selected_lines();
+        let old_selection = self.selection.clone();
         self.selection.start(*start);
+        self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
     pub fn update_selection(&mut self, to: &Position) {
-        self.update_selected_lines();
+        let old_selection = self.selection.clone();
         self.selection.to(*to);
-        self.update_selected_lines();
+        self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
 
     pub fn end_selection(&mut self, end: Option<&Position>) {
-        // TODO: make this more efficient, redraw changed lines only
-        // mark currently selected lines for update, so that selection hightlight will be cleared
-        self.update_selected_lines();
+        let old_selection = self.selection.clone();
         self.selection.end(end);
-        // mark newly selected lines for update, so that they will be highlighted
-        self.update_selected_lines();
+        self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
     pub fn get_selected_text(&self) -> Option<String> {
@@ -1230,12 +1228,32 @@ impl Grid {
 
         Some(selection.join("\n"))
     }
-    fn update_selected_lines(&mut self) {
-        for l in self.selection.line_indices() {
-            if l >= 0 && l as usize <= self.height {
-                self.output_buffer.update_line(l as usize);
-            }
+
+    fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
+        let mut lines_to_update = HashSet::new();
+        // maybe some of these can be avoided, but the logic is tricky
+        lines_to_update.insert(old_selection.start.line.0);
+        lines_to_update.insert(old_selection.end.line.0);
+        lines_to_update.insert(new_selection.start.line.0);
+        lines_to_update.insert(new_selection.end.line.0);
+
+        let old_lines: HashSet<isize> = self.get_visible_indices(old_selection).collect();
+        let new_lines: HashSet<isize> = self.get_visible_indices(new_selection).collect();
+
+        old_lines.symmetric_difference(&new_lines).for_each(|&l| {
+            let _ = lines_to_update.insert(l);
+        });
+
+        for l in lines_to_update {
+            self.output_buffer.update_line(l as usize);
         }
+    }
+
+    fn get_visible_indices(&self, selection: &Selection) -> Range<isize> {
+        let Selection { start, end, .. } = selection.sorted();
+        let start = start.line.0.max(0);
+        let end = end.line.0.min(self.height as isize);
+        start..end
     }
 }
 
