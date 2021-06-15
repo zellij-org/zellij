@@ -10,10 +10,10 @@ env:
 jobs:
   tests_container:
     container: ghcr.io/linuxserver/openssh-server
-    ports:
-      - 2222
-    volumes:
-      - ./target/x86_64-unknown-linux-musl/debug:/usr/src/zellij
+      ports:
+        - 2222
+      volumes:
+        - ./target/x86_64-unknown-linux-musl/debug:/usr/src/zellij
     steps:
       - name: stay online
         run: tail -f /dev/null
