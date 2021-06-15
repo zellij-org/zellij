@@ -29,6 +29,7 @@ jobs:
     - name: Test
       run: cargo make build-e2e
   tests_container:
+    needs: create_generic_musl_asset
     runs-on: ubuntu-latest
     container: 
       image: ghcr.io/linuxserver/openssh-server
@@ -42,6 +43,7 @@ jobs:
       - name: stay online
         run: tail -f /dev/null
   build:
+    needs: create_generic_musl_asset
     name: Build & Test
     runs-on: ubuntu-latest
 
