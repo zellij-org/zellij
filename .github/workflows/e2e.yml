@@ -2,7 +2,7 @@ name: End to End tests
 
 on:
   push:
-    branches: [ * ] # TODO: fix these
+    branches: [ * ]
   pull_request:
     branches: [ * ]
 
