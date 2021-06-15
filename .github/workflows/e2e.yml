@@ -24,6 +24,8 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Add WASM target
       run: rustup target add wasm32-wasi
+    - name: Install musl-tools
+      run: sudo apt-get install -y --no-install-recommends musl-tools
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
     - name: Install cargo-make
