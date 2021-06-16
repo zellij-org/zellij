@@ -37,10 +37,12 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
-        #     - name: Copy Asset to Docker volume
-        #       run: cp target/x86_64-unknown-linux-musl/debug/zellij /tmp/zellij-binary
     - name: Restart ssh container
-      run: docker restart ssh
+      uses: docker://docker
+      with:
+        args: docker restart ssh
+
+
     - name: Test
       run: cargo test -j 1 -- --ignored --nocapture
         #     - uses: actions/upload-artifact@v1
