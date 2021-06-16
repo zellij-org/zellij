@@ -8,7 +8,7 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
-use crate::{input::config::ConfigError, pane_size::PositionAndSize};
+use crate::{input::config::ConfigError, pane_size::PositionAndSize, setup};
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
@@ -55,22 +55,26 @@ impl Layout {
 
     // It wants to use Path here, but that doesn't compile.
     #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, data_dir: &Path) -> LayoutResult {
-        Self::new(&data_dir.join("layouts/").join(layout))
+    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutResult {
+        match layout_dir {
+            Some(dir) => Self::new(&dir.join(layout))
+                .or_else(|_| Self::from_default_assets(layout.as_path())),
+            None => Self::from_default_assets(layout.as_path()),
+        }
     }
 
     pub fn from_path_or_default(
         layout: Option<&PathBuf>,
         layout_path: Option<&PathBuf>,
-        data_dir: &Path,
+        layout_dir: Option<PathBuf>,
     ) -> Option<Layout> {
         let layout_result = layout
-            .map(|p| Layout::from_dir(&p, &data_dir))
+            .map(|p| Layout::from_dir(&p, layout_dir.as_ref()))
             .or_else(|| layout_path.map(|p| Layout::new(&p)))
             .or_else(|| {
                 Some(Layout::from_dir(
                     &std::path::PathBuf::from("default"),
-                    &data_dir,
+                    layout_dir.as_ref(),
                 ))
             });
 
@@ -82,6 +86,41 @@ impl Layout {
                 std::process::exit(1);
             }
         }
+    }
+
+    // Currently still needed but on nightly
+    // this is already possible:
+    // HashMap<&'static str, Vec<u8>>
+    pub fn from_default_assets(path: &Path) -> LayoutResult {
+        match path.to_str() {
+            Some("default") => Self::default_from_assets(),
+            Some("strider") => Self::strider_from_assets(),
+            Some("disable-status-bar") => Self::disable_status_from_assets(),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+
+    // TODO Deserialize the assets from bytes &[u8],
+    // once serde-yaml supports zero-copy
+    pub fn default_from_assets() -> LayoutResult {
+        let layout: Layout =
+            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn strider_from_assets() -> LayoutResult {
+        let layout: Layout =
+            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn disable_status_from_assets() -> LayoutResult {
+        let layout: Layout =
+            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
     }
 
     pub fn total_terminal_panes(&self) -> usize {
