@@ -23,7 +23,7 @@ jobs:
           USER_PASSWORD: test
           USER_NAME: test
         ports:
-          - 2222
+          - 2222:2222
         volumes:
           - /tmp/zellij-binary:/usr/src/zellij
     steps:
