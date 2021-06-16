@@ -34,29 +34,35 @@ where
 
     let backtrace = match (info.location(), msg) {
         (Some(location), Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
+            // "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m",
             err_ctx,
             thread,
             msg,
             location.file(),
             location.line(),
-            backtrace,
+            // backtrace,
         ),
         (Some(location), None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
+            // "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m",
             err_ctx,
             thread,
             location.file(),
             location.line(),
-            backtrace
+            // backtrace
         ),
         (None, Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
-            err_ctx, thread, msg, backtrace
+            // "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m",
+            // err_ctx, thread, msg, backtrace
+            err_ctx, thread, msg
         ),
         (None, None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
-            err_ctx, thread, backtrace
+            // "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m",
+            // err_ctx, thread, backtrace
+            err_ctx, thread
         ),
     };
 
