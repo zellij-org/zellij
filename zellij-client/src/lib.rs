@@ -300,6 +300,7 @@ pub fn start_client(
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
     );
 
+    os_input.disable_mouse();
     os_input.unset_raw_mode(0);
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
