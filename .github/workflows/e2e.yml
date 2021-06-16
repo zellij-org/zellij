@@ -29,7 +29,6 @@ jobs:
         name: zellij
         path: target/x86_64-unknown-linux-musl/debug/zellij
   tests_container:
-    needs: create_generic_musl_asset
     runs-on: ubuntu-latest
     container: 
       image: ghcr.io/linuxserver/openssh-server
@@ -43,7 +42,7 @@ jobs:
       ports:
         - 2222
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: actions/download-artifact@v2
         with:
           name: zellij
