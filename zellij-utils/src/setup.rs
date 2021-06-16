@@ -66,6 +66,10 @@ pub fn home_config_dir() -> Option<PathBuf> {
     }
 }
 
+pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    config_dir.map(|dir| dir.join("layouts"))
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(&asset)?;
     Ok(())
@@ -75,6 +79,24 @@ pub const DEFAULT_CONFIG: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/config/default.yaml"
+));
+
+pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.yaml"
+));
+
+pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/strider.yaml"
+));
+
+pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.yaml"
 ));
 
 pub fn dump_default_config() -> std::io::Result<()> {

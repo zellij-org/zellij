@@ -32,7 +32,7 @@ pub fn accepts_basic_layout() {
     let layout = zellij_utils::input::layout::Layout::from_path_or_default(
         None,
         opts.layout_path.as_ref(),
-        std::path::Path::new("unused"),
+        Some(std::path::Path::new("unused").into()),
     );
 
     start(

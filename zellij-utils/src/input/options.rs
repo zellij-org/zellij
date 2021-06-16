@@ -1,6 +1,7 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use structopt::StructOpt;
 use zellij_tile::data::InputMode;
 
@@ -19,6 +20,10 @@ pub struct Options {
     /// Set the default mode
     #[structopt(long)]
     pub default_mode: Option<InputMode>,
+    /// Set the layout_dir, defaults to
+    /// subdirectory of config dir
+    #[structopt(long, parse(from_os_str))]
+    pub layout_dir: Option<PathBuf>,
 }
 
 impl Options {
@@ -45,6 +50,11 @@ impl Options {
             other => other,
         };
 
+        let layout_dir = match other.layout_dir {
+            None => self.layout_dir.clone(),
+            other => other,
+        };
+
         let theme = match other.theme {
             None => self.theme.clone(),
             other => other,
@@ -54,6 +64,7 @@ impl Options {
             simplified_ui,
             theme,
             default_mode,
+            layout_dir,
         }
     }
 
