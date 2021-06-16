@@ -24,7 +24,7 @@ use std::net::TcpStream;
 use ssh2::Session;
 use std::io::prelude::*;
 
-const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
+const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/target/x86_64-unknown-linux-musl/debug/zellij";
 // const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/zellij";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
@@ -133,8 +133,9 @@ impl RemoteRunner {
         };
 
         channel.write_all(format!("ls /usr/src/zellij\n").as_bytes()).unwrap(); // TODO: removeme
-        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl\n").as_bytes()).unwrap(); // TODO: removeme
-        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl/debug\n").as_bytes()).unwrap(); // TODO: removeme
+        channel.write_all(format!("ls /usr/src/zellij/target\n").as_bytes()).unwrap(); // TODO: removeme
+        channel.write_all(format!("ls /usr/src/zellij/target/x86_64-unknown-linux-musl\n").as_bytes()).unwrap(); // TODO: removeme
+        channel.write_all(format!("ls /usr/src/zellij/target/x86_64-unknown-linux-musl/debug\n").as_bytes()).unwrap(); // TODO: removeme
         channel.flush().unwrap();
 
         let vte_parser = vte::Parser::new();
