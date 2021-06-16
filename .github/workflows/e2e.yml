@@ -8,10 +8,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  create_generic_musl_asset:
-    name: Create Generic MUSL asset
+  test:
+    name: Bulild generic binary and run tests on it
     runs-on: ubuntu-latest
 
+    services:
+      ssh:
+        image: ghcr.io/linuxserver/openssh-server
+        env:
+          PUID: 1000
+          PGID: 1000
+          TZ: Europe/Vienna
+          PASSWORD_ACCESS: true
+          USER_PASSWORD: test
+          USER_NAME: test
+        ports:
+          - 2222
+        volumes:
+          - /tmp/zellij-binary:/usr/src/zellij
     steps:
     - uses: actions/checkout@v2
     - name: Add WASM target
@@ -24,40 +38,44 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
-    - uses: actions/upload-artifact@v1
-      with:
-        name: zellij
-        path: target/x86_64-unknown-linux-musl/debug/zellij
-  tests_container:
-    needs: create_generic_musl_asset
-    runs-on: ubuntu-latest
-    container: 
-      image: ghcr.io/linuxserver/openssh-server
-      env:
-        PUID: 1000
-        PGID: 1000
-        TZ: Europe/Vienna
-        PASSWORD_ACCESS: true
-        USER_PASSWORD: test
-        USER_NAME: test
-      ports:
-        - 2222:2222
-    steps:
-      - uses: actions/download-artifact@v1
-        with:
-          name: zellij
-      - name: stay online
-        run: tail -f /dev/null
-  build:
-    needs: create_generic_musl_asset
-    name: Run tests on container
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Add WASM target
-      run: rustup target add wasm32-wasi
-    - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
+    - name: Copy Asset to Docker volume
+      run: cp target/x86_64-unknown-linux-musl/debug/zellij /tmp/zellij-binary
     - name: Test
       run: cargo test -j 1 -- --ignored
+        #     - uses: actions/upload-artifact@v1
+        #       with:
+        #         name: zellij
+        #         path: target/x86_64-unknown-linux-musl/debug/zellij
+        #   tests_container:
+        #     needs: create_generic_musl_asset
+        #     runs-on: ubuntu-latest
+        #     container: 
+        #       image: ghcr.io/linuxserver/openssh-server
+        #       env:
+        #         PUID: 1000
+        #         PGID: 1000
+        #         TZ: Europe/Vienna
+        #         PASSWORD_ACCESS: true
+        #         USER_PASSWORD: test
+        #         USER_NAME: test
+        #       ports:
+        #         - 2222:2222
+        #     steps:
+        #       - uses: actions/download-artifact@v1
+        #         with:
+        #           name: zellij
+        #       - name: stay online
+        #         run: tail -f /dev/null
+        #   build:
+        #     needs: create_generic_musl_asset
+        #     name: Run tests on container
+        #     runs-on: ubuntu-latest
+        # 
+        #     steps:
+        #     - uses: actions/checkout@v2
+        #     - name: Add WASM target
+        #       run: rustup target add wasm32-wasi
+        #     - name: Install cargo-make
+        #       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
+        #     - name: Test
+        #       run: cargo test -j 1 -- --ignored
