@@ -131,6 +131,10 @@ impl RemoteRunner {
                 channel.write_all(format!("{}\n", ZELLIJ_EXECUTABLE_LOCATION).as_bytes()).unwrap();
             }
         };
+
+        channel.write_all(format!("ls /usr/src/zellij\n").as_bytes()).unwrap(); // TODO: removeme
+        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl\n").as_bytes()).unwrap(); // TODO: removeme
+        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl/debug\n").as_bytes()).unwrap(); // TODO: removeme
         channel.flush().unwrap();
 
         let vte_parser = vte::Parser::new();
