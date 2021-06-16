@@ -41,7 +41,7 @@ jobs:
         #     - name: Copy Asset to Docker volume
         #       run: cp target/x86_64-unknown-linux-musl/debug/zellij /tmp/zellij-binary
     - name: Test
-      run: cargo test -j 1 -- --ignored
+      run: cargo test -j 1 -- --ignored --nocapture
         #     - uses: actions/upload-artifact@v1
         #       with:
         #         name: zellij
