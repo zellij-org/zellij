@@ -38,8 +38,8 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
-    - name: Copy Asset to Docker volume
-      run: cp target/x86_64-unknown-linux-musl/debug/zellij /tmp/zellij-binary
+        #     - name: Copy Asset to Docker volume
+        #       run: cp target/x86_64-unknown-linux-musl/debug/zellij /tmp/zellij-binary
     - name: Test
       run: cargo test -j 1 -- --ignored
         #     - uses: actions/upload-artifact@v1

@@ -24,7 +24,7 @@ use std::net::TcpStream;
 use ssh2::Session;
 use std::io::prelude::*;
 
-const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/zellij";
+const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
