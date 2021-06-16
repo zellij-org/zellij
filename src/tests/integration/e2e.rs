@@ -132,9 +132,6 @@ impl RemoteRunner {
             }
         };
 
-        channel.write_all(format!("ls /usr/src/zellij\n").as_bytes()).unwrap(); // TODO: removeme
-        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl\n").as_bytes()).unwrap(); // TODO: removeme
-        channel.write_all(format!("ls /usr/src/zellij/x86_64-unknown-linux-musl/debug\n").as_bytes()).unwrap(); // TODO: removeme
         channel.flush().unwrap();
 
         let vte_parser = vte::Parser::new();
@@ -215,8 +212,7 @@ pub fn starts_with_one_terminal() {
     remote_runner.add_step(|_session_actions: SessionActions, session_info: SessionInfo| -> bool {
         let (cursor_x, cursor_y, current_snapshot) = (session_info.cursor_x, session_info.cursor_y, session_info.current_snapshot);
         let mut step_is_complete = false;
-        // if status_bar_appears(&current_snapshot) && cursor_x == 2 && cursor_y == 2 {
-        if status_bar_appears(&current_snapshot) && cursor_x == 2 && cursor_y == 222 {
+        if status_bar_appears(&current_snapshot) && cursor_x == 2 && cursor_y == 2 {
             step_is_complete = true;
         }
         step_is_complete

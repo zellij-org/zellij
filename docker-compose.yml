@@ -14,7 +14,7 @@ services:
       - USER_NAME=test
     volumes:
       - type: bind
-        source: ./target/x86_64-unknown-linux-musl/debug
+        source: ./target
         target: /usr/src/zellij
     ports:
       - 2222:2222
