@@ -25,7 +25,7 @@ jobs:
         ports:
           - 2222:2222
         volumes:
-          - /tmp/zellij-binary:/usr/src/zellij
+          - target:/usr/src/zellij
     steps:
     - uses: actions/checkout@v2
     - name: Add WASM target
