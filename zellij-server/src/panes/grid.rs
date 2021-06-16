@@ -1231,6 +1231,7 @@ impl Grid {
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
         let mut lines_to_update = HashSet::new();
+
         // maybe some of these can be avoided, but the logic is tricky
         lines_to_update.insert(old_selection.start.line.0);
         lines_to_update.insert(old_selection.end.line.0);
@@ -1245,7 +1246,9 @@ impl Grid {
         });
 
         for l in lines_to_update {
-            self.output_buffer.update_line(l as usize);
+            if l >= 0 && (l as usize) < self.height {
+                self.output_buffer.update_line(l as usize);
+            }
         }
     }
 
