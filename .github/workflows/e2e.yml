@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     container: 
       image: ghcr.io/linuxserver/openssh-server
-        env:
+      env:
         - PUID=1000
         - PGID=1000
         - TZ=Europe/Vienna
