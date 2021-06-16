@@ -33,6 +33,13 @@ jobs:
     runs-on: ubuntu-latest
     container: 
       image: ghcr.io/linuxserver/openssh-server
+        env:
+        - PUID=1000
+        - PGID=1000
+        - TZ=Europe/Vienna
+        - PASSWORD_ACCESS=true
+        - USER_PASSWORD=test
+        - USER_NAME=test
       ports:
         - 2222
     steps:
