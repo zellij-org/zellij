@@ -135,9 +135,8 @@ args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
 # Run e2e tests
 [tasks.e2e-test]
 workspace = false
-dependencies = ["build-e2e"]
 command = "cargo"
-args = ["test", "-j", "1", "--", "--ignored", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["test", "-j", "1", "--", "--ignored", "--nocapture", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.setup-cross-compilation]
 command = "cargo"
