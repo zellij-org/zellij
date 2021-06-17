@@ -63,6 +63,11 @@ pub enum InputMode {
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
+    /// `Search` mode allows search in the scrollback buffer.
+    #[serde(alias = "search")]
+    Search,
+    #[serde(alias = "searchinputtab")]
+    SearchInputTab,
 }
 
 impl Default for InputMode {
@@ -157,6 +162,7 @@ pub struct TabInfo {
     pub name: String,
     pub active: bool,
     pub is_sync_panes_active: bool,
+    pub search_string: String,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

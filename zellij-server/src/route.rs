@@ -196,6 +196,12 @@ fn route_action(
             to_server.send(ServerInstruction::DetachSession).unwrap();
             should_break = true;
         }
+        Action::TabSearchInput(c) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateTabSearchString(c))
+                .unwrap();
+        }
         Action::NoOp => {}
     }
     should_break

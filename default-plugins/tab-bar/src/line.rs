@@ -213,3 +213,27 @@ pub fn tab_line(
     tab_line.insert(0, prefix);
     tab_line
 }
+
+fn tab_search_text(active_tab: &mut TabInfo, palette: Palette) -> LinePart {
+    let search_text = if active_tab.search_string.is_empty() {
+        "Enter text...".to_string()
+    } else {
+        active_tab.search_string.clone()
+    };
+    let text = format!(" Search: {} ", search_text);
+
+    let text_len = text.chars().count();
+    let styled_text = style!(palette.black, palette.yellow).paint(text);
+    LinePart {
+        part: format!("{}", styled_text),
+        len: text_len,
+    }
+}
+
+pub fn search_tab_line(active_tab: &mut TabInfo, palette: Palette) -> Vec<LinePart> {
+    let prefix = tab_line_prefix(palette);
+    let mut tab_line: Vec<LinePart> = vec![prefix];
+    let tab_search_text = tab_search_text(active_tab, palette);
+    tab_line.push(tab_search_text);
+    tab_line
+}

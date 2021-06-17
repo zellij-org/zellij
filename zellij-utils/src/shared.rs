@@ -52,6 +52,7 @@ pub mod colors {
     pub const RED: u8 = 88;
     pub const ORANGE: u8 = 166;
     pub const BLACK: u8 = 16;
+    pub const YELLOW: u8 = 214;
 }
 
 pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
@@ -70,7 +71,7 @@ pub fn default_palette() -> Palette {
         black: PaletteColor::EightBit(colors::BLACK),
         red: PaletteColor::EightBit(colors::RED),
         green: PaletteColor::EightBit(colors::GREEN),
-        yellow: PaletteColor::EightBit(colors::GRAY),
+        yellow: PaletteColor::EightBit(colors::YELLOW),
         blue: PaletteColor::EightBit(colors::GRAY),
         magenta: PaletteColor::EightBit(colors::GRAY),
         cyan: PaletteColor::EightBit(colors::GRAY),

@@ -3,7 +3,7 @@ mod tab;
 
 use zellij_tile::prelude::*;
 
-use crate::line::tab_line;
+use crate::line::{search_tab_line, tab_line};
 use crate::tab::tab_style;
 
 #[derive(Debug)]
@@ -63,14 +63,21 @@ impl ZellijPlugin for State {
             );
             all_tabs.push(tab);
         }
-        let tab_line = tab_line(
-            all_tabs,
-            active_tab_index,
-            cols,
-            self.mode_info.palette,
-            self.mode_info.capabilities,
-        );
         let mut s = String::new();
+        let tab_line = if (self.mode_info.mode == InputMode::Search
+            && !self.tabs[active_tab_index].search_string.is_empty())
+            || self.mode_info.mode == InputMode::SearchInputTab
+        {
+            search_tab_line(&mut self.tabs[active_tab_index], self.mode_info.palette)
+        } else {
+            tab_line(
+                all_tabs,
+                active_tab_index,
+                cols,
+                self.mode_info.palette,
+                self.mode_info.capabilities,
+            )
+        };
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
         }

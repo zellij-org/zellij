@@ -207,6 +207,7 @@ impl Keybinds {
         match *mode {
             InputMode::Normal | InputMode::Locked => mode_keybind_or_action(Action::Write(input)),
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(input)),
+            InputMode::SearchInputTab => mode_keybind_or_action(Action::TabSearchInput(input)),
             _ => mode_keybind_or_action(Action::NoOp),
         }
     }
