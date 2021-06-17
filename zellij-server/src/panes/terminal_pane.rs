@@ -315,6 +315,10 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
+    fn reset_selection(&mut self) {
+        self.grid.reset_selection();
+    }
+
     fn get_selected_text(&self) -> Option<String> {
         self.grid.get_selected_text()
     }

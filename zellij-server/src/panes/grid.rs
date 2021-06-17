@@ -1165,6 +1165,13 @@ impl Grid {
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
+
+    pub fn reset_selection(&mut self) {
+        let old_selection = self.selection.clone();
+        self.selection.reset();
+        self.update_selected_lines(&old_selection, &self.selection.clone());
+        self.mark_for_rerender();
+    }
     pub fn get_selected_text(&self) -> Option<String> {
         if self.selection.is_empty() {
             return None;

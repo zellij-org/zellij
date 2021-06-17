@@ -152,6 +152,7 @@ pub trait Pane {
     fn start_selection(&mut self, start: &Position);
     fn update_selection(&mut self, start: &Position);
     fn end_selection(&mut self, end: Option<&Position>);
+    fn reset_selection(&mut self);
     fn get_selected_text(&self) -> Option<String>;
 
     fn right_boundary_x_coords(&self) -> usize {
@@ -2332,20 +2333,27 @@ impl Tab {
     }
     pub fn handle_mouse_release(&mut self, position: &Position) {
         let active_pane_id = self.get_active_pane_id();
-        // if the release event is outside the active pane, end the selection
+        // on release, get the selected text from the active pane, and reset it's selection
+        let mut selected_text = None;
         if active_pane_id != self.get_pane_id_at(position) {
             if let Some(active_pane_id) = active_pane_id {
                 if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
                     active_pane.end_selection(None);
+                    selected_text = active_pane.get_selected_text();
+                    active_pane.reset_selection();
+                    self.render();
                 }
             }
-
-            return;
-        }
-        if let Some(pane) = self.get_pane_at(position) {
+        } else if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
             pane.end_selection(Some(&relative_position));
+            selected_text = pane.get_selected_text();
+            pane.reset_selection();
             self.render();
+        }
+
+        if let Some(selected_text) = selected_text {
+            self.write_selection_to_clipboard(&selected_text);
         }
     }
     pub fn handle_mouse_hold(&mut self, position: &Position) {
@@ -2362,11 +2370,15 @@ impl Tab {
     pub fn copy_selection(&self) {
         let selected_text = self.get_active_pane().and_then(|p| p.get_selected_text());
         if let Some(selected_text) = selected_text {
-            let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selected_text));
-            self.senders
-                .send_to_server(ServerInstruction::Render(Some(output)))
-                .unwrap();
+            self.write_selection_to_clipboard(&selected_text);
         }
+    }
+
+    fn write_selection_to_clipboard(&self, selection: &str) {
+        let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection));
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(output)))
+            .unwrap();
     }
 }
 
