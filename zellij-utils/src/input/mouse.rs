@@ -24,14 +24,16 @@ impl From<termion::event::MouseEvent> for MouseEvent {
         match event {
             termion::event::MouseEvent::Press(button, x, y) => Self::Press(
                 MouseButton::from(button),
-                Position::new((y - 1) as i32, x - 1),
+                Position::new((y.saturating_sub(1)) as i32, x.saturating_sub(1)),
             ),
-            termion::event::MouseEvent::Release(x, y) => {
-                Self::Release(Position::new((y - 1) as i32, x - 1))
-            }
-            termion::event::MouseEvent::Hold(x, y) => {
-                Self::Hold(Position::new((y - 1) as i32, x - 1))
-            }
+            termion::event::MouseEvent::Release(x, y) => Self::Release(Position::new(
+                (y.saturating_sub(1)) as i32,
+                x.saturating_sub(1),
+            )),
+            termion::event::MouseEvent::Hold(x, y) => Self::Hold(Position::new(
+                (y.saturating_sub(1)) as i32,
+                x.saturating_sub(1),
+            )),
         }
     }
 }

@@ -1197,7 +1197,10 @@ impl Grid {
             // get the row from lines_above, viewport, or lines below depending on index
             let row = if l < 0 {
                 let offset_from_end = l.abs();
-                &self.lines_above[self.lines_above.len() - (offset_from_end as usize)]
+                &self.lines_above[self
+                    .lines_above
+                    .len()
+                    .saturating_sub(offset_from_end as usize)]
             } else if l >= 0 && (l as usize) < self.viewport.len() {
                 &self.viewport[l as usize]
             } else if (l as usize) < self.height {

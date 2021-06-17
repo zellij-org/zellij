@@ -19,7 +19,7 @@ impl Position {
     pub fn relative_to(&self, position_and_size: &PositionAndSize) -> Self {
         Self {
             line: Line(self.line.0 - position_and_size.y as isize),
-            column: Column(self.column.0 - position_and_size.x),
+            column: Column(self.column.0.saturating_sub(position_and_size.x)),
         }
     }
 }
