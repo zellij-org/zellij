@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   `layout-dir` one can switch either the layouts to
   the new dir, or set the `layout-dir` to be the current
   `layout-dir`
+* Fix `Makefile.toml` because of missing directory (https://github.com/zellij-org/zellij/pull/580)
 
 ## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)

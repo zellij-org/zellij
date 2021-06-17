@@ -51,7 +51,6 @@ asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
 target_dir = set ${CARGO_TARGET_DIR}
 data_dir = set ${target_dir}/dev-data
 rm -r ${data_dir}
-cp ${asset_dir}/layouts ${data_dir}/
 plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
 for plugin in ${plugins}
     plugin_name = basename ${plugin}
