@@ -221,6 +221,9 @@ impl RemoteRunner {
         RemoteTerminal { cursor_x, cursor_y, current_snapshot, channel: &mut self.channel, session_name: self.session_name.as_ref() }
     }
     pub fn run_next_step(&mut self) {
+        if !self.steps_left() {
+            return;
+        }
         let current_snapshot = take_snapshot(&mut self.terminal_output);
         let (cursor_x, cursor_y) = self.terminal_output.cursor_coordinates().unwrap_or((0, 0));
         let next_step = self.remaining_steps.remove(0);
@@ -259,7 +262,11 @@ impl RemoteRunner {
                             retries -= 1;
                             let remote_terminal = self.current_remote_terminal_state();
                             eprintln!("retrying: {:?}", remote_terminal);
-                            // self.run_next_step();
+                            self.channel.write_all(format!("aaaa!!!!\n").as_bytes()).unwrap();
+//                             self.run_next_step();
+//                             if !self.steps_left() {
+//                                 break;
+//                             }
                             continue;
                         }
                         let test_name = self.test_name;
@@ -343,8 +350,6 @@ pub fn split_terminals_vertically() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -433,8 +438,6 @@ pub fn scrolling_inside_a_pane() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -519,8 +522,6 @@ pub fn toggle_pane_fullscreen() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -576,8 +577,6 @@ pub fn open_new_tab() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -637,8 +636,6 @@ pub fn close_pane() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -767,8 +764,6 @@ pub fn resize_pane() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -875,8 +870,6 @@ pub fn resize_terminal_window() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
@@ -931,8 +924,6 @@ pub fn detach_and_attach_session() {
                 remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                 // back to normal mode after split
                 remote_terminal.send_key(&ENTER);
-            }
-            if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                 step_is_complete = true;
             }
             step_is_complete
