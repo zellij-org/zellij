@@ -242,6 +242,7 @@ pub fn start_client(
         os_input.unset_raw_mode(0);
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
+        os_input.disable_mouse();
         let error = format!(
             "{}\n{}{}",
             goto_start_of_last_line, restore_snapshot, backtrace
