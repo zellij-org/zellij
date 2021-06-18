@@ -6,7 +6,7 @@ use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
-use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize, position::Position};
+use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -39,13 +39,6 @@ impl PluginPane {
 }
 
 impl Pane for PluginPane {
-    fn start_selection(&mut self, _start: &Position) {}
-    fn update_selection(&mut self, _to: &Position) {}
-    fn end_selection(&mut self, _end: Option<&Position>) {}
-    fn reset_selection(&mut self) {}
-    fn get_selected_text(&self) -> Option<String> {
-        None
-    }
     // FIXME: These position and size things should all be moved to default trait implementations,
     // with something like a get_pos_and_sz() method underpinning all of them. Alternatively and
     // preferably, just use an enum and not a trait object

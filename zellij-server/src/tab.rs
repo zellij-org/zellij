@@ -149,11 +149,13 @@ pub trait Pane {
             None => self.position_and_size().contains(position),
         }
     }
-    fn start_selection(&mut self, start: &Position);
-    fn update_selection(&mut self, start: &Position);
-    fn end_selection(&mut self, end: Option<&Position>);
-    fn reset_selection(&mut self);
-    fn get_selected_text(&self) -> Option<String>;
+    fn start_selection(&mut self, _start: &Position) {}
+    fn update_selection(&mut self, _position: &Position) {}
+    fn end_selection(&mut self, _end: Option<&Position>) {}
+    fn reset_selection(&mut self) {}
+    fn get_selected_text(&self) -> Option<String> {
+        None
+    }
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
