@@ -11,6 +11,9 @@ use crate::tests::utils::commands::{
 };
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 
+// All the E2E tests are marked as "ignored" so that they can be run separately from the normal
+// tests
+
 #[test]
 #[ignore]
 pub fn starts_with_one_terminal() {

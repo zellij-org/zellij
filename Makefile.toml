@@ -132,11 +132,11 @@ dependencies = ["build-plugins"]
 command = "cargo"
 args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
 
-# Run e2e tests
+# Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
 [tasks.e2e-test]
 workspace = false
 command = "cargo"
-args = ["test", "-j", "1", "--", "--ignored", "--nocapture", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["test", "--", "--ignored", "--nocapture", "--test-threads", "1", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.setup-cross-compilation]
 command = "cargo"
