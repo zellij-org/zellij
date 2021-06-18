@@ -210,11 +210,9 @@ pub fn start_client(
                         }
                     }),
                     Box::new({
-                        let send_client_instructions = send_client_instructions.clone();
+                        let os_api = os_input.clone();
                         move || {
-                            send_client_instructions
-                                .send(ClientInstruction::Exit(ExitReason::ForceDetached))
-                                .unwrap()
+                            os_api.send_to_server(ClientToServerMsg::Action(Action::Detach));
                         }
                     }),
                 );
