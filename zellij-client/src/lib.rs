@@ -213,7 +213,7 @@ pub fn start_client(
                         let send_client_instructions = send_client_instructions.clone();
                         move || {
                             send_client_instructions
-                                .send(ClientInstruction::Exit(ExitReason::Normal))
+                                .send(ClientInstruction::Exit(ExitReason::ForceDetached))
                                 .unwrap()
                         }
                     }),
