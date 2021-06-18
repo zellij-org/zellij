@@ -499,7 +499,6 @@ impl Grid {
         }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
-        // TODO: recalculate selection after resize, for now reset selection to empty
         self.selection.reset();
         if new_columns != self.width {
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
