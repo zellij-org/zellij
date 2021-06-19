@@ -198,7 +198,6 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let send_client_instructions = send_client_instructions.clone();
             move || {
                 os_input.handle_signals(
                     Box::new({
