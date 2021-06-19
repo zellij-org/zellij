@@ -1,3 +1,5 @@
+use std::{collections::HashSet, ops::Range};
+
 use zellij_utils::position::Position;
 
 // The selection is empty when start == end
@@ -96,6 +98,35 @@ impl Selection {
         if !self.active {
             self.end.line.0 += lines as isize;
         }
+    }
+
+    /// Return an iterator over the line indices, up to max, that are not present in both self and other,
+    /// except for the indices of the first and last line of both self and s2, that are always included.
+    pub fn diff(&self, other: &Self, max: usize) -> impl Iterator<Item = isize> {
+        let mut lines_to_update = HashSet::new();
+
+        lines_to_update.insert(self.start.line.0);
+        lines_to_update.insert(self.end.line.0);
+        lines_to_update.insert(other.start.line.0);
+        lines_to_update.insert(other.end.line.0);
+
+        let old_lines: HashSet<isize> = self.get_visible_indices(max).collect();
+        let new_lines: HashSet<isize> = other.get_visible_indices(max).collect();
+
+        old_lines.symmetric_difference(&new_lines).for_each(|&l| {
+            let _ = lines_to_update.insert(l);
+        });
+
+        lines_to_update
+            .into_iter()
+            .filter(move |&l| l >= 0 && l < max as isize)
+    }
+
+    fn get_visible_indices(&self, max: usize) -> Range<isize> {
+        let Selection { start, end, .. } = self.sorted();
+        let start = start.line.0.max(0);
+        let end = end.line.0.min(max as isize);
+        start..end
     }
 }
 

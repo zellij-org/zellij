@@ -2,9 +2,8 @@ use unicode_width::UnicodeWidthChar;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, HashSet, VecDeque},
+    collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
-    ops::Range,
     str,
 };
 
@@ -1239,33 +1238,9 @@ impl Grid {
     }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
-        let mut lines_to_update = HashSet::new();
-
-        // maybe some of these can be avoided, but the logic is tricky
-        lines_to_update.insert(old_selection.start.line.0);
-        lines_to_update.insert(old_selection.end.line.0);
-        lines_to_update.insert(new_selection.start.line.0);
-        lines_to_update.insert(new_selection.end.line.0);
-
-        let old_lines: HashSet<isize> = self.get_visible_indices(old_selection).collect();
-        let new_lines: HashSet<isize> = self.get_visible_indices(new_selection).collect();
-
-        old_lines.symmetric_difference(&new_lines).for_each(|&l| {
-            let _ = lines_to_update.insert(l);
-        });
-
-        for l in lines_to_update {
-            if l >= 0 && (l as usize) < self.height {
-                self.output_buffer.update_line(l as usize);
-            }
+        for l in old_selection.diff(new_selection, self.height) {
+            self.output_buffer.update_line(l as usize);
         }
-    }
-
-    fn get_visible_indices(&self, selection: &Selection) -> Range<isize> {
-        let Selection { start, end, .. } = selection.sorted();
-        let start = start.line.0.max(0);
-        let end = end.line.0.min(self.height as isize);
-        start..end
     }
 }
 
