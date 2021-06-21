@@ -84,6 +84,10 @@ end
 env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
 run_task = { name = "build-release", fork = true }
 
+[tasks.build-plugins]
+env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
+run_task = { name = "build", fork = true }
+
 [tasks.wasm-opt-plugins]
 script_runner = "@duckscript"
 script = '''
@@ -119,6 +123,19 @@ workspace = false
 dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-plugins", "manpage"]
 command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
+
+# Build e2e asset
+[tasks.build-e2e]
+workspace = false
+dependencies = ["build-plugins"]
+command = "cargo"
+args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
+
+# Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
+[tasks.e2e-test]
+workspace = false
+command = "cargo"
+args = ["test", "--", "--ignored", "--nocapture", "--test-threads", "1", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.setup-cross-compilation]
 command = "cargo"

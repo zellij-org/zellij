@@ -1,3 +1,4 @@
+pub mod e2e;
 pub mod fakes;
 pub mod integration;
 pub mod possible_tty_inputs;
