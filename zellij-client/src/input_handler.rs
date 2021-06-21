@@ -58,7 +58,9 @@ impl InputHandler {
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
 
-        self.os_input.enable_mouse();
+        if !self.config.options.disable_mouse_mode {
+            self.os_input.enable_mouse();
+        }
         loop {
             if self.should_exit {
                 break;
