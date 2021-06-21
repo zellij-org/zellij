@@ -1,4 +1,3 @@
-
 # Contributing to Zellij
 
 Thanks for considering to contribute to Zellij!
