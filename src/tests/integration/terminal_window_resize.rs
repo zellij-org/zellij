@@ -36,6 +36,7 @@ pub fn window_width_decrease_with_one_pane() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -72,6 +73,7 @@ pub fn window_width_increase_with_one_pane() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -108,6 +110,7 @@ pub fn window_height_increase_with_one_pane() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer
@@ -144,6 +147,7 @@ pub fn window_width_and_height_decrease_with_one_pane() {
         opts,
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
     let output_frames = fake_input_output
         .stdout_writer

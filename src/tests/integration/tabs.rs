@@ -40,6 +40,7 @@ pub fn open_new_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -76,6 +77,7 @@ pub fn switch_to_prev_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -112,6 +114,7 @@ pub fn switch_to_next_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -148,6 +151,7 @@ pub fn close_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -185,6 +189,7 @@ pub fn close_last_pane_in_a_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -224,6 +229,7 @@ pub fn close_the_middle_tab() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -268,6 +274,7 @@ pub fn close_the_tab_that_has_a_pane_in_fullscreen() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output
@@ -304,6 +311,7 @@ pub fn closing_last_tab_exits_the_app() {
         CliArgs::default(),
         Box::new(fake_input_output.clone()),
         Config::default(),
+        None,
     );
 
     let output_frames = fake_input_output

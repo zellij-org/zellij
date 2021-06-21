@@ -22,7 +22,6 @@ use crate::{
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
-    ui::layout::Layout,
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use route::route_thread_main;
@@ -30,7 +29,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
-    input::{get_mode_info, options::Options},
+    input::{get_mode_info, layout::Layout, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
 };
@@ -38,7 +37,7 @@ use zellij_utils::{
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, Option<Layout>),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -50,8 +49,8 @@ pub(crate) enum ServerInstruction {
 impl From<ClientToServerMsg> for ServerInstruction {
     fn from(instruction: ClientToServerMsg) -> Self {
         match instruction {
-            ClientToServerMsg::NewClient(attrs, opts, options) => {
-                ServerInstruction::NewClient(attrs, opts, options)
+            ClientToServerMsg::NewClient(attrs, opts, options, layout) => {
+                ServerInstruction::NewClient(attrs, opts, options, layout)
             }
             ClientToServerMsg::AttachClient(attrs, force, options) => {
                 ServerInstruction::AttachClient(attrs, force, options)
@@ -208,7 +207,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(client_attributes, opts, config_options) => {
+            ServerInstruction::NewClient(client_attributes, opts, config_options, layout) => {
                 let session = init_session(
                     os_input.clone(),
                     opts,
@@ -216,6 +215,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
+                    layout,
                 );
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
@@ -303,6 +303,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
+    layout: Option<Layout>,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
@@ -323,19 +324,6 @@ fn init_session(
         arrow_fonts: config_options.simplified_ui,
     };
 
-    // Don't use default layouts in tests, but do everywhere else
-    #[cfg(not(any(feature = "test", test)))]
-    let default_layout = Some(PathBuf::from("default"));
-    #[cfg(any(feature = "test", test))]
-    let default_layout = None;
-    let layout_path = opts.layout_path;
-    let maybe_layout = opts
-        .layout
-        .as_ref()
-        .map(|p| Layout::from_dir(&p, &data_dir))
-        .or_else(|| layout_path.map(|p| Layout::new(&p)))
-        .or_else(|| default_layout.map(|p| Layout::from_dir(&p, &data_dir)));
-
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
@@ -351,7 +339,7 @@ fn init_session(
                 opts.debug,
             );
 
-            move || pty_thread_main(pty, maybe_layout)
+            move || pty_thread_main(pty, layout)
         })
         .unwrap();
 

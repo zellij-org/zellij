@@ -12,12 +12,12 @@ use crate::{
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
-    ui::layout::Layout,
     wasm_vm::PluginInstruction,
     ServerInstruction,
 };
 use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
+    input::layout::Layout,
     logging::debug_to_file,
 };
 
