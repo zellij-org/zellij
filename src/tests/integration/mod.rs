@@ -1,4 +1,3 @@
-pub mod basic;
 pub mod close_pane;
 pub mod compatibility;
 pub mod layouts;

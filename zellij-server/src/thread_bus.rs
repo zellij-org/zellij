@@ -7,7 +7,7 @@ use crate::{
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
 /// A container for senders to the different threads in zellij on the server side
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub(crate) struct ThreadSenders {
     pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
     pub to_pty: Option<SenderWithContext<PtyInstruction>>,
@@ -20,28 +20,32 @@ impl ThreadSenders {
         &self,
         instruction: ScreenInstruction,
     ) -> Result<(), channels::SendError<(ScreenInstruction, ErrorContext)>> {
-        self.to_screen.as_ref().unwrap().send(instruction)
+        // self.to_screen.as_ref().unwrap().send(instruction)
+        self.to_screen.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(())) // TODO: check with Kunal
     }
 
     pub fn send_to_pty(
         &self,
         instruction: PtyInstruction,
     ) -> Result<(), channels::SendError<(PtyInstruction, ErrorContext)>> {
-        self.to_pty.as_ref().unwrap().send(instruction)
+        // self.to_pty.as_ref().unwrap().send(instruction)
+        self.to_pty.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(())) // TODO: check with Kunal
     }
 
     pub fn send_to_plugin(
         &self,
         instruction: PluginInstruction,
     ) -> Result<(), channels::SendError<(PluginInstruction, ErrorContext)>> {
-        self.to_plugin.as_ref().unwrap().send(instruction)
+        // self.to_plugin.as_ref().unwrap().send(instruction)
+        self.to_plugin.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(())) // TODO: check with Kunal
     }
 
     pub fn send_to_server(
         &self,
         instruction: ServerInstruction,
     ) -> Result<(), channels::SendError<(ServerInstruction, ErrorContext)>> {
-        self.to_server.as_ref().unwrap().send(instruction)
+        // self.to_server.as_ref().unwrap().send(instruction)
+        self.to_server.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(())) // TODO: check with Kunal
     }
 }
 

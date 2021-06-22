@@ -2272,3 +2272,7 @@ impl Tab {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/tab_tests.rs"]
+mod tab_tests;
