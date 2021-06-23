@@ -1,0 +1,27 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C):                                                                                                                                                      
+01 (C):  OS: 5.9.14-arch1-1 GNU/Linux
+02 (C):  Uptime: 12 hours, 21 minutes
+03 (C):  Hostname: kingdom
+04 (C):  Disk usage:
+05 (C): 
+06 (C): df: /run/user/1000/doc: Operation not permitted
+07 (C):         /       295G / 514G  61%
+08 (C):         /efi     27M /  96M  28%
+09 (C): 
+10 (C):  Network:
+11 (C): 
+12 (C):         wlp2s0  192.168.0.3
+13 (C): 
+14 (C): [I] [21:58] kingdom:mosaic (main) | echo -ne (\                                                                                                      
+15 (C):                                             df -l -h | grep -E 'dev/(xvda|sd|mapper)' | \                                                            
+16 (C):                                             awk '{printf "\\\\t%s\\\\t%4s / %4s  %s\\\\n\n", $6, $3, $2, $5}' | \                                    
+17 (C):                                             sed -e 's/^\(.*\([8][5-9]\|[9][0-9]\)%.*\)$/\\\\e[0;31m\1\\\\e[0m/' -e 's/^\(.*\([7][5-9]\|[8][0-4]\)%.*\
+18 (W): )$/\\\\e[0;33m\1\\\\e[0m/' | \
+19 (C):                                             paste -sd ''\                                                                                            
+20 (C):                                         )                                                                                                            
+
