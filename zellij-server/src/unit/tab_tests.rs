@@ -77,7 +77,7 @@ fn create_new_tab(position_and_size: PositionAndSize) -> Tab {
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
-    let senders = ThreadSenders::default();
+    let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
     let first_pane_id = Some(PaneId::Terminal(1));
     let mode_info = ModeInfo::default();
