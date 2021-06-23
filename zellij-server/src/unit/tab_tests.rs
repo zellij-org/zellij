@@ -26,7 +26,7 @@ struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
-
+        // noop
     }
     fn spawn_terminal(&self, _file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
         unimplemented!()
@@ -267,4 +267,572 @@ pub fn toggle_focused_pane_fullscreen() {
     assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().rows(), 9, "Pane rows match fullscreen rows");
     // we don't test if all other panes are hidden because this logic is done in the render
     // function and we already test that in the e2e tests
+}
+
+#[test]
+pub fn close_pane_with_another_pane_above_it() {
+    // ┌───────────┐            ┌───────────┐
+    // │xxxxxxxxxxx│            │xxxxxxxxxxx│
+    // │xxxxxxxxxxx│            │xxxxxxxxxxx│
+    // ├───────────┤ ==close==> │xxxxxxxxxxx│
+    // │███████████│            │xxxxxxxxxxx│
+    // │███████████│            │xxxxxxxxxxx│
+    // └───────────┘            └───────────┘
+    // █ == pane being closed
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id);
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 121, "remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 20, "remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_another_pane_below_it() {
+    // ┌───────────┐            ┌───────────┐
+    // │███████████│            │xxxxxxxxxxx│
+    // │███████████│            │xxxxxxxxxxx│
+    // ├───────────┤ ==close==> │xxxxxxxxxxx│
+    // │xxxxxxxxxxx│            │xxxxxxxxxxx│
+    // │xxxxxxxxxxx│            │xxxxxxxxxxx│
+    // └───────────┘            └───────────┘
+    // █ == pane being closed
+    
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id);
+    tab.move_focus_up();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 0, "remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 121, "remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 20, "remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_another_pane_to_the_left() {
+    // ┌─────┬─────┐            ┌──────────┐
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // │xxxxx│█████│ ==close==> │xxxxxxxxxx│
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // └─────┴─────┘            └──────────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id);
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 121, "remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 20, "remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_another_pane_to_the_right() {
+    // ┌─────┬─────┐            ┌──────────┐
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // │█████│xxxxx│ ==close==> │xxxxxxxxxx│
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // └─────┴─────┘            └──────────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id);
+    tab.move_focus_left();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 0, "remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 121, "remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 20, "remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_above_it() {
+    // ┌─────┬─────┐            ┌─────┬─────┐
+    // │xxxxx│xxxxx│            │xxxxx│xxxxx│
+    // │xxxxx│xxxxx│            │xxxxx│xxxxx│
+    // ├─────┴─────┤ ==close==> │xxxxx│xxxxx│
+    // │███████████│            │xxxxx│xxxxx│
+    // │███████████│            │xxxxx│xxxxx│
+    // └───────────┘            └─────┴─────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.horizontal_split(new_pane_id_1);
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_2);
+    tab.move_focus_down();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 20, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 60, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 20, "second remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_below_it() {
+    // ┌───────────┐            ┌─────┬─────┐
+    // │███████████│            │xxxxx│xxxxx│
+    // │███████████│            │xxxxx│xxxxx│
+    // ├─────┬─────┤ ==close==> │xxxxx│xxxxx│
+    // │xxxxx│xxxxx│            │xxxxx│xxxxx│
+    // │xxxxx│xxxxx│            │xxxxx│xxxxx│
+    // └─────┴─────┘            └─────┴─────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.horizontal_split(new_pane_id_1);
+    tab.vertical_split(new_pane_id_2);
+    tab.move_focus_up();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 20, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 60, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 20, "second remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_to_the_left() {
+    // ┌─────┬─────┐            ┌──────────┐
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // ├─────┤█████│ ==close==> ├──────────┤
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // │xxxxx│█████│            │xxxxxxxxxx│
+    // └─────┴─────┘            └──────────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.vertical_split(new_pane_id_1);
+    tab.move_focus_left();
+    tab.horizontal_split(new_pane_id_2);
+    tab.move_focus_right();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 121, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 10, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 0, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 11, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 121, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 9, "second remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_to_the_right() {
+    // ┌─────┬─────┐            ┌──────────┐
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // │█████├─────┤ ==close==> ├──────────┤
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // │█████│xxxxx│            │xxxxxxxxxx│
+    // └─────┴─────┘            └──────────┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.vertical_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.move_focus_left();
+    tab.close_focused_pane();
+    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 121, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 10, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 0, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 11, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 121, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 9, "second remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
+    // ┌───┬───┬───┬───┐            ┌───┬───┬───┬───┐
+    // │xxx│xxx│xxx│xxx│            │xxx│xxx│xxx│xxx│
+    // ├───┤xxx│xxx├───┤            ├───┤xxx│xxx├───┤
+    // │xxx├───┴───┤xxx│ ==close==> │xxx│xxx│xxx│xxx│
+    // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
+    // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
+    // └───┴───────┴───┘            └───┴───┴───┴───┘
+    // █ == pane being closed
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let new_pane_id_6 = PaneId::Terminal(7);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.vertical_split(new_pane_id_2);
+    tab.move_focus_left();
+    tab.move_focus_left();
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_right();
+    tab.horizontal_split(new_pane_id_4);
+    tab.move_focus_right();
+    tab.horizontal_split(new_pane_id_5);
+    tab.move_focus_left();
+    tab.move_focus_up();
+    tab.resize_down();
+    tab.vertical_split(new_pane_id_6);
+    tab.move_focus_down();
+    tab.close_focused_pane();
+
+    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 10, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 15, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 20, "second remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 92, "third remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "third remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 29, "third remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 10, "third remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 0, "fourth remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 11, "fourth remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 60, "fourth remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 9, "fourth remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 92, "sixths remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 11, "sixths remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 29, "sixths remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 9, "sixths remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 77, "seventh remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 0, "seventh remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 14, "seventh remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 20, "seventh remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
+    // ┌───┬───────┬───┐            ┌───┬───┬───┬───┐
+    // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
+    // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
+    // │xxx├───┬───┤xxx│ ==close==> │xxx│xxx│xxx│xxx│
+    // ├───┤xxx│xxx├───┤            ├───┤xxx│xxx├───┤
+    // │xxx│xxx│xxx│xxx│            │xxx│xxx│xxx│xxx│
+    // └───┴───┴───┴───┘            └───┴───┴───┴───┘
+    // █ == pane being closed
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let new_pane_id_6 = PaneId::Terminal(7);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.vertical_split(new_pane_id_2);
+    tab.move_focus_left();
+    tab.move_focus_left();
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_right();
+    tab.horizontal_split(new_pane_id_4);
+    tab.move_focus_right();
+    tab.horizontal_split(new_pane_id_5);
+    tab.move_focus_left();
+    tab.resize_up();
+    tab.vertical_split(new_pane_id_6);
+    tab.move_focus_up();
+    tab.close_focused_pane();
+
+    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 10, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 92, "third remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "third remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 29, "third remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 10, "third remaining pane row count");
+    
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 0, "fourth remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 11, "fourth remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 60, "fourth remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 9, "fourth remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 15, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 20, "second remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 92, "sixths remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 11, "sixths remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 29, "sixths remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 9, "sixths remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 77, "seventh remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 0, "seventh remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 14, "seventh remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 20, "seventh remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
+    // ┌────┬──────┐            ┌────┬──────┐
+    // │xxxx│xxxxxx│            │xxxx│xxxxxx│
+    // ├────┴┬─────┤            ├────┴──────┤
+    // │xxxxx│█████│            │xxxxxxxxxxx│
+    // ├─────┤█████│ ==close==> ├───────────┤
+    // │xxxxx│█████│            │xxxxxxxxxxx│
+    // ├────┬┴─────┤            ├────┬──────┤
+    // │xxxx│xxxxxx│            │xxxx│xxxxxx│
+    // └────┴──────┘            └────┴──────┘
+    // █ == pane being closed
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let new_pane_id_6 = PaneId::Terminal(7);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.move_focus_up();
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_down();
+    tab.vertical_split(new_pane_id_4);
+    tab.move_focus_down();
+    tab.vertical_split(new_pane_id_5);
+    tab.move_focus_up();
+    tab.move_focus_left();
+    tab.resize_right();
+    tab.horizontal_split(new_pane_id_6);
+    tab.move_focus_right();
+    tab.close_focused_pane();
+
+    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "third remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 16, "third remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 121, "third remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 3, "third remaining pane row count");
+    
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 0, "fourth remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 24, "fourth remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 60, "fourth remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 6, "fourth remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 60, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 15, "second remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 61, "sixths remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 24, "sixths remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 60, "sixths remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 6, "sixths remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 0, "seventh remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 20, "seventh remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 121, "seventh remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 3, "seventh remaining pane row count");
+}
+
+#[test]
+pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
+    // ┌────┬──────┐            ┌────┬──────┐
+    // │xxxx│xxxxxx│            │xxxx│xxxxxx│
+    // ├────┴┬─────┤            ├────┴──────┤
+    // │█████│xxxxx│            │xxxxxxxxxxx│
+    // │█████├─────┤ ==close==> ├───────────┤
+    // │█████│xxxxx│            │xxxxxxxxxxx│
+    // ├────┬┴─────┤            ├────┬──────┤
+    // │xxxx│xxxxxx│            │xxxx│xxxxxx│
+    // └────┴──────┘            └────┴──────┘
+    // █ == pane being closed
+
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let new_pane_id_6 = PaneId::Terminal(7);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.move_focus_up();
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_down();
+    tab.vertical_split(new_pane_id_4);
+    tab.move_focus_down();
+    tab.vertical_split(new_pane_id_5);
+    tab.move_focus_up();
+    tab.resize_left();
+    tab.horizontal_split(new_pane_id_6);
+    tab.move_focus_left();
+    tab.close_focused_pane();
+
+    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "first remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "first remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "first remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "first remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 0, "fourth remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 24, "fourth remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 60, "fourth remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 6, "fourth remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 61, "second remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 0, "second remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 60, "second remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 15, "second remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 0, "third remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 16, "third remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 121, "third remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 3, "third remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 61, "sixths remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 24, "sixths remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 60, "sixths remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 6, "sixths remaining pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 0, "seventh remaining pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 20, "seventh remaining pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 121, "seventh remaining pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 3, "seventh remaining pane row count");
 }

@@ -1,4 +1,3 @@
-pub mod close_pane;
 pub mod layouts;
 pub mod move_focus_down;
 pub mod move_focus_left;
