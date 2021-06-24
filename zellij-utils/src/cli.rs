@@ -78,5 +78,10 @@ pub enum Sessions {
         /// zellij client (if any) and attach to this.
         #[structopt(long, short)]
         force: bool,
+        
+        /// Creates the session if it doesn't already exists.
+        /// Will be ignored if session-name is not set.
+        #[structopt(long, short)]
+        create: bool,
     },
 }
