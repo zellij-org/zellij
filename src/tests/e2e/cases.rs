@@ -3,6 +3,8 @@ use zellij_utils::pane_size::PositionAndSize;
 
 use rand::Rng;
 
+use std::path::Path;
+
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 use crate::tests::utils::commands::{
     CLOSE_PANE_IN_PANE_MODE, DETACH_IN_SESSION_MODE, ENTER, LOCK_MODE, NEW_TAB_IN_TAB_MODE,
@@ -712,5 +714,33 @@ pub fn detach_and_attach_session() {
         },
     })
     .run_all_steps();
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn accepts_basic_layout() {
+    let fake_win_size = PositionAndSize {
+        cols: 120,
+        rows: 24,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let layout_path = Path::new("src/tests/fixtures/layouts/three-panes-with-nesting.yaml");
+    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_path, None)
+        .add_step(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(2, 0)
+                    && remote_terminal.snapshot_contains("$ █                    │$")
+                    && remote_terminal.snapshot_contains("$                                                                                                                       ") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .run_all_steps();
     assert_snapshot!(last_snapshot);
 }
