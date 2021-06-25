@@ -393,6 +393,16 @@ impl Screen {
             tab.mode_info = self.mode_info.clone();
         }
     }
+    pub fn move_focus_left_or_previous_tab(&mut self) {
+        if !self.get_active_tab_mut().unwrap().move_focus_left() {
+            self.switch_tab_prev();
+        }
+    }
+    pub fn move_focus_right_or_next_tab(&mut self) {
+        if !self.get_active_tab_mut().unwrap().move_focus_right() {
+            self.switch_tab_next();
+        }
+    }
 }
 
 // The box is here in order to make the
@@ -507,9 +517,7 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_tab_mut().unwrap().move_focus_left();
             }
             ScreenInstruction::MoveFocusLeftOrPreviousTab => {
-                if !screen.get_active_tab_mut().unwrap().move_focus_left() {
-                    screen.switch_tab_prev();
-                }
+                screen.move_focus_left_or_previous_tab();
                 screen
                     .bus
                     .senders
@@ -523,9 +531,7 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_tab_mut().unwrap().move_focus_right();
             }
             ScreenInstruction::MoveFocusRightOrNextTab => {
-                if !screen.get_active_tab_mut().unwrap().move_focus_right() {
-                    screen.switch_tab_next();
-                }
+                screen.move_focus_right_or_next_tab();
                 screen
                     .bus
                     .senders
@@ -674,3 +680,7 @@ pub(crate) fn screen_thread_main(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/screen_tests.rs"]
+mod screen_tests;

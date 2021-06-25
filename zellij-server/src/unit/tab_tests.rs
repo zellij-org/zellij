@@ -773,7 +773,6 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
 
-
     let position_and_size = PositionAndSize {
         cols: 121,
         rows: 30,
@@ -835,4 +834,176 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 20, "seventh remaining pane y position");
     assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 121, "seventh remaining pane column count");
     assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 3, "seventh remaining pane row count");
+}
+
+#[test]
+pub fn move_focus_down() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id);
+    tab.move_focus_up();
+    tab.move_focus_down();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 11, "Active pane is the bottom one");
+}
+
+#[test]
+pub fn move_focus_down_to_the_most_recently_used_pane() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.vertical_split(new_pane_id_2);
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_up();
+    tab.move_focus_down();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 11, "Active pane y position");
+    assert_eq!(tab.get_active_pane().unwrap().x(), 92, "Active pane x position");
+}
+
+#[test]
+pub fn move_focus_up() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id);
+    tab.move_focus_up();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 0, "Active pane is the top one");
+}
+
+#[test]
+pub fn move_focus_up_to_the_most_recently_used_pane() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_2);
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_down();
+    tab.move_focus_up();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 0, "Active pane y position");
+    assert_eq!(tab.get_active_pane().unwrap().x(), 92, "Active pane x position");
+}
+
+#[test]
+pub fn move_focus_left() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id);
+    tab.move_focus_left();
+
+    assert_eq!(tab.get_active_pane().unwrap().x(), 0, "Active pane is the left one");
+}
+
+#[test]
+pub fn move_focus_left_to_the_most_recently_used_pane() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.move_focus_left();
+    tab.horizontal_split(new_pane_id_2);
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_right();
+    tab.move_focus_left();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 16, "Active pane y position");
+    assert_eq!(tab.get_active_pane().unwrap().x(), 0, "Active pane x position");
+}
+
+#[test]
+pub fn move_focus_right() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id);
+    tab.move_focus_left();
+    tab.move_focus_right();
+
+    assert_eq!(tab.get_active_pane().unwrap().x(), 61, "Active pane is the right one");
+}
+
+#[test]
+pub fn move_focus_right_to_the_most_recently_used_pane() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_left();
+    tab.move_focus_right();
+
+    assert_eq!(tab.get_active_pane().unwrap().y(), 16, "Active pane y position");
+    assert_eq!(tab.get_active_pane().unwrap().x(), 61, "Active pane x position");
 }

@@ -73,6 +73,7 @@ impl ThreadSenders {
 }
 
 /// A container for a receiver, OS input and the senders to a given thread
+#[derive(Default)]
 pub(crate) struct Bus<T> {
     receivers: Vec<channels::Receiver<(T, ErrorContext)>>,
     pub senders: ThreadSenders,
@@ -98,6 +99,19 @@ impl<T> Bus<T> {
                 should_silently_fail: false,
             },
             os_input: os_input.clone(),
+        }
+    }
+    pub fn empty() -> Self {
+        Bus {
+            receivers: vec![],
+            senders: ThreadSenders {
+                to_screen: None,
+                to_pty: None,
+                to_plugin: None,
+                to_server: None,
+                should_silently_fail: true,
+            },
+            os_input: None,
         }
     }
 
