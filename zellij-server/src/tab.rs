@@ -1795,57 +1795,191 @@ impl Tab {
         self.relayout_tab(Direction::Vertical);
         self.render();
     }
-    pub fn resize_increase(&mut self) {
-        let count = 2;
-        if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
-                && self.can_increase_pane_and_surroundings_down(&active_pane_id, count)
-            {
-                self.increase_pane_and_surroundings_right(&active_pane_id, count);
-                self.increase_pane_and_surroundings_down(&active_pane_id, count);
-            } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
-                && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
-            {
-                self.increase_pane_and_surroundings_up(&active_pane_id, count);
-                self.increase_pane_and_surroundings_left(&active_pane_id, count);
-            } else if self.can_increase_pane_and_surroundings_down(&active_pane_id, count)
-                && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
-            {
-                self.increase_pane_and_surroundings_down(&active_pane_id, count);
-                self.increase_pane_and_surroundings_left(&active_pane_id, count);
-            } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
-                && self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
-            {
-                self.increase_pane_and_surroundings_up(&active_pane_id, count);
-                self.increase_pane_and_surroundings_right(&active_pane_id, count);
-            }
-        }
+    fn checked_increase_pane_and_surroundings_one_direction(
+        &mut self,
+        active_pane_id: &PaneId,
+        count: usize,
+    ) {
+        if self.can_increase_pane_and_surroundings_right(active_pane_id, count) {
+            self.increase_pane_and_surroundings_right(active_pane_id, count);
+        } else if self.can_increase_pane_and_surroundings_down(active_pane_id, count) {
+            self.increase_pane_and_surroundings_down(active_pane_id, count);
+        } else if self.can_increase_pane_and_surroundings_left(active_pane_id, count) {
+            self.increase_pane_and_surroundings_left(active_pane_id, count);
+        } else if self.can_increase_pane_and_surroundings_up(active_pane_id, count) {
+            self.increase_pane_and_surroundings_up(active_pane_id, count);
+        };
     }
-    pub fn resize_decrease(&mut self) {
+    fn checked_reduce_pane_and_surroundings_one_direction(
+        &mut self,
+        active_pane_id: &PaneId,
+        count: usize,
+    ) {
+        if self.can_reduce_pane_and_surroundings_right(active_pane_id, count) {
+            self.reduce_pane_and_surroundings_right(active_pane_id, count);
+        } else if self.can_reduce_pane_and_surroundings_down(active_pane_id, count) {
+            self.reduce_pane_and_surroundings_down(active_pane_id, count);
+        } else if self.can_reduce_pane_and_surroundings_left(active_pane_id, count) {
+            self.reduce_pane_and_surroundings_left(active_pane_id, count);
+        } else if self.can_reduce_pane_and_surroundings_up(active_pane_id, count) {
+            self.reduce_pane_and_surroundings_up(active_pane_id, count);
+        };
+    }
+    // TODO: Find a way to reduce duplication between `resize_increase` and `resize_decrease`
+    pub fn resize_increase(&mut self) -> Result<(), ()> {
         let count = 2;
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
-                && self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
-            {
-                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
-                self.reduce_pane_and_surroundings_down(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
-                && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
-            {
-                self.reduce_pane_and_surroundings_up(&active_pane_id, count);
-                self.reduce_pane_and_surroundings_left(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
-                && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
-            {
-                self.reduce_pane_and_surroundings_down(&active_pane_id, count);
-                self.reduce_pane_and_surroundings_left(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
-                && self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
-            {
-                self.reduce_pane_and_surroundings_up(&active_pane_id, count);
-                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+            match self.get_nonplugin_pane_ids().len() {
+                1 => {}
+                2 => {
+                    self.checked_increase_pane_and_surroundings_one_direction(
+                        &active_pane_id,
+                        count,
+                    );
+                }
+
+                n => {
+                    if let Some(active_pane_id) = self.get_active_pane_id() {
+                        if self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
+                            && self.can_increase_pane_and_surroundings_down(&active_pane_id, count)
+                        {
+                            self.increase_pane_and_surroundings_right(&active_pane_id, count);
+                            self.increase_pane_and_surroundings_down(&active_pane_id, count);
+                            if n != 4 {
+                                return Ok(());
+                            };
+                            let down_panes =
+                                self.pane_ids_directly_below(&active_pane_id).ok_or(())?;
+                            down_panes.iter().for_each(|pane_id| {
+                                if self.can_increase_pane_and_surroundings_right(pane_id, count) {
+                                    self.increase_pane_and_surroundings_right(pane_id, count);
+                                }
+                            });
+                        } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
+                            && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
+                        {
+                            self.increase_pane_and_surroundings_up(&active_pane_id, count);
+                            self.increase_pane_and_surroundings_left(&active_pane_id, count);
+                            if n != 4 {
+                                return Ok(());
+                            }
+                            let right_panes =
+                                self.pane_ids_directly_left_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_increase_pane_and_surroundings_up(pane_id, count) {
+                                    self.increase_pane_and_surroundings_up(pane_id, count);
+                                }
+                            });
+                        } else if self
+                            .can_increase_pane_and_surroundings_down(&active_pane_id, count)
+                            && self.can_increase_pane_and_surroundings_left(&active_pane_id, count)
+                        {
+                            self.increase_pane_and_surroundings_down(&active_pane_id, count);
+                            self.increase_pane_and_surroundings_left(&active_pane_id, count);
+                            if n != 4 {
+                                return Ok(());
+                            }
+                            let right_panes =
+                                self.pane_ids_directly_left_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_increase_pane_and_surroundings_down(pane_id, count) {
+                                    self.increase_pane_and_surroundings_down(pane_id, count);
+                                }
+                            });
+                        } else if self.can_increase_pane_and_surroundings_up(&active_pane_id, count)
+                            && self.can_increase_pane_and_surroundings_right(&active_pane_id, count)
+                        {
+                            self.increase_pane_and_surroundings_up(&active_pane_id, count);
+                            self.increase_pane_and_surroundings_right(&active_pane_id, count);
+                            if n != 4 {
+                                return Ok(());
+                            }
+                            let right_panes =
+                                self.pane_ids_directly_right_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_increase_pane_and_surroundings_up(pane_id, count) {
+                                    self.increase_pane_and_surroundings_up(pane_id, count);
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
+        self.render();
+        Ok(())
+    }
+    pub fn resize_decrease(&mut self) -> Result<(), ()> {
+        let count = 2;
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            match self.get_nonplugin_pane_ids().len() {
+                1 => {}
+                2 => {
+                    self.checked_reduce_pane_and_surroundings_one_direction(&active_pane_id, count);
+                }
+                n => {
+                    if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
+                        && self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
+                    {
+                        self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+                        self.reduce_pane_and_surroundings_down(&active_pane_id, count);
+                        if n == 4 {
+                            let right_panes =
+                                self.pane_ids_directly_above(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_reduce_pane_and_surroundings_right(pane_id, count) {
+                                    self.reduce_pane_and_surroundings_right(pane_id, count);
+                                }
+                            });
+                        }
+                    } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
+                        && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
+                    {
+                        self.reduce_pane_and_surroundings_up(&active_pane_id, count);
+                        self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+                        if n == 4 {
+                            let right_panes =
+                                self.pane_ids_directly_right_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_reduce_pane_and_surroundings_up(pane_id, count) {
+                                    self.reduce_pane_and_surroundings_up(pane_id, count);
+                                }
+                            });
+                        }
+                    } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count)
+                        && self.can_reduce_pane_and_surroundings_left(&active_pane_id, count)
+                    {
+                        self.reduce_pane_and_surroundings_down(&active_pane_id, count);
+                        self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+                        if n == 4 {
+                            let right_panes =
+                                self.pane_ids_directly_right_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_reduce_pane_and_surroundings_down(pane_id, count) {
+                                    self.reduce_pane_and_surroundings_down(pane_id, count);
+                                }
+                            });
+                        }
+                    } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count)
+                        && self.can_reduce_pane_and_surroundings_right(&active_pane_id, count)
+                    {
+                        self.reduce_pane_and_surroundings_up(&active_pane_id, count);
+                        self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+                        if n == 4 {
+                            let right_panes =
+                                self.pane_ids_directly_left_of(&active_pane_id).ok_or(())?;
+                            right_panes.iter().for_each(|pane_id| {
+                                if self.can_reduce_pane_and_surroundings_up(pane_id, count) {
+                                    self.reduce_pane_and_surroundings_up(pane_id, count);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        self.render();
+        Ok(())
     }
     pub fn move_focus(&mut self) {
         if !self.has_selectable_panes() {
@@ -2219,6 +2353,16 @@ impl Tab {
     }
     pub fn get_pane_ids(&self) -> Vec<PaneId> {
         self.get_panes().map(|(&pid, _)| pid).collect()
+    }
+    pub fn get_nonplugin_pane_ids(&self) -> Vec<PaneId> {
+        let mut nonplugin_panes = vec![];
+        for (&pid, _) in self.get_panes() {
+            match pid {
+                PaneId::Terminal(_) => nonplugin_panes.push(pid),
+                PaneId::Plugin(_) => {}
+            }
+        }
+        nonplugin_panes
     }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if let Some(pane) = self.panes.get_mut(&id) {
