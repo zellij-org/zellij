@@ -2463,6 +2463,7 @@ name = "zellij-client"
 version = "0.14.0"
 dependencies = [
  "insta",
+ "mio",
  "termbg",
  "zellij-utils",
 ]

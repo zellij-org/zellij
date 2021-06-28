@@ -4,7 +4,7 @@ use zellij_utils::{vte, zellij_tile};
 
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
-use std::time::Instant;
+use std::time::{self, Instant};
 use zellij_tile::data::Palette;
 use zellij_utils::pane_size::PositionAndSize;
 
@@ -33,6 +33,7 @@ pub struct TerminalPane {
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
+    selection_scrolled_at: time::Instant,
 }
 
 impl Pane for TerminalPane {
@@ -306,7 +307,19 @@ impl Pane for TerminalPane {
     }
 
     fn update_selection(&mut self, to: &Position) {
-        self.grid.update_selection(to);
+        // TODO: decide how often to scroll
+        let should_scroll = self.selection_scrolled_at.elapsed() >= time::Duration::from_millis(50);
+        // TODO: check how far up/down mouse is relative to pane, to increase scroll lines?
+        if to.line.0 < 0 && should_scroll {
+            self.grid.scroll_up_one_line();
+            self.selection_scrolled_at = time::Instant::now();
+        } else if to.line.0 as usize >= self.grid.height && should_scroll {
+            self.grid.scroll_down_one_line();
+            self.selection_scrolled_at = time::Instant::now();
+        } else if to.line.0 >= 0 && (to.line.0 as usize) < self.grid.height {
+            self.grid.update_selection(to);
+        }
+
         self.set_should_render(true);
     }
 
@@ -336,6 +349,7 @@ impl TerminalPane {
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
+            selection_scrolled_at: time::Instant::now(),
         }
     }
     pub fn get_x(&self) -> usize {

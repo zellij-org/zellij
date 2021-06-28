@@ -2359,12 +2359,11 @@ impl Tab {
         }
     }
     pub fn handle_mouse_hold(&mut self, position: &Position) {
-        if self.get_active_pane_id() != self.get_pane_id_at(position) {
-            return;
-        }
-        if let Some(pane) = self.get_pane_at(position) {
-            let relative_position = pane.relative_position(position);
-            pane.update_selection(&relative_position);
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                let relative_position = active_pane.relative_position(position);
+                active_pane.update_selection(&relative_position);
+            }
         }
         self.render();
     }
