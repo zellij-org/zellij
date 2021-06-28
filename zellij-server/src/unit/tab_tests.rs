@@ -270,6 +270,28 @@ pub fn toggle_focused_pane_fullscreen() {
 }
 
 #[test]
+pub fn move_focus_is_disabled_in_fullscreen() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(new_pane_id);
+    }
+    tab.toggle_active_pane_fullscreen();
+    tab.move_focus_left();
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().x(), 0, "Pane x is on screen edge");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().y(), 0, "Pane y is on screen edge");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().columns(), 121, "Pane cols match fullscreen cols");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().rows(), 20, "Pane rows match fullscreen rows");
+}
+
+#[test]
 pub fn close_pane_with_another_pane_above_it() {
     // ┌───────────┐            ┌───────────┐
     // │xxxxxxxxxxx│            │xxxxxxxxxxx│
@@ -1006,4 +1028,656 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
 
     assert_eq!(tab.get_active_pane().unwrap().y(), 16, "Active pane y position");
     assert_eq!(tab.get_active_pane().unwrap().x(), 61, "Active pane x position");
+}
+
+#[test]
+pub fn resize_down_with_pane_above() {
+    // ┌───────────┐                  ┌───────────┐
+    // │           │                  │           │
+    // │           │                  │           │
+    // ├───────────┤ ==resize=down==> │           │
+    // │███████████│                  ├───────────┤
+    // │███████████│                  │███████████│
+    // │███████████│                  │███████████│
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id);
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().y, 13, "focused pane y position");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().cols, 121, "focused pane column count");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().rows, 7, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "pane above x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "pane above y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 121, "pane above column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 12, "pane above row count");
+}
+
+#[test]
+pub fn resize_down_with_pane_below() {
+    // ┌───────────┐                  ┌───────────┐
+    // │███████████│                  │███████████│
+    // │███████████│                  │███████████│
+    // ├───────────┤ ==resize=down==> │███████████│
+    // │           │                  ├───────────┤
+    // │           │                  │           │
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id);
+    tab.move_focus_up();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().x, 0, "pane below x position");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().y, 13, "pane below y position");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().cols, 121, "pane below column count");
+    assert_eq!(tab.panes.get(&new_pane_id).unwrap().position_and_size().rows, 7, "pane below row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "focused pane y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 121, "focused pane column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 12, "focused pane row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_above_and_below() {
+    // ┌───────────┐                  ┌───────────┐
+    // │           │                  │           │
+    // │           │                  │           │
+    // ├───────────┤                  ├───────────┤
+    // │███████████│ ==resize=down==> │███████████│
+    // │███████████│                  │███████████│
+    // │███████████│                  │███████████│
+    // ├───────────┤                  │███████████│
+    // │           │                  ├───────────┤
+    // │           │                  │           │
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let first_pane_id = PaneId::Terminal(1);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.horizontal_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.move_focus_up();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().y, 16, "focused pane y position");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().cols, 121, "focused pane column count");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().rows, 9, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().x, 0, "pane below x position");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().y, 26, "pane below y position");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().cols, 121, "pane below column count");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().rows, 4, "pane below row count");
+
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().x, 0, "pane above x position");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().y, 0, "pane above y position");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().cols, 121, "pane above column count");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().rows, 15, "pane above row count");
+}
+
+#[test]
+pub fn resize_down_with_multiple_panes_above() {
+    //
+    // ┌─────┬─────┐                    ┌─────┬─────┐
+    // │     │     │                    │     │     │
+    // ├─────┴─────┤  ==resize=down==>  │     │     │
+    // │███████████│                    ├─────┴─────┤
+    // │███████████│                    │███████████│
+    // └───────────┘                    └───────────┘
+    // █ == focused pane
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let first_pane_id = PaneId::Terminal(1);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    tab.horizontal_split(new_pane_id_1);
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_2);
+    tab.move_focus_down();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().y, 18, "focused pane y position");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().cols, 121, "focused pane column count");
+    assert_eq!(tab.panes.get(&new_pane_id_1).unwrap().position_and_size().rows, 12, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().x, 61, "first pane above x position");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().y, 0, "first pane above y position");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().cols, 60, "first pane above column count");
+    assert_eq!(tab.panes.get(&new_pane_id_2).unwrap().position_and_size().rows, 17, "first pane above row count");
+
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().x, 0, "second pane above x position");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().y, 0, "second pane above y position");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().cols, 60, "second pane above column count");
+    assert_eq!(tab.panes.get(&first_pane_id).unwrap().position_and_size().rows, 17, "second pane above row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
+    // ┌─────┬─────┐                    ┌─────┬─────┐
+    // │     │     │                    │     │     │
+    // │     │     │                    │     │     │
+    // ├─────┼─────┤  ==resize=down==>  ├─────┤     │
+    // │     │█████│                    │     ├─────┤
+    // │     │█████│                    │     │█████│
+    // └─────┴─────┘                    └─────┴─────┘
+    // █ == focused pane
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let pane_above_and_left = PaneId::Terminal(1);
+    let pane_to_the_left = PaneId::Terminal(2);
+    let focused_pane = PaneId::Terminal(3);
+    let pane_above = PaneId::Terminal(4);
+    tab.horizontal_split(pane_to_the_left);
+    tab.vertical_split(focused_pane);
+    tab.move_focus_up();
+    tab.vertical_split(pane_above);
+    tab.move_focus_down();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().x, 61, "focused pane x position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().y, 18, "focused pane y position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().cols, 60, "focused pane column count");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().rows, 12, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&pane_above_and_left).unwrap().position_and_size().x, 0, "pane above and to the left x position");
+    assert_eq!(tab.panes.get(&pane_above_and_left).unwrap().position_and_size().y, 0, "pane above and to the left y position");
+    assert_eq!(tab.panes.get(&pane_above_and_left).unwrap().position_and_size().cols, 60, "pane above and to the left column count");
+    assert_eq!(tab.panes.get(&pane_above_and_left).unwrap().position_and_size().rows, 15, "pane above and to the left row count");
+
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().x, 61, "pane above x position");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().y, 0, "pane above y position");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().cols, 60, "pane above column count");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().rows, 17, "pane above row count");
+
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().x, 0, "pane to the left x position");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().y, 16, "pane to the left y position");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().cols, 60, "pane to the left column count");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().rows, 14, "pane to the left row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
+    // ┌─────┬─────┐                    ┌─────┬─────┐
+    // │     │█████│                    │     │█████│
+    // │     │█████│                    │     │█████│
+    // ├─────┼─────┤  ==resize=down==>  ├─────┤█████│
+    // │     │     │                    │     ├─────┤
+    // │     │     │                    │     │     │
+    // └─────┴─────┘                    └─────┴─────┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let pane_to_the_left = PaneId::Terminal(1);
+    let pane_below_and_left = PaneId::Terminal(2);
+    let pane_below = PaneId::Terminal(3);
+    let focused_pane = PaneId::Terminal(4);
+    tab.horizontal_split(pane_below_and_left);
+    tab.vertical_split(pane_below);
+    tab.move_focus_up();
+    tab.vertical_split(focused_pane);
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().x, 61, "focused pane x position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().y, 0, "focused pane y position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().cols, 60, "focused pane column count");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().rows, 17, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().x, 0, "pane above and to the left x position");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().y, 0, "pane above and to the left y position");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().cols, 60, "pane above and to the left column count");
+    assert_eq!(tab.panes.get(&pane_to_the_left).unwrap().position_and_size().rows, 15, "pane above and to the left row count");
+
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().x, 61, "pane above x position");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().y, 18, "pane above y position");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().cols, 60, "pane above column count");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().rows, 12, "pane above row count");
+
+    assert_eq!(tab.panes.get(&pane_below_and_left).unwrap().position_and_size().x, 0, "pane to the left x position");
+    assert_eq!(tab.panes.get(&pane_below_and_left).unwrap().position_and_size().y, 16, "pane to the left y position");
+    assert_eq!(tab.panes.get(&pane_below_and_left).unwrap().position_and_size().cols, 60, "pane to the left column count");
+    assert_eq!(tab.panes.get(&pane_below_and_left).unwrap().position_and_size().rows, 14, "pane to the left row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
+    // ┌─────┬─────┐                    ┌─────┬─────┐
+    // │     │     │                    │     │     │
+    // │     │     │                    │     │     │
+    // ├─────┼─────┤  ==resize=down==>  │     ├─────┤
+    // │█████│     │                    ├─────┤     │
+    // │█████│     │                    │█████│     │
+    // └─────┴─────┘                    └─────┴─────┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let pane_above = PaneId::Terminal(1);
+    let focused_pane = PaneId::Terminal(2);
+    let pane_to_the_right = PaneId::Terminal(3);
+    let pane_above_and_right = PaneId::Terminal(4);
+    tab.horizontal_split(focused_pane);
+    tab.vertical_split(pane_to_the_right);
+    tab.move_focus_up();
+    tab.vertical_split(pane_above_and_right);
+    tab.move_focus_down();
+    tab.move_focus_left();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().y, 18, "focused pane y position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().cols, 60, "focused pane column count");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().rows, 12, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().x, 0, "pane above x position");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().y, 0, "pane above y position");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().cols, 60, "pane above column count");
+    assert_eq!(tab.panes.get(&pane_above).unwrap().position_and_size().rows, 17, "pane above row count");
+
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().x, 61, "pane to the right x position");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().y, 16, "pane to the right y position");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().cols, 60, "pane to the right column count");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().rows, 14, "pane to the right row count");
+
+    assert_eq!(tab.panes.get(&pane_above_and_right).unwrap().position_and_size().x, 61, "pane above and to the right x position");
+    assert_eq!(tab.panes.get(&pane_above_and_right).unwrap().position_and_size().y, 0, "pane above and to the right y position");
+    assert_eq!(tab.panes.get(&pane_above_and_right).unwrap().position_and_size().cols, 60, "pane above and to the right column count");
+    assert_eq!(tab.panes.get(&pane_above_and_right).unwrap().position_and_size().rows, 15, "pane above and to the right row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
+    // ┌─────┬─────┐                    ┌─────┬─────┐
+    // │█████│     │                    │█████│     │
+    // │█████│     │                    │█████│     │
+    // ├─────┼─────┤  ==resize=down==>  │█████├─────┤
+    // │     │     │                    ├─────┤     │
+    // │     │     │                    │     │     │
+    // └─────┴─────┘                    └─────┴─────┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    let focused_pane = PaneId::Terminal(1);
+    let pane_below = PaneId::Terminal(2);
+    let pane_below_and_right = PaneId::Terminal(3);
+    let pane_to_the_right = PaneId::Terminal(4);
+    tab.horizontal_split(pane_below);
+    tab.vertical_split(pane_below_and_right);
+    tab.move_focus_up();
+    tab.vertical_split(pane_to_the_right);
+    tab.move_focus_left();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().x, 0, "focused pane x position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().y, 0, "focused pane y position");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().cols, 60, "focused pane column count");
+    assert_eq!(tab.panes.get(&focused_pane).unwrap().position_and_size().rows, 17, "focused pane row count");
+
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().x, 0, "pane below x position");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().y, 18, "pane below y position");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().cols, 60, "pane below column count");
+    assert_eq!(tab.panes.get(&pane_below).unwrap().position_and_size().rows, 12, "pane below row count");
+
+    assert_eq!(tab.panes.get(&pane_below_and_right).unwrap().position_and_size().x, 61, "pane below and to the right x position");
+    assert_eq!(tab.panes.get(&pane_below_and_right).unwrap().position_and_size().y, 16, "pane below and to the right y position");
+    assert_eq!(tab.panes.get(&pane_below_and_right).unwrap().position_and_size().cols, 60, "pane below and to the right column count");
+    assert_eq!(tab.panes.get(&pane_below_and_right).unwrap().position_and_size().rows, 14, "pane below and to the right row count");
+
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().x, 61, "pane to the right x position");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().y, 0, "pane to the right y position");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().cols, 60, "pane to the right column count");
+    assert_eq!(tab.panes.get(&pane_to_the_right).unwrap().position_and_size().rows, 15, "pane to the right row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
+    // ┌───┬───┬───┐                    ┌───┬───┬───┐
+    // │   │   │   │                    │   │   │   │
+    // │   │   │   │                    │   │   │   │
+    // ├───┼───┼───┤  ==resize=down==>  ├───┤   ├───┤
+    // │   │███│   │                    │   ├───┤   │
+    // │   │███│   │                    │   │███│   │
+    // └───┴───┴───┘                    └───┴───┴───┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    tab.horizontal_split(PaneId::Terminal(2));
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.vertical_split(PaneId::Terminal(4));
+    tab.move_focus_up();
+    tab.vertical_split(PaneId::Terminal(5));
+    tab.vertical_split(PaneId::Terminal(6));
+    tab.move_focus_left();
+    tab.move_focus_down();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "pane 1 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "pane 1 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "pane 1 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "pane 1 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "pane 2 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 16, "pane 2 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 60, "pane 2 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 14, "pane 2 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "pane 3 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 18, "pane 3 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 30, "pane 3 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 12, "pane 3 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 92, "pane 4 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 16, "pane 4 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 29, "pane 4 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 14, "pane 4 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 61, "pane 5 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 0, "pane 5 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 30, "pane 5 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 17, "pane 5 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 92, "pane 6 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 0, "pane 6 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 29, "pane 6 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 15, "pane 6 row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
+    // ┌───┬───┬───┐                    ┌───┬───┬───┐
+    // │   │███│   │                    │   │███│   │
+    // │   │███│   │                    │   │███│   │
+    // ├───┼───┼───┤  ==resize=down==>  ├───┤███├───┤
+    // │   │   │   │                    │   ├───┤   │
+    // │   │   │   │                    │   │   │   │
+    // └───┴───┴───┘                    └───┴───┴───┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    tab.horizontal_split(PaneId::Terminal(2));
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.vertical_split(PaneId::Terminal(4));
+    tab.move_focus_up();
+    tab.vertical_split(PaneId::Terminal(5));
+    tab.vertical_split(PaneId::Terminal(6));
+    tab.move_focus_left();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "pane 1 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "pane 1 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "pane 1 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "pane 1 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "pane 2 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 16, "pane 2 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 60, "pane 2 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 14, "pane 2 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "pane 3 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 18, "pane 3 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 30, "pane 3 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 12, "pane 3 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 92, "pane 4 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 16, "pane 4 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 29, "pane 4 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 14, "pane 4 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 61, "pane 5 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 0, "pane 5 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 30, "pane 5 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 17, "pane 5 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 92, "pane 6 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 0, "pane 6 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 29, "pane 6 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 15, "pane 6 row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_left_and_right() {
+    // ┌─┬───────┬─┐                    ┌─┬───────┬─┐
+    // │ │       │ │                    │ │       │ │
+    // │ │       │ │                    │ │       │ │
+    // ├─┼─┬───┬─┼─┤  ==resize=down==>  ├─┤       ├─┤
+    // │ │ │███│ │ │                    │ ├─┬───┬─┤ │
+    // │ │ │███│ │ │                    │ │ │███│ │ │
+    // └─┴─┴───┴─┴─┘                    └─┴─┴───┴─┴─┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    tab.horizontal_split(PaneId::Terminal(2));
+    tab.move_focus_up();
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.vertical_split(PaneId::Terminal(4));
+    tab.move_focus_down();
+    tab.vertical_split(PaneId::Terminal(5));
+    tab.vertical_split(PaneId::Terminal(6));
+    tab.move_focus_left();
+    tab.vertical_split(PaneId::Terminal(7));
+    tab.vertical_split(PaneId::Terminal(8));
+    tab.move_focus_left();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "pane 1 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "pane 1 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "pane 1 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "pane 1 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "pane 2 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 16, "pane 2 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 60, "pane 2 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 14, "pane 2 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "pane 3 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "pane 3 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 30, "pane 3 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 17, "pane 3 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 92, "pane 4 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 0, "pane 4 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 29, "pane 4 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 15, "pane 4 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 61, "pane 5 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 18, "pane 5 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 15, "pane 5 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 12, "pane 5 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 92, "pane 6 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 16, "pane 6 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 29, "pane 6 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 14, "pane 6 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 77, "pane 7 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 18, "pane 7 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 7, "pane 7 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 12, "pane 7 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().x, 85, "pane 8 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().y, 18, "pane 8 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().cols, 6, "pane 8 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().rows, 12, "pane 8 row count");
+}
+
+#[test]
+pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_right() {
+    // ┌─┬─┬───┬─┬─┐                    ┌─┬─┬───┬─┬─┐
+    // │ │ │███│ │ │                    │ │ │███│ │ │
+    // │ │ │███│ │ │                    │ │ │███│ │ │
+    // ├─┼─┴───┴─┼─┤  ==resize=down==>  ├─┤ │███│ ├─┤
+    // │ │       │ │                    │ ├─┴───┴─┤ │
+    // │ │       │ │                    │ │       │ │
+    // └─┴───────┴─┘                    └─┴───────┴─┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 30,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    tab.horizontal_split(PaneId::Terminal(2));
+    tab.move_focus_up();
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.vertical_split(PaneId::Terminal(4));
+    tab.move_focus_left();
+    tab.vertical_split(PaneId::Terminal(5));
+    tab.vertical_split(PaneId::Terminal(6));
+    tab.move_focus_down();
+    tab.vertical_split(PaneId::Terminal(7));
+    tab.vertical_split(PaneId::Terminal(8));
+    tab.move_focus_left();
+    tab.move_focus_up();
+    tab.move_focus_left();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().x, 0, "pane 1 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().y, 0, "pane 1 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().cols, 60, "pane 1 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 15, "pane 1 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().x, 0, "pane 2 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().y, 16, "pane 2 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().cols, 60, "pane 2 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 14, "pane 2 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().x, 61, "pane 3 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().y, 0, "pane 3 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().cols, 15, "pane 3 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(3)).unwrap().position_and_size().rows, 17, "pane 3 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().x, 92, "pane 4 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().y, 0, "pane 4 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().cols, 29, "pane 4 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(4)).unwrap().position_and_size().rows, 15, "pane 4 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().x, 77, "pane 5 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().y, 0, "pane 5 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().cols, 7, "pane 5 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(5)).unwrap().position_and_size().rows, 17, "pane 5 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().x, 85, "pane 6 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().y, 0, "pane 6 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().cols, 6, "pane 6 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(6)).unwrap().position_and_size().rows, 17, "pane 6 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().x, 61, "pane 7 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().y, 18, "pane 7 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().cols, 30, "pane 7 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(7)).unwrap().position_and_size().rows, 12, "pane 7 row count");
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().x, 92, "pane 8 x position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().y, 16, "pane 8 y position");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().cols, 29, "pane 8 column count");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(8)).unwrap().position_and_size().rows, 14, "pane 8 row count");
+}
+
+#[test]
+pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
+    // ┌───────────┐                  ┌───────────┐
+    // │███████████│                  │███████████│
+    // ├───────────┤ ==resize=down==> ├───────────┤
+    // │           │                  │           │
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 7,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(position_and_size);
+    tab.horizontal_split(PaneId::Terminal(2));
+    tab.move_focus_up();
+    tab.resize_down();
+
+    assert_eq!(tab.panes.get(&PaneId::Terminal(1)).unwrap().position_and_size().rows, 3, "pane 1 height stayed the same");
+    assert_eq!(tab.panes.get(&PaneId::Terminal(2)).unwrap().position_and_size().rows, 3, "pane 2 height stayed the same");
 }

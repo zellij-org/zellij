@@ -87,6 +87,101 @@ fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
 }
 
 #[test]
+fn open_new_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    
+    assert_eq!(screen.tabs.len(), 2, "Screen now has two tabs");
+    assert_eq!(screen.get_active_tab().unwrap().position, 1, "Active tab switched to new tab");
+}
+
+#[test]
+pub fn switch_to_prev_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    screen.switch_tab_prev();
+    
+    assert_eq!(screen.get_active_tab().unwrap().position, 0, "Active tab switched to previous tab");
+}
+
+#[test]
+pub fn switch_to_next_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    screen.switch_tab_prev();
+    screen.switch_tab_next();
+    
+    assert_eq!(screen.get_active_tab().unwrap().position, 1, "Active tab switched to next tab");
+}
+
+#[test]
+pub fn close_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    screen.close_tab();
+    
+    assert_eq!(screen.tabs.len(), 1, "Only one tab left");
+    assert_eq!(screen.get_active_tab().unwrap().position, 0, "Active tab switched to previous tab");
+}
+
+#[test]
+pub fn close_the_middle_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    screen.new_tab(3);
+    screen.switch_tab_prev();
+    screen.close_tab();
+    
+    assert_eq!(screen.tabs.len(), 2, "Two tabs left");
+    assert_eq!(screen.get_active_tab().unwrap().position, 0, "Active tab switched to previous tab");
+}
+
+#[test]
 fn move_focus_left_at_left_screen_edge_changes_tab() {
     let position_and_size = PositionAndSize {
         cols: 121,
