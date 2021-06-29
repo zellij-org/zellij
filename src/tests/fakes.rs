@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::os::unix::io::RawFd;
-use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -16,6 +15,7 @@ use zellij_utils::{
     async_std,
     channels::{self, ChannelWithContext, SenderWithContext},
     errors::ErrorContext,
+    input::command::TerminalAction,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::PositionAndSize,
@@ -265,7 +265,7 @@ impl ServerOsApi for FakeInputOutput {
             .unwrap()
             .push(IoEvent::SetTerminalSizeUsingFd(pid, cols, rows));
     }
-    fn spawn_terminal(&self, _file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, _terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
         let next_terminal_id = self.stdin_writes.lock().unwrap().keys().len() as RawFd + 1;
         self.add_terminal(next_terminal_id);
         (

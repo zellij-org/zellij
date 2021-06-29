@@ -7,8 +7,6 @@ use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zellij_utils::{serde, zellij_tile};
-
 use serde::{de::DeserializeOwned, Serialize};
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
@@ -24,6 +22,7 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
 };
 use zellij_utils::errors::{ContextType, PluginContext};
+use zellij_utils::{input::command::TerminalAction, serde, zellij_tile};
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
@@ -235,7 +234,9 @@ fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
         .senders
-        .send_to_pty(PtyInstruction::SpawnTerminal(Some(path)))
+        .send_to_pty(PtyInstruction::SpawnTerminal(Some(
+            TerminalAction::OpenFile(path),
+        )))
         .unwrap();
 }
 
