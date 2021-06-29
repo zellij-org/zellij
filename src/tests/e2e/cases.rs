@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use ::insta::assert_snapshot;
 use zellij_utils::pane_size::PositionAndSize;
 
@@ -6,12 +8,51 @@ use rand::Rng;
 use std::path::Path;
 
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
-use crate::tests::utils::commands::{
-    CLOSE_PANE_IN_PANE_MODE, DETACH_IN_SESSION_MODE, ENTER, LOCK_MODE, NEW_TAB_IN_TAB_MODE,
-    PANE_MODE, QUIT, RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, SCROLL_MODE,
-    SCROLL_UP_IN_SCROLL_MODE, SESSION_MODE, SPLIT_RIGHT_IN_PANE_MODE, TAB_MODE,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
-};
+
+pub const QUIT: [u8; 1] = [17]; // ctrl-q
+pub const ESC: [u8; 1] = [27];
+pub const ENTER: [u8; 1] = [10]; // char '\n'
+pub const LOCK_MODE: [u8; 1] = [7]; // ctrl-g
+
+pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
+pub const MOVE_FOCUS_RIGHT_IN_NORMAL_MODE: [u8; 2] = [27, 108]; // alt-l
+
+pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
+pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
+pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
+pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
+pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
+pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
+pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
+pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
+pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
+pub const MOVE_FOCUS_LEFT_IN_PANE_MODE: [u8; 1] = [104]; // h
+pub const MOVE_FOCUS_RIGHT_IN_PANE_MODE: [u8; 1] = [108]; // l
+
+pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
+pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
+pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
+pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
+pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
+
+pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
+pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
+pub const RESIZE_UP_IN_RESIZE_MODE: [u8; 1] = [107]; // k
+pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
+pub const RESIZE_RIGHT_IN_RESIZE_MODE: [u8; 1] = [108]; // l
+
+pub const TAB_MODE: [u8; 1] = [20]; // ctrl-t
+pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
+pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
+pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
+pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
+
+pub const SESSION_MODE: [u8; 1] = [15]; // ctrl-o
+pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
+
+pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
+pub const SLEEP: [u8; 0] = [];
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
 // tests
