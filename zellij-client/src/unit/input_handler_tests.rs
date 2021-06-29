@@ -1,27 +1,25 @@
 use super::input_loop;
-use zellij_utils::{zellij_tile::data::Palette};
-use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::input::config::Config;
 use zellij_utils::input::actions::{Action, Direction};
+use zellij_utils::input::config::Config;
+use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::zellij_tile::data::Palette;
 
 use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
 
 use std::path::Path;
 
-use zellij_utils::{zellij_tile};
+use zellij_utils::zellij_tile;
 
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
+use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
-use zellij_tile::data::InputMode;
 
-use zellij_utils::{
-    channels::{self, ChannelWithContext, SenderWithContext}
-};
+use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
 #[allow(unused)]
 pub mod commands {
@@ -65,9 +63,7 @@ pub mod commands {
     pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
     pub const SLEEP: [u8; 0] = [];
-
 }
-
 
 struct FakeClientOsApi {
     stdin_events: Arc<Mutex<Vec<Vec<u8>>>>,
@@ -76,7 +72,11 @@ struct FakeClientOsApi {
 }
 
 impl FakeClientOsApi {
-    pub fn new(mut stdin_events: Vec<Vec<u8>>, events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>, command_is_executing: CommandIsExecuting) -> Self {
+    pub fn new(
+        mut stdin_events: Vec<Vec<u8>>,
+        events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
+        command_is_executing: CommandIsExecuting,
+    ) -> Self {
         // while command_is_executing itself is implemented with an Arc<Mutex>, we have to have an
         // Arc<Mutex> here because we need interior mutability, otherwise we'll have to change the
         // ClientOsApi trait, and that will cause a lot of havoc
@@ -139,7 +139,9 @@ impl ClientOsApi for FakeClientOsApi {
     }
 }
 
-fn extract_actions_sent_to_server(events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>) -> Vec<Action> {
+fn extract_actions_sent_to_server(
+    events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
+) -> Vec<Action> {
     let events_sent_to_server = events_sent_to_server.lock().unwrap();
     events_sent_to_server.iter().fold(vec![], |mut acc, event| {
         if let ClientToServerMsg::Action(action) = event {
@@ -154,7 +156,11 @@ pub fn quit_breaks_input_loop() {
     let stdin_events = vec![];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = Box::new(FakeClientOsApi::new(stdin_events, events_sent_to_server.clone(), command_is_executing.clone()));
+    let client_os_api = Box::new(FakeClientOsApi::new(
+        stdin_events,
+        events_sent_to_server.clone(),
+        command_is_executing.clone(),
+    ));
     let config = Config::from_default_assets().unwrap();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
@@ -163,12 +169,19 @@ pub fn quit_breaks_input_loop() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(client_os_api, config, command_is_executing, send_client_instructions, default_mode));
-    let expected_actions_sent_to_server = vec![
-        Action::Quit,
-    ];
+    drop(input_loop(
+        client_os_api,
+        config,
+        command_is_executing,
+        send_client_instructions,
+        default_mode,
+    ));
+    let expected_actions_sent_to_server = vec![Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
-    assert_eq!(expected_actions_sent_to_server, received_actions, "All actions sent to server properly");
+    assert_eq!(
+        expected_actions_sent_to_server, received_actions,
+        "All actions sent to server properly"
+    );
 }
 
 #[test]
@@ -177,7 +190,11 @@ pub fn move_focus_left_in_pane_mode() {
     stdin_events.push(commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec());
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = Box::new(FakeClientOsApi::new(stdin_events, events_sent_to_server.clone(), command_is_executing.clone()));
+    let client_os_api = Box::new(FakeClientOsApi::new(
+        stdin_events,
+        events_sent_to_server.clone(),
+        command_is_executing.clone(),
+    ));
     let config = Config::from_default_assets().unwrap();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
@@ -186,13 +203,20 @@ pub fn move_focus_left_in_pane_mode() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(client_os_api, config, command_is_executing, send_client_instructions, default_mode));
-    let expected_actions_sent_to_server = vec![
-        Action::MoveFocusOrTab(Direction::Left),
-        Action::Quit,
-    ];
+    drop(input_loop(
+        client_os_api,
+        config,
+        command_is_executing,
+        send_client_instructions,
+        default_mode,
+    ));
+    let expected_actions_sent_to_server =
+        vec![Action::MoveFocusOrTab(Direction::Left), Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
-    assert_eq!(expected_actions_sent_to_server, received_actions, "All actions sent to server properly");
+    assert_eq!(
+        expected_actions_sent_to_server, received_actions,
+        "All actions sent to server properly"
+    );
 }
 
 #[test]
@@ -200,11 +224,15 @@ pub fn bracketed_paste() {
     let stdin_events = vec![
         commands::BRACKETED_PASTE_START.to_vec(),
         commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec(),
-        commands::BRACKETED_PASTE_END.to_vec()
+        commands::BRACKETED_PASTE_END.to_vec(),
     ];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = Box::new(FakeClientOsApi::new(stdin_events, events_sent_to_server.clone(), command_is_executing.clone()));
+    let client_os_api = Box::new(FakeClientOsApi::new(
+        stdin_events,
+        events_sent_to_server.clone(),
+        command_is_executing.clone(),
+    ));
     let config = Config::from_default_assets().unwrap();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
@@ -213,11 +241,20 @@ pub fn bracketed_paste() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(client_os_api, config, command_is_executing, send_client_instructions, default_mode));
+    drop(input_loop(
+        client_os_api,
+        config,
+        command_is_executing,
+        send_client_instructions,
+        default_mode,
+    ));
     let expected_actions_sent_to_server = vec![
         Action::Write(commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec()), // keys were directly written to server and not interpreted
         Action::Quit,
     ];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
-    assert_eq!(expected_actions_sent_to_server, received_actions, "All actions sent to server properly");
+    assert_eq!(
+        expected_actions_sent_to_server, received_actions,
+        "All actions sent to server properly"
+    );
 }

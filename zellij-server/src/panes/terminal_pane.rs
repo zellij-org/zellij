@@ -344,4 +344,3 @@ impl TerminalPane {
 #[cfg(test)]
 #[path = "./unit/terminal_pane_tests.rs"]
 mod grid_tests;
-

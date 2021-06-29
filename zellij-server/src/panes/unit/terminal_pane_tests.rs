@@ -1,8 +1,8 @@
-use crate::tab::Pane;
 use super::super::TerminalPane;
+use crate::tab::Pane;
 use ::insta::assert_snapshot;
-use zellij_utils::{zellij_tile::data::Palette};
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::zellij_tile::data::Palette;
 
 #[test]
 pub fn scrolling_inside_a_pane() {

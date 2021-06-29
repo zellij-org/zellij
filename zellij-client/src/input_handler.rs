@@ -197,4 +197,3 @@ pub(crate) fn input_loop(
 #[cfg(test)]
 #[path = "./unit/input_handler_tests.rs"]
 mod grid_tests;
-

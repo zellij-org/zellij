@@ -24,7 +24,11 @@ impl ThreadSenders {
         instruction: ScreenInstruction,
     ) -> Result<(), channels::SendError<(ScreenInstruction, ErrorContext)>> {
         if self.should_silently_fail {
-            let _ = self.to_screen.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(()));
+            let _ = self
+                .to_screen
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
             self.to_screen.as_ref().unwrap().send(instruction)
@@ -36,7 +40,11 @@ impl ThreadSenders {
         instruction: PtyInstruction,
     ) -> Result<(), channels::SendError<(PtyInstruction, ErrorContext)>> {
         if self.should_silently_fail {
-            let _ = self.to_pty.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(()));
+            let _ = self
+                .to_pty
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
             self.to_pty.as_ref().unwrap().send(instruction)
@@ -48,7 +56,11 @@ impl ThreadSenders {
         instruction: PluginInstruction,
     ) -> Result<(), channels::SendError<(PluginInstruction, ErrorContext)>> {
         if self.should_silently_fail {
-            let _ = self.to_plugin.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(()));
+            let _ = self
+                .to_plugin
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
             self.to_plugin.as_ref().unwrap().send(instruction)
@@ -60,7 +72,11 @@ impl ThreadSenders {
         instruction: ServerInstruction,
     ) -> Result<(), channels::SendError<(ServerInstruction, ErrorContext)>> {
         if self.should_silently_fail {
-            let _ = self.to_server.as_ref().map(|sender| sender.send(instruction)).unwrap_or_else(|| Ok(()));
+            let _ = self
+                .to_server
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
             self.to_server.as_ref().unwrap().send(instruction)
