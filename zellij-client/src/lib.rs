@@ -278,7 +278,7 @@ pub fn start_client(
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
-                    .write_all(&output.as_bytes())
+                    .write_all(output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }

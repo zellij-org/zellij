@@ -20,7 +20,7 @@ const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
         data_dir
     } else {
-        &"/usr"
+        "/usr"
     }
 }
 

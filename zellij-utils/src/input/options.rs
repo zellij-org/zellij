@@ -70,7 +70,7 @@ impl Options {
 
     pub fn from_cli(&self, other: Option<Command>) -> Options {
         if let Some(Command::Options(options)) = other {
-            Options::merge(&self, options)
+            Options::merge(self, options)
         } else {
             self.to_owned()
         }
