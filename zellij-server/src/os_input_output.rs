@@ -18,6 +18,7 @@ use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
+    input::command::{RunCommand, TerminalAction},
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
         ServerToClientMsg,
@@ -83,18 +84,7 @@ fn handle_command_exit(mut child: Child) {
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-/// If a `file_to_open` is given, the text editor specified by environment variable `EDITOR`
-/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
-/// file open. If no file is given, the shell specified by environment variable `SHELL` will
-/// be started in the new terminal.
-///
-/// # Panics
-///
-/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
-/// set.
-// FIXME this should probably be split into different functions, or at least have less levels
-// of indentation in some way
-fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios) -> (RawFd, Pid) {
+fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid) {
     let (pid_primary, pid_secondary): (RawFd, Pid) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -104,29 +94,14 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
                         // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
                         child
                     }
-                    ForkResult::Child => match file_to_open {
-                        Some(file_to_open) => {
-                            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
-                            }
-                            let editor =
-                                env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap());
-
-                            let child = Command::new(editor)
-                                .args(&[file_to_open])
-                                .spawn()
-                                .expect("failed to spawn");
-                            handle_command_exit(child);
-                            ::std::process::exit(0);
-                        }
-                        None => {
-                            let child = Command::new(env::var("SHELL").unwrap())
-                                .spawn()
-                                .expect("failed to spawn");
-                            handle_command_exit(child);
-                            ::std::process::exit(0);
-                        }
-                    },
+                    ForkResult::Child => {
+                        let child = Command::new(cmd.command)
+                            .args(&cmd.args)
+                            .spawn()
+                            .expect("failed to spawn");
+                        handle_command_exit(child);
+                        ::std::process::exit(0);
+                    }
                 };
                 (pid_primary, pid_secondary)
             }
@@ -136,6 +111,48 @@ fn spawn_terminal(file_to_open: Option<PathBuf>, orig_termios: termios::Termios)
         }
     };
     (pid_primary, pid_secondary)
+}
+
+/// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
+/// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
+/// file open.
+/// If [`TerminalAction::RunCommand(RunCommand)`] is given, the command will be started
+/// in the new terminal.
+/// If None is given, the shell specified by environment variable `SHELL` will
+/// be started in the new terminal.
+///
+/// # Panics
+///
+/// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
+/// set.
+pub fn spawn_terminal(
+    terminal_action: Option<TerminalAction>,
+    orig_termios: termios::Termios,
+) -> (RawFd, Pid) {
+    let cmd = match terminal_action {
+        Some(TerminalAction::OpenFile(file_to_open)) => {
+            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
+                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
+            }
+            let command =
+                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()));
+
+            let args = vec![file_to_open
+                .into_os_string()
+                .into_string()
+                .expect("Not valid Utf8 Encoding")];
+            RunCommand { command, args }
+        }
+        Some(TerminalAction::RunCommand(command)) => command,
+        None => {
+            let command =
+                PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable"));
+            let args = vec![];
+            RunCommand { command, args }
+        }
+    };
+
+    handle_terminal(cmd, orig_termios)
 }
 
 #[derive(Clone)]
@@ -178,8 +195,8 @@ impl AsyncReader for RawFdAsyncReader {
 pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
-    /// Spawn a new terminal, with an optional file to open in a terminal program.
-    fn spawn_terminal(&self, file_to_open: Option<PathBuf>) -> (RawFd, Pid);
+    /// Spawn a new terminal, with a terminal action.
+    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -215,9 +232,9 @@ impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
         set_terminal_size_using_fd(fd, cols, rows);
     }
-    fn spawn_terminal(&self, file_to_open: Option<PathBuf>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(file_to_open, orig_termios.clone())
+        spawn_terminal(terminal_action, orig_termios.clone())
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)

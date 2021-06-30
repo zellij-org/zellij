@@ -4,7 +4,6 @@ use async_std::future::timeout as async_timeout;
 use async_std::task::{self, JoinHandle};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::{
@@ -17,7 +16,7 @@ use crate::{
 };
 use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
-    input::layout::Layout,
+    input::{command::TerminalAction, layout::Layout},
     logging::debug_to_file,
 };
 
@@ -26,9 +25,9 @@ pub type VteBytes = Vec<u8>;
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
-    SpawnTerminal(Option<PathBuf>),
-    SpawnTerminalVertically(Option<PathBuf>),
-    SpawnTerminalHorizontally(Option<PathBuf>),
+    SpawnTerminal(Option<TerminalAction>),
+    SpawnTerminalVertically(Option<TerminalAction>),
+    SpawnTerminalHorizontally(Option<TerminalAction>),
     NewTab,
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -61,22 +60,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
-            PtyInstruction::SpawnTerminal(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminal(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminalVertically(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminalHorizontally(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
@@ -218,13 +217,13 @@ impl Pty {
             task_handles: HashMap::new(),
         }
     }
-    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
+    pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, Pid) = self
             .bus
             .os_input
             .as_mut()
             .unwrap()
-            .spawn_terminal(file_to_open);
+            .spawn_terminal(terminal_action);
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.bus.senders.clone(),
