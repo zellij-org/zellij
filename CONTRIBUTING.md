@@ -44,6 +44,8 @@ cargo make manpage
 To run `install` or `publish`, you'll need the package `binaryen` in the
 version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 
+To run `test`, you will need the package `pkg-config` and a version of `openssl`.
+
 ## Running the end-to-end tests
 Zellij includes some end to end tests which test the whole application as a black-box from the outside.
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
