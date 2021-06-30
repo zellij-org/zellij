@@ -229,7 +229,8 @@ impl RemoteRunner {
         session_name: Option<String>,
     ) -> Self {
         let layout_file_name = local_layout_path.file_name().unwrap();
-        let remote_path = Path::new("/usr/src/zellij-fixtures/layouts").join(layout_file_name); // TODO: not hardcoded
+        // let remote_path = Path::new("/usr/src/zellij-fixtures/layouts").join(layout_file_name); // TODO: not hardcoded
+        let remote_path = Path::new("/usr/src/zellij/target/fixtures/layouts").join(layout_file_name); // TODO: not hardcoded
         // send_local_file_to_remote(local_layout_path, remote_path.as_path());
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();

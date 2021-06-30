@@ -26,7 +26,7 @@ jobs:
           USER_NAME: test
         ports:
           - 2222:2222
-        options: -v ${{ github.workspace }}/target:/usr/src/zellij -v ${{ github.workspace }}/src/tests/fixtures:/usr/src/zellij-fixtures:ro --name ssh
+        options: -v ${{ github.workspace }}/target:/usr/src/zellij --name ssh
     steps:
     - uses: actions/checkout@v2
     - name: Add WASM target
@@ -39,6 +39,8 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
+    - name: Copy fixtures folder to target
+      run: cp -r ${{ github.workspace }}/src/tests/fixtures ${{ github.workspace }}/target
     - name: Restart ssh container
       # we need to do this because otherwise the volume will not be mounted
       # on the docker container, since it was created before the folder existed
