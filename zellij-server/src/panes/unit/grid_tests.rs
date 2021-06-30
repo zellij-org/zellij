@@ -566,7 +566,6 @@ fn copy_selected_text_from_viewport() {
         vte_parser.advance(&mut grid, byte);
     }
 
-    println!("{:?}", grid);
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
     grid.end_selection(Some(&Position::new(25, 35)));
@@ -587,7 +586,6 @@ fn copy_selected_text_from_lines_above() {
         vte_parser.advance(&mut grid, byte);
     }
 
-    println!("{:?}", grid);
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
     grid.end_selection(Some(&Position::new(2, 8)));

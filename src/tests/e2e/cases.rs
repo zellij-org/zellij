@@ -838,7 +838,6 @@ fn focus_pane_with_mouse() {
         .add_step(Step {
             name: "Wait for left pane to be focused",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                println!("checking for left pane focus");
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(2, 2) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
