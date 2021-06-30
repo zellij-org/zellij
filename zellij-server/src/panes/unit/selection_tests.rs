@@ -1,5 +1,3 @@
-use zellij_utils::position::{Column, Line};
-
 use super::*;
 
 #[test]

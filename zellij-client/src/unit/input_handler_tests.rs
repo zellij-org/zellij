@@ -139,6 +139,7 @@ impl ClientOsApi for FakeClientOsApi {
     }
     fn enable_mouse(&self) {}
     fn disable_mouse(&self) {}
+    fn start_action_repeater(&mut self, _action: Action) {}
 }
 
 fn extract_actions_sent_to_server(

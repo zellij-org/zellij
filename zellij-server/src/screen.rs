@@ -560,7 +560,6 @@ pub(crate) fn screen_thread_main(
                     .scroll_active_terminal_up();
             }
             ScreenInstruction::ScrollUpAt(point) => {
-                dbg!(format!("got scroll down at {:?}", point));
                 screen
                     .get_active_tab_mut()
                     .unwrap()
@@ -573,7 +572,6 @@ pub(crate) fn screen_thread_main(
                     .scroll_active_terminal_down();
             }
             ScreenInstruction::ScrollDownAt(point) => {
-                dbg!(format!("got scroll down at {:?}", point));
                 screen
                     .get_active_tab_mut()
                     .unwrap()
