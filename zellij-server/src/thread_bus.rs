@@ -82,7 +82,9 @@ impl ThreadSenders {
             self.to_server.as_ref().unwrap().send(instruction)
         }
     }
+    #[allow(unused)]
     pub fn silently_fail_on_send(mut self) -> Self {
+        // this is mostly used for the tests, see struct
         self.should_silently_fail = true;
         self
     }
@@ -117,7 +119,9 @@ impl<T> Bus<T> {
             os_input: os_input.clone(),
         }
     }
+    #[allow(unused)]
     pub fn empty() -> Self {
+        // this is mostly used for the tests
         Bus {
             receivers: vec![],
             senders: ThreadSenders {

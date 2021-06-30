@@ -768,8 +768,8 @@ pub fn accepts_basic_layout() {
         y: 0,
         ..Default::default()
     };
-    let layout_path = Path::new("src/tests/fixtures/layouts/three-panes-with-nesting.yaml");
-    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_path, None)
+    let layout_file_name = "three-panes-with-nesting.yaml";
+    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_file_name, None)
         .add_step(Step {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
