@@ -1,12 +1,7 @@
 //! Main input logic.
 
-use std::time::{self, Duration};
-
-use mio::unix::SourceFd;
-use mio::{Events, Interest, Poll, Token};
 use zellij_utils::{
     input::mouse::{MouseButton, MouseEvent},
-    position::Position,
     termion, zellij_tile,
 };
 
@@ -148,7 +143,8 @@ impl InputHandler {
             }
             MouseEvent::Hold(point) => {
                 self.dispatch_action(Action::MouseHold(point));
-                self.start_hold_repeater(point);
+                self.os_input
+                    .start_action_repeater(Action::MouseHold(point));
             }
         }
     }
@@ -209,19 +205,19 @@ impl InputHandler {
             .unwrap();
     }
 
-    // Repeatedly send fake mousehold events, to allow scrolling up/down with mouse while selecting
-    fn start_hold_repeater(&mut self, position: Position) {
-        let mut poller = StdinPoller::default();
+    // // Repeatedly send fake mousehold events, to allow scrolling up/down with mouse while selecting
+    // fn start_hold_repeater(&mut self, position: Position) {
+    //     let mut poller = StdinPoller::default();
 
-        loop {
-            let ready = poller.ready();
-            if ready {
-                break;
-            }
-            self.os_input
-                .send_to_server(ClientToServerMsg::Action(Action::MouseHold(position)));
-        }
-    }
+    //     loop {
+    //         let ready = poller.ready();
+    //         if ready {
+    //             break;
+    //         }
+    //         self.os_input
+    //             .send_to_server(ClientToServerMsg::Action(Action::MouseHold(position)));
+    //     }
+    // }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts
@@ -241,47 +237,6 @@ pub(crate) fn input_loop(
         default_mode,
     )
     .handle_input();
-}
-struct StdinPoller {
-    poll: Poll,
-    events: Events,
-    timeout: time::Duration,
-}
-
-impl StdinPoller {
-    // use mio poll to check if stdin is readable without blocking
-    fn ready(&mut self) -> bool {
-        self.poll
-            .poll(&mut self.events, Some(self.timeout))
-            .expect("could not poll stdin for readiness");
-        for event in &self.events {
-            if event.token() == Token(0) && event.is_readable() {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-impl Default for StdinPoller {
-    fn default() -> Self {
-        let stdin = 0;
-        let mut stdin_fd = SourceFd(&stdin);
-        let events = Events::with_capacity(128);
-        let poll = Poll::new().unwrap();
-        poll.registry()
-            .register(&mut stdin_fd, Token(0), Interest::READABLE)
-            .expect("could not create stdin poll");
-
-        // TODO: decide what timeout to use
-        let timeout = Duration::from_millis(50);
-
-        Self {
-            poll,
-            events,
-            timeout,
-        }
-    }
 }
 
 #[cfg(test)]

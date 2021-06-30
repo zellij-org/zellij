@@ -18,6 +18,8 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 
+pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
+
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
     Terminal(RawFd),
@@ -307,8 +309,8 @@ impl Pane for TerminalPane {
     }
 
     fn update_selection(&mut self, to: &Position) {
-        // TODO: decide how often to scroll
-        let should_scroll = self.selection_scrolled_at.elapsed() >= time::Duration::from_millis(50);
+        let should_scroll = self.selection_scrolled_at.elapsed()
+            >= time::Duration::from_millis(SELECTION_SCROLL_INTERVAL_MS);
         // TODO: check how far up/down mouse is relative to pane, to increase scroll lines?
         if to.line.0 < 0 && should_scroll {
             self.grid.scroll_up_one_line();
