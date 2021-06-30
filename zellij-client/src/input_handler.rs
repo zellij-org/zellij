@@ -204,20 +204,6 @@ impl InputHandler {
             .send(ClientInstruction::Exit(ExitReason::Normal))
             .unwrap();
     }
-
-    // // Repeatedly send fake mousehold events, to allow scrolling up/down with mouse while selecting
-    // fn start_hold_repeater(&mut self, position: Position) {
-    //     let mut poller = StdinPoller::default();
-
-    //     loop {
-    //         let ready = poller.ready();
-    //         if ready {
-    //             break;
-    //         }
-    //         self.os_input
-    //             .send_to_server(ClientToServerMsg::Action(Action::MouseHold(position)));
-    //     }
-    // }
 }
 
 /// Entry point to the module. Instantiates an [`InputHandler`] and starts
