@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): Welcome to fish, the friendly interactive shell                                                                     
+01 (C): ⋊> ~/c/mosaic on main ⨯ sudo badblocks                                                                      11:32:23
+02 (C): badblocks   (Executable, 33kB)  base64    (Executable, 42kB)  bash     (Executable, 906kB)
+03 (C): bandwhich  (Executable, 3.0MB)  basename  (Executable, 38kB)  bashbug  (Executable, 6.8kB)
+04 (C): base32      (Executable, 42kB)  basenc    (Executable, 50kB)  bass                        
+

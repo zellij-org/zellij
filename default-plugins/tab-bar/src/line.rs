@@ -21,7 +21,7 @@ fn populate_tabs_in_tab_line(
         if tabs_before_active.is_empty() && tabs_after_active.is_empty() {
             break;
         }
-        let current_title_len = get_current_title_len(&tabs_to_render);
+        let current_title_len = get_current_title_len(tabs_to_render);
         if current_title_len >= cols {
             break;
         }
@@ -117,7 +117,7 @@ fn add_previous_tabs_msg(
     palette: Palette,
     separator: &str,
 ) {
-    while get_current_title_len(&tabs_to_render)
+    while get_current_title_len(tabs_to_render)
         + left_more_message(tabs_before_active.len(), palette, separator).len
         >= cols
     {
@@ -134,7 +134,7 @@ fn add_next_tabs_msg(
     palette: Palette,
     separator: &str,
 ) {
-    while get_current_title_len(&title_bar)
+    while get_current_title_len(title_bar)
         + right_more_message(tabs_after_active.len(), palette, separator).len
         >= cols
     {
@@ -160,7 +160,7 @@ pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
     if !capabilities.arrow_fonts {
         ARROW_SEPARATOR
     } else {
-        &""
+        ""
     }
 }
 

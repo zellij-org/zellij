@@ -69,8 +69,8 @@ impl Layout {
         layout_dir: Option<PathBuf>,
     ) -> Option<Layout> {
         let layout_result = layout
-            .map(|p| Layout::from_dir(&p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| Layout::new(&p)))
+            .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| Layout::new(p)))
             .or_else(|| {
                 Some(Layout::from_dir(
                     &std::path::PathBuf::from("default"),
@@ -138,7 +138,7 @@ impl Layout {
         &self,
         space: &PositionAndSize,
     ) -> Vec<(Layout, PositionAndSize)> {
-        split_space(space, &self)
+        split_space(space, self)
     }
 }
 
@@ -286,7 +286,7 @@ fn split_space(
     for (i, part) in layout.parts.iter().enumerate() {
         let part_position_and_size = split_parts.get(i).unwrap();
         if !part.parts.is_empty() {
-            let mut part_positions = split_space(&part_position_and_size, part);
+            let mut part_positions = split_space(part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {
             pane_positions.push((part.clone(), *part_position_and_size));

@@ -39,6 +39,11 @@ jobs:
       run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e
+      # we copy this manually into the target folder instead of mounting it because
+      # github actions creates the service first, and if it has a mount that is part
+      # of your yet unchecked out code, you cannot checkout the code after the mount
+    - name: Copy fixtures folder to target
+      run: cp -r ${{ github.workspace }}/src/tests/fixtures ${{ github.workspace }}/target
     - name: Restart ssh container
       # we need to do this because otherwise the volume will not be mounted
       # on the docker container, since it was created before the folder existed

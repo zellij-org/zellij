@@ -71,7 +71,7 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 }
 
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
-    std::io::stdout().write_all(&asset)?;
+    std::io::stdout().write_all(asset)?;
     Ok(())
 }
 
@@ -134,7 +134,7 @@ impl Setup {
         }
 
         if self.check {
-            Setup::check_defaults_config(&opts)?;
+            Setup::check_defaults_config(opts)?;
             std::process::exit(0);
         }
 
@@ -163,14 +163,14 @@ impl Setup {
         if let Some(config_dir) = config_dir {
             message.push_str(&format!("[CONFIG DIR]: {:?}\n", config_dir));
         } else {
-            message.push_str(&"[CONFIG DIR]: Not Found\n");
+            message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
                 .iter()
                 .filter_map(|p| p.clone())
                 .collect::<Vec<PathBuf>>();
             default_config_dirs.dedup();
             message.push_str(
-                &" On your system zellij looks in the following config directories by default:\n",
+                " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
                 message.push_str(&format!(" {:?}\n", dir));
@@ -180,11 +180,11 @@ impl Setup {
             use crate::input::config::Config;
             message.push_str(&format!("[CONFIG FILE]: {:?}\n", config_file));
             match Config::new(&config_file) {
-                Ok(_) => message.push_str(&"[CONFIG FILE]: Well defined.\n"),
+                Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
                 Err(e) => message.push_str(&format!("[CONFIG ERROR]: {}\n", e)),
             }
         } else {
-            message.push_str(&"[CONFIG FILE]: Not Found\n");
+            message.push_str("[CONFIG FILE]: Not Found\n");
             message.push_str(&format!(
                 " By default zellij looks for a file called [{}] in the configuration directory\n",
                 CONFIG_NAME
@@ -196,12 +196,12 @@ impl Setup {
         message.push_str(&format!("[SYSTEM DATA DIR]: {:?}\n", system_data_dir));
 
         message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
-        message.push_str(&" Is the [ARROW_SEPARATOR] displayed correctly?\n");
-        message.push_str(&" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
-        message.push_str(&" Or check the font that is in use:\n https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly\n");
+        message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
+        message.push_str(" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
+        message.push_str(" Or check the font that is in use:\n https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly\n");
 
         message.push_str(&format!("[FEATURES]: {:?}\n", FEATURES));
-        message.push_str(&"[DOCUMENTATION]: zellij.dev/documentation/\n");
+        message.push_str("[DOCUMENTATION]: zellij.dev/documentation/\n");
 
         std::io::stdout().write_all(message.as_bytes())?;
 
