@@ -16,6 +16,9 @@ services:
       - type: bind
         source: ./target
         target: /usr/src/zellij
+      - type: bind
+        source: ./src/tests/fixtures
+        target: /usr/src/zellij-fixtures
     ports:
       - 2222:2222
     restart: unless-stopped

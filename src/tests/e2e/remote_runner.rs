@@ -8,8 +8,8 @@ use ssh2::Session;
 use std::io::prelude::*;
 use std::net::TcpStream;
 
-use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::fs::File;
 
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
@@ -37,6 +37,7 @@ fn send_local_file_to_remote(local_layout_path: &Path, remote_path: &Path) {
     channel.write_all(&file_buffer).unwrap();
     channel.close().unwrap();
 }
+
 
 fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: PositionAndSize) {
     let (columns, rows) = (win_size.cols as u32, win_size.rows as u32);
@@ -68,32 +69,18 @@ fn start_zellij(channel: &mut ssh2::Channel, session_name: Option<&String>) {
     channel.flush().unwrap();
 }
 
-fn start_zellij_with_layout(
-    channel: &mut ssh2::Channel,
-    layout_path: &str,
-    session_name: Option<&String>,
-) {
+fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str, session_name: Option<&String>) {
     match session_name.as_ref() {
         Some(name) => {
             channel
                 .write_all(
-                    format!(
-                        "{} --layout-path {} --session {}\n",
-                        ZELLIJ_EXECUTABLE_LOCATION, layout_path, name
-                    )
-                    .as_bytes(),
+                    format!("{} --layout-path {} --session {}\n", ZELLIJ_EXECUTABLE_LOCATION, layout_path, name).as_bytes(),
                 )
                 .unwrap();
         }
         None => {
             channel
-                .write_all(
-                    format!(
-                        "{} --layout-path {}\n",
-                        ZELLIJ_EXECUTABLE_LOCATION, layout_path
-                    )
-                    .as_bytes(),
-                )
+                .write_all(format!("{} --layout-path {}\n", ZELLIJ_EXECUTABLE_LOCATION, layout_path).as_bytes())
                 .unwrap();
         }
     };
@@ -242,18 +229,14 @@ impl RemoteRunner {
         session_name: Option<String>,
     ) -> Self {
         let layout_file_name = local_layout_path.file_name().unwrap();
-        let remote_path = Path::new("/usr/src/zellij").join(layout_file_name); // TODO: not hardcoded
-        send_local_file_to_remote(local_layout_path, remote_path.as_path());
+        let remote_path = Path::new("/usr/src/zellij-fixtures/layouts").join(layout_file_name); // TODO: not hardcoded
+        // send_local_file_to_remote(local_layout_path, remote_path.as_path());
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
         let terminal_output = TerminalPane::new(0, win_size, Palette::default());
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_with_layout(
-            &mut channel,
-            &remote_path.to_string_lossy(),
-            session_name.as_ref(),
-        );
+        start_zellij_with_layout(&mut channel, &remote_path.to_string_lossy(), session_name.as_ref());
         RemoteRunner {
             steps: vec![],
             channel,
@@ -265,7 +248,7 @@ impl RemoteRunner {
             current_step_index: 0,
             retries_left: 3,
             win_size,
-            local_layout_path: Some(PathBuf::from(local_layout_path)),
+            local_layout_path: Some(PathBuf::from(local_layout_path))
         }
     }
     pub fn add_step(mut self, step: Step) -> Self {
@@ -314,12 +297,7 @@ impl RemoteRunner {
             format!("{}_{}", name, self.retries_left)
         });
         if let Some(local_layout_path) = self.local_layout_path.as_ref() {
-            let mut new_runner = RemoteRunner::new_with_layout(
-                self.test_name,
-                self.win_size,
-                Path::new(&local_layout_path),
-                session_name,
-            );
+            let mut new_runner = RemoteRunner::new_with_layout(self.test_name, self.win_size, Path::new(&local_layout_path), session_name);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
