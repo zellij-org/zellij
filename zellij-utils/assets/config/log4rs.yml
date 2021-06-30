@@ -1,0 +1,42 @@
+# Scan this file for changes every 30 seconds
+refresh_rate: 30 seconds
+
+appenders:
+  # An appender named "stdout" that writes to stdout
+  stderr:
+    kind: console
+    target: stderr
+
+  logFile:
+    kind: file
+    path: "zellij.log"
+    append: false
+    encoder:
+      pattern: "{h(|{M}| {d} {l} [{T}] [{f}:{L}]: {m})} {n}"
+
+  logPlugin:
+    kind: file
+    path: "zellij.log"
+    encoder:
+      pattern: "{m} {n}"
+
+  # An appender named "requests" that writes to a file with a custom pattern encoder
+  requests:
+    kind: file
+    path: "requests.log"
+    encoder:
+      pattern: "{d} - {m}{n}"
+
+# Set the default logging level to "warn" and attach the "stdout" appender to the root
+root:
+  level: info
+  appenders:
+    - logFile
+
+loggers:
+  # Raise the maximum log level for events sent to the "app::backend::db" logger to "info"
+  zellij_server::decorating_pipe:
+    level: trace
+    appenders:
+      - logPlugin
+    additive: false

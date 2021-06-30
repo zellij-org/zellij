@@ -4,6 +4,7 @@ mod sessions;
 mod tests;
 
 use crate::install::populate_data_dir;
+use log::info;
 use sessions::{assert_session, assert_session_ne, get_active_session, list_sessions};
 use std::convert::TryFrom;
 use std::process;
@@ -21,6 +22,8 @@ use zellij_utils::{
 };
 
 pub fn main() {
+    configure_logger();
+    info!("Hello Zellij!");
     let opts = CliArgs::from_args();
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {

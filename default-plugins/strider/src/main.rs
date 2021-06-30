@@ -9,11 +9,14 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
+        dbg!("hello from load");
         refresh_directory(self);
         subscribe(&[EventType::KeyPress]);
     }
 
     fn update(&mut self, event: Event) {
+        dbg!("hello from update");
+
         if let Event::KeyPress(key) = event {
             match key {
                 Key::Up | Key::Char('k') => {

@@ -2,6 +2,7 @@ pub mod os_input_output;
 pub mod panes;
 pub mod tab;
 
+mod decorating_pipe;
 mod pty;
 mod route;
 mod screen;
@@ -9,6 +10,7 @@ mod thread_bus;
 mod ui;
 mod wasm_vm;
 
+use log::info;
 use zellij_utils::zellij_tile;
 
 use std::path::PathBuf;
@@ -108,6 +110,7 @@ pub(crate) enum SessionState {
 }
 
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+    info!("starts server");
     #[cfg(not(any(feature = "test", test)))]
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
