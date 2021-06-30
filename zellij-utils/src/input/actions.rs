@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -17,7 +17,7 @@ pub enum Direction {
 // They might need to be adjusted in the default config
 // as well `../../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,

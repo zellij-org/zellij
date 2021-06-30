@@ -390,6 +390,7 @@ fn init_session(
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
             to_server: None,
+            should_silently_fail: false,
         },
         capabilities,
         palette: client_attributes.palette,
