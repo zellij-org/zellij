@@ -10,6 +10,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     input::{
         actions::{Action, Direction},
+        command::TerminalAction,
         get_mode_info,
     },
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -140,6 +141,18 @@ fn route_action(
                 Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(None),
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(None),
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        }
+        Action::Run(command) => {
+            let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
+            let pty_instr = match command.direction {
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(run_cmd),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(run_cmd),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
+                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
+                // No direction specified - try to put it in the biggest available spot
+                None => PtyInstruction::SpawnTerminal(run_cmd),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }

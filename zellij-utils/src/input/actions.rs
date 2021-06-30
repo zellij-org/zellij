@@ -1,5 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
+use super::command::RunCommandAction;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
@@ -65,6 +66,8 @@ pub enum Action {
     CloseTab,
     GoToTab(u32),
     TabNameInput(Vec<u8>),
+    /// Run speficied command in new pane.
+    Run(RunCommandAction),
     /// Detach session and exit
     Detach,
 }
