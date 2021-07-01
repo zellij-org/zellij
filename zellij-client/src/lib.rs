@@ -187,6 +187,7 @@ pub fn start_client(
                 input_loop(
                     os_input,
                     config,
+                    config_options,
                     command_is_executing,
                     send_client_instructions,
                     default_mode,

@@ -1,7 +1,10 @@
 //! Main input logic.
 
 use zellij_utils::{
-    input::mouse::{MouseButton, MouseEvent},
+    input::{
+        mouse::{MouseButton, MouseEvent},
+        options::Options,
+    },
     termion, zellij_tile,
 };
 
@@ -23,6 +26,7 @@ struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn ClientOsApi>,
     config: Config,
+    options: Options,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
@@ -35,6 +39,7 @@ impl InputHandler {
         os_input: Box<dyn ClientOsApi>,
         command_is_executing: CommandIsExecuting,
         config: Config,
+        options: Options,
         send_client_instructions: SenderWithContext<ClientInstruction>,
         mode: InputMode,
     ) -> Self {
@@ -42,6 +47,7 @@ impl InputHandler {
             mode,
             os_input,
             config,
+            options,
             command_is_executing,
             send_client_instructions,
             should_exit: false,
@@ -58,7 +64,7 @@ impl InputHandler {
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
 
-        if !self.config.options.disable_mouse_mode {
+        if !self.options.disable_mouse_mode {
             self.os_input.enable_mouse();
         }
         loop {
@@ -211,6 +217,7 @@ impl InputHandler {
 pub(crate) fn input_loop(
     os_input: Box<dyn ClientOsApi>,
     config: Config,
+    options: Options,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
@@ -219,6 +226,7 @@ pub(crate) fn input_loop(
         os_input,
         command_is_executing,
         config,
+        options,
         send_client_instructions,
         default_mode,
     )
