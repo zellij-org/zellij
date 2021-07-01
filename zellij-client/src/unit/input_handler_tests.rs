@@ -1,6 +1,7 @@
 use super::input_loop;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
+use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::PositionAndSize;
 use zellij_utils::zellij_tile::data::Palette;
 
@@ -165,6 +166,7 @@ pub fn quit_breaks_input_loop() {
         command_is_executing.clone(),
     ));
     let config = Config::from_default_assets().unwrap();
+    let options = Options::default();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -175,6 +177,7 @@ pub fn quit_breaks_input_loop() {
     drop(input_loop(
         client_os_api,
         config,
+        options,
         command_is_executing,
         send_client_instructions,
         default_mode,
@@ -199,6 +202,7 @@ pub fn move_focus_left_in_pane_mode() {
         command_is_executing.clone(),
     ));
     let config = Config::from_default_assets().unwrap();
+    let options = Options::default();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -209,6 +213,7 @@ pub fn move_focus_left_in_pane_mode() {
     drop(input_loop(
         client_os_api,
         config,
+        options,
         command_is_executing,
         send_client_instructions,
         default_mode,
@@ -237,6 +242,7 @@ pub fn bracketed_paste() {
         command_is_executing.clone(),
     ));
     let config = Config::from_default_assets().unwrap();
+    let options = Options::default();
 
     let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -247,6 +253,7 @@ pub fn bracketed_paste() {
     drop(input_loop(
         client_os_api,
         config,
+        options,
         command_is_executing,
         send_client_instructions,
         default_mode,
