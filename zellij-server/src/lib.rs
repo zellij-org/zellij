@@ -217,7 +217,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session = init_session(
                     os_input.clone(),
                     opts,
-                    config_options,
+                    config_options.clone(),
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
@@ -226,12 +226,12 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
 
-                let default_shell = session_data
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .map(|session| session.default_shell.clone())
-                    .flatten();
+                let default_shell = config_options.default_shell.map(|shell| {
+                    TerminalAction::RunCommand(RunCommand {
+                        command: shell,
+                        ..Default::default()
+                    })
+                });
 
                 session_data
                     .read()
