@@ -20,6 +20,9 @@ pub struct Options {
     /// Set the default mode
     #[structopt(long)]
     pub default_mode: Option<InputMode>,
+    /// Set the default shell
+    #[structopt(long, parse(from_os_str))]
+    pub default_shell: Option<PathBuf>,
     /// Set the layout_dir, defaults to
     /// subdirectory of config dir
     #[structopt(long, parse(from_os_str))]
@@ -50,6 +53,11 @@ impl Options {
             other => other,
         };
 
+        let default_shell = match other.default_shell {
+            None => self.default_shell.clone(),
+            other => other,
+        };
+
         let layout_dir = match other.layout_dir {
             None => self.layout_dir.clone(),
             other => other,
@@ -64,6 +72,7 @@ impl Options {
             simplified_ui,
             theme,
             default_mode,
+            default_shell,
             layout_dir,
         }
     }

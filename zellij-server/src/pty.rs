@@ -28,7 +28,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminal(Option<TerminalAction>),
     SpawnTerminalVertically(Option<TerminalAction>),
     SpawnTerminalHorizontally(Option<TerminalAction>),
-    NewTab,
+    NewTab(Option<TerminalAction>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -42,7 +42,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
-            PtyInstruction::NewTab => PtyContext::NewTab,
+            PtyInstruction::NewTab(_) => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -81,11 +81,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::NewTab => {
+            PtyInstruction::NewTab(terminal_action) => {
                 if let Some(layout) = maybe_layout.clone() {
-                    pty.spawn_terminals_for_layout(layout);
+                    pty.spawn_terminals_for_layout(layout, terminal_action);
                 } else {
-                    let pid = pty.spawn_terminal(None);
+                    let pid = pty.spawn_terminal(terminal_action);
                     pty.bus
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(pid))
@@ -234,12 +234,20 @@ impl Pty {
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
+    pub fn spawn_terminals_for_layout(
+        &mut self,
+        layout: Layout,
+        terminal_action: Option<TerminalAction>,
+    ) {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, Pid) =
-                self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
+            let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                .bus
+                .os_input
+                .as_mut()
+                .unwrap()
+                .spawn_terminal(terminal_action.clone());
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }

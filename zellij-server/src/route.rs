@@ -133,13 +133,14 @@ fn route_action(
                 .unwrap();
         }
         Action::NewPane(direction) => {
+            let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(None),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(None),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(None),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(None),
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell),
+                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(shell),
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(None),
+                None => PtyInstruction::SpawnTerminal(shell),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
@@ -150,7 +151,11 @@ fn route_action(
                 .unwrap();
         }
         Action::NewTab => {
-            session.senders.send_to_pty(PtyInstruction::NewTab).unwrap();
+            let shell = session.default_shell.clone();
+            session
+                .senders
+                .send_to_pty(PtyInstruction::NewTab(shell))
+                .unwrap();
         }
         Action::GoToNextTab => {
             session

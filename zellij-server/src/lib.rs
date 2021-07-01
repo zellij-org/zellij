@@ -29,7 +29,12 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
-    input::{get_mode_info, layout::Layout, options::Options},
+    input::{
+        command::{RunCommand, TerminalAction},
+        get_mode_info,
+        layout::Layout,
+        options::Options,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
 };
@@ -84,6 +89,7 @@ pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
     pub palette: Palette,
+    pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
@@ -219,13 +225,21 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
+
+                let default_shell = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session| session.default_shell.clone())
+                    .flatten();
+
                 session_data
                     .read()
                     .unwrap()
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_pty(PtyInstruction::NewTab)
+                    .send_to_pty(PtyInstruction::NewTab(default_shell.clone()))
                     .unwrap();
             }
             ServerInstruction::AttachClient(attrs, _, options) => {
@@ -324,6 +338,13 @@ fn init_session(
         arrow_fonts: config_options.simplified_ui,
     };
 
+    let default_shell = config_options.default_shell.clone().map(|command| {
+        TerminalAction::RunCommand(RunCommand {
+            command,
+            ..Default::default()
+        })
+    });
+
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
@@ -393,6 +414,7 @@ fn init_session(
             should_silently_fail: false,
         },
         capabilities,
+        default_shell,
         palette: client_attributes.palette,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
