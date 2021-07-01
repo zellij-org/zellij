@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   `layout-dir`
 * Fix `Makefile.toml` because of missing directory (https://github.com/zellij-org/zellij/pull/580)
 * Autodetach on force close (https://github.com/zellij-org/zellij/pull/581)
+* Add option to specify a default shell (https://github.com/zellij-org/zellij/pull/594)
 
 ## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)
