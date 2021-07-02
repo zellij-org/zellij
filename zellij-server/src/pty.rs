@@ -1,11 +1,3 @@
-use zellij_utils::async_std;
-
-use async_std::future::timeout as async_timeout;
-use async_std::task::{self, JoinHandle};
-use std::collections::HashMap;
-use std::os::unix::io::RawFd;
-use std::time::{Duration, Instant};
-
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -14,9 +6,22 @@ use crate::{
     wasm_vm::PluginInstruction,
     ServerInstruction,
 };
+use async_std::{
+    future::timeout as async_timeout,
+    task::{self, JoinHandle},
+};
+use std::{
+    collections::HashMap,
+    os::unix::io::RawFd,
+    time::{Duration, Instant},
+};
 use zellij_utils::{
+    async_std,
     errors::{get_current_ctx, ContextType, PtyContext},
-    input::{command::TerminalAction, layout::Layout},
+    input::{
+        command::TerminalAction,
+        layout::{Layout, Run},
+    },
     logging::debug_to_file,
 };
 
@@ -237,19 +242,36 @@ impl Pty {
     pub fn spawn_terminals_for_layout(
         &mut self,
         layout: Layout,
-        terminal_action: Option<TerminalAction>,
+        default_shell: Option<TerminalAction>,
     ) {
-        let total_panes = layout.total_terminal_panes();
+        let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
-        for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, Pid) = self
-                .bus
-                .os_input
-                .as_mut()
-                .unwrap()
-                .spawn_terminal(terminal_action.clone());
-            self.id_to_child_pid.insert(pid_primary, pid_secondary);
-            new_pane_pids.push(pid_primary);
+        for run_instruction in extracted_run_instructions {
+            match run_instruction {
+                Some(Run::Command(command)) => {
+                    let cmd = TerminalAction::RunCommand(command);
+                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .unwrap()
+                        .spawn_terminal(Some(cmd));
+                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                    new_pane_pids.push(pid_primary);
+                }
+                None => {
+                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .unwrap()
+                        .spawn_terminal(default_shell.clone());
+                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                    new_pane_pids.push(pid_primary);
+                }
+                // Investigate moving plugin loading to here.
+                Some(Run::Plugin(_)) => {}
+            }
         }
         self.bus
             .senders
