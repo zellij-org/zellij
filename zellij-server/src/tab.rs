@@ -1,7 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use zellij_utils::{serde, zellij_tile};
+use zellij_utils::{position::Position, serde, zellij_tile};
 
 #[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;
@@ -143,6 +143,19 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
+    fn contains(&self, position: &Position) -> bool {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position_and_size.contains(position),
+            None => self.position_and_size().contains(position),
+        }
+    }
+    fn start_selection(&mut self, _start: &Position) {}
+    fn update_selection(&mut self, _position: &Position) {}
+    fn end_selection(&mut self, _end: Option<&Position>) {}
+    fn reset_selection(&mut self) {}
+    fn get_selected_text(&self) -> Option<String> {
+        None
+    }
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.columns()
@@ -223,6 +236,12 @@ pub trait Pane {
         vec![]
     }
     fn render_full_viewport(&mut self) {}
+    fn relative_position(&self, position: &Position) -> Position {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position.relative_to(&position_and_size),
+            None => position.relative_to(&self.position_and_size()),
+        }
+    }
 }
 
 impl Tab {
@@ -2270,6 +2289,97 @@ impl Tab {
                 .unwrap();
             active_terminal.clear_scroll();
         }
+    }
+    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_up(lines);
+            self.render();
+        }
+    }
+    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_down(lines);
+            self.render();
+        }
+    }
+    fn get_pane_at(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
+        if let Some(pane_id) = self.get_pane_id_at(point) {
+            self.panes.get_mut(&pane_id)
+        } else {
+            None
+        }
+    }
+    fn get_pane_id_at(&self, point: &Position) -> Option<PaneId> {
+        if self.fullscreen_is_active {
+            return self.get_active_pane_id();
+        }
+
+        self.get_selectable_panes()
+            .find(|(_, p)| p.contains(point))
+            .map(|(&id, _)| id)
+    }
+    pub fn handle_left_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
+
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.start_selection(&relative_position);
+            self.render();
+        };
+    }
+    fn focus_pane_at(&mut self, point: &Position) {
+        if let Some(clicked_pane) = self.get_pane_id_at(point) {
+            self.active_terminal = Some(clicked_pane);
+            self.render();
+        }
+    }
+    pub fn handle_mouse_release(&mut self, position: &Position) {
+        let active_pane_id = self.get_active_pane_id();
+        // on release, get the selected text from the active pane, and reset it's selection
+        let mut selected_text = None;
+        if active_pane_id != self.get_pane_id_at(position) {
+            if let Some(active_pane_id) = active_pane_id {
+                if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                    active_pane.end_selection(None);
+                    selected_text = active_pane.get_selected_text();
+                    active_pane.reset_selection();
+                    self.render();
+                }
+            }
+        } else if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.end_selection(Some(&relative_position));
+            selected_text = pane.get_selected_text();
+            pane.reset_selection();
+            self.render();
+        }
+
+        if let Some(selected_text) = selected_text {
+            self.write_selection_to_clipboard(&selected_text);
+        }
+    }
+    pub fn handle_mouse_hold(&mut self, position: &Position) {
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                let relative_position = active_pane.relative_position(position);
+                active_pane.update_selection(&relative_position);
+            }
+        }
+        self.render();
+    }
+
+    pub fn copy_selection(&self) {
+        let selected_text = self.get_active_pane().and_then(|p| p.get_selected_text());
+        if let Some(selected_text) = selected_text {
+            self.write_selection_to_clipboard(&selected_text);
+        }
+    }
+
+    fn write_selection_to_clipboard(&self, selection: &str) {
+        let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection));
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(output)))
+            .unwrap();
     }
 }
 

@@ -27,6 +27,9 @@ pub struct Options {
     /// subdirectory of config dir
     #[structopt(long, parse(from_os_str))]
     pub layout_dir: Option<PathBuf>,
+    #[structopt(long)]
+    #[serde(default)]
+    pub disable_mouse_mode: bool,
 }
 
 impl Options {
@@ -68,12 +71,19 @@ impl Options {
             other => other,
         };
 
+        let disable_mouse_mode = if other.disable_mouse_mode {
+            true
+        } else {
+            self.disable_mouse_mode
+        };
+
         Options {
             simplified_ui,
             theme,
             default_mode,
             default_shell,
             layout_dir,
+            disable_mouse_mode,
         }
     }
 

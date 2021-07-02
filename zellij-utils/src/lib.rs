@@ -6,6 +6,7 @@ pub mod input;
 pub mod ipc;
 pub mod logging;
 pub mod pane_size;
+pub mod position;
 pub mod setup;
 pub mod shared;
 

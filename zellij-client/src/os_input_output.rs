@@ -1,14 +1,16 @@
-use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+use zellij_utils::input::actions::Action;
+use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
+use mio::{unix::SourceFd, Events, Interest, Poll, Token};
 use nix::pty::Winsize;
 use nix::sys::termios;
 use signal_hook::{consts::signal::*, iterator::Signals};
-use std::io;
 use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::{io, time};
 use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
@@ -60,6 +62,7 @@ pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
+    mouse_term: Arc<Mutex<Option<termion::input::MouseTerminal<std::io::Stdout>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -88,6 +91,10 @@ pub trait ClientOsApi: Send + Sync {
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
     fn load_palette(&self) -> Palette;
+    fn enable_mouse(&self);
+    fn disable_mouse(&self);
+    // Repeatedly send action, until stdin is readable again
+    fn start_action_repeater(&mut self, action: Action);
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -180,6 +187,31 @@ impl ClientOsApi for ClientOsInputOutput {
         // };
         default_palette()
     }
+    fn enable_mouse(&self) {
+        let mut mouse_term = self.mouse_term.lock().unwrap();
+        if mouse_term.is_none() {
+            *mouse_term = Some(termion::input::MouseTerminal::from(std::io::stdout()));
+        }
+    }
+
+    fn disable_mouse(&self) {
+        let mut mouse_term = self.mouse_term.lock().unwrap();
+        if mouse_term.is_some() {
+            *mouse_term = None;
+        }
+    }
+
+    fn start_action_repeater(&mut self, action: Action) {
+        let mut poller = StdinPoller::default();
+
+        loop {
+            let ready = poller.ready();
+            if ready {
+                break;
+            }
+            self.send_to_server(ClientToServerMsg::Action(action.clone()));
+        }
+    }
 }
 
 impl Clone for Box<dyn ClientOsApi> {
@@ -191,9 +223,54 @@ impl Clone for Box<dyn ClientOsApi> {
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
+    let mouse_term = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
+        mouse_term,
     })
+}
+
+pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
+
+struct StdinPoller {
+    poll: Poll,
+    events: Events,
+    timeout: time::Duration,
+}
+
+impl StdinPoller {
+    // use mio poll to check if stdin is readable without blocking
+    fn ready(&mut self) -> bool {
+        self.poll
+            .poll(&mut self.events, Some(self.timeout))
+            .expect("could not poll stdin for readiness");
+        for event in &self.events {
+            if event.token() == Token(0) && event.is_readable() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl Default for StdinPoller {
+    fn default() -> Self {
+        let stdin = 0;
+        let mut stdin_fd = SourceFd(&stdin);
+        let events = Events::with_capacity(128);
+        let poll = Poll::new().unwrap();
+        poll.registry()
+            .register(&mut stdin_fd, Token(0), Interest::READABLE)
+            .expect("could not create stdin poll");
+
+        let timeout = time::Duration::from_millis(DEFAULT_STDIN_POLL_TIMEOUT_MS);
+
+        Self {
+            poll,
+            events,
+            timeout,
+        }
+    }
 }

@@ -190,6 +190,7 @@ pub enum ScreenContext {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
+    FocusPaneAt,
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
     MoveFocusDown,
@@ -198,7 +199,9 @@ pub enum ScreenContext {
     MoveFocusRightOrNextTab,
     Exit,
     ScrollUp,
+    ScrollUpAt,
     ScrollDown,
+    ScrollDownAt,
     PageScrollUp,
     PageScrollDown,
     ClearScroll,
@@ -219,6 +222,10 @@ pub enum ScreenContext {
     UpdateTabName,
     TerminalResize,
     ChangeMode,
+    LeftClick,
+    MouseRelease,
+    MouseHold,
+    Copy,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

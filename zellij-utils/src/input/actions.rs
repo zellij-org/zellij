@@ -4,6 +4,8 @@ use super::command::RunCommandAction;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
+use crate::position::Position;
+
 /// The four directions (left, right, up, down).
 #[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
@@ -39,8 +41,12 @@ pub enum Action {
     MoveFocusOrTab(Direction),
     /// Scroll up in focus pane.
     ScrollUp,
+    /// Scroll up at point
+    ScrollUpAt(Position),
     /// Scroll down in focus pane.
     ScrollDown,
+    /// Scroll down at point
+    ScrollDownAt(Position),
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -70,4 +76,8 @@ pub enum Action {
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
+    LeftClick(Position),
+    MouseRelease(Position),
+    MouseHold(Position),
+    Copy,
 }

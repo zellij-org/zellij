@@ -1,6 +1,12 @@
 //! Main input logic.
 
-use zellij_utils::{termion, zellij_tile};
+use zellij_utils::{
+    input::{
+        mouse::{MouseButton, MouseEvent},
+        options::Options,
+    },
+    termion, zellij_tile,
+};
 
 use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
 use zellij_utils::{
@@ -20,6 +26,7 @@ struct InputHandler {
     mode: InputMode,
     os_input: Box<dyn ClientOsApi>,
     config: Config,
+    options: Options,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
@@ -32,6 +39,7 @@ impl InputHandler {
         os_input: Box<dyn ClientOsApi>,
         command_is_executing: CommandIsExecuting,
         config: Config,
+        options: Options,
         send_client_instructions: SenderWithContext<ClientInstruction>,
         mode: InputMode,
     ) -> Self {
@@ -39,6 +47,7 @@ impl InputHandler {
             mode,
             os_input,
             config,
+            options,
             command_is_executing,
             send_client_instructions,
             should_exit: false,
@@ -54,6 +63,10 @@ impl InputHandler {
         let alt_left_bracket = vec![27, 91];
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
+
+        if !self.options.disable_mouse_mode {
+            self.os_input.enable_mouse();
+        }
         loop {
             if self.should_exit {
                 break;
@@ -65,6 +78,10 @@ impl InputHandler {
                         termion::event::Event::Key(key) => {
                             let key = cast_termion_key(key);
                             self.handle_key(&key, raw_bytes);
+                        }
+                        termion::event::Event::Mouse(me) => {
+                            let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+                            self.handle_mouse_event(&mouse_event);
                         }
                         termion::event::Event::Unsupported(unsupported_key) => {
                             // we have to do this because of a bug in termion
@@ -81,10 +98,6 @@ impl InputHandler {
                                 // in this case we just forward it to the terminal
                                 self.handle_unknown_key(raw_bytes);
                             }
-                        }
-                        termion::event::Event::Mouse(_) => {
-                            // Mouse events aren't implemented yet,
-                            // use a NoOp untill then.
                         }
                     },
                     Err(err) => panic!("Encountered read error: {:?}", err),
@@ -114,6 +127,30 @@ impl InputHandler {
                 if should_exit {
                     self.should_exit = true;
                 }
+            }
+        }
+    }
+    fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
+        match *mouse_event {
+            MouseEvent::Press(button, point) => match button {
+                MouseButton::WheelUp => {
+                    self.dispatch_action(Action::ScrollUpAt(point));
+                }
+                MouseButton::WheelDown => {
+                    self.dispatch_action(Action::ScrollDownAt(point));
+                }
+                MouseButton::Left => {
+                    self.dispatch_action(Action::LeftClick(point));
+                }
+                _ => {}
+            },
+            MouseEvent::Release(point) => {
+                self.dispatch_action(Action::MouseRelease(point));
+            }
+            MouseEvent::Hold(point) => {
+                self.dispatch_action(Action::MouseHold(point));
+                self.os_input
+                    .start_action_repeater(Action::MouseHold(point));
             }
         }
     }
@@ -180,6 +217,7 @@ impl InputHandler {
 pub(crate) fn input_loop(
     os_input: Box<dyn ClientOsApi>,
     config: Config,
+    options: Options,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
@@ -188,6 +226,7 @@ pub(crate) fn input_loop(
         os_input,
         command_is_executing,
         config,
+        options,
         send_client_instructions,
         default_mode,
     )

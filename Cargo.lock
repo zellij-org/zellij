@@ -190,12 +190,12 @@ checksum = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 
 [[package]]
 name = "atty"
-version = "0.2.14"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
+checksum = "9a7d5b8723950951411ee34d271d99dddcc2035a16ab25310ea2c8cfd4369652"
 dependencies = [
- "hermit-abi",
  "libc",
+ "termion",
  "winapi",
 ]
 
@@ -219,6 +219,12 @@ dependencies = [
  "object 0.25.2",
  "rustc-demangle",
 ]
+
+[[package]]
+name = "base64"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "bincode"
@@ -2457,6 +2463,7 @@ name = "zellij-client"
 version = "0.14.0"
 dependencies = [
  "insta",
+ "mio",
  "termbg",
  "zellij-utils",
 ]
@@ -2467,6 +2474,7 @@ version = "0.14.0"
 dependencies = [
  "ansi_term 0.12.1",
  "async-trait",
+ "base64",
  "cassowary",
  "daemonize",
  "insta",
