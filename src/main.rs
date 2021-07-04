@@ -12,9 +12,7 @@ use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
     cli::{CliArgs, Command, Sessions},
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
-    input::config::Config,
-    input::layout::Layout,
-    input::options::Options,
+    input::{config::Config, layout::Layout, options::Options},
     logging::*,
     setup::{find_default_config_dir, get_default_data_dir, get_layout_dir, Setup},
     structopt::StructOpt,
@@ -25,8 +23,6 @@ pub fn main() {
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
         list_sessions();
-    } else if let Some(Command::Setup(ref setup)) = opts.command {
-        Setup::from_cli(setup, &opts).expect("Failed to print to stdout");
     }
 
     let config = match Config::try_from(&opts) {
@@ -37,6 +33,10 @@ pub fn main() {
         }
     };
     let config_options = Options::from_cli(&config.options, opts.command.clone());
+
+    if let Some(Command::Setup(ref setup)) = opts.command {
+        Setup::from_cli(setup, &opts, &config_options).expect("Failed to print to stdout");
+    }
 
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
     atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();

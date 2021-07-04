@@ -2,10 +2,10 @@ use crate::cli::CliArgs;
 use crate::consts::{
     FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION, ZELLIJ_PROJ_DIR,
 };
+use crate::input::options::Options;
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::{path::Path, path::PathBuf};
+use std::{io::Write, path::Path, path::PathBuf};
 use structopt::StructOpt;
 
 const CONFIG_LOCATION: &str = ".config/zellij";
@@ -117,13 +117,14 @@ pub struct Setup {
     #[structopt(long)]
     pub check: bool,
 
+    /// Generates completion for the specified shell
     #[structopt(long)]
     pub generate_completion: Option<String>,
 }
 
 impl Setup {
     /// Entrypoint from main
-    pub fn from_cli(&self, opts: &CliArgs) -> std::io::Result<()> {
+    pub fn from_cli(&self, opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
         if self.clean {
             return Ok(());
         }
@@ -134,7 +135,7 @@ impl Setup {
         }
 
         if self.check {
-            Setup::check_defaults_config(opts)?;
+            Setup::check_defaults_config(opts, config_options)?;
             std::process::exit(0);
         }
 
@@ -146,11 +147,14 @@ impl Setup {
         Ok(())
     }
 
-    pub fn check_defaults_config(opts: &CliArgs) -> std::io::Result<()> {
+    pub fn check_defaults_config(opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
         let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
         let config_dir = opts.config_dir.clone().or_else(find_default_config_dir);
         let plugin_dir = data_dir.join("plugins");
-        let layout_dir = data_dir.join("layouts");
+        let layout_dir = config_options
+            .layout_dir
+            .clone()
+            .or_else(|| get_layout_dir(config_dir.clone()));
         let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
         let config_file = opts
             .config
@@ -192,7 +196,11 @@ impl Setup {
         }
         message.push_str(&format!("[DATA DIR]: {:?}\n", data_dir));
         message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
-        message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
+        if let Some(layout_dir) = layout_dir {
+            message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
+        } else {
+            message.push_str("[CONFIG FILE]: Not Found\n");
+        }
         message.push_str(&format!("[SYSTEM DATA DIR]: {:?}\n", system_data_dir));
 
         message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
