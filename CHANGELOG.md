@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add option to specify a default shell (https://github.com/zellij-org/zellij/pull/594)
 * Add action to run bound commands in a pane (https://github.com/zellij-org/zellij/pull/596)
 * Initial mouse support (https://github.com/zellij-org/zellij/pull/448)
+* Add `layout-dir` to `setup --check` subcommand (https://github.com/zellij-org/zellij/pull/599)
 
 ## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)
