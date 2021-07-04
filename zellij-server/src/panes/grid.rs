@@ -1766,9 +1766,10 @@ impl Perform for Grid {
                 _ => {}
             }
         } else {
-            let result = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
-            #[cfg(not(any(feature = "test", test)))]
-            result.unwrap();
+            drop(debug_log_to_file(format!(
+                "Unhandled csi: {}->{:?}",
+                c, params
+            )));
         }
     }
 

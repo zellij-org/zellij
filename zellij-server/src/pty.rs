@@ -198,7 +198,6 @@ fn stream_terminal_bytes(
             }
             async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
 
-            #[cfg(not(any(feature = "test", test)))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now

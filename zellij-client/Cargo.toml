@@ -16,5 +16,3 @@ zellij-utils = { path = "../zellij-utils/", version = "0.15.0" }
 [dev-dependencies]
 insta = "1.6.0"
 
-[features]
-test = ["zellij-utils/test"]
