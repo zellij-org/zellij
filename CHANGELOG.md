@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
-## [0.15.0] - 2021-07-05
+## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
 * Change layout directory from data to config (https://github.com/zellij-org/zellij/pull/577)
   POSSIBLE BREAKING CHANGE:
