@@ -273,9 +273,20 @@ impl Pty {
             PaneId::Terminal(id) => {
                 let child_pid = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
-                self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
                 task::block_on(async {
-                    handle.cancel().await;
+                    self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
+                    let timeout = Duration::from_millis(100);
+                    match async_timeout(timeout, handle.cancel()).await {
+                        Ok(_) => {}
+                        _ => {
+                            self.bus
+                                .os_input
+                                .as_mut()
+                                .unwrap()
+                                .force_kill(child_pid)
+                                .unwrap();
+                        }
+                    };
                 });
             }
             PaneId::Plugin(pid) => drop(
