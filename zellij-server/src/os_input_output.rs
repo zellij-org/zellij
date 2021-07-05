@@ -72,23 +72,21 @@ fn handle_command_exit(mut child: Child) {
             Err(e) => panic!("error attempting to wait: {}", e),
         }
 
-        if should_exit == false {
+        if !should_exit {
             for signal in signals.pending() {
-                 if signal == SIGINT || signal == SIGTERM {
-                     should_exit = true;
-                 }
+                if signal == SIGINT || signal == SIGTERM {
+                    should_exit = true;
+                }
             }
+        } else if attempts > 0 {
+            // let's try nicely first...
+            attempts -= 1;
+            kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM)).unwrap();
+            continue;
         } else {
-            if attempts > 0 {
-                // let's try nicely first...
-                attempts -= 1;
-                kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM)).unwrap();
-                continue;
-            } else {
-                // when I say whoa, I mean WHOA!
-                let _ = child.kill();
-                break 'handle_exit;
-            }
+            // when I say whoa, I mean WHOA!
+            let _ = child.kill();
+            break 'handle_exit;
         }
     }
 }
@@ -102,9 +100,7 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
             Ok(fork_pty_res) => {
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
-                    ForkResult::Parent { child } => {
-                        child
-                    }
+                    ForkResult::Parent { child } => child,
                     ForkResult::Child => {
                         let child = Command::new(cmd.command)
                             .args(&cmd.args)

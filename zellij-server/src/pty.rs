@@ -277,10 +277,15 @@ impl Pty {
                     self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
                     let timeout = Duration::from_millis(100);
                     match async_timeout(timeout, handle.cancel()).await {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         _ => {
-                            self.bus.os_input.as_mut().unwrap().force_kill(child_pid).unwrap();
-                        },
+                            self.bus
+                                .os_input
+                                .as_mut()
+                                .unwrap()
+                                .force_kill(child_pid)
+                                .unwrap();
+                        }
                     };
                 });
             }
