@@ -44,6 +44,9 @@ impl ServerOsApi for FakeInputOutput {
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         unimplemented!()
     }
+    fn force_kill(&self, _pid: Pid) -> Result<(), nix::Error> {
+        unimplemented!()
+    }
     fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {
         unimplemented!()
     }

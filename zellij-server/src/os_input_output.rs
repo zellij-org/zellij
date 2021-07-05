@@ -54,8 +54,9 @@ pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
 fn handle_command_exit(mut child: Child) {
-    // register the SIGINT signal (TODO handle more signals)
-    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT]).unwrap();
+    let mut should_exit = false;
+    let mut attempts = 3;
+    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).unwrap();
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {
@@ -66,15 +67,26 @@ fn handle_command_exit(mut child: Child) {
                 break 'handle_exit;
             }
             Ok(None) => {
-                ::std::thread::sleep(::std::time::Duration::from_millis(100));
+                ::std::thread::sleep(::std::time::Duration::from_millis(10));
             }
             Err(e) => panic!("error attempting to wait: {}", e),
         }
 
-        for signal in signals.pending() {
-            if let SIGINT = signal {
-                child.kill().unwrap();
-                child.wait().unwrap();
+        if should_exit == false {
+            for signal in signals.pending() {
+                 if signal == SIGINT || signal == SIGTERM {
+                     should_exit = true;
+                 }
+            }
+        } else {
+            if attempts > 0 {
+                // let's try nicely first...
+                attempts -= 1;
+                kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM)).unwrap();
+                continue;
+            } else {
+                // when I say whoa, I mean WHOA!
+                let _ = child.kill();
                 break 'handle_exit;
             }
         }
@@ -91,7 +103,6 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
                 let pid_primary = fork_pty_res.master;
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => {
-                        // fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::empty())).expect("could not fcntl");
                         child
                     }
                     ForkResult::Child => {
@@ -205,8 +216,10 @@ pub trait ServerOsApi: Send + Sync {
     fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error>;
-    /// Terminate the process with process ID `pid`.
+    /// Terminate the process with process ID `pid`. (SIGTERM)
     fn kill(&self, pid: Pid) -> Result<(), nix::Error>;
+    /// Terminate the process with process ID `pid`. (SIGKILL)
+    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     /// Receives a message on server-side IPC channel
@@ -252,14 +265,12 @@ impl ServerOsApi for ServerOsInputOutput {
         Box::new((*self).clone())
     }
     fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
-        // TODO:
-        // Ideally, we should be using SIGINT rather than SIGKILL here, but there are cases in which
-        // the terminal we're trying to kill hangs on SIGINT and so all the app gets stuck
-        // that's why we're sending SIGKILL here
-        // A better solution would be to send SIGINT here and not wait for it, and then have
-        // a background thread do the waitpid stuff and send SIGKILL if the process is stuck
-        kill(pid, Some(Signal::SIGKILL)).unwrap();
+        kill(pid, Some(Signal::SIGTERM)).unwrap();
         waitpid(pid, None).unwrap();
+        Ok(())
+    }
+    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
+        let _ = kill(pid, Some(Signal::SIGKILL));
         Ok(())
     }
     fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
