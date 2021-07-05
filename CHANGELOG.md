@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Kill children properly (https://github.com/zellij-org/zellij/pull/601)
 
 ## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
