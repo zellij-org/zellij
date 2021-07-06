@@ -403,6 +403,7 @@ impl Screen {
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();
+            tab.mark_active_pane_for_rerender();
         }
     }
     pub fn move_focus_left_or_previous_tab(&mut self) {

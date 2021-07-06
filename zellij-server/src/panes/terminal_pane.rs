@@ -7,6 +7,7 @@ use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_tile::data::Palette;
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::logging::debug_log_to_file;
 
 use crate::panes::AnsiCode;
 use crate::panes::{
@@ -20,6 +21,9 @@ use crate::tab::Pane;
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
+use crate::ui::boundaries::boundary_type;
+use ansi_term::Colour::{Fixed, RGB};
+
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
     Terminal(RawFd),
@@ -30,12 +34,13 @@ pub struct TerminalPane {
     pub grid: Grid,
     pub pid: RawFd,
     pub selectable: bool,
-    pub position_and_size: PositionAndSize,
-    pub position_and_size_override: Option<PositionAndSize>,
+    position_and_size: PositionAndSize,
+    position_and_size_override: Option<PositionAndSize>,
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
+    boundaries_frame: Option<PaneBoundariesFrame>,
 }
 
 impl Pane for TerminalPane {
@@ -51,12 +56,21 @@ impl Pane for TerminalPane {
     fn columns(&self) -> usize {
         self.get_columns()
     }
+    fn get_content_columns(&self) -> usize {
+        self.get_content_columns()
+    }
+    fn get_content_rows(&self) -> usize {
+        self.get_content_rows()
+    }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
         self.reflow_lines();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(*position_and_size);
+        }
         self.reflow_lines();
     }
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
@@ -78,7 +92,13 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
-        self.grid.cursor_coordinates()
+        // self.grid.cursor_coordinates()
+        if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+            // TODO: better
+            self.grid.cursor_coordinates().map(|(x, y)| (x + 1, y + 1))
+        } else {
+            self.grid.cursor_coordinates()
+        }
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
@@ -135,6 +155,8 @@ impl Pane for TerminalPane {
         self.grid.should_render = should_render;
     }
     fn render_full_viewport(&mut self) {
+        // this marks the pane for a full re-render, rather than just rendering the
+        // diff as it usually does with the OutputBuffer
         self.grid.render_full_viewport();
     }
     fn selectable(&self) -> bool {
@@ -175,8 +197,8 @@ impl Pane for TerminalPane {
             }
             let max_width = self.columns();
             for character_chunk in self.grid.read_changes() {
-                let pane_x = self.get_x();
-                let pane_y = self.get_y();
+                let pane_x = self.get_content_x();
+                let pane_y = self.get_content_y();
                 let chunk_absolute_x = pane_x + character_chunk.x;
                 let chunk_absolute_y = pane_y + character_chunk.y;
                 let terminal_characters = character_chunk.terminal_characters;
@@ -212,6 +234,9 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
+            if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+                vte_output.push_str(&boundaries_frame.render());
+            }
             self.set_should_render(false);
             Some(vte_output)
         } else {
@@ -224,50 +249,86 @@ impl Pane for TerminalPane {
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
         self.position_and_size.rows -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn increase_height_down(&mut self, count: usize) {
         self.position_and_size.rows += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         self.position_and_size.rows += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn reduce_height_up(&mut self, count: usize) {
         self.position_and_size.rows -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
         self.position_and_size.cols -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.cols -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         self.position_and_size.cols += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.cols += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
         self.reflow_lines();
     }
     fn push_down(&mut self, count: usize) {
         self.position_and_size.y += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
     }
     fn push_right(&mut self, count: usize) {
         self.position_and_size.x += count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
     }
     fn pull_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
     }
     fn pull_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(self.position_and_size);
+        }
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
@@ -337,12 +398,137 @@ impl Pane for TerminalPane {
     fn get_selected_text(&self) -> Option<String> {
         self.grid.get_selected_text()
     }
+
+    fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.set_color(color);
+        }
+    }
+}
+
+struct PaneBoundariesFrame {
+    pub position_and_size: PositionAndSize,
+    color: Option<PaletteColor>,
+}
+
+
+fn color_string(character: &str, color: Option<PaletteColor>) -> String {
+    match color {
+        Some(color) => match color {
+            PaletteColor::Rgb((r, g, b)) => {
+                format!("{}", RGB(r, g, b).paint(character))
+            }
+            PaletteColor::EightBit(color) => {
+                format!("{}", Fixed(color).paint(character))
+            }
+        },
+        None => format!("{}", character),
+    }
+}
+
+impl PaneBoundariesFrame {
+    pub fn new(position_and_size: PositionAndSize) -> Self {
+        PaneBoundariesFrame {
+            position_and_size,
+            color: None,
+        }
+    }
+    pub fn change_pos_and_size(&mut self, position_and_size: PositionAndSize) {
+        self.position_and_size = position_and_size;
+    }
+    pub fn set_color(&mut self, color: Option<PaletteColor>) {
+        self.color = color;
+    }
+    pub fn render(&self) -> String {
+        let mut vte_output = String::new();
+        for row in self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows) {
+            if row == self.position_and_size.y {
+                // top row
+                for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
+                    if col == self.position_and_size.x {
+                        // top left corner
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::TOP_LEFT, self.color),
+                        )); // goto row/col + boundary character
+                    } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
+                        // top right corner
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::TOP_RIGHT, self.color),
+                        )); // goto row/col + boundary character
+                    } else {
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::HORIZONTAL, self.color),
+                        )); // goto row/col + boundary character
+                    }
+                }
+            } else if row == self.position_and_size.y + self.position_and_size.rows - 1 {
+                // bottom row
+                for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
+                    if col == self.position_and_size.x {
+                        // bottom left corner
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::BOTTOM_LEFT, self.color),
+                        )); // goto row/col + boundary character
+                    } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
+                        // bottom right corner
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::BOTTOM_RIGHT, self.color),
+                        )); // goto row/col + boundary character
+                    } else {
+                        vte_output.push_str(&format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            row + 1, // +1 because goto is 1 indexed
+                            col + 1,
+                            color_string(boundary_type::HORIZONTAL, self.color),
+                        )); // goto row/col + boundary character
+                    }
+                }
+            } else {
+                vte_output.push_str(&format!(
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    row + 1, // +1 because goto is 1 indexed
+                    self.position_and_size.x + 1,
+                    color_string(boundary_type::VERTICAL, self.color),
+                )); // goto row/col + boundary character
+                vte_output.push_str(&format!(
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    row + 1, // +1 because goto is 1 indexed
+                    self.position_and_size.x + self.position_and_size.cols,
+                    color_string(boundary_type::VERTICAL, self.color),
+                )); // goto row/col + boundary character
+            }
+        }
+        vte_output
+    }
 }
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
-        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
+        let boundaries_frame = PaneBoundariesFrame::new(position_and_size);
+
+        let grid_position_and_size = position_and_size.reduce_outer_frame(1);
+        let grid = Grid::new(
+            grid_position_and_size.rows,
+            grid_position_and_size.cols,
+            palette
+        );
         TerminalPane {
+            boundaries_frame: Some(boundaries_frame),
             pid,
             grid,
             selectable: true,
@@ -355,32 +541,76 @@ impl TerminalPane {
         }
     }
     pub fn get_x(&self) -> usize {
-        match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.x,
-            None => self.position_and_size.x as usize,
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.x,
+            (None, Some(boundaries_frame)) => boundaries_frame.position_and_size.x,
+            _ => self.position_and_size.x as usize,
         }
     }
     pub fn get_y(&self) -> usize {
-        match self.position_and_size_override {
-            Some(position_and_size_override) => position_and_size_override.y,
-            None => self.position_and_size.y as usize,
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.y,
+            (None, Some(boundaries_frame)) => boundaries_frame.position_and_size.y,
+            _ => self.position_and_size.y as usize,
         }
     }
     pub fn get_columns(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.cols,
-            None => self.position_and_size.cols as usize,
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.cols,
+            (None, Some(boundaries_frame)) => boundaries_frame.position_and_size.cols,
+            _ => self.position_and_size.cols as usize,
         }
     }
     pub fn get_rows(&self) -> usize {
-        match &self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows as usize,
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.rows,
+            (None, Some(boundaries_frame)) => boundaries_frame.position_and_size.rows,
+            _ => self.position_and_size.rows as usize,
+        }
+    }
+    pub fn get_content_x(&self) -> usize {
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.x,
+            (None, Some(boundaries_frame)) => {
+                boundaries_frame.position_and_size.x + 1
+            }
+            _ => self.position_and_size.x as usize,
+        }
+    }
+    pub fn get_content_y(&self) -> usize {
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.y,
+            (None, Some(boundaries_frame)) => {
+                boundaries_frame.position_and_size.y + 1
+            }
+            _ => self.position_and_size.y as usize,
+        }
+    }
+    pub fn get_content_columns(&self) -> usize {
+        // content columns might differ from the pane's columns if the pane has a frame
+        // in that case they would be 2 less
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.cols,
+            (None, Some(boundaries_frame)) => {
+                boundaries_frame.position_and_size.cols - 2
+            }
+            _ => self.position_and_size.cols as usize,
+        }
+    }
+    pub fn get_content_rows(&self) -> usize {
+        // content rows might differ from the pane's rows if the pane has a frame
+        // in that case they would be 2 less
+        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+            (Some(position_and_size_override), _) => position_and_size_override.rows,
+            (None, Some(boundaries_frame)) => {
+                boundaries_frame.position_and_size.rows - 2
+            }
+            _ => self.position_and_size.rows as usize,
         }
     }
     fn reflow_lines(&mut self) {
-        let rows = self.get_rows();
-        let columns = self.get_columns();
+        let rows = self.get_content_rows();
+        let columns = self.get_content_columns();
         self.grid.change_size(rows, columns);
         self.set_should_render(true);
     }
@@ -391,6 +621,12 @@ impl TerminalPane {
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
+//         if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+//             // TODO: better
+//             self.grid.cursor_coordinates().map(|(x, y)| (x + 1, y + 1))
+//         } else {
+//             self.grid.cursor_coordinates()
+//         }
     }
 }
 
