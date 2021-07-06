@@ -12,7 +12,7 @@ const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.yaml";
 static ARROW_SEPARATOR: &str = "";
 
-#[cfg(not(any(feature = "test", test)))]
+#[cfg(not(test))]
 /// Goes through a predefined list and checks for an already
 /// existing config directory, returns the first match
 pub fn find_default_config_dir() -> Option<PathBuf> {
@@ -23,7 +23,7 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
         .flatten()
 }
 
-#[cfg(any(feature = "test", test))]
+#[cfg(test)]
 pub fn find_default_config_dir() -> Option<PathBuf> {
     None
 }

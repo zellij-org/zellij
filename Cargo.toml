@@ -22,9 +22,6 @@ zellij-utils = { path = "zellij-utils/", version = "0.15.0" }
 insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"
 rand = "0.8.0"
-zellij-utils = { path = "zellij-utils/", version = "0.15.0", features = ["test"] }
-zellij-client = { path = "zellij-client/", version = "0.15.0", features = ["test"] }
-zellij-server = { path = "zellij-server/", version = "0.15.0", features = ["test"] }
 
 [workspace]
 members = [
