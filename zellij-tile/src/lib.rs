@@ -19,6 +19,7 @@ macro_rules! register_plugin {
         }
 
         fn main() {
+            dbg!("hello from plugin main :)");
             STATE.with(|state| {
                 state.borrow_mut().load();
             });

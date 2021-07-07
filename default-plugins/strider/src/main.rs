@@ -10,6 +10,7 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         dbg!("hello from load");
+        dbg!("hello from load2?");
         refresh_directory(self);
         subscribe(&[EventType::KeyPress]);
     }

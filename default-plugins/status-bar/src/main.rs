@@ -133,6 +133,7 @@ fn color_elements(palette: Palette) -> ColoredElements {
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
+        dbg!("hello from load");
         set_selectable(false);
         set_invisible_borders(true);
         set_fixed_height(2);
