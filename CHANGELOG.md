@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
+* Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
 
 ## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
