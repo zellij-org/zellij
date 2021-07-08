@@ -7,6 +7,8 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use wasmer_wasi::{WasiFile, WasiFsError};
 
+// 16kB log buffer
+const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DecoratingPipe {
     buffer: VecDeque<u8>,
@@ -36,6 +38,19 @@ impl Read for DecoratingPipe {
 impl Write for DecoratingPipe {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend(buf);
+
+        if self.buffer.len() > ZELLIJ_MAX_PIPE_BUFFER_SIZE {
+            let error_msg =
+                "Exceeded log buffer size. Make sure that your plugin calls flush on stderr on \
+                valid UTF-8 symbol boundary. Aditionally, make sure that your log message contains \
+                endline \\n symbol.";
+            error!("{}: {}", self.plugin_name, error_msg);
+            self.buffer.clear();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                error_msg,
+            ));
+        }
 
         Ok(buf.len())
     }
@@ -183,5 +198,23 @@ mod decorating_pipe_test {
         pipe.flush().expect("Err flush");
 
         assert_eq!(pipe.buffer.len(), 0);
+    }
+
+    #[test]
+    fn write_with_incorrect_byte_boundary_does_not_crash() {
+        let mut pipe = DecoratingPipe::new("TestPipe");
+
+        let test_buffer = "😱".as_bytes();
+
+        // make sure it's not valid utf-8 string if we drop last symbol
+        assert!(std::str::from_utf8(&test_buffer[..test_buffer.len() - 1]).is_err());
+
+        pipe.write(&test_buffer[..test_buffer.len() - 1])
+            .expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), test_buffer.len() - 1);
+
+        println!("len: {}, buf: {:?}", test_buffer.len(), test_buffer);
     }
 }
