@@ -7,34 +7,37 @@ appenders:
     kind: console
     target: stderr
 
+  # default zellij appender, should be used across most of the codebase.
   logFile:
     kind: file
     path: "zellij.log"
     append: false
     encoder:
-      pattern: "{h(|{M}| {d} {l} [{T}] [{f}:{L}]: {m})} {n}"
+      # {n} means platform dependent newline
+      pattern: "|{module}| {date} {highlight({level})} [{thread}] [{file}:{line}]: {message} {n}"
 
+  # plugin appender. To be used in decorating_pipe to forward stderr output from plugins.
   logPlugin:
     kind: file
     path: "zellij.log"
     encoder:
-      pattern: "{m} {n}"
+      # {n} means platform dependent newline
+      pattern: "{message} {n}"
 
-  # An appender named "requests" that writes to a file with a custom pattern encoder
-  requests:
-    kind: file
-    path: "requests.log"
-    encoder:
-      pattern: "{d} - {m}{n}"
-
-# Set the default logging level to "warn" and attach the "stdout" appender to the root
+# Set the default logging level to "info" and log it to zellij.log file
 root:
   level: info
   appenders:
     - logFile
 
 loggers:
-  # Raise the maximum log level for events sent to the "app::backend::db" logger to "info"
+  # decrease verbosity for this module because it has a lot of useless info logs
+  wasmer_compiler_cranelift:
+    level: warn
+    appenders:
+      - logFile
+
+  # For decorating_pipe, we use custom format as we use logging macros to forward stderr output from plugins
   zellij_server::decorating_pipe:
     level: trace
     appenders:
