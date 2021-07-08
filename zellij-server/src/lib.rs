@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use wasmer::Store;
-use zellij_tile::data::{Event, Palette, PluginCapabilities};
+use zellij_tile::data::{Event, ModeInfo, Palette, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -31,7 +31,6 @@ use zellij_utils::{
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
-        get_mode_info,
         layout::Layout,
         options::Options,
     },
@@ -235,7 +234,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
-                    get_mode_info(default_mode, attrs.palette, session_data.capabilities);
+                    ModeInfo::new(default_mode, attrs.palette, session_data.capabilities);
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone()))

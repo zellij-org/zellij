@@ -144,8 +144,12 @@ fn add_next_tabs_msg(
     title_bar.push(right_more_message);
 }
 
-fn tab_line_prefix(palette: Palette) -> LinePart {
-    let prefix_text = " Zellij ".to_string();
+fn tab_line_prefix(session_name: Option<&str>, palette: Palette) -> LinePart {
+    let mut prefix_text = " Zellij ".to_string();
+    if let Some(name) = session_name {
+        prefix_text.push_str(&format!("({}) ", name));
+    }
+
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = style!(palette.white, palette.cyan)
         .bold()
@@ -165,6 +169,7 @@ pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
 }
 
 pub fn tab_line(
+    session_name: Option<&str>,
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
@@ -181,7 +186,7 @@ pub fn tab_line(
     };
     tabs_to_render.push(active_tab);
 
-    let prefix = tab_line_prefix(palette);
+    let prefix = tab_line_prefix(session_name, palette);
     populate_tabs_in_tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,

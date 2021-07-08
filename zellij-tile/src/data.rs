@@ -148,6 +148,50 @@ pub struct ModeInfo {
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
     pub palette: Palette,
     pub capabilities: PluginCapabilities,
+    pub session_name: Option<String>,
+}
+
+impl ModeInfo {
+    /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
+    /// (as pairs of [`String`]s).
+    pub fn new(mode: InputMode, palette: Palette, capabilities: PluginCapabilities) -> Self {
+        let keybinds = match mode {
+            InputMode::Normal | InputMode::Locked => Vec::new(),
+            InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],
+            InputMode::Pane => vec![
+                ("←↓↑→".to_string(), "Move focus".to_string()),
+                ("p".to_string(), "Next".to_string()),
+                ("n".to_string(), "New".to_string()),
+                ("d".to_string(), "Down split".to_string()),
+                ("r".to_string(), "Right split".to_string()),
+                ("x".to_string(), "Close".to_string()),
+                ("f".to_string(), "Fullscreen".to_string()),
+            ],
+            InputMode::Tab => vec![
+                ("←↓↑→".to_string(), "Move focus".to_string()),
+                ("n".to_string(), "New".to_string()),
+                ("x".to_string(), "Close".to_string()),
+                ("r".to_string(), "Rename".to_string()),
+                ("s".to_string(), "Sync".to_string()),
+            ],
+            InputMode::Scroll => vec![
+                ("↓↑".to_string(), "Scroll".to_string()),
+                ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
+            ],
+            InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
+            InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
+        };
+
+        let session_name = std::env::var("ZELLIJ_SESSION_NAME").ok();
+
+        Self {
+            mode,
+            keybinds,
+            palette,
+            capabilities,
+            session_name,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

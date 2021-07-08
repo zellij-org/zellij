@@ -10,56 +10,7 @@ pub mod options;
 pub mod theme;
 
 use termion::input::TermRead;
-use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
-
-/// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
-/// (as pairs of [`String`]s).
-// TODO this should probably be automatically generated in some way
-pub fn get_mode_info(
-    mode: InputMode,
-    palette: Palette,
-    capabilities: PluginCapabilities,
-) -> ModeInfo {
-    let mut keybinds: Vec<(String, String)> = vec![];
-    match mode {
-        InputMode::Normal | InputMode::Locked => {}
-        InputMode::Resize => {
-            keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
-        }
-        InputMode::Pane => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("p".to_string(), "Next".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("d".to_string(), "Down split".to_string()));
-            keybinds.push(("r".to_string(), "Right split".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("f".to_string(), "Fullscreen".to_string()));
-        }
-        InputMode::Tab => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("r".to_string(), "Rename".to_string()));
-            keybinds.push(("s".to_string(), "Sync".to_string()));
-        }
-        InputMode::Scroll => {
-            keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
-            keybinds.push(("PgUp/PgDn".to_string(), "Scroll Page".to_string()));
-        }
-        InputMode::RenameTab => {
-            keybinds.push(("Enter".to_string(), "when done".to_string()));
-        }
-        InputMode::Session => {
-            keybinds.push(("d".to_string(), "Detach".to_string()));
-        }
-    }
-    ModeInfo {
-        mode,
-        keybinds,
-        palette,
-        capabilities,
-    }
-}
+use zellij_tile::data::Key;
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
     input_bytes.keys().flatten().map(cast_termion_key).collect()

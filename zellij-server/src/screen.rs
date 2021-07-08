@@ -434,14 +434,13 @@ pub(crate) fn screen_thread_main(
         bus,
         &client_attributes,
         max_panes,
-        ModeInfo {
-            palette: client_attributes.palette,
-            capabilities: PluginCapabilities {
+        ModeInfo::new(
+            default_mode,
+            client_attributes.palette,
+            PluginCapabilities {
                 arrow_fonts: capabilities,
             },
-            mode: default_mode,
-            ..ModeInfo::default()
-        },
+        ),
         default_mode,
         session_state,
     );
