@@ -6,7 +6,6 @@ use std::{
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use wasmer_wasi::{WasiFile, WasiFsError};
-use zellij_utils::logging::debug_log_to_file;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DecoratingPipe {
@@ -17,7 +16,6 @@ pub struct DecoratingPipe {
 impl DecoratingPipe {
     pub fn new(plugin_name: &str) -> DecoratingPipe {
         info!("Creating decorating pipe!");
-        debug_log_to_file("Creating decorating pipe!".to_string()).expect("xd");
         DecoratingPipe {
             buffer: VecDeque::new(),
             plugin_name: String::from(plugin_name),
@@ -35,64 +33,37 @@ impl Read for DecoratingPipe {
     }
 }
 
-// TODO: do this better. We're not sure about byte boundaries and endl stuff but, we do expect
-// to get the valid thing eventually
 impl Write for DecoratingPipe {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend(buf);
-
-        debug_log_to_file(format!(
-            "Write called for {}, currentChunk: {}",
-            self.plugin_name,
-            std::str::from_utf8(buf).unwrap()
-        ))
-        .expect("xd2");
 
         Ok(buf.len())
     }
 
     // When we flush, check if current buffer is valid utf8 string, split by '\n' and truncate buffer in the process.
-    // We assume that, eventually, flush will be called on valid string boundary (i.e. std::str::from_utf8(..).is_ok() returns true at some point).
-    // Above assumption might not be true, in which case we'll have to think about it. Also, at some point we might actually require some synchronization
-    // between write and flush (i.e. concurrent writes and flushes?). Make it simple for now.
+    // We assume that eventually, flush will be called on valid string boundary (i.e. std::str::from_utf8(..).is_ok() returns true at some point).
+    // Above assumption might not be true, in which case we'll have to think about it. Make it simple for now.
     fn flush(&mut self) -> std::io::Result<()> {
-        debug_log_to_file(format!(
-            "Flush called for {}, buffer: {:?}",
-            self.plugin_name, self.buffer
-        ))
-        .expect("xd3");
-
         self.buffer.make_contiguous();
 
-        if let Ok(converted_string) = std::str::from_utf8(self.buffer.as_slices().0) {
-            if converted_string.contains('\n') {
+        if let Ok(converted_buffer) = std::str::from_utf8(self.buffer.as_slices().0) {
+            if converted_buffer.contains('\n') {
                 let mut consumed_bytes = 0;
-                let mut split_msg = converted_string.split('\n').peekable();
-                debug_log_to_file(format!(
-                    "Back: {}, len: {}, convertedString: {}",
-                    split_msg.clone().collect::<String>(),
-                    split_msg.clone().count(),
-                    converted_string
-                ))
-                .expect("xD");
-                while let Some(msg) = split_msg.next() {
-                    if split_msg.peek().is_none() {
+                let mut split_converted_buffer = converted_buffer.split('\n').peekable();
+
+                while let Some(msg) = split_converted_buffer.next() {
+                    if split_converted_buffer.peek().is_none() {
                         // Log last chunk iff the last char is endline. Otherwise do not do it.
-                        if converted_string.chars().last().unwrap() == '\n' && !msg.is_empty() {
-                            info!("special case: {}: {}", self.plugin_name, msg);
+                        if converted_buffer.chars().last().unwrap() == '\n' && !msg.is_empty() {
+                            info!("{}: {}", self.plugin_name, msg);
                             consumed_bytes += msg.len() + 1;
                         }
                     } else {
-                        info!("normal case: {}: {}", self.plugin_name, msg);
+                        info!("{}: {}", self.plugin_name, msg);
                         consumed_bytes += msg.len() + 1;
                     }
                 }
                 drop(self.buffer.drain(..consumed_bytes));
-                debug_log_to_file(format!(
-                    "Consumed: {} bytes, buffer: {:?}",
-                    consumed_bytes, self.buffer
-                ))
-                .expect("xd4");
             }
         } else {
             error!("Buffer conversion didn't work. This is unexpected");
@@ -134,5 +105,83 @@ impl WasiFile for DecoratingPipe {
     }
     fn bytes_available(&self) -> Result<usize, WasiFsError> {
         Ok(self.buffer.len())
+    }
+}
+
+// Unit tests
+#[cfg(test)]
+mod decorating_pipe_test {
+
+    use super::*;
+
+    #[test]
+    fn write_without_endl_does_not_consume_buffer_after_flush() {
+        let mut pipe = DecoratingPipe::new("TestPipe");
+
+        let test_buffer = "Testing write".as_bytes();
+
+        pipe.write(test_buffer).expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), test_buffer.len());
+    }
+
+    #[test]
+    fn write_with_single_endl_at_the_end_consumes_whole_buffer_after_flush() {
+        let mut pipe = DecoratingPipe::new("TestPipe");
+
+        let test_buffer = "Testing write \n".as_bytes();
+
+        pipe.write(test_buffer).expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), 0);
+    }
+
+    #[test]
+    fn write_with_endl_in_the_middle_consumes_buffer_up_to_endl_after_flush() {
+        let mut pipe = DecoratingPipe::new("TestPipe");
+
+        let test_buffer = "Testing write \n".as_bytes();
+        let test_buffer2 = "And the rest".as_bytes();
+
+        pipe.write(
+            [
+                test_buffer,
+                test_buffer,
+                test_buffer,
+                test_buffer,
+                test_buffer2,
+            ]
+            .concat()
+            .as_slice(),
+        )
+        .expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), test_buffer2.len());
+    }
+
+    #[test]
+    fn write_with_many_endl_consumes_whole_buffer_after_flush() {
+        let mut pipe = DecoratingPipe::new("TestPipe");
+
+        let test_buffer = "Testing write \n".as_bytes();
+
+        pipe.write(
+            [
+                test_buffer,
+                test_buffer,
+                test_buffer,
+                test_buffer,
+                test_buffer,
+            ]
+            .concat()
+            .as_slice(),
+        )
+        .expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), 0);
     }
 }
