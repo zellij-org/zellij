@@ -55,6 +55,7 @@ pub struct Options {
     #[structopt(long)]
     #[serde(default)]
     pub disable_mouse_mode: bool,
+    /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
     pub on_force_close: Option<OnForceClose>,
 }
