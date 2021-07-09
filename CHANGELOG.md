@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   run:
       plugin: status-bar
   ```
+  * Add `on_force_close` config option (https://github.com/zellij-org/zellij/pull/609)
 
 
 ## [0.14.0] - 2021-07-05
