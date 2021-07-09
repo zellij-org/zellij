@@ -7,3 +7,5 @@ parts:
     run:
       plugin: tab-bar
   - direction: Vertical
+    tabs:
+      - direction: Vertical

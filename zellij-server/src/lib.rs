@@ -9,11 +9,11 @@ mod thread_bus;
 mod ui;
 mod wasm_vm;
 
-use zellij_utils::zellij_tile;
-
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock},
+    thread,
+};
 use wasmer::Store;
 use zellij_tile::data::{Event, Palette, PluginCapabilities};
 
@@ -32,17 +32,23 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::Layout,
+        layout::MainLayout,
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
+    zellij_tile,
 };
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, Option<Layout>),
+    NewClient(
+        ClientAttributes,
+        Box<CliArgs>,
+        Box<Options>,
+        Option<MainLayout>,
+    ),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -204,7 +210,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
-                    layout,
+                    layout.clone(),
                 );
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
@@ -216,14 +222,34 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                session_data
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_pty(PtyInstruction::NewTab(default_shell.clone()))
-                    .unwrap();
+                let spawn_tabs = |tab_layout| {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_pty(PtyInstruction::NewTab(default_shell.clone(), tab_layout))
+                        .unwrap()
+                };
+
+                match layout {
+                    None => {
+                        spawn_tabs(None);
+                    }
+                    Some(layout) => {
+                        if !&layout.tabs.is_empty() {
+                            for tab_layout in layout.tabs {
+                                spawn_tabs(Some(tab_layout.clone()));
+                                // Spawning tabs in too quick succession might mess up the layout
+                                // TODO: investigate why
+                                thread::sleep(std::time::Duration::from_millis(250));
+                            }
+                        } else {
+                            spawn_tabs(None);
+                        }
+                    }
+                }
             }
             ServerInstruction::AttachClient(attrs, _, options) => {
                 *session_state.write().unwrap() = SessionState::Attached;
@@ -299,7 +325,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: Option<Layout>,
+    layout: Option<MainLayout>,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

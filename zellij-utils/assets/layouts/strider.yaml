@@ -7,13 +7,15 @@ parts:
     run:
       plugin: tab-bar
   - direction: Vertical
-    parts:
-      - direction: Horizontal
-        split_size:
-          Percent: 20
-        run:
-          plugin: strider
-      - direction: Horizontal
+    tabs:
+      - direction: Vertical
+        parts:
+        - direction: Horizontal
+          split_size:
+            Percent: 20
+          run:
+            plugin: strider
+        - direction: Horizontal
   - direction: Vertical
     split_size:
       Fixed: 2

@@ -94,7 +94,8 @@ pub fn main() {
                 opts.layout.as_ref(),
                 opts.layout_path.as_ref(),
                 layout_dir,
-            );
+            )
+            .map(|layout| layout.construct_main_layout());
 
             start_client(
                 Box::new(os_input),

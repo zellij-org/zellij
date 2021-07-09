@@ -7,6 +7,8 @@ parts:
     run:
       plugin: tab-bar
   - direction: Vertical
+    tabs:
+      - direction: Vertical
   - direction: Vertical
     split_size:
       Fixed: 2

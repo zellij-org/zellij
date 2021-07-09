@@ -1,6 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
+use super::layout::TabLayout;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
@@ -19,7 +20,7 @@ pub enum Direction {
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
-// as well `../../../assets/config/default.yaml`
+// as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
 #[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
@@ -61,8 +62,8 @@ pub enum Action {
     NewPane(Option<Direction>),
     /// Close the focus pane.
     CloseFocus,
-    /// Create a new tab.
-    NewTab,
+    /// Create a new tab, optionally with a specified tab layout.
+    NewTab(Option<TabLayout>),
     /// Do nothing.
     NoOp,
     /// Go to the next tab.

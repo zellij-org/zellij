@@ -175,11 +175,11 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane)
                 .unwrap();
         }
-        Action::NewTab => {
+        Action::NewTab(tab_layout) => {
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell))
+                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout))
                 .unwrap();
         }
         Action::GoToNextTab => {
