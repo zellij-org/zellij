@@ -1,6 +1,6 @@
 [package]
 name = "zellij-client"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2018"
 description = "The client-side library for Zellij"
@@ -9,8 +9,10 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mio = "0.7.11"
 termbg = "0.2.3"
-zellij-utils = { path = "../zellij-utils/", version = "0.14.0" }
+zellij-utils = { path = "../zellij-utils/", version = "0.15.0" }
 
-[features]
-test = ["zellij-utils/test"]
+[dev-dependencies]
+insta = "1.6.0"
+

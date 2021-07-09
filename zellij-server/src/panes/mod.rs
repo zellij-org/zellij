@@ -1,5 +1,6 @@
 mod grid;
 mod plugin_pane;
+mod selection;
 mod terminal_character;
 mod terminal_pane;
 

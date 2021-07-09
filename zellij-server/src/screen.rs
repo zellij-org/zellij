@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::{input::layout::Layout, zellij_tile};
+use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
     panes::PaneId,
@@ -47,7 +47,9 @@ pub(crate) enum ScreenInstruction {
     MoveFocusRightOrNextTab,
     Exit,
     ScrollUp,
+    ScrollUpAt(Position),
     ScrollDown,
+    ScrollDownAt(Position),
     PageScrollUp,
     PageScrollDown,
     ClearScroll,
@@ -68,6 +70,10 @@ pub(crate) enum ScreenInstruction {
     UpdateTabName(Vec<u8>),
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
+    LeftClick(Position),
+    MouseRelease(Position),
+    MouseHold(Position),
+    Copy,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -119,6 +125,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalResize(_) => ScreenContext::TerminalResize,
             ScreenInstruction::ChangeMode(_) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab => ScreenContext::ToggleActiveSyncTab,
+            ScreenInstruction::ScrollUpAt(_) => ScreenContext::ScrollUpAt,
+            ScreenInstruction::ScrollDownAt(_) => ScreenContext::ScrollDownAt,
+            ScreenInstruction::LeftClick(_) => ScreenContext::LeftClick,
+            ScreenInstruction::MouseRelease(_) => ScreenContext::MouseRelease,
+            ScreenInstruction::MouseHold(_) => ScreenContext::MouseHold,
+            ScreenInstruction::Copy => ScreenContext::Copy,
         }
     }
 }
@@ -393,6 +405,16 @@ impl Screen {
             tab.mode_info = self.mode_info.clone();
         }
     }
+    pub fn move_focus_left_or_previous_tab(&mut self) {
+        if !self.get_active_tab_mut().unwrap().move_focus_left() {
+            self.switch_tab_prev();
+        }
+    }
+    pub fn move_focus_right_or_next_tab(&mut self) {
+        if !self.get_active_tab_mut().unwrap().move_focus_right() {
+            self.switch_tab_next();
+        }
+    }
 }
 
 // The box is here in order to make the
@@ -507,9 +529,7 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_tab_mut().unwrap().move_focus_left();
             }
             ScreenInstruction::MoveFocusLeftOrPreviousTab => {
-                if !screen.get_active_tab_mut().unwrap().move_focus_left() {
-                    screen.switch_tab_prev();
-                }
+                screen.move_focus_left_or_previous_tab();
                 screen
                     .bus
                     .senders
@@ -523,9 +543,7 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_tab_mut().unwrap().move_focus_right();
             }
             ScreenInstruction::MoveFocusRightOrNextTab => {
-                if !screen.get_active_tab_mut().unwrap().move_focus_right() {
-                    screen.switch_tab_next();
-                }
+                screen.move_focus_right_or_next_tab();
                 screen
                     .bus
                     .senders
@@ -541,11 +559,23 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .scroll_active_terminal_up();
             }
+            ScreenInstruction::ScrollUpAt(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_terminal_up(&point, 3);
+            }
             ScreenInstruction::ScrollDown => {
                 screen
                     .get_active_tab_mut()
                     .unwrap()
                     .scroll_active_terminal_down();
+            }
+            ScreenInstruction::ScrollDownAt(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_terminal_down(&point, 3);
             }
             ScreenInstruction::PageScrollUp => {
                 screen
@@ -668,9 +698,34 @@ pub(crate) fn screen_thread_main(
                     .toggle_sync_panes_is_active();
                 screen.update_tabs();
             }
+            ScreenInstruction::LeftClick(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_left_click(&point);
+            }
+            ScreenInstruction::MouseRelease(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_mouse_release(&point);
+            }
+            ScreenInstruction::MouseHold(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_mouse_hold(&point);
+            }
+            ScreenInstruction::Copy => {
+                screen.get_active_tab().unwrap().copy_selection();
+            }
             ScreenInstruction::Exit => {
                 break;
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/screen_tests.rs"]
+mod screen_tests;

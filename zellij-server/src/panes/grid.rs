@@ -7,7 +7,7 @@ use std::{
     str,
 };
 
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::{position::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 const SCROLL_BACK: usize = 10_000;
@@ -20,6 +20,8 @@ use crate::panes::terminal_character::{
     CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
     EMPTY_TERMINAL_CHARACTER,
 };
+
+use super::selection::Selection;
 
 // this was copied verbatim from alacritty
 fn parse_number(input: &[u8]) -> Option<u8> {
@@ -315,6 +317,7 @@ pub struct Grid {
     pub width: usize,
     pub height: usize,
     pub pending_messages_to_pty: Vec<Vec<u8>>,
+    pub selection: Selection,
 }
 
 impl Debug for Grid {
@@ -354,6 +357,7 @@ impl Grid {
             pending_messages_to_pty: vec![],
             colors,
             output_buffer: Default::default(),
+            selection: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -473,6 +477,7 @@ impl Grid {
             self.lines_below.insert(0, line_to_push_down);
             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
             self.viewport.insert(0, line_to_insert_at_viewport_top);
+            self.selection.move_down(1);
         }
         self.output_buffer.update_all_lines();
     }
@@ -488,10 +493,12 @@ impl Grid {
             }
             let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
             self.viewport.push(line_to_insert_at_viewport_bottom);
+            self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
+        self.selection.reset();
         if new_columns != self.width {
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -764,6 +771,7 @@ impl Grid {
                 Some(self.width),
                 None,
             );
+            self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -840,6 +848,7 @@ impl Grid {
                 );
                 let wrapped_row = Row::new(self.width);
                 self.viewport.push(wrapped_row);
+                self.selection.move_up(1);
                 self.output_buffer.update_all_lines();
             } else {
                 self.cursor.y += 1;
@@ -1134,6 +1143,104 @@ impl Grid {
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
+    }
+    pub fn start_selection(&mut self, start: &Position) {
+        let old_selection = self.selection.clone();
+        self.selection.start(*start);
+        self.update_selected_lines(&old_selection, &self.selection.clone());
+        self.mark_for_rerender();
+    }
+    pub fn update_selection(&mut self, to: &Position) {
+        let old_selection = self.selection.clone();
+        self.selection.to(*to);
+        self.update_selected_lines(&old_selection, &self.selection.clone());
+        self.mark_for_rerender();
+    }
+
+    pub fn end_selection(&mut self, end: Option<&Position>) {
+        let old_selection = self.selection.clone();
+        self.selection.end(end);
+        self.update_selected_lines(&old_selection, &self.selection.clone());
+        self.mark_for_rerender();
+    }
+
+    pub fn reset_selection(&mut self) {
+        let old_selection = self.selection.clone();
+        self.selection.reset();
+        self.update_selected_lines(&old_selection, &self.selection.clone());
+        self.mark_for_rerender();
+    }
+    pub fn get_selected_text(&self) -> Option<String> {
+        if self.selection.is_empty() {
+            return None;
+        }
+        let mut selection: Vec<String> = vec![];
+
+        let sorted_selection = self.selection.sorted();
+        let (start, end) = (sorted_selection.start, sorted_selection.end);
+
+        for l in sorted_selection.line_indices() {
+            let mut line_selection = String::new();
+
+            // on the first line of the selection, use the selection start column
+            // otherwise, start at the beginning of the line
+            let start_column = if l == start.line.0 { start.column.0 } else { 0 };
+
+            // same thing on the last line, but with the selection end column
+            let end_column = if l == end.line.0 {
+                end.column.0
+            } else {
+                self.width
+            };
+
+            if start_column == end_column {
+                continue;
+            }
+
+            let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+
+            // get the row from lines_above, viewport, or lines below depending on index
+            let row = if l < 0 {
+                let offset_from_end = l.abs();
+                &self.lines_above[self
+                    .lines_above
+                    .len()
+                    .saturating_sub(offset_from_end as usize)]
+            } else if l >= 0 && (l as usize) < self.viewport.len() {
+                &self.viewport[l as usize]
+            } else if (l as usize) < self.height {
+                // index is in viewport but there is no line
+                &empty_row
+            } else {
+                &self.lines_below[(l as usize) - self.viewport.len()]
+            };
+
+            let excess_width = row.excess_width();
+            let mut line: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
+            // pad line
+            line.resize(
+                self.width.saturating_sub(excess_width),
+                EMPTY_TERMINAL_CHARACTER,
+            );
+
+            let mut terminal_col = 0;
+            for terminal_character in line {
+                if (start_column..end_column).contains(&terminal_col) {
+                    line_selection.push(terminal_character.character);
+                }
+
+                terminal_col += terminal_character.width;
+            }
+            selection.push(String::from(line_selection.trim_end()));
+        }
+
+        Some(selection.join("\n"))
+    }
+
+    fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
+        for l in old_selection.diff(new_selection, self.height) {
+            self.output_buffer.update_line(l as usize);
+        }
     }
 }
 
@@ -1659,9 +1766,10 @@ impl Perform for Grid {
                 _ => {}
             }
         } else {
-            let result = debug_log_to_file(format!("Unhandled csi: {}->{:?}", c, params));
-            #[cfg(not(any(feature = "test", test)))]
-            result.unwrap();
+            drop(debug_log_to_file(format!(
+                "Unhandled csi: {}->{:?}",
+                c, params
+            )));
         }
     }
 

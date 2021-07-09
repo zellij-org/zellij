@@ -1,15 +1,69 @@
+#![allow(unused)]
+
 use ::insta::assert_snapshot;
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::{pane_size::PositionAndSize, position::Position};
 
 use rand::Rng;
 
+use std::path::Path;
+
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
-use crate::tests::utils::commands::{
-    CLOSE_PANE_IN_PANE_MODE, DETACH_IN_SESSION_MODE, ENTER, LOCK_MODE, NEW_TAB_IN_TAB_MODE,
-    PANE_MODE, QUIT, RESIZE_LEFT_IN_RESIZE_MODE, RESIZE_MODE, SCROLL_MODE,
-    SCROLL_UP_IN_SCROLL_MODE, SESSION_MODE, SPLIT_RIGHT_IN_PANE_MODE, TAB_MODE,
-    TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE,
-};
+
+pub const QUIT: [u8; 1] = [17]; // ctrl-q
+pub const ESC: [u8; 1] = [27];
+pub const ENTER: [u8; 1] = [10]; // char '\n'
+pub const LOCK_MODE: [u8; 1] = [7]; // ctrl-g
+
+pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
+pub const MOVE_FOCUS_RIGHT_IN_NORMAL_MODE: [u8; 2] = [27, 108]; // alt-l
+
+pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
+pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
+pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
+pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
+pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
+pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
+pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
+pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
+pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
+pub const MOVE_FOCUS_LEFT_IN_PANE_MODE: [u8; 1] = [104]; // h
+pub const MOVE_FOCUS_RIGHT_IN_PANE_MODE: [u8; 1] = [108]; // l
+
+pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
+pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
+pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
+pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
+pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
+
+pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
+pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
+pub const RESIZE_UP_IN_RESIZE_MODE: [u8; 1] = [107]; // k
+pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
+pub const RESIZE_RIGHT_IN_RESIZE_MODE: [u8; 1] = [108]; // l
+
+pub const TAB_MODE: [u8; 1] = [20]; // ctrl-t
+pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
+pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
+pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
+pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
+
+pub const SESSION_MODE: [u8; 1] = [15]; // ctrl-o
+pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
+
+pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
+pub const SLEEP: [u8; 0] = [];
+
+// simplified, slighty adapted version of alacritty mouse reporting code
+pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
+    let Position { line, column } = position;
+
+    let mut command = vec![b'\x1b', b'[', b'M', 32 + button];
+    command.push(32 + 1 + column.0 as u8);
+    command.push(32 + 1 + line.0 as u8);
+
+    command
+}
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
 // tests
@@ -712,5 +766,174 @@ pub fn detach_and_attach_session() {
         },
     })
     .run_all_steps();
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn accepts_basic_layout() {
+    let fake_win_size = PositionAndSize {
+        cols: 120,
+        rows: 24,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let layout_file_name = "three-panes-with-nesting.yaml";
+    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_file_name, None)
+        .add_step(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(2, 0)
+                    && remote_terminal.snapshot_contains("$ █                    │$")
+                    && remote_terminal.snapshot_contains("$                                                                                                                       ") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .run_all_steps();
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+fn focus_pane_with_mouse() {
+    let fake_win_size = PositionAndSize {
+        cols: 120,
+        rows: 24,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+
+    let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size, None)
+        .add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                    // back to normal mode after split
+                    remote_terminal.send_key(&ENTER);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .add_step(Step {
+            name: "Click left pane",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    remote_terminal.send_key(&normal_mouse_report(Position::new(5, 2), 0));
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .add_step(Step {
+            name: "Wait for left pane to be focused",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(2, 2) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .run_all_steps();
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn scrolling_inside_a_pane_with_mouse() {
+    let fake_win_size = PositionAndSize {
+        cols: 120,
+        rows: 24,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let last_snapshot =
+        RemoteRunner::new("scrolling_inside_a_pane_with_mouse", fake_win_size, None)
+            .add_step(Step {
+                name: "Split pane to the right",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(2, 2)
+                    {
+                        remote_terminal.send_key(&PANE_MODE);
+                        remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                        // back to normal mode after split
+                        remote_terminal.send_key(&ENTER);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Fill terminal with text",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                        // cursor is in the newly opened second pane
+                        remote_terminal.send_key(&format!("{:0<57}", "line1 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line2 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line3 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line4 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line5 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line6 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line7 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line8 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line9 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line10 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line11 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line12 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line13 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line14 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line15 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line16 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line17 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line18 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<59}", "line19 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line20 ").as_bytes());
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Scroll up inside pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(119, 20) {
+                        // all lines have been written to the pane
+                        remote_terminal.send_key(&normal_mouse_report(Position::new(2, 64), 64));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for scroll to finish",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(119, 20)
+                        && remote_terminal.snapshot_contains("line1 ")
+                    {
+                        // scrolled up one line
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .run_all_steps();
     assert_snapshot!(last_snapshot);
 }

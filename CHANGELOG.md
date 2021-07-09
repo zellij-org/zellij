@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Kill children properly (https://github.com/zellij-org/zellij/pull/601)
+* Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
+
+## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
 * Change layout directory from data to config (https://github.com/zellij-org/zellij/pull/577)
   POSSIBLE BREAKING CHANGE:
@@ -14,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   `layout-dir`
 * Fix `Makefile.toml` because of missing directory (https://github.com/zellij-org/zellij/pull/580)
 * Autodetach on force close (https://github.com/zellij-org/zellij/pull/581)
+* Add option to specify a default shell (https://github.com/zellij-org/zellij/pull/594)
+* Add action to run bound commands in a pane (https://github.com/zellij-org/zellij/pull/596)
+* Initial mouse support (https://github.com/zellij-org/zellij/pull/448)
+* Add `layout-dir` to `setup --check` subcommand (https://github.com/zellij-org/zellij/pull/599)
 
 ## [0.13.0] - 2021-06-04
 * Fix crash when padding before widechar (https://github.com/zellij-org/zellij/pull/540)

@@ -31,7 +31,12 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     errors::{ContextType, ErrorInstruction, ServerContext},
-    input::{get_mode_info, layout::Layout, options::Options},
+    input::{
+        command::{RunCommand, TerminalAction},
+        get_mode_info,
+        layout::Layout,
+        options::Options,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
 };
@@ -86,6 +91,7 @@ pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
     pub palette: Palette,
+    pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
@@ -127,7 +133,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::Uninitialized));
 
-    #[cfg(not(any(feature = "test", test)))]
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let to_server = to_server.clone();
@@ -138,21 +143,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
     let thread_handles = Arc::new(Mutex::new(Vec::new()));
 
-    #[cfg(any(feature = "test", test))]
-    thread_handles.lock().unwrap().push(
-        thread::Builder::new()
-            .name("server_router".to_string())
-            .spawn({
-                let session_data = session_data.clone();
-                let os_input = os_input.clone();
-                let to_server = to_server.clone();
-                let session_state = session_state.clone();
-
-                move || route_thread_main(session_data, session_state, os_input, to_server)
-            })
-            .unwrap(),
-    );
-    #[cfg(not(any(feature = "test", test)))]
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
@@ -214,7 +204,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session = init_session(
                     os_input.clone(),
                     opts,
-                    config_options,
+                    config_options.clone(),
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
@@ -222,13 +212,21 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
+
+                let default_shell = config_options.default_shell.map(|shell| {
+                    TerminalAction::RunCommand(RunCommand {
+                        command: shell,
+                        ..Default::default()
+                    })
+                });
+
                 session_data
                     .read()
                     .unwrap()
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_pty(PtyInstruction::NewTab)
+                    .send_to_pty(PtyInstruction::NewTab(default_shell.clone()))
                     .unwrap();
             }
             ServerInstruction::AttachClient(attrs, _, options) => {
@@ -295,7 +293,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .unwrap()
         .drain(..)
         .for_each(|h| drop(h.join()));
-    #[cfg(not(any(feature = "test", test)))]
     drop(std::fs::remove_file(&socket_path));
 }
 
@@ -326,6 +323,13 @@ fn init_session(
     let capabilities = PluginCapabilities {
         arrow_fonts: config_options.simplified_ui,
     };
+
+    let default_shell = config_options.default_shell.clone().map(|command| {
+        TerminalAction::RunCommand(RunCommand {
+            command,
+            ..Default::default()
+        })
+    });
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -393,8 +397,10 @@ fn init_session(
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
             to_server: None,
+            should_silently_fail: false,
         },
         capabilities,
+        default_shell,
         palette: client_attributes.palette,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),

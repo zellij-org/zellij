@@ -4,7 +4,6 @@ use async_std::future::timeout as async_timeout;
 use async_std::task::{self, JoinHandle};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::{
@@ -17,7 +16,7 @@ use crate::{
 };
 use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
-    input::layout::Layout,
+    input::{command::TerminalAction, layout::Layout},
     logging::debug_to_file,
 };
 
@@ -26,10 +25,10 @@ pub type VteBytes = Vec<u8>;
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
-    SpawnTerminal(Option<PathBuf>),
-    SpawnTerminalVertically(Option<PathBuf>),
-    SpawnTerminalHorizontally(Option<PathBuf>),
-    NewTab,
+    SpawnTerminal(Option<TerminalAction>),
+    SpawnTerminalVertically(Option<TerminalAction>),
+    SpawnTerminalHorizontally(Option<TerminalAction>),
+    NewTab(Option<TerminalAction>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -43,7 +42,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
-            PtyInstruction::NewTab => PtyContext::NewTab,
+            PtyInstruction::NewTab(_) => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -61,32 +60,32 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
-            PtyInstruction::SpawnTerminal(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminal(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalVertically(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminalVertically(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalHorizontally(file_to_open) => {
-                let pid = pty.spawn_terminal(file_to_open);
+            PtyInstruction::SpawnTerminalHorizontally(terminal_action) => {
+                let pid = pty.spawn_terminal(terminal_action);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::NewTab => {
+            PtyInstruction::NewTab(terminal_action) => {
                 if let Some(layout) = maybe_layout.clone() {
-                    pty.spawn_terminals_for_layout(layout);
+                    pty.spawn_terminals_for_layout(layout, terminal_action);
                 } else {
-                    let pid = pty.spawn_terminal(None);
+                    let pid = pty.spawn_terminal(terminal_action);
                     pty.bus
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(pid))
@@ -199,7 +198,6 @@ fn stream_terminal_bytes(
             }
             async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
 
-            #[cfg(not(any(feature = "test", test)))]
             // this is a little hacky, and is because the tests end the file as soon as
             // we read everything, rather than hanging until there is new data
             // a better solution would be to fix the test fakes, but this will do for now
@@ -218,13 +216,13 @@ impl Pty {
             task_handles: HashMap::new(),
         }
     }
-    pub fn spawn_terminal(&mut self, file_to_open: Option<PathBuf>) -> RawFd {
+    pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
         let (pid_primary, pid_secondary): (RawFd, Pid) = self
             .bus
             .os_input
             .as_mut()
             .unwrap()
-            .spawn_terminal(file_to_open);
+            .spawn_terminal(terminal_action);
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.bus.senders.clone(),
@@ -235,12 +233,20 @@ impl Pty {
         self.id_to_child_pid.insert(pid_primary, pid_secondary);
         pid_primary
     }
-    pub fn spawn_terminals_for_layout(&mut self, layout: Layout) {
+    pub fn spawn_terminals_for_layout(
+        &mut self,
+        layout: Layout,
+        terminal_action: Option<TerminalAction>,
+    ) {
         let total_panes = layout.total_terminal_panes();
         let mut new_pane_pids = vec![];
         for _ in 0..total_panes {
-            let (pid_primary, pid_secondary): (RawFd, Pid) =
-                self.bus.os_input.as_mut().unwrap().spawn_terminal(None);
+            let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                .bus
+                .os_input
+                .as_mut()
+                .unwrap()
+                .spawn_terminal(terminal_action.clone());
             self.id_to_child_pid.insert(pid_primary, pid_secondary);
             new_pane_pids.push(pid_primary);
         }
@@ -266,9 +272,20 @@ impl Pty {
             PaneId::Terminal(id) => {
                 let child_pid = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
-                self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
                 task::block_on(async {
-                    handle.cancel().await;
+                    self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
+                    let timeout = Duration::from_millis(100);
+                    match async_timeout(timeout, handle.cancel()).await {
+                        Ok(_) => {}
+                        _ => {
+                            self.bus
+                                .os_input
+                                .as_mut()
+                                .unwrap()
+                                .force_kill(child_pid)
+                                .unwrap();
+                        }
+                    };
                 });
             }
             PaneId::Plugin(pid) => drop(
