@@ -2647,7 +2647,6 @@ dependencies = [
  "insta",
  "log",
  "serde",
- "serde_derive",
  "serde_json",
  "typetag",
  "unicode-width",
