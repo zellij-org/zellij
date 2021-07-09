@@ -2,8 +2,33 @@
 use crate::cli::Command;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 use structopt::StructOpt;
 use zellij_tile::data::InputMode;
+
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum OnForceClose {
+    Quit,
+    Detach,
+}
+
+impl Default for OnForceClose {
+    fn default() -> Self {
+        Self::Detach
+    }
+}
+
+impl FromStr for OnForceClose {
+    type Err = Box<dyn std::error::Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "quit" => Ok(Self::Quit),
+            "detach" => Ok(Self::Detach),
+            e => Err(e.to_string().into()),
+        }
+    }
+}
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
@@ -30,6 +55,9 @@ pub struct Options {
     #[structopt(long)]
     #[serde(default)]
     pub disable_mouse_mode: bool,
+    /// Set behaviour on force close (quit or detach)
+    #[structopt(long)]
+    pub on_force_close: Option<OnForceClose>,
 }
 
 impl Options {
@@ -77,6 +105,11 @@ impl Options {
             self.disable_mouse_mode
         };
 
+        let on_force_close = match other.on_force_close {
+            None => self.on_force_close,
+            other => other,
+        };
+
         Options {
             simplified_ui,
             theme,
@@ -84,6 +117,7 @@ impl Options {
             default_shell,
             layout_dir,
             disable_mouse_mode,
+            on_force_close,
         }
     }
 
