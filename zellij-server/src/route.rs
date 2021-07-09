@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::zellij_tile::data::{Event, ModeInfo};
+use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
@@ -11,6 +11,7 @@ use zellij_utils::{
     input::{
         actions::{Action, Direction},
         command::TerminalAction,
+        get_mode_info,
     },
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
@@ -42,12 +43,12 @@ fn route_action(
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
-                    Event::ModeUpdate(ModeInfo::new(mode, palette, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, palette, session.capabilities)),
                 ))
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ChangeMode(ModeInfo::new(
+                .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
                     mode,
                     palette,
                     session.capabilities,
