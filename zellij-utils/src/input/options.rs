@@ -54,6 +54,7 @@ pub struct Options {
     pub layout_dir: Option<PathBuf>,
     #[structopt(long)]
     #[serde(default)]
+    /// Disable handling of mouse events
     pub disable_mouse_mode: bool,
     /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
