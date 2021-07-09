@@ -2310,6 +2310,7 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
+        let border_width = self.border_width_between_panes();
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
         }
@@ -2319,10 +2320,12 @@ impl Tab {
             if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_width_by(pane_to_close_width + 1)
+                    // pane.can_increase_width_by(pane_to_close_width + 1)
+                    pane.can_increase_width_by(pane_to_close_width + border_width)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_right(pane_id, pane_to_close_width + 1);
+                        // self.increase_pane_width_right(pane_id, pane_to_close_width + 1);
+                        self.increase_pane_width_right(pane_id, pane_to_close_width + border_width);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2335,10 +2338,12 @@ impl Tab {
             if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_width_by(pane_to_close_width + 1)
+                    // pane.can_increase_width_by(pane_to_close_width + 1)
+                    pane.can_increase_width_by(pane_to_close_width + border_width)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_left(pane_id, pane_to_close_width + 1);
+                        // self.increase_pane_width_left(pane_id, pane_to_close_width + 1);
+                        self.increase_pane_width_left(pane_id, pane_to_close_width + border_width);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2351,10 +2356,12 @@ impl Tab {
             if let Some(panes) = self.panes_above_between_aligning_borders(id) {
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_height_by(pane_to_close_height + 1)
+                    // pane.can_increase_height_by(pane_to_close_height + 1)
+                    pane.can_increase_height_by(pane_to_close_height + border_width)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_down(pane_id, pane_to_close_height + 1);
+                        // self.increase_pane_height_down(pane_id, pane_to_close_height + 1);
+                        self.increase_pane_height_down(pane_id, pane_to_close_height + border_width);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2367,10 +2374,12 @@ impl Tab {
             if let Some(panes) = self.panes_below_between_aligning_borders(id) {
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_height_by(pane_to_close_height + 1)
+                    // pane.can_increase_height_by(pane_to_close_height + 1)
+                    pane.can_increase_height_by(pane_to_close_height + border_width)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_up(pane_id, pane_to_close_height + 1);
+                        // self.increase_pane_height_up(pane_id, pane_to_close_height + 1);
+                        self.increase_pane_height_up(pane_id, pane_to_close_height + border_width);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
