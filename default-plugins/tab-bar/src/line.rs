@@ -145,10 +145,8 @@ fn add_next_tabs_msg(
 }
 
 fn tab_line_prefix(session_name: Option<&str>, palette: Palette) -> LinePart {
-    let mut prefix_text = " Zellij ".to_string();
-    if let Some(name) = session_name {
-        prefix_text.push_str(&format!("({}) ", name));
-    }
+    let session_name = session_name.unwrap_or("Zellij");
+    let prefix_text = format!(" {} ", session_name);
 
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = style!(palette.white, palette.cyan)
