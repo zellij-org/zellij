@@ -226,7 +226,8 @@ pub trait Pane {
         }
     }
     fn horizontally_overlaps_with(&self, other: &dyn Pane) -> bool {
-        (self.y() >= other.y() && self.y() <= (other.y() + other.rows()))
+        // (self.y() >= other.y() && self.y() <= (other.y() + other.rows()))
+        (self.y() >= other.y() && self.y() < (other.y() + other.rows()))
             || ((self.y() + self.rows()) <= (other.y() + other.rows())
                 && (self.y() + self.rows()) > other.y())
             || (self.y() <= other.y() && (self.y() + self.rows() >= (other.y() + other.rows())))
@@ -237,7 +238,8 @@ pub trait Pane {
             - std::cmp::max(self.y(), other.y())
     }
     fn vertically_overlaps_with(&self, other: &dyn Pane) -> bool {
-        (self.x() >= other.x() && self.x() <= (other.x() + other.columns()))
+        // (self.x() >= other.x() && self.x() <= (other.x() + other.columns()))
+        (self.x() >= other.x() && self.x() < (other.x() + other.columns()))
             || ((self.x() + self.columns()) <= (other.x() + other.columns())
                 && (self.x() + self.columns()) > other.x())
             || (self.x() <= other.x()
