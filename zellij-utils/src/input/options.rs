@@ -32,7 +32,7 @@ impl FromStr for OnForceClose {
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
-/// or cli flags
+/// or cli flags - cli flags should take precedence over the config file
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts
