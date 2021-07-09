@@ -1,10 +1,14 @@
 //! Definition of the actions that can be bound to keys.
 
+use super::command::RunCommandAction;
+use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
+use crate::position::Position;
+
 /// The four directions (left, right, up, down).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -17,7 +21,7 @@ pub enum Direction {
 // They might need to be adjusted in the default config
 // as well `../../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -38,8 +42,12 @@ pub enum Action {
     MoveFocusOrTab(Direction),
     /// Scroll up in focus pane.
     ScrollUp,
+    /// Scroll up at point
+    ScrollUpAt(Position),
     /// Scroll down in focus pane.
     ScrollDown,
+    /// Scroll down at point
+    ScrollDownAt(Position),
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -65,6 +73,21 @@ pub enum Action {
     CloseTab,
     GoToTab(u32),
     TabNameInput(Vec<u8>),
+    /// Run speficied command in new pane.
+    Run(RunCommandAction),
     /// Detach session and exit
     Detach,
+    LeftClick(Position),
+    MouseRelease(Position),
+    MouseHold(Position),
+    Copy,
+}
+
+impl From<OnForceClose> for Action {
+    fn from(ofc: OnForceClose) -> Action {
+        match ofc {
+            OnForceClose::Quit => Action::Quit,
+            OnForceClose::Detach => Action::Detach,
+        }
+    }
 }

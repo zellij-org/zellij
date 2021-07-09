@@ -9,7 +9,7 @@ use crate::{
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ui::{boundaries::Boundaries, layout::Layout},
+    ui::boundaries::Boundaries,
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
@@ -23,12 +23,13 @@ use std::{
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 use zellij_utils::{
-    input::parse_keys,
+    input::{layout::Layout, parse_keys},
     pane_size::{Dimension, PositionAndSize},
     serde,
     shared::adjust_to_size,
     zellij_tile,
 };
+use zellij_utils::{position::Position, serde, zellij_tile};
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -141,6 +142,19 @@ pub trait Pane {
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
+    fn contains(&self, position: &Position) -> bool {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position_and_size.contains(position),
+            None => self.position_and_size().contains(position),
+        }
+    }
+    fn start_selection(&mut self, _start: &Position) {}
+    fn update_selection(&mut self, _position: &Position) {}
+    fn end_selection(&mut self, _end: Option<&Position>) {}
+    fn reset_selection(&mut self) {}
+    fn get_selected_text(&self) -> Option<String> {
+        None
+    }
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.cols()
@@ -219,6 +233,12 @@ pub trait Pane {
         vec![]
     }
     fn render_full_viewport(&mut self) {}
+    fn relative_position(&self, position: &Position) -> Position {
+        match self.position_and_size_override() {
+            Some(position_and_size) => position.relative_to(&position_and_size),
+            None => position.relative_to(&self.position_and_size()),
+        }
+    }
 }
 
 impl Tab {
@@ -296,7 +316,7 @@ impl Tab {
                 match positions_and_size.next() {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
-                        terminal_pane.change_pos_and_size(&position_and_size);
+                        terminal_pane.change_pos_and_size(position_and_size);
                         self.os_api.set_terminal_size_using_fd(
                             *pid,
                             position_and_size.cols.as_usize() as u16,
@@ -849,14 +869,14 @@ impl Tab {
     fn panes_top_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
+            .map(|t_id| self.panes.get(t_id).unwrap().as_ref())
             .filter(|terminal| terminal.pid() != pane.pid() && terminal.y() == pane.y())
             .collect()
     }
     fn panes_bottom_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
+            .map(|t_id| self.panes.get(t_id).unwrap().as_ref())
             .filter(|terminal| {
                 terminal.pid() != pane.pid()
                     && terminal.y() + terminal.rows() == pane.y() + pane.rows()
@@ -866,7 +886,7 @@ impl Tab {
     fn panes_right_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
+            .map(|t_id| self.panes.get(t_id).unwrap().as_ref())
             .filter(|terminal| {
                 terminal.pid() != pane.pid()
                     && terminal.x() + terminal.cols() == pane.x() + pane.cols()
@@ -876,7 +896,7 @@ impl Tab {
     fn panes_left_aligned_with_pane(&self, pane: &dyn Pane) -> Vec<&dyn Pane> {
         self.panes
             .keys()
-            .map(|t_id| self.panes.get(&t_id).unwrap().as_ref())
+            .map(|t_id| self.panes.get(t_id).unwrap().as_ref())
             .filter(|terminal| terminal.pid() != pane.pid() && terminal.x() == pane.x())
             .collect()
     }
@@ -1327,20 +1347,20 @@ impl Tab {
     }
     fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, count: usize) {
         let mut terminals_below = self
-            .pane_ids_directly_below(&id)
+            .pane_ids_directly_below(id)
             .expect("can't reduce pane size up if there are no terminals below");
         let terminal_borders_below: HashSet<usize> = terminals_below
             .iter()
             .map(|t| self.panes.get(t).unwrap().x())
             .collect();
         let (left_resize_border, terminals_to_the_left) =
-            self.bottom_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
+            self.bottom_aligned_contiguous_panes_to_the_left(id, &terminal_borders_below);
         let (right_resize_border, terminals_to_the_right) =
-            self.bottom_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
+            self.bottom_aligned_contiguous_panes_to_the_right(id, &terminal_borders_below);
         terminals_below.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.reduce_pane_height_up(&id, count);
+        self.reduce_pane_height_up(id, count);
         for terminal_id in terminals_below {
             self.increase_pane_height_up(&terminal_id, count);
         }
@@ -1348,25 +1368,25 @@ impl Tab {
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height_up(&terminal_id, count);
+            self.reduce_pane_height_up(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, count: usize) {
         let mut terminals_above = self
-            .pane_ids_directly_above(&id)
+            .pane_ids_directly_above(id)
             .expect("can't reduce pane size down if there are no terminals above");
         let terminal_borders_above: HashSet<usize> = terminals_above
             .iter()
             .map(|t| self.panes.get(t).unwrap().x())
             .collect();
         let (left_resize_border, terminals_to_the_left) =
-            self.top_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_above);
+            self.top_aligned_contiguous_panes_to_the_left(id, &terminal_borders_above);
         let (right_resize_border, terminals_to_the_right) =
-            self.top_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_above);
+            self.top_aligned_contiguous_panes_to_the_right(id, &terminal_borders_above);
         terminals_above.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.reduce_pane_height_down(&id, count);
+        self.reduce_pane_height_down(id, count);
         for terminal_id in terminals_above {
             self.increase_pane_height_down(&terminal_id, count);
         }
@@ -1374,71 +1394,71 @@ impl Tab {
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height_down(&terminal_id, count);
+            self.reduce_pane_height_down(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
         let mut terminals_to_the_left = self
-            .pane_ids_directly_left_of(&id)
+            .pane_ids_directly_left_of(id)
             .expect("can't reduce pane size right if there are no terminals to the left");
         let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
             .collect();
         let (top_resize_border, terminals_above) =
-            self.left_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_left);
+            self.left_aligned_contiguous_panes_above(id, &terminal_borders_to_the_left);
         let (bottom_resize_border, terminals_below) =
-            self.left_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_left);
+            self.left_aligned_contiguous_panes_below(id, &terminal_borders_to_the_left);
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.reduce_pane_width_right(&id, count);
+        self.reduce_pane_width_right(id, count);
         for terminal_id in terminals_to_the_left {
             self.increase_pane_width_right(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width_right(&terminal_id, count);
+            self.reduce_pane_width_right(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, count: usize) {
         let mut terminals_to_the_right = self
-            .pane_ids_directly_right_of(&id)
+            .pane_ids_directly_right_of(id)
             .expect("can't reduce pane size left if there are no terminals to the right");
         let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
             .collect();
         let (top_resize_border, terminals_above) =
-            self.right_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_right);
+            self.right_aligned_contiguous_panes_above(id, &terminal_borders_to_the_right);
         let (bottom_resize_border, terminals_below) =
-            self.right_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_right);
+            self.right_aligned_contiguous_panes_below(id, &terminal_borders_to_the_right);
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.reduce_pane_width_left(&id, count);
+        self.reduce_pane_width_left(id, count);
         for terminal_id in terminals_to_the_right {
             self.increase_pane_width_left(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width_left(&terminal_id, count);
+            self.reduce_pane_width_left(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, count: usize) {
         let mut terminals_above = self
-            .pane_ids_directly_above(&id)
+            .pane_ids_directly_above(id)
             .expect("can't increase pane size up if there are no terminals above");
         let terminal_borders_above: HashSet<usize> = terminals_above
             .iter()
             .map(|t| self.panes.get(t).unwrap().x())
             .collect();
         let (left_resize_border, terminals_to_the_left) =
-            self.top_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_above);
+            self.top_aligned_contiguous_panes_to_the_left(id, &terminal_borders_above);
         let (right_resize_border, terminals_to_the_right) =
-            self.top_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_above);
+            self.top_aligned_contiguous_panes_to_the_right(id, &terminal_borders_above);
         terminals_above.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height_up(&id, count);
+        self.increase_pane_height_up(id, count);
         for terminal_id in terminals_above {
             self.reduce_pane_height_up(&terminal_id, count);
         }
@@ -1446,25 +1466,25 @@ impl Tab {
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height_up(&terminal_id, count);
+            self.increase_pane_height_up(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, count: usize) {
         let mut terminals_below = self
-            .pane_ids_directly_below(&id)
+            .pane_ids_directly_below(id)
             .expect("can't increase pane size down if there are no terminals below");
         let terminal_borders_below: HashSet<usize> = terminals_below
             .iter()
             .map(|t| self.panes.get(t).unwrap().x())
             .collect();
         let (left_resize_border, terminals_to_the_left) =
-            self.bottom_aligned_contiguous_panes_to_the_left(&id, &terminal_borders_below);
+            self.bottom_aligned_contiguous_panes_to_the_left(id, &terminal_borders_below);
         let (right_resize_border, terminals_to_the_right) =
-            self.bottom_aligned_contiguous_panes_to_the_right(&id, &terminal_borders_below);
+            self.bottom_aligned_contiguous_panes_to_the_right(id, &terminal_borders_below);
         terminals_below.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height_down(&id, count);
+        self.increase_pane_height_down(id, count);
         for terminal_id in terminals_below {
             self.reduce_pane_height_down(&terminal_id, count);
         }
@@ -1472,53 +1492,53 @@ impl Tab {
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height_down(&terminal_id, count);
+            self.increase_pane_height_down(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
         let mut terminals_to_the_right = self
-            .pane_ids_directly_right_of(&id)
+            .pane_ids_directly_right_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
         let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
             .collect();
         let (top_resize_border, terminals_above) =
-            self.right_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_right);
+            self.right_aligned_contiguous_panes_above(id, &terminal_borders_to_the_right);
         let (bottom_resize_border, terminals_below) =
-            self.right_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_right);
+            self.right_aligned_contiguous_panes_below(id, &terminal_borders_to_the_right);
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width_right(&id, count);
+        self.increase_pane_width_right(id, count);
         for terminal_id in terminals_to_the_right {
             self.reduce_pane_width_right(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width_right(&terminal_id, count);
+            self.increase_pane_width_right(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, count: usize) {
         let mut terminals_to_the_left = self
-            .pane_ids_directly_left_of(&id)
+            .pane_ids_directly_left_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
         let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
             .collect();
         let (top_resize_border, terminals_above) =
-            self.left_aligned_contiguous_panes_above(&id, &terminal_borders_to_the_left);
+            self.left_aligned_contiguous_panes_above(id, &terminal_borders_to_the_left);
         let (bottom_resize_border, terminals_below) =
-            self.left_aligned_contiguous_panes_below(&id, &terminal_borders_to_the_left);
+            self.left_aligned_contiguous_panes_below(id, &terminal_borders_to_the_left);
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width_left(&id, count);
+        self.increase_pane_width_left(id, count);
         for terminal_id in terminals_to_the_left {
             self.reduce_pane_width_left(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width_left(&terminal_id, count);
+            self.increase_pane_width_left(terminal_id, count);
         }
     }
     fn can_increase_pane_and_surroundings_right(
@@ -1537,7 +1557,7 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.cols += increase_by;
 
-        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
+        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.cols() > increase_by && p.cols() - increase_by >= p.min_width()
@@ -1562,7 +1582,7 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.x = new_pos_and_size_for_pane.x.saturating_sub(increase_by);
 
-        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
+        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.cols() > increase_by && p.cols() - increase_by >= p.min_width()
@@ -1587,7 +1607,7 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.rows += increase_by;
 
-        if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
+        if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
@@ -1608,7 +1628,7 @@ impl Tab {
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.y = new_pos_and_size_for_pane.y.saturating_sub(increase_by);
 
-        if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
+        if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
@@ -1625,7 +1645,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&pane_id) {
+        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
             return panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.max_width()
@@ -1644,7 +1664,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&pane_id) {
+        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
             return panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.max_width()
@@ -1663,7 +1683,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_above) = self.pane_ids_directly_above(&pane_id) {
+        if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
             return panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.max_height()
@@ -1682,7 +1702,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_below) = self.pane_ids_directly_below(&pane_id) {
+        if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
             return panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
                 p.max_height()
@@ -2126,7 +2146,7 @@ impl Tab {
                     pane.can_increase_width_by(pane_to_close_width + 1)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_right(&pane_id, pane_to_close_width + 1);
+                        self.increase_pane_width_right(pane_id, pane_to_close_width + 1);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2142,7 +2162,7 @@ impl Tab {
                     pane.can_increase_width_by(pane_to_close_width + 1)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_left(&pane_id, pane_to_close_width + 1);
+                        self.increase_pane_width_left(pane_id, pane_to_close_width + 1);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2158,7 +2178,7 @@ impl Tab {
                     pane.can_increase_height_by(pane_to_close_height + 1)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_down(&pane_id, pane_to_close_height + 1);
+                        self.increase_pane_height_down(pane_id, pane_to_close_height + 1);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2174,7 +2194,7 @@ impl Tab {
                     pane.can_increase_height_by(pane_to_close_height + 1)
                 }) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_up(&pane_id, pane_to_close_height + 1);
+                        self.increase_pane_height_up(pane_id, pane_to_close_height + 1);
                         // 1 for the border
                     }
                     self.panes.remove(&id);
@@ -2250,4 +2270,99 @@ impl Tab {
             active_terminal.clear_scroll();
         }
     }
+    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_up(lines);
+            self.render();
+        }
+    }
+    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
+        if let Some(pane) = self.get_pane_at(point) {
+            pane.scroll_down(lines);
+            self.render();
+        }
+    }
+    fn get_pane_at(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
+        if let Some(pane_id) = self.get_pane_id_at(point) {
+            self.panes.get_mut(&pane_id)
+        } else {
+            None
+        }
+    }
+    fn get_pane_id_at(&self, point: &Position) -> Option<PaneId> {
+        if self.fullscreen_is_active {
+            return self.get_active_pane_id();
+        }
+
+        self.get_selectable_panes()
+            .find(|(_, p)| p.contains(point))
+            .map(|(&id, _)| id)
+    }
+    pub fn handle_left_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
+
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.start_selection(&relative_position);
+            self.render();
+        };
+    }
+    fn focus_pane_at(&mut self, point: &Position) {
+        if let Some(clicked_pane) = self.get_pane_id_at(point) {
+            self.active_terminal = Some(clicked_pane);
+            self.render();
+        }
+    }
+    pub fn handle_mouse_release(&mut self, position: &Position) {
+        let active_pane_id = self.get_active_pane_id();
+        // on release, get the selected text from the active pane, and reset it's selection
+        let mut selected_text = None;
+        if active_pane_id != self.get_pane_id_at(position) {
+            if let Some(active_pane_id) = active_pane_id {
+                if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                    active_pane.end_selection(None);
+                    selected_text = active_pane.get_selected_text();
+                    active_pane.reset_selection();
+                    self.render();
+                }
+            }
+        } else if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            pane.end_selection(Some(&relative_position));
+            selected_text = pane.get_selected_text();
+            pane.reset_selection();
+            self.render();
+        }
+
+        if let Some(selected_text) = selected_text {
+            self.write_selection_to_clipboard(&selected_text);
+        }
+    }
+    pub fn handle_mouse_hold(&mut self, position: &Position) {
+        if let Some(active_pane_id) = self.get_active_pane_id() {
+            if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                let relative_position = active_pane.relative_position(position);
+                active_pane.update_selection(&relative_position);
+            }
+        }
+        self.render();
+    }
+
+    pub fn copy_selection(&self) {
+        let selected_text = self.get_active_pane().and_then(|p| p.get_selected_text());
+        if let Some(selected_text) = selected_text {
+            self.write_selection_to_clipboard(&selected_text);
+        }
+    }
+
+    fn write_selection_to_clipboard(&self, selection: &str) {
+        let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection));
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(output)))
+            .unwrap();
+    }
 }
+
+#[cfg(test)]
+#[path = "./unit/tab_tests.rs"]
+mod tab_tests;

@@ -2,17 +2,17 @@ use crate::cli::CliArgs;
 use crate::consts::{
     FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION, ZELLIJ_PROJ_DIR,
 };
+use crate::input::options::Options;
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::{path::Path, path::PathBuf};
+use std::{io::Write, path::Path, path::PathBuf};
 use structopt::StructOpt;
 
 const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.yaml";
 static ARROW_SEPARATOR: &str = "";
 
-#[cfg(not(any(feature = "test", test)))]
+#[cfg(not(test))]
 /// Goes through a predefined list and checks for an already
 /// existing config directory, returns the first match
 pub fn find_default_config_dir() -> Option<PathBuf> {
@@ -23,7 +23,7 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
         .flatten()
 }
 
-#[cfg(any(feature = "test", test))]
+#[cfg(test)]
 pub fn find_default_config_dir() -> Option<PathBuf> {
     None
 }
@@ -66,8 +66,12 @@ pub fn home_config_dir() -> Option<PathBuf> {
     }
 }
 
+pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    config_dir.map(|dir| dir.join("layouts"))
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
-    std::io::stdout().write_all(&asset)?;
+    std::io::stdout().write_all(asset)?;
     Ok(())
 }
 
@@ -75,6 +79,24 @@ pub const DEFAULT_CONFIG: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/config/default.yaml"
+));
+
+pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.yaml"
+));
+
+pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/strider.yaml"
+));
+
+pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.yaml"
 ));
 
 pub fn dump_default_config() -> std::io::Result<()> {
@@ -95,13 +117,14 @@ pub struct Setup {
     #[structopt(long)]
     pub check: bool,
 
+    /// Generates completion for the specified shell
     #[structopt(long)]
     pub generate_completion: Option<String>,
 }
 
 impl Setup {
     /// Entrypoint from main
-    pub fn from_cli(&self, opts: &CliArgs) -> std::io::Result<()> {
+    pub fn from_cli(&self, opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
         if self.clean {
             return Ok(());
         }
@@ -112,7 +135,7 @@ impl Setup {
         }
 
         if self.check {
-            Setup::check_defaults_config(&opts)?;
+            Setup::check_defaults_config(opts, config_options)?;
             std::process::exit(0);
         }
 
@@ -124,11 +147,14 @@ impl Setup {
         Ok(())
     }
 
-    pub fn check_defaults_config(opts: &CliArgs) -> std::io::Result<()> {
+    pub fn check_defaults_config(opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
         let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
         let config_dir = opts.config_dir.clone().or_else(find_default_config_dir);
         let plugin_dir = data_dir.join("plugins");
-        let layout_dir = data_dir.join("layouts");
+        let layout_dir = config_options
+            .layout_dir
+            .clone()
+            .or_else(|| get_layout_dir(config_dir.clone()));
         let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
         let config_file = opts
             .config
@@ -141,14 +167,14 @@ impl Setup {
         if let Some(config_dir) = config_dir {
             message.push_str(&format!("[CONFIG DIR]: {:?}\n", config_dir));
         } else {
-            message.push_str(&"[CONFIG DIR]: Not Found\n");
+            message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
                 .iter()
                 .filter_map(|p| p.clone())
                 .collect::<Vec<PathBuf>>();
             default_config_dirs.dedup();
             message.push_str(
-                &" On your system zellij looks in the following config directories by default:\n",
+                " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
                 message.push_str(&format!(" {:?}\n", dir));
@@ -158,11 +184,11 @@ impl Setup {
             use crate::input::config::Config;
             message.push_str(&format!("[CONFIG FILE]: {:?}\n", config_file));
             match Config::new(&config_file) {
-                Ok(_) => message.push_str(&"[CONFIG FILE]: Well defined.\n"),
+                Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
                 Err(e) => message.push_str(&format!("[CONFIG ERROR]: {}\n", e)),
             }
         } else {
-            message.push_str(&"[CONFIG FILE]: Not Found\n");
+            message.push_str("[CONFIG FILE]: Not Found\n");
             message.push_str(&format!(
                 " By default zellij looks for a file called [{}] in the configuration directory\n",
                 CONFIG_NAME
@@ -170,16 +196,20 @@ impl Setup {
         }
         message.push_str(&format!("[DATA DIR]: {:?}\n", data_dir));
         message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
-        message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
+        if let Some(layout_dir) = layout_dir {
+            message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
+        } else {
+            message.push_str("[CONFIG FILE]: Not Found\n");
+        }
         message.push_str(&format!("[SYSTEM DATA DIR]: {:?}\n", system_data_dir));
 
         message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
-        message.push_str(&" Is the [ARROW_SEPARATOR] displayed correctly?\n");
-        message.push_str(&" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
-        message.push_str(&" Or check the font that is in use:\n https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly\n");
+        message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
+        message.push_str(" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
+        message.push_str(" Or check the font that is in use:\n https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly\n");
 
         message.push_str(&format!("[FEATURES]: {:?}\n", FEATURES));
-        message.push_str(&"[DOCUMENTATION]: zellij.dev/documentation/\n");
+        message.push_str("[DOCUMENTATION]: zellij.dev/documentation/\n");
 
         std::io::stdout().write_all(message.as_bytes())?;
 

@@ -4,7 +4,7 @@ use crate::cli::CliArgs;
 use crate::pane_size::PositionAndSize;
 use crate::{
     errors::{get_current_ctx, ErrorContext},
-    input::{actions::Action, options::Options},
+    input::{actions::Action, layout::Layout, options::Options},
 };
 use interprocess::local_socket::LocalSocketStream;
 use nix::unistd::dup;
@@ -35,7 +35,7 @@ pub enum ClientType {
     Writer,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ClientAttributes {
     pub position_and_size: PositionAndSize,
     pub palette: Palette,
@@ -56,7 +56,7 @@ pub enum ClientToServerMsg {
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
     TerminalResize(PositionAndSize),
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, Option<Layout>),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),
     ClientExited,

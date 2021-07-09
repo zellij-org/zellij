@@ -7,12 +7,15 @@ use crate::{
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
 /// A container for senders to the different threads in zellij on the server side
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub(crate) struct ThreadSenders {
     pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
     pub to_pty: Option<SenderWithContext<PtyInstruction>>,
     pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
     pub to_server: Option<SenderWithContext<ServerInstruction>>,
+    // this is a convenience for the unit tests
+    // it's not advisable to set it to true in production code
+    pub should_silently_fail: bool,
 }
 
 impl ThreadSenders {
@@ -20,32 +23,75 @@ impl ThreadSenders {
         &self,
         instruction: ScreenInstruction,
     ) -> Result<(), channels::SendError<(ScreenInstruction, ErrorContext)>> {
-        self.to_screen.as_ref().unwrap().send(instruction)
+        if self.should_silently_fail {
+            let _ = self
+                .to_screen
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_screen.as_ref().unwrap().send(instruction)
+        }
     }
 
     pub fn send_to_pty(
         &self,
         instruction: PtyInstruction,
     ) -> Result<(), channels::SendError<(PtyInstruction, ErrorContext)>> {
-        self.to_pty.as_ref().unwrap().send(instruction)
+        if self.should_silently_fail {
+            let _ = self
+                .to_pty
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_pty.as_ref().unwrap().send(instruction)
+        }
     }
 
     pub fn send_to_plugin(
         &self,
         instruction: PluginInstruction,
     ) -> Result<(), channels::SendError<(PluginInstruction, ErrorContext)>> {
-        self.to_plugin.as_ref().unwrap().send(instruction)
+        if self.should_silently_fail {
+            let _ = self
+                .to_plugin
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_plugin.as_ref().unwrap().send(instruction)
+        }
     }
 
     pub fn send_to_server(
         &self,
         instruction: ServerInstruction,
     ) -> Result<(), channels::SendError<(ServerInstruction, ErrorContext)>> {
-        self.to_server.as_ref().unwrap().send(instruction)
+        if self.should_silently_fail {
+            let _ = self
+                .to_server
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_server.as_ref().unwrap().send(instruction)
+        }
+    }
+    #[allow(unused)]
+    pub fn silently_fail_on_send(mut self) -> Self {
+        // this is mostly used for the tests, see struct
+        self.should_silently_fail = true;
+        self
     }
 }
 
 /// A container for a receiver, OS input and the senders to a given thread
+#[derive(Default)]
 pub(crate) struct Bus<T> {
     receivers: Vec<channels::Receiver<(T, ErrorContext)>>,
     pub senders: ThreadSenders,
@@ -68,8 +114,24 @@ impl<T> Bus<T> {
                 to_pty: to_pty.cloned(),
                 to_plugin: to_plugin.cloned(),
                 to_server: to_server.cloned(),
+                should_silently_fail: false,
             },
             os_input: os_input.clone(),
+        }
+    }
+    #[allow(unused)]
+    pub fn empty() -> Self {
+        // this is mostly used for the tests
+        Bus {
+            receivers: vec![],
+            senders: ThreadSenders {
+                to_screen: None,
+                to_pty: None,
+                to_plugin: None,
+                to_server: None,
+                should_silently_fail: true,
+            },
+            os_input: None,
         }
     }
 

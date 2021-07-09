@@ -66,7 +66,7 @@ impl TryFrom<&CliArgs> for Config {
 
     fn try_from(opts: &CliArgs) -> ConfigResult {
         if let Some(ref path) = opts.config {
-            return Config::new(&path);
+            return Config::new(path);
         }
 
         if let Some(Command::Setup(ref setup)) = opts.command {
@@ -96,7 +96,7 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(&yaml_config)?;
+        let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(yaml_config)?;
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
         let options = Options::from_yaml(config_from_yaml.options);
         let themes = config_from_yaml.themes;

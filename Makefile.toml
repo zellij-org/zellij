@@ -51,7 +51,6 @@ asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
 target_dir = set ${CARGO_TARGET_DIR}
 data_dir = set ${target_dir}/dev-data
 rm -r ${data_dir}
-cp ${asset_dir}/layouts ${data_dir}/
 plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
 for plugin in ${plugins}
     plugin_name = basename ${plugin}
@@ -84,6 +83,10 @@ end
 [tasks.build-plugins-release]
 env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
 run_task = { name = "build-release", fork = true }
+
+[tasks.build-plugins]
+env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
+run_task = { name = "build", fork = true }
 
 [tasks.wasm-opt-plugins]
 script_runner = "@duckscript"
@@ -121,6 +124,19 @@ dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-pl
 command = "cross"
 args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
 
+# Build e2e asset
+[tasks.build-e2e]
+workspace = false
+dependencies = ["build-plugins"]
+command = "cargo"
+args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
+
+# Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
+[tasks.e2e-test]
+workspace = false
+command = "cargo"
+args = ["test", "--", "--ignored", "--nocapture", "--test-threads", "1", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+
 [tasks.setup-cross-compilation]
 command = "cargo"
 args = ["install", "cross"]
@@ -135,7 +151,7 @@ run_task = "publish-zellij"
 [tasks.release-commit]
 dependencies = ["commit-all", "tag-release"]
 command = "git"
-args = ["push", "--atomic", "origin", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
+args = ["push", "--atomic", "upstream", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.commit-all]
 ignore_errors = true

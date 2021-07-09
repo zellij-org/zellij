@@ -1,12 +1,4 @@
-use std::fmt::Debug;
-use std::os::unix::io::RawFd;
-use std::time::Instant;
-use zellij_tile::data::Palette;
-use zellij_utils::{
-    pane_size::{Dimension, PositionAndSize},
-    vte, zellij_tile,
-};
-
+use crate::panes::AnsiCode;
 use crate::panes::{
     grid::Grid,
     terminal_character::{
@@ -15,6 +7,17 @@ use crate::panes::{
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
+use std::fmt::Debug;
+use std::os::unix::io::RawFd;
+use std::time::{self, Instant};
+use zellij_utils::{
+    pane_size::{Dimension, PositionAndSize},
+    position::Position,
+    vte,
+    zellij_tile::data::{Palette, PaletteColor},
+};
+
+pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -31,6 +34,7 @@ pub struct TerminalPane {
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
+    selection_scrolled_at: time::Instant,
 }
 
 impl Pane for TerminalPane {
@@ -179,11 +183,22 @@ impl Pane for TerminalPane {
                 )); // goto row/col and reset styles
 
                 let mut chunk_width = character_chunk.x;
-                for t_character in terminal_characters {
+                for mut t_character in terminal_characters {
+                    // adjust the background of currently selected characters
+                    // doing it here is much easier than in grid
+                    if self.grid.selection.contains(character_chunk.y, chunk_width) {
+                        let color = match self.colors.bg {
+                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                        };
+
+                        t_character.styles = t_character.styles.background(Some(color));
+                    }
                     chunk_width += t_character.width;
                     if chunk_width > max_width {
                         break;
                     }
+
                     if let Some(new_styles) =
                         character_styles.update_and_return_diff(&t_character.styles)
                     {
@@ -283,6 +298,41 @@ impl Pane for TerminalPane {
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
+
+    fn start_selection(&mut self, start: &Position) {
+        self.grid.start_selection(start);
+        self.set_should_render(true);
+    }
+
+    fn update_selection(&mut self, to: &Position) {
+        let should_scroll = self.selection_scrolled_at.elapsed()
+            >= time::Duration::from_millis(SELECTION_SCROLL_INTERVAL_MS);
+        // TODO: check how far up/down mouse is relative to pane, to increase scroll lines?
+        if to.line.0 < 0 && should_scroll {
+            self.grid.scroll_up_one_line();
+            self.selection_scrolled_at = time::Instant::now();
+        } else if to.line.0 as usize >= self.grid.height && should_scroll {
+            self.grid.scroll_down_one_line();
+            self.selection_scrolled_at = time::Instant::now();
+        } else if to.line.0 >= 0 && (to.line.0 as usize) < self.grid.height {
+            self.grid.update_selection(to);
+        }
+
+        self.set_should_render(true);
+    }
+
+    fn end_selection(&mut self, end: Option<&Position>) {
+        self.grid.end_selection(end);
+        self.set_should_render(true);
+    }
+
+    fn reset_selection(&mut self) {
+        self.grid.reset_selection();
+    }
+
+    fn get_selected_text(&self) -> Option<String> {
+        self.grid.get_selected_text()
+    }
 }
 
 impl TerminalPane {
@@ -301,6 +351,7 @@ impl TerminalPane {
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
+            selection_scrolled_at: time::Instant::now(),
         }
     }
     pub fn get_x(&self) -> usize {
@@ -336,9 +387,12 @@ impl TerminalPane {
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
     }
-    #[cfg(any(feature = "test", test))]
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/terminal_pane_tests.rs"]
+mod grid_tests;

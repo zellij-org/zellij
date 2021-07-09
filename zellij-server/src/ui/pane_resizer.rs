@@ -33,7 +33,7 @@ impl<'a> PaneResizer<'a> {
             Ordering::Greater => {
                 let increase_by = new_size.cols.as_usize() - current_size.cols.as_usize();
                 if let Some(panes_to_resize) = find_increasable_vertical_chain(
-                    &self.panes,
+                    self.panes,
                     increase_by,
                     current_size.cols.as_usize(),
                     current_size.rows.as_usize(),
@@ -53,7 +53,7 @@ impl<'a> PaneResizer<'a> {
             Ordering::Less => {
                 let reduce_by = current_size.cols.as_usize() - new_size.cols.as_usize();
                 if let Some(panes_to_resize) = find_reducible_vertical_chain(
-                    &self.panes,
+                    self.panes,
                     reduce_by,
                     current_size.cols.as_usize(),
                     current_size.rows.as_usize(),
@@ -73,7 +73,7 @@ impl<'a> PaneResizer<'a> {
             Ordering::Greater => {
                 let increase_by = new_size.rows.as_usize() - current_size.rows.as_usize();
                 if let Some(panes_to_resize) = find_increasable_horizontal_chain(
-                    &self.panes,
+                    self.panes,
                     increase_by,
                     current_size.cols.as_usize(),
                     current_size.rows.as_usize(),
@@ -90,7 +90,7 @@ impl<'a> PaneResizer<'a> {
             Ordering::Less => {
                 let reduce_by = current_size.rows.as_usize() - new_size.rows.as_usize();
                 if let Some(panes_to_resize) = find_reducible_horizontal_chain(
-                    &self.panes,
+                    self.panes,
                     reduce_by,
                     current_size.cols.as_usize(),
                     current_size.rows.as_usize(),

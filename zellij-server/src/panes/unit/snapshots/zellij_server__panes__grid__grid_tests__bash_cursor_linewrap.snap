@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): Welcome to fish, the friendly interactive shell                                                                     
+01 (C): ⋊> ~/c/mosaic on main ⨯ bash                                                                                16:00:06
+02 (C): [aram@green mosaic]$ 12345678912345678912345678912345678912345678912345678912345678912345678912345678912345678912345
+03 (W):  
+

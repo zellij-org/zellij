@@ -44,6 +44,20 @@ cargo make manpage
 To run `install` or `publish`, you'll need the package `binaryen` in the
 version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 
+To run `test`, you will need the package `pkg-config` and a version of `openssl`.
+
+## Running the end-to-end tests
+Zellij includes some end to end tests which test the whole application as a black-box from the outside.
+These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
+
+To run these tests locally, you'll need to have both `docker` and `docker-compose` installed.
+Once you do, in the repository root:
+1. `docker-compose up -d` will start up the docker container
+2. `cargo make build-e2e` will build the generic linux executable of Zellij in the target folder, which is shared with the container
+3. `cargo make e2e-test` will run the tests
+
+To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
+
 ## Looking for something to work on?
 
 If you are new contributor to `Zellij` going through

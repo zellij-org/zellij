@@ -18,7 +18,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, options::Options},
+    input::{actions::Action, config::Config, layout::Layout, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
 
@@ -86,19 +86,13 @@ pub fn start_client(
     opts: CliArgs,
     config: Config,
     info: ClientInfo,
+    layout: Option<Layout>,
 ) {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0);
-    let config_options = Options::from_cli(&config.options, opts.command.clone());
-    let palette = config.themes.clone().map_or_else(
-        || os_input.load_palette(),
-        |t| {
-            t.theme_config(&config_options)
-                .unwrap_or_else(|| os_input.load_palette())
-        },
-    );
+
     let _ = os_input
         .get_stdout_writer()
         .write(take_snapshot.as_bytes())
@@ -109,13 +103,21 @@ pub fn start_client(
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
 
+    let config_options = Options::from_cli(&config.options, opts.command.clone());
+    let palette = config.themes.clone().map_or_else(
+        || os_input.load_palette(),
+        |t| {
+            t.theme_config(&config_options)
+                .unwrap_or_else(|| os_input.load_palette())
+        },
+    );
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         position_and_size: full_screen_ws,
         palette,
     };
 
-    #[cfg(not(any(feature = "test", test)))]
     let first_msg = match info {
         ClientInfo::Attach(name, force, config_options) => {
             SESSION_NAME.set(name).unwrap();
@@ -133,17 +135,9 @@ pub fn start_client(
                 client_attributes,
                 Box::new(opts),
                 Box::new(config_options.clone()),
+                layout,
             )
         }
-    };
-    #[cfg(any(feature = "test", test))]
-    let first_msg = {
-        let _ = SESSION_NAME.set("".into());
-        ClientToServerMsg::NewClient(
-            client_attributes,
-            Box::new(opts),
-            Box::new(config_options.clone()),
-        )
     };
 
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
@@ -162,7 +156,6 @@ pub fn start_client(
     > = channels::bounded(50);
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
-    #[cfg(not(any(feature = "test", test)))]
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
@@ -170,6 +163,8 @@ pub fn start_client(
             handle_panic(info, &send_client_instructions);
         })
     });
+
+    let on_force_close = config_options.on_force_close.unwrap_or_default();
 
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
@@ -182,6 +177,7 @@ pub fn start_client(
                 input_loop(
                     os_input,
                     config,
+                    config_options,
                     command_is_executing,
                     send_client_instructions,
                     default_mode,
@@ -193,7 +189,6 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let send_client_instructions = send_client_instructions.clone();
             move || {
                 os_input.handle_signals(
                     Box::new({
@@ -205,11 +200,9 @@ pub fn start_client(
                         }
                     }),
                     Box::new({
-                        let send_client_instructions = send_client_instructions.clone();
+                        let os_api = os_input.clone();
                         move || {
-                            send_client_instructions
-                                .send(ClientInstruction::Exit(ExitReason::Normal))
-                                .unwrap()
+                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
                         }
                     }),
                 );
@@ -240,6 +233,7 @@ pub fn start_client(
         os_input.unset_raw_mode(0);
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows.as_usize(), 1);
         let restore_snapshot = "\u{1b}[?1049l";
+        os_input.disable_mouse();
         let error = format!(
             "{}\n{}{}",
             goto_start_of_last_line, restore_snapshot, backtrace
@@ -276,7 +270,7 @@ pub fn start_client(
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
-                    .write_all(&output.as_bytes())
+                    .write_all(output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
             }
@@ -298,6 +292,7 @@ pub fn start_client(
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
     );
 
+    os_input.disable_mouse();
     os_input.unset_raw_mode(0);
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();

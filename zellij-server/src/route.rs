@@ -10,6 +10,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     input::{
         actions::{Action, Direction},
+        command::TerminalAction,
         get_mode_info,
     },
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -108,10 +109,22 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::ScrollUp)
                 .unwrap();
         }
+        Action::ScrollUpAt(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollUpAt(point))
+                .unwrap();
+        }
         Action::ScrollDown => {
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ScrollDown)
+                .unwrap();
+        }
+        Action::ScrollDownAt(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollDownAt(point))
                 .unwrap();
         }
         Action::PageScrollUp => {
@@ -133,13 +146,26 @@ fn route_action(
                 .unwrap();
         }
         Action::NewPane(direction) => {
+            let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(None),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(None),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(None),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(None),
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell),
+                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(shell),
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(None),
+                None => PtyInstruction::SpawnTerminal(shell),
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        }
+        Action::Run(command) => {
+            let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
+            let pty_instr = match command.direction {
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(run_cmd),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(run_cmd),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
+                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
+                // No direction specified - try to put it in the biggest available spot
+                None => PtyInstruction::SpawnTerminal(run_cmd),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
@@ -150,7 +176,11 @@ fn route_action(
                 .unwrap();
         }
         Action::NewTab => {
-            session.senders.send_to_pty(PtyInstruction::NewTab).unwrap();
+            let shell = session.default_shell.clone();
+            session
+                .senders
+                .send_to_pty(PtyInstruction::NewTab(shell))
+                .unwrap();
         }
         Action::GoToNextTab => {
             session
@@ -195,6 +225,30 @@ fn route_action(
         Action::Detach => {
             to_server.send(ServerInstruction::DetachSession).unwrap();
             should_break = true;
+        }
+        Action::LeftClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::LeftClick(point))
+                .unwrap();
+        }
+        Action::MouseRelease(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseRelease(point))
+                .unwrap();
+        }
+        Action::MouseHold(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseHold(point))
+                .unwrap();
+        }
+        Action::Copy => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::Copy)
+                .unwrap();
         }
         Action::NoOp => {}
     }

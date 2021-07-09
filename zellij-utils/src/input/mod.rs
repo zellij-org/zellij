@@ -1,8 +1,11 @@
 //! The way terminal input is handled.
 
 pub mod actions;
+pub mod command;
 pub mod config;
 pub mod keybinds;
+pub mod layout;
+pub mod mouse;
 pub mod options;
 pub mod theme;
 

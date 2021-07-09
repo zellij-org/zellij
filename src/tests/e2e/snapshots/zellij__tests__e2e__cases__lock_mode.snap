@@ -1,0 +1,29 @@
+---
+source: src/tests/integration/e2e.rs
+expression: last_snapshot
+
+---
+ Zellij  Tab #1                                                                                                       
+                                                                                                                        
+$ nabc█                                                                                                                 
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <r> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
+ -- INTERFACE LOCKED --                                                                                                 
