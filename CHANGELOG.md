@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
 * Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
+* Add running commands to `layouts` (https://github.com/zellij-org/zellij/pull/600)
+  POSSIBLE BREAKING CHANGE for custom layouts:
+  Plugins are under the run category now, that means:
+  ```
+  plugin: status-bar
+  ```
+  is now:
+  ```
+  run:
+      plugin: status-bar
+  ```
+
 
 ## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
