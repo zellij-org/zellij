@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
 * Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
 * Add running commands to `layouts` (https://github.com/zellij-org/zellij/pull/600)
+
   POSSIBLE BREAKING CHANGE for custom layouts:
   Plugins are under the run category now, that means:
   ```
