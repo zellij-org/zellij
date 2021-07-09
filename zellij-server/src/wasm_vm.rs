@@ -1,8 +1,6 @@
 use log::info;
-use serde::{de::DeserializeOwned, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process;
 use std::str::FromStr;
@@ -10,8 +8,9 @@ use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zellij_utils::{serde, zellij_tile};
+use zellij_utils::zellij_tile;
 
+use serde::{de::DeserializeOwned, Serialize};
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
     WasmerEnv,

@@ -1,11 +1,10 @@
 //! Zellij logging utility functions.
 
 use std::{
-    fs::{self, OpenOptions},
+    fs,
     io::{self, prelude::*},
     os::unix::io::RawFd,
     path::{Path, PathBuf},
-    thread,
 };
 
 use log::info;

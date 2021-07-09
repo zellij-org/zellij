@@ -5,3 +5,4 @@
 .DS_Store 
 /assets/man/zellij.1
 **/target
+zellij.log

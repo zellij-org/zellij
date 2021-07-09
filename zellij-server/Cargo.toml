@@ -16,7 +16,6 @@ serde_json = "1.0"
 unicode-width = "0.1.8"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.14.0" }
 log = "0.4.14"

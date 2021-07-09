@@ -2277,8 +2277,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d54ee1d4ed486f78874278e63e4069fc1ab9f6a18ca492076ffb90c5eb2997fd"
 dependencies = [
  "cfg-if 1.0.0",
- "serde",
- "serde_json",
  "wasm-bindgen-macro",
 ]
 
@@ -2653,7 +2651,6 @@ dependencies = [
  "serde_json",
  "typetag",
  "unicode-width",
- "wasm-bindgen",
  "wasmer",
  "wasmer-wasi",
  "zellij-utils",
@@ -2663,7 +2660,6 @@ dependencies = [
 name = "zellij-tile"
 version = "0.14.0"
 dependencies = [
- "log",
  "serde",
  "serde_json",
  "strum",
@@ -2702,7 +2698,6 @@ dependencies = [
  "strum",
  "tempfile",
  "termion",
- "typetag",
  "vte 0.10.1",
  "zellij-tile",
 ]
