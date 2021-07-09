@@ -2,7 +2,7 @@
 refresh_rate: 30 seconds
 
 appenders:
-  # An appender named "stdout" that writes to stdout
+  # An appender named "stderr" that writes to stderr
   stderr:
     kind: console
     target: stderr
@@ -14,7 +14,8 @@ appenders:
     append: false
     encoder:
       # {n} means platform dependent newline
-      pattern: "|{module}| {date} {highlight({level})} [{thread}] [{file}:{line}]: {message} {n}"
+      # module is padded to *at least* 25 bytes and thread is padded to be between 10 and 15 bytes.
+      pattern: "|{module:<25}| {date} {highlight({level})} [{thread:<10.15}] [{file}:{line}]: {message} {n}"
 
   # plugin appender. To be used in decorating_pipe to forward stderr output from plugins.
   logPlugin:

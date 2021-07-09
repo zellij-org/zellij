@@ -17,7 +17,7 @@ pub struct DecoratingPipe {
 
 impl DecoratingPipe {
     pub fn new(plugin_name: &str) -> DecoratingPipe {
-        info!("Creating decorating pipe!");
+        info!("Creating decorating pipe for plugin: {}!", plugin_name);
         DecoratingPipe {
             buffer: VecDeque::new(),
             plugin_name: String::from(plugin_name),
@@ -70,11 +70,11 @@ impl Write for DecoratingPipe {
                     if split_converted_buffer.peek().is_none() {
                         // Log last chunk iff the last char is endline. Otherwise do not do it.
                         if converted_buffer.chars().last().unwrap() == '\n' && !msg.is_empty() {
-                            info!("{}: {}", self.plugin_name, msg);
+                            info!("|{:<25}| {}", self.plugin_name, msg);
                             consumed_bytes += msg.len() + 1;
                         }
                     } else {
-                        info!("{}: {}", self.plugin_name, msg);
+                        info!("|{:<25}| {}", self.plugin_name, msg);
                         consumed_bytes += msg.len() + 1;
                     }
                 }
