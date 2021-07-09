@@ -4,12 +4,15 @@ use std::{
 };
 
 use log::{error, info};
-use serde::{Deserialize, Serialize};
 use wasmer_wasi::{WasiFile, WasiFsError};
+use zellij_utils::serde;
+
+use serde::{Deserialize, Serialize};
 
 // 16kB log buffer
 const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(crate = "self::serde")]
 pub struct DecoratingPipe {
     buffer: VecDeque<u8>,
     plugin_name: String,

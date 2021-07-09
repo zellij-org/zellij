@@ -19,7 +19,6 @@ wasmer-wasi = "1.0.0"
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.14.0" }
 log = "0.4.14"
-serde = "1.0.126"
 typetag = "0.1.7"
 
 [dev-dependencies]
