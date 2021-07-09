@@ -26,7 +26,10 @@ use std::{
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
 use zellij_utils::{
-    input::{layout::Layout, parse_keys},
+    input::{
+        layout::{Layout, Run},
+        parse_keys,
+    },
     pane_size::PositionAndSize,
     shared::adjust_to_size,
 };
@@ -338,7 +341,7 @@ impl Tab {
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
-            if let Some(plugin) = &layout.plugin {
+            if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
