@@ -518,26 +518,47 @@ impl PaneBoundariesFrame {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
-        let boundaries_frame = PaneBoundariesFrame::new(position_and_size);
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool) -> TerminalPane {
 
-        let grid_position_and_size = position_and_size.reduce_outer_frame(1);
-        let grid = Grid::new(
-            grid_position_and_size.rows,
-            grid_position_and_size.cols,
-            palette
-        );
-        TerminalPane {
-            boundaries_frame: Some(boundaries_frame),
-            pid,
-            grid,
-            selectable: true,
-            position_and_size,
-            position_and_size_override: None,
-            vte_parser: vte::Parser::new(),
-            active_at: Instant::now(),
-            colors: palette,
-            selection_scrolled_at: time::Instant::now(),
+        if draw_boundaries_frame {
+            let boundaries_frame = PaneBoundariesFrame::new(position_and_size);
+
+            let grid_position_and_size = position_and_size.reduce_outer_frame(1);
+            let grid = Grid::new(
+                grid_position_and_size.rows,
+                grid_position_and_size.cols,
+                palette
+            );
+            TerminalPane {
+                boundaries_frame: Some(boundaries_frame),
+                pid,
+                grid,
+                selectable: true,
+                position_and_size,
+                position_and_size_override: None,
+                vte_parser: vte::Parser::new(),
+                active_at: Instant::now(),
+                colors: palette,
+                selection_scrolled_at: time::Instant::now(),
+            }
+        } else {
+            let grid = Grid::new(
+                position_and_size.rows,
+                position_and_size.cols,
+                palette
+            );
+            TerminalPane {
+                boundaries_frame: None,
+                pid,
+                grid,
+                selectable: true,
+                position_and_size,
+                position_and_size_override: None,
+                vte_parser: vte::Parser::new(),
+                active_at: Instant::now(),
+                colors: palette,
+                selection_scrolled_at: time::Instant::now(),
+            }
         }
     }
     pub fn get_x(&self) -> usize {
