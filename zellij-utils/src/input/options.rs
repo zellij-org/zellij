@@ -8,7 +8,9 @@ use zellij_tile::data::InputMode;
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum OnForceClose {
+    #[serde(alias = "quit")]
     Quit,
+    #[serde(alias = "detach")]
     Detach,
 }
 
