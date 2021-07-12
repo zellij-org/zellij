@@ -1200,7 +1200,7 @@ impl Grid {
             let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
 
             // get the row from lines_above, viewport, or lines below depending on index
-            let row = if l < 0 {
+            let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
                 let offset_from_end = l.abs();
                 &self.lines_above[self
                     .lines_above
@@ -1211,8 +1211,12 @@ impl Grid {
             } else if (l as usize) < self.height {
                 // index is in viewport but there is no line
                 &empty_row
-            } else {
+            } else if self.lines_below.len() > (l as usize).saturating_sub(self.viewport.len()) {
                 &self.lines_below[(l as usize) - self.viewport.len()]
+            } else {
+                // can't find the line, this probably it's on the pane border
+                // is on the pane border
+                continue;
             };
 
             let excess_width = row.excess_width();

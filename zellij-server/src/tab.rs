@@ -324,7 +324,7 @@ impl Tab {
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
-        let draw_pane_frames = false; // TODO: do something with this
+        let draw_pane_frames = true; // TODO: do something with this
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames);
             os_api.set_terminal_size_using_fd(
@@ -377,7 +377,7 @@ impl Tab {
             ..Default::default()
         };
         self.panes_to_hide.clear();
-        let positions_in_layout = layout.position_panes_in_space(&free_space);
+        let positions_in_layout = layout.position_panes_in_space(&free_space, !self.draw_pane_frames);
         let mut positions_and_size = positions_in_layout.iter();
         for (pane_kind, terminal_pane) in self.panes.iter_mut() {
             // for now the layout only supports terminal panes
@@ -483,6 +483,7 @@ impl Tab {
                     }
                 },
             );
+            let should_have_gap_between_panes = self.border_width_between_panes() > 0;
             if terminal_id_to_split.is_none() {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
@@ -502,40 +503,52 @@ impl Tab {
                 && terminal_to_split.rows() > terminal_to_split.min_height() * 2
             {
                 if let PaneId::Terminal(term_pid) = pid {
-                    let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
+                    let (top_winsize, bottom_winsize) = if should_have_gap_between_panes {
+                        split_horizontally_with_gap(&terminal_ws)
+                    } else {
+                        split_horizontally_without_gap(&terminal_ws)
+                    };
                     let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        bottom_winsize.cols as u16,
-                        bottom_winsize.rows as u16,
+                        new_terminal.get_content_columns() as u16,
+                        new_terminal.get_content_rows() as u16,
                     );
                     terminal_to_split.change_pos_and_size(&top_winsize);
+                    let terminal_to_split_content_columns = terminal_to_split.get_content_columns();
+                    let terminal_to_split_content_rows = terminal_to_split.get_content_rows();
                     self.panes.insert(pid, Box::new(new_terminal));
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            top_winsize.cols as u16,
-                            top_winsize.rows as u16,
+                            terminal_to_split_content_columns as u16,
+                            terminal_to_split_content_rows as u16,
                         );
                     }
                     self.active_terminal = Some(pid);
                 }
             } else if terminal_to_split.columns() > terminal_to_split.min_width() * 2 {
                 if let PaneId::Terminal(term_pid) = pid {
-                    let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
+                    let (left_winsize, right_winsize) = if should_have_gap_between_panes { 
+                        split_vertically_with_gap(&terminal_ws)
+                    } else {
+                        split_vertically_without_gap(&terminal_ws)
+                    };
                     let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
-                        right_winsize.cols as u16,
-                        right_winsize.rows as u16,
+                        new_terminal.get_content_columns() as u16,
+                        new_terminal.get_content_rows() as u16,
                     );
                     terminal_to_split.change_pos_and_size(&left_winsize);
+                    let terminal_to_split_content_columns = terminal_to_split.get_content_columns();
+                    let terminal_to_split_content_rows = terminal_to_split.get_content_rows();
                     self.panes.insert(pid, Box::new(new_terminal));
                     if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
                         self.os_api.set_terminal_size_using_fd(
                             terminal_id_to_split,
-                            left_winsize.cols as u16,
-                            left_winsize.rows as u16,
+                            terminal_to_split_content_columns as u16,
+                            terminal_to_split_content_rows as u16,
                         );
                     }
                 }
@@ -787,8 +800,10 @@ impl Tab {
             if let PaneId::Terminal(active_pid) = active_pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     active_pid,
-                    active_terminal.columns() as u16,
-                    active_terminal.rows() as u16,
+//                     active_terminal.columns() as u16,
+//                     active_terminal.rows() as u16,
+                    active_terminal.get_content_columns() as u16,
+                    active_terminal.get_content_rows() as u16,
                 );
             }
             self.set_force_render();
@@ -2523,10 +2538,10 @@ impl Tab {
             self.write_selection_to_clipboard(&selected_text);
         }
     }
-    pub fn handle_mouse_hold(&mut self, position: &Position) {
+    pub fn handle_mouse_hold(&mut self, position_on_screen: &Position) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
-                let relative_position = active_pane.relative_position(position);
+                let relative_position = active_pane.relative_position(position_on_screen);
                 active_pane.update_selection(&relative_position);
             }
         }

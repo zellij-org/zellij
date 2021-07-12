@@ -64,6 +64,10 @@ impl Pane for TerminalPane {
     }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
+        let position_and_size = self.position_and_size();
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(position_and_size);
+        }
         self.reflow_lines();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
@@ -82,6 +86,9 @@ impl Pane for TerminalPane {
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(position_and_size_override);
+        }
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
@@ -195,7 +202,8 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            let max_width = self.columns();
+            // let max_width = self.columns();
+            let max_width = self.get_content_columns();
             for character_chunk in self.grid.read_changes() {
                 let pane_x = self.get_content_x();
                 let pane_y = self.get_content_y();
@@ -401,8 +409,20 @@ impl Pane for TerminalPane {
 
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.set_color(color);
+            if boundaries_frame.color != color {
+                boundaries_frame.set_color(color);
+                self.set_should_render(true);
+            }
         }
+    }
+    fn relative_position(&self, position_on_screen: &Position) -> Position {
+        let pane_position_and_size = self.get_content_posision_and_size();
+        // let pane_position_and_size = self.position_and_size();
+        position_on_screen.relative_to(&pane_position_and_size)
+//         match self.position_and_size_override() {
+//             Some(position_and_size) => position.relative_to(&position_and_size),
+//             None => position.relative_to(&self.position_and_size()),
+//         }
     }
 }
 
@@ -590,44 +610,64 @@ impl TerminalPane {
         }
     }
     pub fn get_content_x(&self) -> usize {
-        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-            (Some(position_and_size_override), _) => position_and_size_override.x,
-            (None, Some(boundaries_frame)) => {
-                boundaries_frame.position_and_size.x + 1
-            }
-            _ => self.position_and_size.x as usize,
-        }
+        self.get_content_posision_and_size().x
+//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+//             (Some(position_and_size_override), _) => position_and_size_override.x,
+//             (None, Some(boundaries_frame)) => {
+//                 boundaries_frame.position_and_size.x + 1
+//             }
+//             _ => self.position_and_size.x as usize,
+//         }
     }
     pub fn get_content_y(&self) -> usize {
-        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-            (Some(position_and_size_override), _) => position_and_size_override.y,
-            (None, Some(boundaries_frame)) => {
-                boundaries_frame.position_and_size.y + 1
-            }
-            _ => self.position_and_size.y as usize,
-        }
+        self.get_content_posision_and_size().y
+//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+//             (Some(position_and_size_override), _) => position_and_size_override.y,
+//             (None, Some(boundaries_frame)) => {
+//                 boundaries_frame.position_and_size.y + 1
+//             }
+//             _ => self.position_and_size.y as usize,
+//         }
     }
     pub fn get_content_columns(&self) -> usize {
         // content columns might differ from the pane's columns if the pane has a frame
         // in that case they would be 2 less
-        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-            (Some(position_and_size_override), _) => position_and_size_override.cols,
-            (None, Some(boundaries_frame)) => {
-                boundaries_frame.position_and_size.cols - 2
-            }
-            _ => self.position_and_size.cols as usize,
-        }
+        self.get_content_posision_and_size().cols
+//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+//             (Some(position_and_size_override), _) => position_and_size_override.cols,
+//             (None, Some(boundaries_frame)) => {
+//                 boundaries_frame.position_and_size.cols - 2
+//             }
+//             _ => self.position_and_size.cols as usize,
+//         }
     }
     pub fn get_content_rows(&self) -> usize {
         // content rows might differ from the pane's rows if the pane has a frame
         // in that case they would be 2 less
-        match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-            (Some(position_and_size_override), _) => position_and_size_override.rows,
-            (None, Some(boundaries_frame)) => {
-                boundaries_frame.position_and_size.rows - 2
+        self.get_content_posision_and_size().rows
+//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+//             (Some(position_and_size_override), _) => position_and_size_override.rows,
+//             (None, Some(boundaries_frame)) => {
+//                 boundaries_frame.position_and_size.rows - 2
+//             }
+//             _ => self.position_and_size.rows as usize,
+//         }
+    }
+    pub fn get_content_posision_and_size(&self) -> PositionAndSize {
+        match (self.boundaries_frame.as_ref(), self.position_and_size_override.as_ref()) {
+            (Some(boundaries_frame), _) => {
+                boundaries_frame.position_and_size.reduce_outer_frame(1)
             }
-            _ => self.position_and_size.rows as usize,
+            (None, Some(position_and_size_override)) => *position_and_size_override,
+            _ => self.position_and_size,
         }
+//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
+//             (Some(position_and_size_override), _) => *position_and_size_override,
+//             (None, Some(boundaries_frame)) => {
+//                 boundaries_frame.position_and_size.reduce_outer_frame(1)
+//             }
+//             _ => self.position_and_size,
+//         }
     }
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
