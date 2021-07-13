@@ -326,7 +326,7 @@ impl Tab {
     ) -> Self {
         let draw_pane_frames = true; // TODO: do something with this
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
-            let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames);
+            let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames, 1);
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -425,7 +425,7 @@ impl Tab {
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let new_terminal = TerminalPane::new(*pid, *position_and_size, self.colors, self.draw_pane_frames);
+                let new_terminal = TerminalPane::new(*pid, *position_and_size, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -453,7 +453,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -491,6 +491,7 @@ impl Tab {
                 return; // likely no terminal large enough to split
             }
             let terminal_id_to_split = terminal_id_to_split.unwrap();
+            let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
             let terminal_ws = PositionAndSize {
                 rows: terminal_to_split.rows(),
@@ -508,7 +509,7 @@ impl Tab {
                     } else {
                         split_horizontally_without_gap(&terminal_ws)
                     };
-                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames);
+                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         new_terminal.get_content_columns() as u16,
@@ -534,7 +535,7 @@ impl Tab {
                     } else {
                         split_vertically_without_gap(&terminal_ws)
                     };
-                    let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames);
+                    let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position);
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         new_terminal.get_content_columns() as u16,
@@ -564,7 +565,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -599,7 +600,7 @@ impl Tab {
             let active_pane_content_columns = active_pane.get_content_columns();
             let active_pane_content_rows = active_pane.get_content_rows();
 
-            let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames);
+            let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.get_content_columns() as u16,
@@ -626,7 +627,7 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames);
+                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -662,7 +663,7 @@ impl Tab {
             let active_pane_content_columns = active_pane.get_content_columns();
             let active_pane_content_rows = active_pane.get_content_rows();
 
-            let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames);
+            let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, self.get_next_selectable_pane_position());
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.get_content_columns() as u16,
@@ -924,6 +925,9 @@ impl Tab {
     // FIXME: This is some shameful duplication...
     fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
+    }
+    fn get_next_selectable_pane_position(&self) -> usize {
+        self.panes.iter().filter(|(k, _)| match k { PaneId::Plugin(_) => false, PaneId::Terminal(_) => true }).count() + 1
     }
     fn has_panes(&self) -> bool {
         let mut all_terminals = self.get_panes();

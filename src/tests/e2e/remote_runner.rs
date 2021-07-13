@@ -210,7 +210,7 @@ impl RemoteRunner {
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
         let draw_frame = false;
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame);
+        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0);
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel, session_name.as_ref());
         RemoteRunner {
@@ -239,7 +239,7 @@ impl RemoteRunner {
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
         let draw_frame = false;
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame);
+        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0);
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_layout(
             &mut channel,

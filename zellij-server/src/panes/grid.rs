@@ -10,7 +10,7 @@ use std::{
 use zellij_utils::{position::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
-const SCROLL_BACK: usize = 10_000;
+pub const SCROLL_BACK: usize = 10_000;
 
 use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
@@ -403,6 +403,9 @@ impl Grid {
     }
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
+    }
+    pub fn scrollback_position_and_length(&self) -> (usize, usize) { // (position, length)
+        (self.lines_below.len(), self.lines_above.len() + self.lines_below.len())
     }
     fn set_horizontal_tabstop(&mut self) {
         self.horizontal_tabstops.insert(self.cursor.x);

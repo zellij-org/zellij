@@ -11,7 +11,7 @@ use zellij_utils::logging::debug_log_to_file;
 
 use crate::panes::AnsiCode;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, SCROLL_BACK},
     terminal_character::{
         CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
@@ -23,6 +23,7 @@ pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
 use crate::ui::boundaries::boundary_type;
 use ansi_term::Colour::{Fixed, RGB};
+use ansi_term::Style;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -242,7 +243,8 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+            if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+                boundaries_frame.update_scroll(self.grid.scrollback_position_and_length());
                 vte_output.push_str(&boundaries_frame.render());
             }
             self.set_should_render(false);
@@ -428,6 +430,8 @@ impl Pane for TerminalPane {
 
 struct PaneBoundariesFrame {
     pub position_and_size: PositionAndSize,
+    title: String,
+    scroll_position: (usize, usize), // (position, length)
     color: Option<PaletteColor>,
 }
 
@@ -436,21 +440,23 @@ fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
         Some(color) => match color {
             PaletteColor::Rgb((r, g, b)) => {
-                format!("{}", RGB(r, g, b).paint(character))
+                format!("{}", RGB(r, g, b).bold().paint(character))
             }
             PaletteColor::EightBit(color) => {
-                format!("{}", Fixed(color).paint(character))
+                format!("{}", Fixed(color).bold().paint(character))
             }
         },
-        None => format!("{}", character),
+        None => format!("{}", Style::new().bold().paint(character)),
     }
 }
 
 impl PaneBoundariesFrame {
-    pub fn new(position_and_size: PositionAndSize) -> Self {
+    pub fn new(position_and_size: PositionAndSize, title: String) -> Self {
         PaneBoundariesFrame {
             position_and_size,
             color: None,
+            title,
+            scroll_position: (0, 0),
         }
     }
     pub fn change_pos_and_size(&mut self, position_and_size: PositionAndSize) {
@@ -459,37 +465,42 @@ impl PaneBoundariesFrame {
     pub fn set_color(&mut self, color: Option<PaletteColor>) {
         self.color = color;
     }
+    pub fn update_scroll(&mut self, scroll_position: (usize, usize)) {
+        self.scroll_position = scroll_position;
+    }
+    fn render_title(&self, vte_output: &mut String) {
+        // let title_width = self.position_and_size.cols;
+        let title_text_prefix = format!("{} {} ", boundary_type::TOP_LEFT, self.title);
+        let title_text_suffix = format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::TOP_RIGHT);
+        let mut title_text = String::new();
+        title_text.push_str(&title_text_prefix);
+        let title_text_length = title_text.chars().count();
+        // for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols) {
+        for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
+            title_text.push_str(boundary_type::HORIZONTAL);
+//             if col == self.position_and_size.x + self.position_and_size.cols - 1 {
+//                 // TODO: removeme
+//                 // top right corner
+//                 title_text.push_str(boundary_type::TOP_RIGHT);
+//             } else {
+//                 title_text.push_str(boundary_type::HORIZONTAL);
+//             }
+        }
+        title_text.push_str(&title_text_suffix);
+        vte_output.push_str(&format!(
+            "\u{1b}[{};{}H\u{1b}[m{}",
+            self.position_and_size.y + 1, // +1 because goto is 1 indexed
+            self.position_and_size.x + 1, // +1 because goto is 1 indexed
+            color_string(&title_text, self.color),
+        )); // goto row/col + boundary character
+
+    }
     pub fn render(&self) -> String {
         let mut vte_output = String::new();
         for row in self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows) {
             if row == self.position_and_size.y {
                 // top row
-                for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
-                    if col == self.position_and_size.x {
-                        // top left corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::TOP_LEFT, self.color),
-                        )); // goto row/col + boundary character
-                    } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
-                        // top right corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::TOP_RIGHT, self.color),
-                        )); // goto row/col + boundary character
-                    } else {
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::HORIZONTAL, self.color),
-                        )); // goto row/col + boundary character
-                    }
-                }
+                self.render_title(&mut vte_output);
             } else if row == self.position_and_size.y + self.position_and_size.rows - 1 {
                 // bottom row
                 for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
@@ -538,10 +549,11 @@ impl PaneBoundariesFrame {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool) -> TerminalPane {
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool, pane_position: usize) -> TerminalPane {
 
         if draw_boundaries_frame {
-            let boundaries_frame = PaneBoundariesFrame::new(position_and_size);
+            let initial_pane_title = format!("Pane #{}", pane_position);
+            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, initial_pane_title);
 
             let grid_position_and_size = position_and_size.reduce_outer_frame(1);
             let grid = Grid::new(
