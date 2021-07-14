@@ -91,7 +91,7 @@ impl Write for LoggingPipe {
                 while let Some(msg) = split_converted_buffer.next() {
                     if split_converted_buffer.peek().is_none() {
                         // Log last chunk iff the last char is endline. Otherwise do not do it.
-                        if converted_buffer.chars().last().unwrap() == '\n' && !msg.is_empty() {
+                        if converted_buffer.ends_with('\n') && !msg.is_empty() {
                             self.log_message(msg);
                             consumed_bytes += msg.len() + 1;
                         }
@@ -238,5 +238,21 @@ mod logging_pipe_test {
         assert_eq!(pipe.buffer.len(), test_buffer.len() - 1);
 
         println!("len: {}, buf: {:?}", test_buffer.len(), test_buffer);
+    }
+
+    #[test]
+    fn write_with_many_endls_consumes_everything_after_flush() {
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
+        let test_buffer = "Testing write \n".as_bytes();
+
+        pipe.write(
+            [test_buffer, test_buffer, b"\n", b"\n", b"\n"]
+                .concat()
+                .as_slice(),
+        )
+        .expect("Err write");
+        pipe.flush().expect("Err flush");
+
+        assert_eq!(pipe.buffer.len(), 0);
     }
 }
