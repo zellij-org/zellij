@@ -117,7 +117,6 @@ pub(crate) enum SessionState {
 
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("starts server");
-    #[cfg(not(any(feature = "test", test)))]
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)
