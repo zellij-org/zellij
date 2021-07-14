@@ -3,6 +3,7 @@ pub mod os_input_output;
 mod command_is_executing;
 mod input_handler;
 
+use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
@@ -291,6 +292,7 @@ pub fn start_client(
     );
 
     os_input.disable_mouse();
+    info!("{}", exit_msg);
     os_input.unset_raw_mode(0);
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();

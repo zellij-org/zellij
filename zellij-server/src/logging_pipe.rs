@@ -3,32 +3,51 @@ use std::{
     io::{Read, Seek, Write},
 };
 
-use log::{error, info};
+use log::{debug, error, info};
 use wasmer_wasi::{WasiFile, WasiFsError};
 use zellij_utils::serde;
 
+use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // 16kB log buffer
 const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(crate = "self::serde")]
-pub struct DecoratingPipe {
+pub struct LoggingPipe {
     buffer: VecDeque<u8>,
     plugin_name: String,
+    plugin_id: u32,
 }
 
-impl DecoratingPipe {
-    pub fn new(plugin_name: &str) -> DecoratingPipe {
-        info!("Creating decorating pipe for plugin: {}!", plugin_name);
-        DecoratingPipe {
+impl LoggingPipe {
+    pub fn new(plugin_name: &str, plugin_id: u32) -> LoggingPipe {
+        info!(
+            "|{:<25.25}| {} [{:<10.15}] Creating decorating pipe for plugin: {}!",
+            plugin_name,
+            Local::now().format("%Y-%m-%d %H:%M:%S.%3f"),
+            format!("id: {}", plugin_id),
+            plugin_name
+        );
+        LoggingPipe {
             buffer: VecDeque::new(),
             plugin_name: String::from(plugin_name),
+            plugin_id,
         }
+    }
+
+    fn log_message(&self, message: &str) {
+        debug!(
+            "|{:<25.25}| {} [{:<10.15}] {}",
+            self.plugin_name,
+            Local::now().format("%Y-%m-%d %H:%M:%S.%3f"),
+            format!("id: {}", self.plugin_id),
+            message
+        );
     }
 }
 
-impl Read for DecoratingPipe {
+impl Read for LoggingPipe {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let amt = std::cmp::min(buf.len(), self.buffer.len());
         for (i, byte) in self.buffer.drain(..amt).enumerate() {
@@ -38,11 +57,9 @@ impl Read for DecoratingPipe {
     }
 }
 
-impl Write for DecoratingPipe {
+impl Write for LoggingPipe {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.buffer.extend(buf);
-
-        if self.buffer.len() > ZELLIJ_MAX_PIPE_BUFFER_SIZE {
+        if self.buffer.len() + buf.len() > ZELLIJ_MAX_PIPE_BUFFER_SIZE {
             let error_msg =
                 "Exceeded log buffer size. Make sure that your plugin calls flush on stderr on \
                 valid UTF-8 symbol boundary. Aditionally, make sure that your log message contains \
@@ -54,6 +71,8 @@ impl Write for DecoratingPipe {
                 error_msg,
             ));
         }
+
+        self.buffer.extend(buf);
 
         Ok(buf.len())
     }
@@ -73,11 +92,11 @@ impl Write for DecoratingPipe {
                     if split_converted_buffer.peek().is_none() {
                         // Log last chunk iff the last char is endline. Otherwise do not do it.
                         if converted_buffer.chars().last().unwrap() == '\n' && !msg.is_empty() {
-                            info!("|{:<25}| {}", self.plugin_name, msg);
+                            self.log_message(msg);
                             consumed_bytes += msg.len() + 1;
                         }
                     } else {
-                        info!("|{:<25}| {}", self.plugin_name, msg);
+                        self.log_message(msg);
                         consumed_bytes += msg.len() + 1;
                     }
                 }
@@ -91,7 +110,7 @@ impl Write for DecoratingPipe {
     }
 }
 
-impl Seek for DecoratingPipe {
+impl Seek for LoggingPipe {
     fn seek(&mut self, _pos: std::io::SeekFrom) -> std::io::Result<u64> {
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -101,7 +120,7 @@ impl Seek for DecoratingPipe {
 }
 
 #[typetag::serde]
-impl WasiFile for DecoratingPipe {
+impl WasiFile for LoggingPipe {
     fn last_accessed(&self) -> u64 {
         0
     }
@@ -128,13 +147,13 @@ impl WasiFile for DecoratingPipe {
 
 // Unit tests
 #[cfg(test)]
-mod decorating_pipe_test {
+mod logging_pipe_test {
 
     use super::*;
 
     #[test]
     fn write_without_endl_does_not_consume_buffer_after_flush() {
-        let mut pipe = DecoratingPipe::new("TestPipe");
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
 
         let test_buffer = "Testing write".as_bytes();
 
@@ -146,7 +165,7 @@ mod decorating_pipe_test {
 
     #[test]
     fn write_with_single_endl_at_the_end_consumes_whole_buffer_after_flush() {
-        let mut pipe = DecoratingPipe::new("TestPipe");
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
 
         let test_buffer = "Testing write \n".as_bytes();
 
@@ -158,7 +177,7 @@ mod decorating_pipe_test {
 
     #[test]
     fn write_with_endl_in_the_middle_consumes_buffer_up_to_endl_after_flush() {
-        let mut pipe = DecoratingPipe::new("TestPipe");
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
 
         let test_buffer = "Testing write \n".as_bytes();
         let test_buffer2 = "And the rest".as_bytes();
@@ -182,7 +201,7 @@ mod decorating_pipe_test {
 
     #[test]
     fn write_with_many_endl_consumes_whole_buffer_after_flush() {
-        let mut pipe = DecoratingPipe::new("TestPipe");
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
 
         let test_buffer = "Testing write \n".as_bytes();
 
@@ -205,7 +224,7 @@ mod decorating_pipe_test {
 
     #[test]
     fn write_with_incorrect_byte_boundary_does_not_crash() {
-        let mut pipe = DecoratingPipe::new("TestPipe");
+        let mut pipe = LoggingPipe::new("TestPipe", 0);
 
         let test_buffer = "😱".as_bytes();
 

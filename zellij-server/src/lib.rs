@@ -2,7 +2,7 @@ pub mod os_input_output;
 pub mod panes;
 pub mod tab;
 
-mod decorating_pipe;
+mod logging_pipe;
 mod pty;
 mod route;
 mod screen;
