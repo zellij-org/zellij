@@ -89,7 +89,6 @@ pub fn main() {
             force,
         })) = opts.command.clone()
         {
-
             let mut sessions = get_sessions();
             let mut start_new_session = false;
 
@@ -114,28 +113,25 @@ pub fn main() {
                     print_sessions(sessions);
                     process::exit(1);
                 }
-
-            } else {
-                if sessions
+            } else if sessions
                     .iter()
                     .any(|s| s.to_string() == session_name.as_deref().unwrap())
-                {
-                    // If a session name was given, and it exists, attach to it
-                } else if create {
-                    // If a session name was given, but does not exist while --create was used,
-                    // attach a new session using that name
-                    start_new_session = true;
-                    println!(
-                        "Creating new session {:?} to attach",
-                        session_name.clone().unwrap()
-                    );
-                    opts.session = session_name.clone();
-                } else {
-                    // If a session name was given, but does not exist and will not be created,
-                    // just list sessions and exit
-                    eprintln!("ERROR: No session named {:?} found", session_name.unwrap());
-                    process::exit(1);
-                }
+            {
+                // If a session name was given, and it exists, attach to it
+            } else if create {
+                // If a session name was given, but does not exist while --create was used,
+                // attach a new session using that name
+                start_new_session = true;
+                println!(
+                    "Creating new session {:?} to attach",
+                    session_name.clone().unwrap()
+                );
+                opts.session = session_name.clone();
+            } else {
+                // If a session name was given, but does not exist and will not be created,
+                // just list sessions and exit
+                eprintln!("ERROR: No session named {:?} found", session_name.unwrap());
+                process::exit(1);
             }
 
             if start_new_session {
