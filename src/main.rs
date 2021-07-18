@@ -4,7 +4,7 @@ mod sessions;
 mod tests;
 
 use crate::install::populate_data_dir;
-use sessions::{assert_session, assert_session_ne, get_active_session, list_sessions};
+use sessions::{assert_session_ne, get_sessions, print_sessions, print_sessions_and_exit};
 use std::convert::TryFrom;
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
@@ -18,11 +18,37 @@ use zellij_utils::{
     structopt::StructOpt,
 };
 
+fn start_new_session_name(opts: &CliArgs) -> String {
+    let session_name = opts
+        .session
+        .clone()
+        .unwrap_or_else(|| names::Generator::default().next().unwrap());
+    assert_session_ne(&session_name);
+    return session_name;
+}
+
+fn start_new_session_layout(opts: &CliArgs, config_options: &Options) -> Option<Layout> {
+    // Determine and initialize the data directory
+    let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+    #[cfg(not(disable_automatic_asset_installation))]
+    populate_data_dir(&data_dir);
+
+    let layout_dir = config_options
+        .layout_dir
+        .clone()
+        .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
+
+    let layout =
+        Layout::from_path_or_default(opts.layout.as_ref(), opts.layout_path.as_ref(), layout_dir);
+
+    return layout;
+}
+
 pub fn main() {
-    let opts = CliArgs::from_args();
+    let mut opts = CliArgs::from_args();
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
-        list_sessions();
+        print_sessions_and_exit();
     }
 
     let config = match Config::try_from(&opts) {
@@ -59,49 +85,83 @@ pub fn main() {
         };
         if let Some(Command::Sessions(Sessions::Attach {
             mut session_name,
+            create,
             force,
         })) = opts.command.clone()
         {
-            if let Some(session) = session_name.as_ref() {
-                assert_session(session);
+
+            let mut sessions = get_sessions();
+            let mut start_new_session = false;
+
+            if session_name.is_none() {
+                if sessions.len() == 1 {
+                    // If a session name was omitted but there is only one session, attach it
+                    session_name = sessions.pop();
+                    println!("Attaching session {:?}", session_name);
+                } else if create {
+                    // If a session name was omitted, but --create was used, attach to new session
+                    // with random name
+                    start_new_session = true;
+                    println!("Creating a new session to attach");
+                } else if sessions.is_empty() {
+                    // If a session name was omitted and there are no sessions, exit with error
+                    eprintln!("ERROR: No active Zellij sessions found");
+                    process::exit(1);
+                } else {
+                    // If session name was omitted but there are some sessions, list them before
+                    // exiting with error
+                    eprintln!("ERROR: Please specify the session name to attach to. The following sessions are active:");
+                    print_sessions(sessions);
+                    process::exit(1);
+                }
+
             } else {
-                session_name = Some(get_active_session());
+                if sessions
+                    .iter()
+                    .any(|s| s.to_string() == session_name.as_deref().unwrap())
+                {
+                    // If a session name was given, and it exists, attach to it
+                } else if create {
+                    // If a session name was given, but does not exist while --create was used,
+                    // attach a new session using that name
+                    start_new_session = true;
+                    println!(
+                        "Creating new session {:?} to attach",
+                        session_name.clone().unwrap()
+                    );
+                    opts.session = session_name.clone();
+                } else {
+                    // If a session name was given, but does not exist and will not be created,
+                    // just list sessions and exit
+                    eprintln!("ERROR: No session named {:?} found", session_name.unwrap());
+                    process::exit(1);
+                }
             }
 
-            start_client(
-                Box::new(os_input),
-                opts,
-                config,
-                ClientInfo::Attach(session_name.unwrap(), force, config_options),
-                None,
-            );
+            if start_new_session {
+                start_client(
+                    Box::new(os_input),
+                    opts.clone(),
+                    config,
+                    ClientInfo::New(start_new_session_name(&opts)),
+                    start_new_session_layout(&opts, &config_options),
+                );
+            } else {
+                start_client(
+                    Box::new(os_input),
+                    opts,
+                    config,
+                    ClientInfo::Attach(session_name.unwrap(), force, config_options),
+                    None,
+                );
+            }
         } else {
-            let session_name = opts
-                .session
-                .clone()
-                .unwrap_or_else(|| names::Generator::default().next().unwrap());
-            assert_session_ne(&session_name);
-
-            // Determine and initialize the data directory
-            let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-            #[cfg(not(disable_automatic_asset_installation))]
-            populate_data_dir(&data_dir);
-
-            let layout_dir = config_options.layout_dir.or_else(|| {
-                get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
-            });
-            let layout = Layout::from_path_or_default(
-                opts.layout.as_ref(),
-                opts.layout_path.as_ref(),
-                layout_dir,
-            );
-
             start_client(
                 Box::new(os_input),
-                opts,
+                opts.clone(),
                 config,
-                ClientInfo::New(session_name),
-                layout,
+                ClientInfo::New(start_new_session_name(&opts)),
+                start_new_session_layout(&opts, &config_options),
             );
         }
     }
