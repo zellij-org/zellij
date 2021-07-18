@@ -3,7 +3,7 @@ use std::{
     io::{Read, Seek, Write},
 };
 
-use log::{debug, error, info};
+use log::{debug, error};
 use wasmer_wasi::{WasiFile, WasiFsError};
 use zellij_utils::serde;
 
@@ -22,13 +22,6 @@ pub struct LoggingPipe {
 
 impl LoggingPipe {
     pub fn new(plugin_name: &str, plugin_id: u32) -> LoggingPipe {
-        info!(
-            "|{:<25.25}| {} [{:<10.15}] Creating decorating pipe for plugin: {}!",
-            plugin_name,
-            Local::now().format("%Y-%m-%d %H:%M:%S.%3f"),
-            format!("id: {}", plugin_id),
-            plugin_name
-        );
         LoggingPipe {
             buffer: VecDeque::new(),
             plugin_name: String::from(plugin_name),
@@ -49,11 +42,12 @@ impl LoggingPipe {
 
 impl Read for LoggingPipe {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // NOTE: should we do this? I think if anyone were to chain LoggingPipe and read from it,
+        // they would see very weird behavior because we drain self.buffer in `flush`. Also, logs would be screwed up.
+        // Consider removing this code.
         let amt = std::cmp::min(buf.len(), self.buffer.len());
-        for (i, byte) in self.buffer.drain(..amt).enumerate() {
-            buf[i] = byte;
-        }
-        Ok(amt)
+        let data: Vec<_> = self.buffer.drain(..amt).collect();
+        buf.as_mut().write(&data)
     }
 }
 

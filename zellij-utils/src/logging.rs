@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use log::{info, LevelFilter};
+use log::LevelFilter;
 
 use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Logger, Root};
@@ -59,8 +59,6 @@ pub fn configure_logger() {
         .unwrap();
 
     let _ = log4rs::init_config(config).unwrap();
-
-    info!("Zellij logger initialized");
 }
 
 pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
