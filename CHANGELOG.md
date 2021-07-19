@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+
+## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
 * Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
 * Add running commands to `layouts` (https://github.com/zellij-org/zellij/pull/600)
