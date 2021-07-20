@@ -41,4 +41,9 @@ impl PositionAndSize {
         self.cols -= frame_width * 2;
         self
     }
+    pub fn reduce_top_line(mut self) -> Self {
+        self.y += 1;
+        self.rows -= 1;
+        self
+    }
 }

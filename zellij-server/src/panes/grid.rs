@@ -11,6 +11,7 @@ use zellij_utils::{position::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const SCROLL_BACK: usize = 10_000;
+pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
@@ -308,6 +309,7 @@ pub struct Grid {
     preceding_char: Option<TerminalCharacter>,
     colors: Palette,
     output_buffer: OutputBuffer,
+    title_stack: Vec<String>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
@@ -318,6 +320,7 @@ pub struct Grid {
     pub height: usize,
     pub pending_messages_to_pty: Vec<Vec<u8>>,
     pub selection: Selection,
+    pub title: Option<String>,
 }
 
 impl Debug for Grid {
@@ -358,6 +361,8 @@ impl Grid {
             colors,
             output_buffer: Default::default(),
             selection: Default::default(),
+            title_stack: vec![],
+            title: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1249,6 +1254,22 @@ impl Grid {
             self.output_buffer.update_line(l as usize);
         }
     }
+    fn set_title(&mut self, title: String) {
+        self.title = Some(title);
+    }
+    fn push_current_title_to_stack(&mut self) {
+        if self.title_stack.len() > MAX_TITLE_STACK_SIZE {
+            self.title_stack.remove(0);
+        }
+        if let Some(title) = self.title.as_ref() {
+            self.title_stack.push(title.clone());
+        }
+    }
+    fn pop_title_from_stack(&mut self) {
+        if let Some(popped_title) = self.title_stack.pop() {
+            self.title = Some(popped_title);
+        }
+    }
 }
 
 impl Perform for Grid {
@@ -1318,7 +1339,7 @@ impl Perform for Grid {
             // Set window title.
             b"0" | b"2" => {
                 if params.len() >= 2 {
-                    let _title = params[1..]
+                    let title = params[1..]
                         .iter()
                         .flat_map(|x| str::from_utf8(x))
                         .collect::<Vec<&str>>()
@@ -1326,6 +1347,7 @@ impl Perform for Grid {
                         .trim()
                         .to_owned();
                     // TBD: do something with title?
+                    self.set_title(title);
                 }
             }
 
@@ -1765,10 +1787,10 @@ impl Perform for Grid {
                         .push(text_area_report.as_bytes().to_vec());
                 }
                 22 => {
-                    // TODO: push title
+                    self.push_current_title_to_stack();
                 }
                 23 => {
-                    // TODO: pop title
+                    self.pop_title_from_stack();
                 }
                 _ => {}
             }

@@ -42,6 +42,9 @@ pub struct TerminalPane {
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
     boundaries_frame: Option<PaneBoundariesFrame>,
+    should_render_only_title: bool,
+    should_render_boundaries_frame: bool,
+    pane_title: String,
 }
 
 impl Pane for TerminalPane {
@@ -103,7 +106,11 @@ impl Pane for TerminalPane {
         // self.grid.cursor_coordinates()
         if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
             // TODO: better
-            self.grid.cursor_coordinates().map(|(x, y)| (x + 1, y + 1))
+            if boundaries_frame.draw_title_only {
+                self.grid.cursor_coordinates().map(|(x, y)| (x, y + 1))
+            } else {
+                self.grid.cursor_coordinates().map(|(x, y)| (x + 1, y + 1))
+            }
         } else {
             self.grid.cursor_coordinates()
         }
@@ -203,7 +210,6 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
-            // let max_width = self.columns();
             let max_width = self.get_content_columns();
             for character_chunk in self.grid.read_changes() {
                 let pane_x = self.get_content_x();
@@ -245,6 +251,7 @@ impl Pane for TerminalPane {
             }
             if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
                 boundaries_frame.update_scroll(self.grid.scrollback_position_and_length());
+                boundaries_frame.update_title(self.grid.title.as_ref());
                 vte_output.push_str(&boundaries_frame.render());
             }
             self.set_should_render(false);
@@ -419,22 +426,17 @@ impl Pane for TerminalPane {
     }
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         let pane_position_and_size = self.get_content_posision_and_size();
-        // let pane_position_and_size = self.position_and_size();
         position_on_screen.relative_to(&pane_position_and_size)
-//         match self.position_and_size_override() {
-//             Some(position_and_size) => position.relative_to(&position_and_size),
-//             None => position.relative_to(&self.position_and_size()),
-//         }
+    }
+    fn set_should_render_only_title(&mut self, should_render_only_title: bool) {
+        debug_log_to_file(format!("set_should_render_only_title"));
+        self.should_render_only_title = should_render_only_title;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.draw_title_only = should_render_only_title;
+            self.redistribute_space();
+        }
     }
 }
-
-struct PaneBoundariesFrame {
-    pub position_and_size: PositionAndSize,
-    title: String,
-    scroll_position: (usize, usize), // (position, length)
-    color: Option<PaletteColor>,
-}
-
 
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
@@ -450,14 +452,32 @@ fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     }
 }
 
+struct PaneBoundariesFrame {
+    pub position_and_size: PositionAndSize,
+    base_title: String,
+    title: String,
+    scroll_position: (usize, usize), // (position, length)
+    color: Option<PaletteColor>,
+    draw_title_only: bool,
+}
+
 impl PaneBoundariesFrame {
     pub fn new(position_and_size: PositionAndSize, title: String) -> Self {
         PaneBoundariesFrame {
             position_and_size,
             color: None,
+            base_title: title.clone(),
             title,
             scroll_position: (0, 0),
+            draw_title_only: false,
         }
+    }
+    pub fn frame_title_only(mut self) -> Self {
+        self.draw_title_only = true;
+        self
+    }
+    pub fn set_should_render_frame_title(&mut self, should_render_frame_title: bool) {
+        self.draw_title_only = should_render_frame_title;
     }
     pub fn change_pos_and_size(&mut self, position_and_size: PositionAndSize) {
         self.position_and_size = position_and_size;
@@ -468,80 +488,120 @@ impl PaneBoundariesFrame {
     pub fn update_scroll(&mut self, scroll_position: (usize, usize)) {
         self.scroll_position = scroll_position;
     }
-    fn render_title(&self, vte_output: &mut String) {
-        // let title_width = self.position_and_size.cols;
-        let title_text_prefix = format!("{} {} ", boundary_type::TOP_LEFT, self.title);
-        let title_text_suffix = format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::TOP_RIGHT);
-        let mut title_text = String::new();
-        title_text.push_str(&title_text_prefix);
-        let title_text_length = title_text.chars().count();
-        // for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols) {
-        for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
-            title_text.push_str(boundary_type::HORIZONTAL);
-//             if col == self.position_and_size.x + self.position_and_size.cols - 1 {
-//                 // TODO: removeme
-//                 // top right corner
-//                 title_text.push_str(boundary_type::TOP_RIGHT);
-//             } else {
-//                 title_text.push_str(boundary_type::HORIZONTAL);
-//             }
+    pub fn update_title(&mut self, title: Option<&String>) {
+        match title {
+            Some(title) => {
+                self.title = title.clone();
+            }
+            None => {
+                self.title = self.base_title.clone();
+            }
         }
-        title_text.push_str(&title_text_suffix);
-        vte_output.push_str(&format!(
-            "\u{1b}[{};{}H\u{1b}[m{}",
-            self.position_and_size.y + 1, // +1 because goto is 1 indexed
-            self.position_and_size.x + 1, // +1 because goto is 1 indexed
-            color_string(&title_text, self.color),
-        )); // goto row/col + boundary character
-
+    }
+    pub fn content_position_and_size(&self) -> PositionAndSize {
+        if self.draw_title_only {
+            self.position_and_size.reduce_top_line()
+        } else {
+            self.position_and_size.reduce_outer_frame(1)
+        }
+    }
+    fn render_title(&self, vte_output: &mut String) {
+        if self.draw_title_only {
+//             let title_text_prefix = format!("{} {} ", " ", self.title);
+//             let title_text_suffix = format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, " ");
+            let title_text_prefix = format!(" {} ", self.title);
+            let title_text_suffix = if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
+                format!("SCROLL: {}/{} ", self.scroll_position.0, self.scroll_position.1)
+            } else {
+                format!("")
+            };
+            let mut title_text = String::new();
+            title_text.push_str(&title_text_prefix);
+            let title_text_length = title_text.chars().count();
+            for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
+                // title_text.push_str(boundary_type::HORIZONTAL);
+                title_text.push_str(" ");
+            }
+            title_text.push_str(&title_text_suffix);
+            vte_output.push_str(&format!(
+                "\u{1b}[{};{}H\u{1b}[m{}",
+                self.position_and_size.y + 1, // +1 because goto is 1 indexed
+                self.position_and_size.x + 1, // +1 because goto is 1 indexed
+                color_string(&title_text, self.color),
+            )); // goto row/col + boundary character
+        } else {
+            let title_text_prefix = format!("{} {} ", boundary_type::TOP_LEFT, self.title);
+            let title_text_suffix = if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
+                format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::TOP_RIGHT)
+            } else {
+                format!("{}", boundary_type::TOP_RIGHT)
+            };
+            let mut title_text = String::new();
+            title_text.push_str(&title_text_prefix);
+            let title_text_length = title_text.chars().count();
+            for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
+                title_text.push_str(boundary_type::HORIZONTAL);
+            }
+            title_text.push_str(&title_text_suffix);
+            vte_output.push_str(&format!(
+                "\u{1b}[{};{}H\u{1b}[m{}",
+                self.position_and_size.y + 1, // +1 because goto is 1 indexed
+                self.position_and_size.x + 1, // +1 because goto is 1 indexed
+                color_string(&title_text, self.color),
+            )); // goto row/col + boundary character
+        }
     }
     pub fn render(&self) -> String {
         let mut vte_output = String::new();
-        for row in self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows) {
-            if row == self.position_and_size.y {
-                // top row
-                self.render_title(&mut vte_output);
-            } else if row == self.position_and_size.y + self.position_and_size.rows - 1 {
-                // bottom row
-                for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
-                    if col == self.position_and_size.x {
-                        // bottom left corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::BOTTOM_LEFT, self.color),
-                        )); // goto row/col + boundary character
-                    } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
-                        // bottom right corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::BOTTOM_RIGHT, self.color),
-                        )); // goto row/col + boundary character
-                    } else {
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::HORIZONTAL, self.color),
-                        )); // goto row/col + boundary character
+        if self.draw_title_only {
+            self.render_title(&mut vte_output);
+        } else {
+            for row in self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows) {
+                if row == self.position_and_size.y {
+                    // top row
+                    self.render_title(&mut vte_output);
+                } else if row == self.position_and_size.y + self.position_and_size.rows - 1 {
+                    // bottom row
+                    for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
+                        if col == self.position_and_size.x {
+                            // bottom left corner
+                            vte_output.push_str(&format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                row + 1, // +1 because goto is 1 indexed
+                                col + 1,
+                                color_string(boundary_type::BOTTOM_LEFT, self.color),
+                            )); // goto row/col + boundary character
+                        } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
+                            // bottom right corner
+                            vte_output.push_str(&format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                row + 1, // +1 because goto is 1 indexed
+                                col + 1,
+                                color_string(boundary_type::BOTTOM_RIGHT, self.color),
+                            )); // goto row/col + boundary character
+                        } else {
+                            vte_output.push_str(&format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                row + 1, // +1 because goto is 1 indexed
+                                col + 1,
+                                color_string(boundary_type::HORIZONTAL, self.color),
+                            )); // goto row/col + boundary character
+                        }
                     }
+                } else {
+                    vte_output.push_str(&format!(
+                        "\u{1b}[{};{}H\u{1b}[m{}",
+                        row + 1, // +1 because goto is 1 indexed
+                        self.position_and_size.x + 1,
+                        color_string(boundary_type::VERTICAL, self.color),
+                    )); // goto row/col + boundary character
+                    vte_output.push_str(&format!(
+                        "\u{1b}[{};{}H\u{1b}[m{}",
+                        row + 1, // +1 because goto is 1 indexed
+                        self.position_and_size.x + self.position_and_size.cols,
+                        color_string(boundary_type::VERTICAL, self.color),
+                    )); // goto row/col + boundary character
                 }
-            } else {
-                vte_output.push_str(&format!(
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    row + 1, // +1 because goto is 1 indexed
-                    self.position_and_size.x + 1,
-                    color_string(boundary_type::VERTICAL, self.color),
-                )); // goto row/col + boundary character
-                vte_output.push_str(&format!(
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    row + 1, // +1 because goto is 1 indexed
-                    self.position_and_size.x + self.position_and_size.cols,
-                    color_string(boundary_type::VERTICAL, self.color),
-                )); // goto row/col + boundary character
             }
         }
         vte_output
@@ -549,31 +609,64 @@ impl PaneBoundariesFrame {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool, pane_position: usize) -> TerminalPane {
+    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool, pane_position: usize, frame_title_only: bool) -> TerminalPane {
+
+        // let frame_title_only = true;
 
         if draw_boundaries_frame {
-            let initial_pane_title = format!("Pane #{}", pane_position);
-            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, initial_pane_title);
+            if frame_title_only {
+                let initial_pane_title = format!("Pane #{}", pane_position);
+                let boundaries_frame = PaneBoundariesFrame::new(position_and_size, initial_pane_title.clone()).frame_title_only();
 
-            let grid_position_and_size = position_and_size.reduce_outer_frame(1);
-            let grid = Grid::new(
-                grid_position_and_size.rows,
-                grid_position_and_size.cols,
-                palette
-            );
-            TerminalPane {
-                boundaries_frame: Some(boundaries_frame),
-                pid,
-                grid,
-                selectable: true,
-                position_and_size,
-                position_and_size_override: None,
-                vte_parser: vte::Parser::new(),
-                active_at: Instant::now(),
-                colors: palette,
-                selection_scrolled_at: time::Instant::now(),
+                let grid_position_and_size = position_and_size.reduce_top_line();
+                let grid = Grid::new(
+                    grid_position_and_size.rows,
+                    grid_position_and_size.cols,
+                    palette
+                );
+                TerminalPane {
+                    boundaries_frame: Some(boundaries_frame),
+                    pid,
+                    grid,
+                    selectable: true,
+                    position_and_size,
+                    position_and_size_override: None,
+                    vte_parser: vte::Parser::new(),
+                    active_at: Instant::now(),
+                    colors: palette,
+                    selection_scrolled_at: time::Instant::now(),
+                    should_render_only_title: frame_title_only,
+                    pane_title: initial_pane_title,
+                    should_render_boundaries_frame: draw_boundaries_frame,
+                }
+            } else {
+                let initial_pane_title = format!("Pane #{}", pane_position);
+                let boundaries_frame = PaneBoundariesFrame::new(position_and_size, initial_pane_title.clone());
+
+                let grid_position_and_size = position_and_size.reduce_outer_frame(1);
+                let grid = Grid::new(
+                    grid_position_and_size.rows,
+                    grid_position_and_size.cols,
+                    palette
+                );
+                TerminalPane {
+                    boundaries_frame: Some(boundaries_frame),
+                    pid,
+                    grid,
+                    selectable: true,
+                    position_and_size,
+                    position_and_size_override: None,
+                    vte_parser: vte::Parser::new(),
+                    active_at: Instant::now(),
+                    colors: palette,
+                    selection_scrolled_at: time::Instant::now(),
+                    should_render_only_title: frame_title_only,
+                    pane_title: initial_pane_title,
+                    should_render_boundaries_frame: draw_boundaries_frame,
+                }
             }
         } else {
+            let initial_pane_title = format!("Pane #{}", pane_position);
             let grid = Grid::new(
                 position_and_size.rows,
                 position_and_size.cols,
@@ -590,6 +683,9 @@ impl TerminalPane {
                 active_at: Instant::now(),
                 colors: palette,
                 selection_scrolled_at: time::Instant::now(),
+                should_render_only_title: false,
+                pane_title: initial_pane_title,
+                should_render_boundaries_frame: draw_boundaries_frame,
             }
         }
     }
@@ -623,63 +719,29 @@ impl TerminalPane {
     }
     pub fn get_content_x(&self) -> usize {
         self.get_content_posision_and_size().x
-//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-//             (Some(position_and_size_override), _) => position_and_size_override.x,
-//             (None, Some(boundaries_frame)) => {
-//                 boundaries_frame.position_and_size.x + 1
-//             }
-//             _ => self.position_and_size.x as usize,
-//         }
     }
     pub fn get_content_y(&self) -> usize {
         self.get_content_posision_and_size().y
-//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-//             (Some(position_and_size_override), _) => position_and_size_override.y,
-//             (None, Some(boundaries_frame)) => {
-//                 boundaries_frame.position_and_size.y + 1
-//             }
-//             _ => self.position_and_size.y as usize,
-//         }
     }
     pub fn get_content_columns(&self) -> usize {
         // content columns might differ from the pane's columns if the pane has a frame
         // in that case they would be 2 less
         self.get_content_posision_and_size().cols
-//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-//             (Some(position_and_size_override), _) => position_and_size_override.cols,
-//             (None, Some(boundaries_frame)) => {
-//                 boundaries_frame.position_and_size.cols - 2
-//             }
-//             _ => self.position_and_size.cols as usize,
-//         }
     }
     pub fn get_content_rows(&self) -> usize {
         // content rows might differ from the pane's rows if the pane has a frame
         // in that case they would be 2 less
         self.get_content_posision_and_size().rows
-//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-//             (Some(position_and_size_override), _) => position_and_size_override.rows,
-//             (None, Some(boundaries_frame)) => {
-//                 boundaries_frame.position_and_size.rows - 2
-//             }
-//             _ => self.position_and_size.rows as usize,
-//         }
     }
     pub fn get_content_posision_and_size(&self) -> PositionAndSize {
         match (self.boundaries_frame.as_ref(), self.position_and_size_override.as_ref()) {
             (Some(boundaries_frame), _) => {
-                boundaries_frame.position_and_size.reduce_outer_frame(1)
+                // boundaries_frame.position_and_size.reduce_outer_frame(1)
+                boundaries_frame.content_position_and_size()
             }
             (None, Some(position_and_size_override)) => *position_and_size_override,
             _ => self.position_and_size,
         }
-//         match (self.position_and_size_override.as_ref(), self.boundaries_frame.as_ref()) {
-//             (Some(position_and_size_override), _) => *position_and_size_override,
-//             (None, Some(boundaries_frame)) => {
-//                 boundaries_frame.position_and_size.reduce_outer_frame(1)
-//             }
-//             _ => self.position_and_size,
-//         }
     }
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
@@ -694,12 +756,28 @@ impl TerminalPane {
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
-//         if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
-//             // TODO: better
-//             self.grid.cursor_coordinates().map(|(x, y)| (x + 1, y + 1))
-//         } else {
-//             self.grid.cursor_coordinates()
-//         }
+    }
+    fn redistribute_space(&mut self) {
+        if self.should_render_boundaries_frame {
+            if self.should_render_only_title {
+                if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+                    boundaries_frame.set_should_render_frame_title(true);
+                } else {
+                    self.boundaries_frame = Some(PaneBoundariesFrame::new(self.position_and_size, self.pane_title.clone()).frame_title_only());
+                }
+                self.reflow_lines();
+            } else {
+                if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+                    boundaries_frame.set_should_render_frame_title(false);
+                } else {
+                    self.boundaries_frame = Some(PaneBoundariesFrame::new(self.position_and_size, self.pane_title.clone()));
+                }
+                self.reflow_lines();
+            }
+        } else {
+            self.boundaries_frame = None;
+            self.reflow_lines();
+        }
     }
 }
 
