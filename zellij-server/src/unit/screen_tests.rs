@@ -1,5 +1,5 @@
 use super::{Screen, ScreenInstruction};
-use crate::zellij_tile::data::{InputMode, ModeInfo, Palette};
+use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     thread_bus::Bus,
@@ -81,16 +81,8 @@ fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
     client_attributes.position_and_size = position_and_size;
     let max_panes = None;
     let mode_info = ModeInfo::default();
-    let input_mode = InputMode::Normal;
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
-    Screen::new(
-        bus,
-        &client_attributes,
-        max_panes,
-        mode_info,
-        input_mode,
-        session_state,
-    )
+    Screen::new(bus, &client_attributes, max_panes, mode_info, session_state)
 }
 
 #[test]

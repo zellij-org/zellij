@@ -1,6 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
+use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
@@ -80,4 +81,13 @@ pub enum Action {
     MouseRelease(Position),
     MouseHold(Position),
     Copy,
+}
+
+impl From<OnForceClose> for Action {
+    fn from(ofc: OnForceClose) -> Action {
+        match ofc {
+            OnForceClose::Quit => Action::Quit,
+            OnForceClose::Detach => Action::Detach,
+        }
+    }
 }

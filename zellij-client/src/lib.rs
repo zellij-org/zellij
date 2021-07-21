@@ -166,6 +166,8 @@ pub fn start_client(
         })
     });
 
+    let on_force_close = config_options.on_force_close.unwrap_or_default();
+
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
@@ -202,7 +204,7 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(Action::Detach));
+                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
                         }
                     }),
                 );

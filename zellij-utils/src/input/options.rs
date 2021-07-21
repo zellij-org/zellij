@@ -2,12 +2,39 @@
 use crate::cli::Command;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 use structopt::StructOpt;
 use zellij_tile::data::InputMode;
 
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum OnForceClose {
+    #[serde(alias = "quit")]
+    Quit,
+    #[serde(alias = "detach")]
+    Detach,
+}
+
+impl Default for OnForceClose {
+    fn default() -> Self {
+        Self::Detach
+    }
+}
+
+impl FromStr for OnForceClose {
+    type Err = Box<dyn std::error::Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "quit" => Ok(Self::Quit),
+            "detach" => Ok(Self::Detach),
+            e => Err(e.to_string().into()),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
 /// Options that can be set either through the config file,
-/// or cli flags
+/// or cli flags - cli flags should take precedence over the config file
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts
@@ -29,7 +56,11 @@ pub struct Options {
     pub layout_dir: Option<PathBuf>,
     #[structopt(long)]
     #[serde(default)]
+    /// Disable handling of mouse events
     pub disable_mouse_mode: bool,
+    /// Set behaviour on force close (quit or detach)
+    #[structopt(long)]
+    pub on_force_close: Option<OnForceClose>,
 }
 
 impl Options {
@@ -45,37 +76,16 @@ impl Options {
     /// will supercede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge(&self, other: Options) -> Options {
-        let simplified_ui = if other.simplified_ui {
-            true
-        } else {
-            self.simplified_ui
-        };
+        let merge_bool = |opt_other, opt_self| if opt_other { true } else { opt_self };
 
-        let default_mode = match other.default_mode {
-            None => self.default_mode,
-            other => other,
-        };
+        let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
+        let disable_mouse_mode = merge_bool(other.disable_mouse_mode, self.disable_mouse_mode);
 
-        let default_shell = match other.default_shell {
-            None => self.default_shell.clone(),
-            other => other,
-        };
-
-        let layout_dir = match other.layout_dir {
-            None => self.layout_dir.clone(),
-            other => other,
-        };
-
-        let theme = match other.theme {
-            None => self.theme.clone(),
-            other => other,
-        };
-
-        let disable_mouse_mode = if other.disable_mouse_mode {
-            true
-        } else {
-            self.disable_mouse_mode
-        };
+        let default_mode = other.default_mode.or(self.default_mode);
+        let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
+        let theme = other.theme.or_else(|| self.theme.clone());
+        let on_force_close = other.on_force_close.or(self.on_force_close);
 
         Options {
             simplified_ui,
@@ -84,6 +94,7 @@ impl Options {
             default_shell,
             layout_dir,
             disable_mouse_mode,
+            on_force_close,
         }
     }
 

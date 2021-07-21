@@ -4,5 +4,6 @@ parts:
   - direction: Vertical
     split_size:
       Fixed: 1
-    plugin: tab-bar
+    run:
+      plugin: tab-bar
   - direction: Vertical
