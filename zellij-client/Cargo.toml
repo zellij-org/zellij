@@ -14,7 +14,6 @@ termbg = "0.2.3"
 zellij-utils = { path = "../zellij-utils/", version = "0.16.0" }
 log = "0.4.14"
 
-
 [dev-dependencies]
 insta = "1.6.0"
 
