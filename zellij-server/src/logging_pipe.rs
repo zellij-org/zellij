@@ -41,13 +41,11 @@ impl LoggingPipe {
 }
 
 impl Read for LoggingPipe {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // NOTE: should we do this? I think if anyone were to chain LoggingPipe and read from it,
-        // they would see very weird behavior because we drain self.buffer in `flush`. Also, logs would be screwed up.
-        // Consider removing this code.
-        let amt = std::cmp::min(buf.len(), self.buffer.len());
-        let data: Vec<_> = self.buffer.drain(..amt).collect();
-        buf.as_mut().write(&data)
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Can not reed from a LoggingPipe",
+        ))
     }
 }
 
