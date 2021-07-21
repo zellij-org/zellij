@@ -509,18 +509,18 @@ impl PaneBoundariesFrame {
         if self.draw_title_only {
 //             let title_text_prefix = format!("{} {} ", " ", self.title);
 //             let title_text_suffix = format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, " ");
-            let title_text_prefix = format!(" {} ", self.title);
+            let title_text_prefix = format!("{} {} ", boundary_type::HORIZONTAL, self.title);
             let title_text_suffix = if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
-                format!("SCROLL: {}/{} ", self.scroll_position.0, self.scroll_position.1)
+                format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::HORIZONTAL)
             } else {
-                format!("")
+                format!("{}", boundary_type::HORIZONTAL)
             };
             let mut title_text = String::new();
             title_text.push_str(&title_text_prefix);
             let title_text_length = title_text.chars().count();
             for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
                 // title_text.push_str(boundary_type::HORIZONTAL);
-                title_text.push_str(" ");
+                title_text.push_str(boundary_type::HORIZONTAL);
             }
             title_text.push_str(&title_text_suffix);
             vte_output.push_str(&format!(

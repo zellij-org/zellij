@@ -1939,8 +1939,9 @@ impl Tab {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
         }
+        let border_width = self.border_width_between_panes();
         if let Some((column_difference, row_difference)) =
-            PaneResizer::new(&mut self.panes, &mut self.os_api)
+            PaneResizer::new(&mut self.panes, &mut self.os_api, border_width)
                 .resize(self.full_screen_ws, new_screen_size)
         {
             self.should_clear_display_before_rendering = true;
