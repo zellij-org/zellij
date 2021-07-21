@@ -68,6 +68,7 @@ pub(crate) enum ScreenInstruction {
     ToggleActiveSyncTab,
     CloseTab,
     GoToTab(u32),
+    GoToLastTab,
     UpdateTabName(Vec<u8>),
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
@@ -133,6 +134,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MouseRelease(_) => ScreenContext::MouseRelease,
             ScreenInstruction::MouseHold(_) => ScreenContext::MouseHold,
             ScreenInstruction::Copy => ScreenContext::Copy,
+            ScreenInstruction::GoToLastTab => ScreenContext::GoToLastTab,
         }
     }
 }
@@ -150,6 +152,7 @@ pub(crate) struct Screen {
     position_and_size: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
+    last_active_tab_index: Option<usize>,
     mode_info: ModeInfo,
     colors: Palette,
     session_state: Arc<RwLock<SessionState>>,
@@ -170,6 +173,7 @@ impl Screen {
             position_and_size: client_attributes.position_and_size,
             colors: client_attributes.palette,
             active_tab_index: None,
+            last_active_tab_index: None,
             tabs: BTreeMap::new(),
             mode_info,
             session_state,
@@ -194,6 +198,7 @@ impl Screen {
             self.colors,
             self.session_state.clone(),
         );
+        self.last_active_tab_index = self.active_tab_index;
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
@@ -219,6 +224,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
                 tab.set_force_render();
+                self.last_active_tab_index = self.active_tab_index;
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -238,6 +244,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
                 tab.set_force_render();
+                self.last_active_tab_index = self.active_tab_index;
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -252,6 +259,7 @@ impl Screen {
         if let Some(t) = self.tabs.values_mut().find(|t| t.position == tab_index) {
             if t.index != active_tab_index {
                 t.set_force_render();
+                self.last_active_tab_index = self.active_tab_index;
                 self.active_tab_index = Some(t.index);
                 self.update_tabs();
                 self.render();
@@ -277,6 +285,7 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
+            self.last_active_tab_index = None;
             if *self.session_state.read().unwrap() == SessionState::Attached {
                 self.bus
                     .senders
@@ -361,6 +370,7 @@ impl Screen {
             self.session_state.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index);
+        self.last_active_tab_index = self.active_tab_index;
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
@@ -416,6 +426,15 @@ impl Screen {
         if !self.get_active_tab_mut().unwrap().move_focus_right() {
             self.switch_tab_next();
         }
+    }
+    pub fn go_to_last_tab(&mut self) {
+        let active_tab_index = self.active_tab_index.unwrap();
+        if let Some(i) = self.last_active_tab_index {
+            self.go_to_tab(i + 1);
+        }
+        self.last_active_tab_index = Some(active_tab_index);
+        self.update_tabs();
+        self.render();
     }
 }
 
@@ -750,6 +769,14 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::Exit => {
                 break;
+            }
+            ScreenInstruction::GoToLastTab => {
+                screen.go_to_last_tab();
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
             }
         }
     }

@@ -24,6 +24,12 @@ fn route_action(
 ) -> bool {
     let mut should_break = false;
     match action {
+        Action::GoToLastTab => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::GoToLastTab)
+                .unwrap();
+        }
         Action::Write(val) => {
             session
                 .senders

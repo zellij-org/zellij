@@ -247,3 +247,34 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
         "Active tab switched to next"
     );
 }
+
+#[test]
+pub fn switch_to_last_tab() {
+    let position_and_size = PositionAndSize {
+        cols: 121,
+        rows: 20,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+    let mut screen = create_new_screen(position_and_size);
+
+    screen.new_tab(1);
+    screen.new_tab(2);
+    screen.go_to_tab(1);
+    screen.go_to_tab(2);
+
+    screen.go_to_last_tab();
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        0,
+        "Active tab switched to last tab"
+    );
+
+    screen.go_to_last_tab();
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        1,
+        "Active tab switched to last tab"
+    );
+}

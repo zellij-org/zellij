@@ -74,6 +74,7 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
+    GoToLastTab,
     TabNameInput(Vec<u8>),
     /// Run speficied command in new pane.
     Run(RunCommandAction),
