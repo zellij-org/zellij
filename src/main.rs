@@ -19,6 +19,7 @@ use zellij_utils::{
 };
 
 pub fn main() {
+    configure_logger();
     let opts = CliArgs::from_args();
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {

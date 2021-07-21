@@ -19,6 +19,9 @@ wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.16.0" }
+log = "0.4.14"
+typetag = "0.1.7"
+chrono = "0.4.19"
 
 [dev-dependencies]
 insta = "1.6.0"
