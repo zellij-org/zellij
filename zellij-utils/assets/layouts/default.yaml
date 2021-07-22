@@ -4,9 +4,11 @@ parts:
   - direction: Vertical
     split_size:
       Fixed: 1
-    plugin: tab-bar
+    run:
+      plugin: tab-bar
   - direction: Vertical
   - direction: Vertical
     split_size:
       Fixed: 2
-    plugin: status-bar
+    run:
+      plugin: status-bar

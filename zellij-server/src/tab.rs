@@ -24,9 +24,12 @@ use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashSet},
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette};
+use zellij_tile::data::{Event, ModeInfo, Palette};
 use zellij_utils::{
-    input::{layout::Layout, parse_keys},
+    input::{
+        layout::{Layout, Run},
+        parse_keys,
+    },
     pane_size::PositionAndSize,
     shared::adjust_to_size,
 };
@@ -84,7 +87,6 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
-    pub input_mode: InputMode,
     pub colors: Palette,
 }
 
@@ -96,7 +98,6 @@ pub(crate) struct TabData {
     pub name: String,
     pub active: bool,
     pub mode_info: ModeInfo,
-    pub input_mode: InputMode,
     pub colors: Palette,
 }
 
@@ -257,7 +258,6 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
-        input_mode: InputMode,
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
@@ -296,7 +296,6 @@ impl Tab {
             senders,
             should_clear_display_before_rendering: false,
             mode_info,
-            input_mode,
             colors,
             session_state,
         }
@@ -338,7 +337,7 @@ impl Tab {
         let mut new_pids = new_pids.iter();
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
-            if let Some(plugin) = &layout.plugin {
+            if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))

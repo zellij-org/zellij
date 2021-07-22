@@ -5,8 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Plugins don't crash zellij anymore on receiving mouse events (https://github.com/zellij-org/zellij/pull/620)
+* A universal logging system has been implemented (https://github.com/zellij-org/zellij/pull/592)
+  * Added [`log`](https://docs.rs/log/0.4.14/log/#macros) crate support for logging within Zellij
+  * Messages sent over the `stderr` of plugins are now logged as well, bringing back `dbg!` support!
+
+## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
 * Change name of `Run` binding for actions (https://github.com/zellij-org/zellij/pull/602)
+* Add running commands to `layouts` (https://github.com/zellij-org/zellij/pull/600)
+
+  POSSIBLE BREAKING CHANGE for custom layouts:
+  Plugins are under the run category now, that means:
+  ```
+  plugin: status-bar
+  ```
+  is now:
+  ```
+  run:
+      plugin: status-bar
+  ```
+* Add `on_force_close` config option (https://github.com/zellij-org/zellij/pull/609)
+
 
 ## [0.14.0] - 2021-07-05
 * Add improved error handling for layouts (https://github.com/zellij-org/zellij/pull/576)
