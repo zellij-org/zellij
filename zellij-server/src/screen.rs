@@ -71,6 +71,8 @@ pub(crate) enum ScreenInstruction {
     TerminalResize(PositionAndSize),
     ChangeMode(ModeInfo),
     LeftClick(Position),
+    RightClick(Position),
+    MiddleClick(Position),
     MouseRelease(Position),
     MouseHold(Position),
     Copy,
@@ -128,6 +130,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollUpAt(_) => ScreenContext::ScrollUpAt,
             ScreenInstruction::ScrollDownAt(_) => ScreenContext::ScrollDownAt,
             ScreenInstruction::LeftClick(_) => ScreenContext::LeftClick,
+            ScreenInstruction::RightClick(_) => ScreenContext::RightClick,
+            ScreenInstruction::MiddleClick(_) => ScreenContext::MiddleClick,
             ScreenInstruction::MouseRelease(_) => ScreenContext::MouseRelease,
             ScreenInstruction::MouseHold(_) => ScreenContext::MouseHold,
             ScreenInstruction::Copy => ScreenContext::Copy,
@@ -695,6 +699,18 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .handle_left_click(&point);
+            }
+            ScreenInstruction::RightClick(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_right_click(&point);
+            }
+            ScreenInstruction::MiddleClick(point) => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .handle_middle_click(&point);
             }
             ScreenInstruction::MouseRelease(point) => {
                 screen

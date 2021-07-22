@@ -142,7 +142,12 @@ impl InputHandler {
                 MouseButton::Left => {
                     self.dispatch_action(Action::LeftClick(point));
                 }
-                _ => {}
+                MouseButton::Right => {
+                    self.dispatch_action(Action::RightClick(point));
+                }
+                MouseButton::Middle => {
+                    self.dispatch_action(Action::MiddleClick(point));
+                }
             },
             MouseEvent::Release(point) => {
                 self.dispatch_action(Action::MouseRelease(point));

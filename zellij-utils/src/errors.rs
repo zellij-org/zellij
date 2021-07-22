@@ -223,6 +223,8 @@ pub enum ScreenContext {
     TerminalResize,
     ChangeMode,
     LeftClick,
+    RightClick,
+    MiddleClick,
     MouseRelease,
     MouseHold,
     Copy,

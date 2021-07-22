@@ -2292,12 +2292,26 @@ impl Tab {
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
         if let Some(pane) = self.get_pane_at(point) {
             pane.scroll_up(lines);
+            let relative_position = pane.relative_position(point);
+            let mouse_event = format!(
+                "\u{1b}[64;{:?};{:?}M",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
             self.render();
         }
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
         if let Some(pane) = self.get_pane_at(point) {
             pane.scroll_down(lines);
+            let relative_position = pane.relative_position(point);
+            let mouse_event = format!(
+                "\u{1b}[<65;{:?};{:?}M",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
             self.render();
         }
     }
@@ -2323,6 +2337,38 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
+            let mouse_event = format!(
+                "\u{1b}[<0;{:?};{:?}M",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
+            self.render();
+        };
+    }
+    pub fn handle_right_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            let mouse_event = format!(
+                "\u{1b}[<2;{:?};{:?}M",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
+            self.render();
+        };
+    }
+    pub fn handle_middle_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
+        if let Some(pane) = self.get_pane_at(position) {
+            let relative_position = pane.relative_position(position);
+            let mouse_event = format!(
+                "\u{1b}[<1;{:?};{:?}M",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
             self.render();
         };
     }
@@ -2350,6 +2396,16 @@ impl Tab {
             pane.end_selection(Some(&relative_position));
             selected_text = pane.get_selected_text();
             pane.reset_selection();
+            let relative_position = pane.relative_position(position);
+            // we needed to know which button was released to determine the proper mouse event
+            // but Termion doesn't provide that. Store last clicked button?
+            // For now, sending a left click release event
+            let mouse_event = format!(
+                "\u{1b}[<0;{:?};{:?}m",
+                relative_position.column.0 + 1,
+                relative_position.line.0 + 1
+            );
+            self.write_to_active_terminal(mouse_event.into_bytes());
             self.render();
         }
 
@@ -2362,6 +2418,12 @@ impl Tab {
             if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
                 let relative_position = active_pane.relative_position(position);
                 active_pane.update_selection(&relative_position);
+                let mouse_event = format!(
+                    "\u{1b}[<32;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_active_terminal(mouse_event.into_bytes());
             }
         }
         self.render();
