@@ -36,8 +36,14 @@ pub fn main() {
     let config_options = Options::from_cli(&config.options, opts.command.clone());
 
     if let Some(Command::Setup(ref setup)) = opts.command {
-        Setup::from_cli(setup, &opts, &config_options).expect("Failed to print to stdout");
-    }
+        Setup::from_cli(setup, &opts, &config_options).map_or_else(
+            |e| {
+                eprintln!("{:?}", e);
+                process::exit(1);
+            },
+            |_| {},
+        );
+    };
 
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
     atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
