@@ -27,7 +27,7 @@ fn route_action(
         Action::GoToLastTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::GoToLastTab)
+                .send_to_screen(ScreenInstruction::ToggleTab)
                 .unwrap();
         }
         Action::Write(val) => {
