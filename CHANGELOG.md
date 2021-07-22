@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   * Added [`log`](https://docs.rs/log/0.4.14/log/#macros) crate support for logging within Zellij
   * Messages sent over the `stderr` of plugins are now logged as well, bringing back `dbg!` support!
 * Add displaying of the `session-name` to the `tab-bar` (https://github.com/zellij-org/zellij/pull/608)
+* Add command to dump `layouts` to stdout (https://github.com/zellij-org/zellij/pull/623)
+  * `zellij setup --dump-layout [LAYOUT]` [default, strider, disable-status]
 
 ## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
