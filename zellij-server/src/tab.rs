@@ -2294,7 +2294,7 @@ impl Tab {
             pane.scroll_up(lines);
             let relative_position = pane.relative_position(point);
             let mouse_event = format!(
-                "\u{1b}[64;{:?};{:?}M",
+                "\u{1b}[<64;{:?};{:?}M",
                 relative_position.column.0 + 1,
                 relative_position.line.0 + 1
             );
