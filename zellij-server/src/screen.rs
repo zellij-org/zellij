@@ -429,7 +429,7 @@ pub(crate) fn screen_thread_main(
         &client_attributes,
         max_panes,
         get_mode_info(
-            default_mode,
+            config_options.default_mode.unwrap_or_default(),
             client_attributes.palette,
             PluginCapabilities {
                 arrow_fonts: capabilities,
