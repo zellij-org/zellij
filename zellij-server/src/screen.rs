@@ -439,7 +439,7 @@ impl Screen {
     }
     pub fn toggle_tab(&mut self) {
         let active_tab_index = self.active_tab_index.unwrap();
-        if let Some(_) = self.previous_active_tab_index {
+        if self.previous_active_tab_index.is_some() {
             let position = self.get_previous_tab().unwrap().position;
             self.go_to_tab(position + 1);
         }
