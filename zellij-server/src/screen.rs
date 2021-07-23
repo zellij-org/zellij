@@ -270,6 +270,7 @@ impl Screen {
     /// Closes this [`Screen`]'s active [`Tab`], exiting the application if it happens
     /// to be the last tab.
     pub fn close_tab(&mut self) {
+        let future_previous = self.previous_active_tab_index;
         let active_tab_index = self.active_tab_index.unwrap();
         if self.tabs.len() > 1 {
             self.switch_tab_prev();
@@ -300,6 +301,7 @@ impl Screen {
             }
             self.update_tabs();
         }
+        self.previous_active_tab_index = future_previous;
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
@@ -333,6 +335,14 @@ impl Screen {
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self) -> Option<&Tab> {
         match self.active_tab_index {
+            Some(tab) => self.tabs.get(&tab),
+            None => None,
+        }
+    }
+
+    /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
+    pub fn get_previous_tab(&self) -> Option<&Tab> {
+        match self.previous_active_tab_index {
             Some(tab) => self.tabs.get(&tab),
             None => None,
         }
@@ -427,10 +437,11 @@ impl Screen {
             self.switch_tab_next();
         }
     }
-    pub fn go_to_last_tab(&mut self) {
+    pub fn toggle_tab(&mut self) {
         let active_tab_index = self.active_tab_index.unwrap();
-        if let Some(i) = self.previous_active_tab_index {
-            self.go_to_tab(i + 1);
+        if let Some(_) = self.previous_active_tab_index {
+            let position = self.get_previous_tab().unwrap().position;
+            self.go_to_tab(position + 1);
         }
         self.previous_active_tab_index = Some(active_tab_index);
         self.update_tabs();
@@ -771,7 +782,7 @@ pub(crate) fn screen_thread_main(
                 break;
             }
             ScreenInstruction::ToggleTab => {
-                screen.go_to_last_tab();
+                screen.toggle_tab();
                 screen
                     .bus
                     .senders
