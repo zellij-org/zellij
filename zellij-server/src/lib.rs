@@ -2,6 +2,7 @@ pub mod os_input_output;
 pub mod panes;
 pub mod tab;
 
+mod logging_pipe;
 mod pty;
 mod route;
 mod screen;
@@ -14,6 +15,9 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use log::info;
+use zellij_utils::zellij_tile;
+
 use wasmer::Store;
 use zellij_tile::data::{Event, Palette, PluginCapabilities};
 
@@ -37,7 +41,6 @@ use zellij_utils::{
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
-    zellij_tile,
 };
 
 /// Instructions related to server-side application
@@ -120,6 +123,7 @@ pub(crate) enum SessionState {
 }
 
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+    info!("Starting Zellij server!");
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)

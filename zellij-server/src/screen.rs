@@ -15,10 +15,10 @@ use crate::{
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
+use zellij_tile::data::{Event, ModeInfo, Palette, PluginCapabilities, TabInfo};
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
-    input::options::Options,
+    input::{get_mode_info, options::Options},
     ipc::ClientAttributes,
     pane_size::PositionAndSize,
 };
@@ -149,7 +149,6 @@ pub(crate) struct Screen {
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     mode_info: ModeInfo,
-    input_mode: InputMode,
     colors: Palette,
     session_state: Arc<RwLock<SessionState>>,
 }
@@ -161,7 +160,6 @@ impl Screen {
         client_attributes: &ClientAttributes,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
-        input_mode: InputMode,
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
         Screen {
@@ -172,7 +170,6 @@ impl Screen {
             active_tab_index: None,
             tabs: BTreeMap::new(),
             mode_info,
-            input_mode,
             session_state,
         }
     }
@@ -192,7 +189,6 @@ impl Screen {
             self.max_panes,
             Some(PaneId::Terminal(pane_id)),
             self.mode_info.clone(),
-            self.input_mode,
             self.colors,
             self.session_state.clone(),
         );
@@ -354,7 +350,6 @@ impl Screen {
             self.max_panes,
             None,
             self.mode_info.clone(),
-            self.input_mode,
             self.colors,
             self.session_state.clone(),
         );
@@ -428,21 +423,18 @@ pub(crate) fn screen_thread_main(
     session_state: Arc<RwLock<SessionState>>,
 ) {
     let capabilities = config_options.simplified_ui;
-    let default_mode = config_options.default_mode.unwrap_or_default();
 
     let mut screen = Screen::new(
         bus,
         &client_attributes,
         max_panes,
-        ModeInfo {
-            palette: client_attributes.palette,
-            capabilities: PluginCapabilities {
+        get_mode_info(
+            config_options.default_mode.unwrap_or_default(),
+            client_attributes.palette,
+            PluginCapabilities {
                 arrow_fonts: capabilities,
             },
-            mode: default_mode,
-            ..ModeInfo::default()
-        },
-        default_mode,
+        ),
         session_state,
     );
     loop {

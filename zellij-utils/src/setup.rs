@@ -96,11 +96,23 @@ pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/default.yaml"
+    "assets/layouts/disable-status-bar.yaml"
 ));
 
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
+}
+
+pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
+    match layout {
+        "strider" => dump_asset(STRIDER_LAYOUT),
+        "default" => dump_asset(DEFAULT_LAYOUT),
+        "disable-status" => dump_asset(NO_STATUS_LAYOUT),
+        not_found => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Layout: {} not found", not_found),
+        )),
+    }
 }
 
 #[derive(Debug, Default, Clone, StructOpt, Serialize, Deserialize)]
@@ -117,6 +129,9 @@ pub struct Setup {
     #[structopt(long)]
     pub check: bool,
 
+    /// Dump the specified layout file to stdout
+    #[structopt(long)]
+    pub dump_layout: Option<String>,
     /// Generates completion for the specified shell
     #[structopt(long)]
     pub generate_completion: Option<String>,
@@ -141,6 +156,11 @@ impl Setup {
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell.into());
+            std::process::exit(0);
+        }
+
+        if let Some(layout) = &self.dump_layout {
+            dump_specified_layout(layout)?;
             std::process::exit(0);
         }
 
