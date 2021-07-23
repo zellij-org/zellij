@@ -188,7 +188,7 @@ impl InputHandler {
             | Action::GoToPreviousTab
             | Action::CloseTab
             | Action::GoToTab(_)
-            | Action::GoToLastTab
+            | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input

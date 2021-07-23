@@ -24,7 +24,7 @@ fn route_action(
 ) -> bool {
     let mut should_break = false;
     match action {
-        Action::GoToLastTab => {
+        Action::ToggleTab => {
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ToggleTab)
