@@ -10,12 +10,12 @@ mod thread_bus;
 mod ui;
 mod wasm_vm;
 
+use log::info;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     thread,
 };
-use log::info;
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;

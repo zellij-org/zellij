@@ -258,14 +258,14 @@ impl Layout {
                 post_tab = true;
             // Leaf
             } else if post_tab {
-                    if curr_post_layout.is_empty() {
-                        let mut part_no_tab = part.clone();
-                        part_no_tab.tabs.clear();
-                        part_no_tab.parts.clear();
-                        post_tab_layout.push(part_no_tab);
-                    } else {
-                        post_tab_layout.append(&mut curr_post_layout);
-                    }
+                if curr_post_layout.is_empty() {
+                    let mut part_no_tab = part.clone();
+                    part_no_tab.tabs.clear();
+                    part_no_tab.parts.clear();
+                    post_tab_layout.push(part_no_tab);
+                } else {
+                    post_tab_layout.append(&mut curr_post_layout);
+                }
             }
         }
         (pre_tab_layout, post_tab_layout, tabs)
