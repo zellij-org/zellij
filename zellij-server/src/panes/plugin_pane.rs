@@ -129,10 +129,17 @@ impl Pane for PluginPane {
     }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
+        let position_and_size = self.position_and_size();
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(position_and_size);
+        }
         self.should_render = true;
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(*position_and_size);
+        }
         self.should_render = true;
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
@@ -145,7 +152,9 @@ impl Pane for PluginPane {
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
-        self.should_render = true;
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.change_pos_and_size(position_and_size_override);
+        }
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {
         unimplemented!()
@@ -386,6 +395,11 @@ impl Pane for PluginPane {
                 boundaries_frame.set_color(color);
                 self.should_render = true;
             }
+        }
+    }
+    fn set_should_render_only_title(&mut self, should_render_only_title: bool) {
+        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
+            boundaries_frame.draw_title_only = should_render_only_title;
         }
     }
 }
