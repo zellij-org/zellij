@@ -381,6 +381,8 @@ impl Tab {
         self.panes_to_hide.clear();
         let positions_in_layout = layout.position_panes_in_space(&free_space, !self.draw_pane_frames);
         let mut positions_and_size = positions_in_layout.iter();
+        let total_borderless_panes = layout.total_borderless_panes();
+        let total_panes_with_border = positions_in_layout.iter().count().saturating_sub(total_borderless_panes);
         for (pane_kind, terminal_pane) in self.panes.iter_mut() {
             // for now the layout only supports terminal panes
             if let PaneId::Terminal(pid) = pane_kind {
@@ -411,10 +413,17 @@ impl Tab {
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
+                let next_selectable_pane_position = self.get_next_selectable_pane_position();
+                let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
+                let pane_title_only = !layout.borderless && total_panes_with_border == 1;
+                let title = String::from(layout.plugin.as_ref().unwrap().clone().into_os_string().to_string_lossy()); // TODO: better
                 let new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
+                    title,
+                    draw_pane_frames,
+                    pane_title_only,
                 );
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
@@ -428,8 +437,16 @@ impl Tab {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
-                let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(*pid, *position_and_size, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let pane_title_only = next_selectable_pane_position == 1 && total_panes_with_border == 1;
+                let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
+                let new_terminal = TerminalPane::new(
+                    *pid,
+                    *position_and_size,
+                    self.colors,
+                    draw_pane_frames,
+                    next_selectable_pane_position,
+                    pane_title_only,
+                );
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -915,7 +932,8 @@ impl Tab {
                     let vte_output = if let PaneId::Terminal(_) = kind {
                         vte_output
                     } else {
-                        adjust_to_size(&vte_output, pane.rows(), pane.columns())
+                        // adjust_to_size(&vte_output, pane.rows(), pane.columns())
+                        vte_output
                     };
                     // FIXME: Use Termion for cursor and style clearing?
                     output.push_str(&format!(
@@ -1622,6 +1640,7 @@ impl Tab {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't reduce pane size right if there are no terminals to the left");
+        debug_log_to_file(format!("terminals_to_the_left 1 {:?}", terminals_to_the_left));
         let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
@@ -1633,6 +1652,7 @@ impl Tab {
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
+        debug_log_to_file(format!("terminals_to_the_left 2 {:?}", terminals_to_the_left));
         self.reduce_pane_width_right(id, count);
         for terminal_id in terminals_to_the_left {
             self.increase_pane_width_right(&terminal_id, count);
@@ -1970,6 +1990,7 @@ impl Tab {
             if self.can_increase_pane_and_surroundings_right(&active_pane_id, count) {
                 self.increase_pane_and_surroundings_right(&active_pane_id, count);
             } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
+                debug_log_to_file(format!("here"));
                 self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
         }

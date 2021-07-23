@@ -2,6 +2,7 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    borderless: true
     split_size:
       Fixed: 1
     plugin: tab-bar
@@ -13,6 +14,7 @@ parts:
         plugin: strider
       - direction: Horizontal
   - direction: Vertical
+    borderless: true
     split_size:
       Fixed: 2
     plugin: status-bar

@@ -5,8 +5,10 @@ parts:
     split_size:
       Fixed: 1
     plugin: tab-bar
+    borderless: true
   - direction: Vertical
   - direction: Vertical
     split_size:
       Fixed: 2
     plugin: status-bar
+    borderless: true

@@ -5,4 +5,5 @@ parts:
     split_size:
       Fixed: 1
     plugin: tab-bar
+    borderless: true
   - direction: Vertical
