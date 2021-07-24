@@ -50,6 +50,7 @@ pub(crate) enum ScreenInstruction {
     ScrollUpAt(Position),
     ScrollDown,
     ScrollDownAt(Position),
+    ScrollToBottom,
     PageScrollUp,
     PageScrollDown,
     ClearScroll,
@@ -103,6 +104,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown => ScreenContext::ScrollDown,
+            ScreenInstruction::ScrollToBottom => ScreenContext::ScrollToBottom,
             ScreenInstruction::PageScrollUp => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown => ScreenContext::PageScrollDown,
             ScreenInstruction::ClearScroll => ScreenContext::ClearScroll,
@@ -568,6 +570,12 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .scroll_terminal_down(&point, 3);
+            }
+            ScreenInstruction::ScrollToBottom => {
+                screen
+                    .get_active_tab_mut()
+                    .unwrap()
+                    .scroll_active_terminal_to_bottom();
             }
             ScreenInstruction::PageScrollUp => {
                 screen
