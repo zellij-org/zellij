@@ -48,6 +48,8 @@ pub enum Action {
     ScrollDown,
     /// Scroll down at point
     ScrollDownAt(Position),
+    /// Scroll down to bottom in focus pane.
+    ScrollToBottom,
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.

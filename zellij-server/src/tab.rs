@@ -2280,6 +2280,16 @@ impl Tab {
             self.render();
         }
     }
+    pub fn scroll_active_terminal_to_bottom(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            active_terminal.clear_scroll();
+            self.render();
+        }
+    }
     pub fn clear_active_terminal_scroll(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             let active_terminal = self
