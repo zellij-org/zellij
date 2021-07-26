@@ -112,73 +112,50 @@ impl PaneBoundariesFrame {
         }
     }
     fn render_title(&self, vte_output: &mut String) {
-        if true {
-
-            let total_title_length = self.position_and_size.cols - 2; // 2 for the left and right corners
-            let max_length_of_each_half = (total_title_length / 2) - 1; // 1 for the middle between left and right
+        let total_title_length = self.position_and_size.cols - 2; // 2 for the left and right corners
+        let max_length_of_each_half = (total_title_length / 2) - 1; // 1 for the middle between left and right
 
 
-            let left_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_LEFT};
-            let right_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_RIGHT };
-            let left_side = self.render_title_left_side(total_title_length);
-            let right_side = left_side
-                .as_ref()
-                .and_then(|left_side| {
-                    let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
-                    self.render_title_right_side(space_left)
-                });
-            let title_text = match (left_side, right_side) {
-                (Some(left_side), Some(right_side)) => {
-                    debug_log_to_file(format!("left_side: {:?}", left_side));
-                    debug_log_to_file(format!("right_side: {:?}", right_side));
-                    let mut middle = String::new();
-                    for _ in (left_side.chars().count() + right_side.chars().count())..total_title_length {
-                        middle.push_str(boundary_type::HORIZONTAL);
-                    }
-                    format!("{}{}{}{}{}", left_boundary, left_side, middle, right_side, right_boundary)
-                },
-                (Some(left_side), None) => {
-                    let mut middle_padding = String::new();
-                    for _ in left_side.chars().count()..total_title_length {
-                        middle_padding.push_str(boundary_type::HORIZONTAL);
-                    }
-                    format!("{}{}{}{}", left_boundary, left_side, middle_padding, right_boundary)
+        let left_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_LEFT};
+        let right_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_RIGHT };
+        let left_side = self.render_title_left_side(total_title_length);
+        let right_side = left_side
+            .as_ref()
+            .and_then(|left_side| {
+                let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
+                self.render_title_right_side(space_left)
+            });
+        let title_text = match (left_side, right_side) {
+            (Some(left_side), Some(right_side)) => {
+                debug_log_to_file(format!("left_side: {:?}", left_side));
+                debug_log_to_file(format!("right_side: {:?}", right_side));
+                let mut middle = String::new();
+                for _ in (left_side.chars().count() + right_side.chars().count())..total_title_length {
+                    middle.push_str(boundary_type::HORIZONTAL);
                 }
-                _ => {
-                    let mut middle_padding = String::new();
-                    for _ in 0..total_title_length {
-                        middle_padding.push_str(boundary_type::HORIZONTAL);
-                    }
-                    format!("{}{}{}", left_boundary, middle_padding, right_boundary)
+                format!("{}{}{}{}{}", left_boundary, left_side, middle, right_side, right_boundary)
+            },
+            (Some(left_side), None) => {
+                let mut middle_padding = String::new();
+                for _ in left_side.chars().count()..total_title_length {
+                    middle_padding.push_str(boundary_type::HORIZONTAL);
                 }
-            };
-            vte_output.push_str(&format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                self.position_and_size.y + 1, // +1 because goto is 1 indexed
-                self.position_and_size.x + 1, // +1 because goto is 1 indexed
-                color_string(&title_text, self.color),
-            )); // goto row/col + boundary character
-        } else {
-            let title_text_prefix = format!("{} {} ", boundary_type::TOP_LEFT, self.title);
-            let title_text_suffix = if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
-                format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::TOP_RIGHT)
-            } else {
-                format!("{}", boundary_type::TOP_RIGHT)
-            };
-            let mut title_text = String::new();
-            title_text.push_str(&title_text_prefix);
-            let title_text_length = title_text.chars().count();
-            for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
-                title_text.push_str(boundary_type::HORIZONTAL);
+                format!("{}{}{}{}", left_boundary, left_side, middle_padding, right_boundary)
             }
-            title_text.push_str(&title_text_suffix);
-            vte_output.push_str(&format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                self.position_and_size.y + 1, // +1 because goto is 1 indexed
-                self.position_and_size.x + 1, // +1 because goto is 1 indexed
-                color_string(&title_text, self.color),
-            )); // goto row/col + boundary character
-        }
+            _ => {
+                let mut middle_padding = String::new();
+                for _ in 0..total_title_length {
+                    middle_padding.push_str(boundary_type::HORIZONTAL);
+                }
+                format!("{}{}{}", left_boundary, middle_padding, right_boundary)
+            }
+        };
+        vte_output.push_str(&format!(
+            "\u{1b}[{};{}H\u{1b}[m{}",
+            self.position_and_size.y + 1, // +1 because goto is 1 indexed
+            self.position_and_size.x + 1, // +1 because goto is 1 indexed
+            color_string(&title_text, self.color),
+        )); // goto row/col + boundary character
     }
     pub fn render(&self) -> String {
         let mut vte_output = String::new();
