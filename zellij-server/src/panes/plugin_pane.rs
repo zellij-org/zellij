@@ -8,6 +8,7 @@ use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize};
 use zellij_utils::zellij_tile::prelude::PaletteColor;
+use zellij_utils::shared::ansi_len;
 use zellij_utils::logging::debug_log_to_file;
 use crate::ui::pane_boundaries_frame::PaneBoundariesFrame;
 
@@ -215,8 +216,6 @@ impl Pane for PluginPane {
                 .send(PluginInstruction::Render(
                     buf_tx,
                     self.pid,
-//                     self.rows(),
-//                     self.columns(),
                     self.get_content_rows(),
                     self.get_content_columns(),
                 ))
@@ -229,14 +228,22 @@ impl Pane for PluginPane {
                 vte_output.push_str(&boundaries_frame.render());
             }
             for (index, line) in contents.lines().enumerate() {
-                // TODO: adjust to size (was removed from tab render)
+                let actual_len = ansi_len(line);
+                let line_to_print = if actual_len > self.get_content_columns() {
+                    let mut line = String::from(line);
+                    line.truncate(self.get_content_columns());
+                    line
+                } else {
+                    [line, &str::repeat(" ", self.get_content_columns() - ansi_len(line))].concat()
+                };
+
                 vte_output.push_str(&format!(
                     "\u{1b}[{};{}H\u{1b}[m{}",
                     self.get_content_y() + 1 + index,
                     self.get_content_x() + 1,
-                    line,
+                    line_to_print,
                 )); // goto row/col and reset styles
-                let line_len = line.chars().count();
+                let line_len = line_to_print.len();
                 if line_len < self.get_content_columns() {
                     // pad line
                     for _ in line_len..self.get_content_columns() {
@@ -260,7 +267,6 @@ impl Pane for PluginPane {
                     }
                 }
             }
-            // vte_output.push_str(&contents);
             Some(vte_output)
         } else {
             None

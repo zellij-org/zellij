@@ -1,5 +1,6 @@
 use zellij_utils::pane_size::PositionAndSize;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
+use zellij_utils::logging::debug_log_to_file;
 use crate::ui::boundaries::boundary_type;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
@@ -71,25 +72,86 @@ impl PaneBoundariesFrame {
             self.position_and_size.reduce_outer_frame(1)
         }
     }
-    fn render_title(&self, vte_output: &mut String) {
-        // TODO: crop title parts to fit length so they don't overflow if they are super long
-        if self.draw_title_only {
-//             let title_text_prefix = format!("{} {} ", " ", self.title);
-//             let title_text_suffix = format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, " ");
-            let title_text_prefix = format!("{} {} ", boundary_type::HORIZONTAL, self.title);
-            let title_text_suffix = if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
-                format!(" SCROLL: {}/{} {}", self.scroll_position.0, self.scroll_position.1, boundary_type::HORIZONTAL)
+    fn render_title_right_side(&self, max_length: usize) -> Option<String> {
+        if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
+            let prefix = " SCROLL: ";
+            let full_indication = format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
+            let short_indication = format!(" {} ", self.scroll_position.0);
+            if prefix.chars().count() + full_indication.chars().count() <= max_length {
+                Some(format!("{}{}", prefix, full_indication))
+            } else if full_indication.chars().count() <= max_length {
+                Some(full_indication)
+            } else if short_indication.chars().count() <= max_length {
+                Some(short_indication)
             } else {
-                format!("{}", boundary_type::HORIZONTAL)
-            };
-            let mut title_text = String::new();
-            title_text.push_str(&title_text_prefix);
-            let title_text_length = title_text.chars().count();
-            for col in self.position_and_size.x + title_text_length..(self.position_and_size.x + self.position_and_size.cols).saturating_sub(title_text_suffix.chars().count()) {
-                // title_text.push_str(boundary_type::HORIZONTAL);
-                title_text.push_str(boundary_type::HORIZONTAL);
+                None
             }
-            title_text.push_str(&title_text_suffix);
+        } else {
+            None
+        }
+    }
+    fn render_title_left_side(&self, max_length: usize) -> Option<String> {
+        let middle_truncated_sign = "[..]";
+        let middle_truncated_sign_long = "[...]";
+        let full_text = format!(" {} ", &self.title);
+        if max_length <= 6 {
+            return None;
+        } else if full_text.chars().count() <= max_length {
+            return Some(full_text);
+        } else {
+            let length_of_each_half = (max_length - middle_truncated_sign.chars().count()) / 2;
+            let first_part: String = full_text.chars().take(length_of_each_half).collect();
+            let second_part: String = full_text.chars().skip(full_text.chars().count() - length_of_each_half).collect();
+            let title_left_side = if first_part.chars().count() + middle_truncated_sign.chars().count() + second_part.chars().count() < max_length {
+                // this means we lost 1 character when dividing the total length into halves
+                format!("{}{}{}", first_part, middle_truncated_sign_long, second_part)
+            } else {
+                format!("{}{}{}", first_part, middle_truncated_sign, second_part)
+            };
+            return Some(title_left_side);
+        }
+    }
+    fn render_title(&self, vte_output: &mut String) {
+        if true {
+
+            let total_title_length = self.position_and_size.cols - 2; // 2 for the left and right corners
+            let max_length_of_each_half = (total_title_length / 2) - 1; // 1 for the middle between left and right
+
+
+            let left_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_LEFT};
+            let right_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_RIGHT };
+            let left_side = self.render_title_left_side(total_title_length);
+            let right_side = left_side
+                .as_ref()
+                .and_then(|left_side| {
+                    let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
+                    self.render_title_right_side(space_left)
+                });
+            let title_text = match (left_side, right_side) {
+                (Some(left_side), Some(right_side)) => {
+                    debug_log_to_file(format!("left_side: {:?}", left_side));
+                    debug_log_to_file(format!("right_side: {:?}", right_side));
+                    let mut middle = String::new();
+                    for _ in (left_side.chars().count() + right_side.chars().count())..total_title_length {
+                        middle.push_str(boundary_type::HORIZONTAL);
+                    }
+                    format!("{}{}{}{}{}", left_boundary, left_side, middle, right_side, right_boundary)
+                },
+                (Some(left_side), None) => {
+                    let mut middle_padding = String::new();
+                    for _ in left_side.chars().count()..total_title_length {
+                        middle_padding.push_str(boundary_type::HORIZONTAL);
+                    }
+                    format!("{}{}{}{}", left_boundary, left_side, middle_padding, right_boundary)
+                }
+                _ => {
+                    let mut middle_padding = String::new();
+                    for _ in 0..total_title_length {
+                        middle_padding.push_str(boundary_type::HORIZONTAL);
+                    }
+                    format!("{}{}{}", left_boundary, middle_padding, right_boundary)
+                }
+            };
             vte_output.push_str(&format!(
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 self.position_and_size.y + 1, // +1 because goto is 1 indexed
