@@ -8,7 +8,11 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
-use crate::{input::{command::RunCommand, config::ConfigError}, pane_size::{Dimension, PositionAndSize}, setup};
+use crate::{
+    input::{command::RunCommand, config::ConfigError},
+    pane_size::{Dimension, PositionAndSize},
+    setup,
+};
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};

@@ -1,9 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
-#[cfg(not(feature = "parametric_resize_beta"))]
 use crate::ui::pane_resizer::PaneResizer;
-#[cfg(feature = "parametric_resize_beta")]
-use crate::ui::pane_resizer_beta::PaneResizer;
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
