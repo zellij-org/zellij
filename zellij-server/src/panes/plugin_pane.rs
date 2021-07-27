@@ -198,13 +198,13 @@ impl Pane for PluginPane {
         self.position_and_size.y -= count;
     }
     fn scroll_up(&mut self, _count: usize) {
-        unimplemented!()
+        //unimplemented!()
     }
     fn scroll_down(&mut self, _count: usize) {
-        unimplemented!()
+        //unimplemented!()
     }
     fn clear_scroll(&mut self) {
-        unimplemented!()
+        //unimplemented!()
     }
     // FIXME: This need to be reevaluated and deleted if possible.
     // `max` doesn't make sense when things are fixed...

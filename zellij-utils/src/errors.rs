@@ -202,6 +202,7 @@ pub enum ScreenContext {
     ScrollUpAt,
     ScrollDown,
     ScrollDownAt,
+    ScrollToBottom,
     PageScrollUp,
     PageScrollDown,
     ClearScroll,

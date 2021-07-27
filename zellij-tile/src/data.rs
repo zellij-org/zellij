@@ -148,6 +148,7 @@ pub struct ModeInfo {
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
     pub palette: Palette,
     pub capabilities: PluginCapabilities,
+    pub session_name: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

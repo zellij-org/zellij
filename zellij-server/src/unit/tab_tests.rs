@@ -1,5 +1,5 @@
 use super::Tab;
-use crate::zellij_tile::data::{InputMode, ModeInfo, Palette};
+use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -82,7 +82,6 @@ fn create_new_tab(position_and_size: PositionAndSize) -> Tab {
     let max_panes = None;
     let first_pane_id = Some(PaneId::Terminal(1));
     let mode_info = ModeInfo::default();
-    let input_mode = InputMode::Normal;
     let colors = Palette::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
     Tab::new(
@@ -95,7 +94,6 @@ fn create_new_tab(position_and_size: PositionAndSize) -> Tab {
         max_panes,
         first_pane_id,
         mode_info,
-        input_mode,
         colors,
         session_state,
     )

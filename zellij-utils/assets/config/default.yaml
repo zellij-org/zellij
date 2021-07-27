@@ -178,6 +178,8 @@ keybinds:
           key: [Ctrl: 'p',]
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
+        - action: [ScrollToBottom, SwitchToMode: Normal,]
+          key: [Ctrl: 'c',]
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [ScrollDown,]
@@ -244,6 +246,6 @@ keybinds:
 # Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 # eg. when terminal window with an active zellij session is closed
 # Options:
-#   - Detach (Default)
-#   - Quit
-#on_force_close: Quit
+#   - detach (Default)
+#   - quit
+#on_force_close: quit
