@@ -8,11 +8,7 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
-use crate::{
-    input::{command::RunCommand, config::ConfigError},
-    pane_size::PositionAndSize,
-    setup,
-};
+use crate::{input::{command::RunCommand, config::ConfigError}, pane_size::{Dimension, PositionAndSize}, setup};
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
@@ -177,7 +173,7 @@ fn split_space_to_parts_vertically(
     let mut split_parts = Vec::new();
     let mut current_x_position = space_to_split.x;
     let mut current_width = 0;
-    let max_width = space_to_split.cols - (sizes.len() - 1); // minus space for gaps
+    let max_width = space_to_split.cols.as_usize() - (sizes.len() - 1); // minus space for gaps
 
     let mut parts_to_grow = Vec::new();
 
@@ -196,7 +192,8 @@ fn split_space_to_parts_vertically(
         split_parts.push(PositionAndSize {
             x: current_x_position,
             y: space_to_split.y,
-            cols: columns,
+            // FIXME: This is likely wrong and percent should be considered!
+            cols: Dimension::fixed(columns),
             rows: space_to_split.rows,
         });
         current_width += columns;
@@ -214,11 +211,11 @@ fn split_space_to_parts_vertically(
         for (idx, part) in split_parts.iter_mut().enumerate() {
             part.x = current_x_position;
             if parts_to_grow.contains(&part.x) {
-                part.cols = new_columns;
+                part.cols = Dimension::fixed(new_columns);
                 last_flexible_index = idx;
             }
-            current_width += part.cols;
-            current_x_position += part.cols + 1; // 1 for gap
+            current_width += part.cols.as_usize();
+            current_x_position += part.cols.as_usize() + 1; // 1 for gap
         }
     }
 
@@ -226,7 +223,7 @@ fn split_space_to_parts_vertically(
         // we have some extra space left, let's add it to the last flexible part
         let extra = max_width - current_width;
         let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.cols += extra;
+        last_part.cols = Dimension::fixed(last_part.cols.as_usize() + extra);
         for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
             part.x += extra;
         }
@@ -241,7 +238,7 @@ fn split_space_to_parts_horizontally(
     let mut split_parts = Vec::new();
     let mut current_y_position = space_to_split.y;
     let mut current_height = 0;
-    let max_height = space_to_split.rows - (sizes.len() - 1); // minus space for gaps
+    let max_height = space_to_split.rows.as_usize() - (sizes.len() - 1); // minus space for gaps
 
     let mut parts_to_grow = Vec::new();
 
@@ -260,7 +257,7 @@ fn split_space_to_parts_horizontally(
             x: space_to_split.x,
             y: current_y_position,
             cols: space_to_split.cols,
-            rows,
+            rows: Dimension::fixed(rows),
         });
         current_height += rows;
         current_y_position += rows + 1; // 1 for gap
@@ -278,11 +275,12 @@ fn split_space_to_parts_horizontally(
         for (idx, part) in split_parts.iter_mut().enumerate() {
             part.y = current_y_position;
             if parts_to_grow.contains(&part.y) {
-                part.rows = new_rows;
+                // FIXME: Yet another line to purge...
+                part.rows = Dimension::fixed(new_rows);
                 last_flexible_index = idx;
             }
-            current_height += part.rows;
-            current_y_position += part.rows + 1; // 1 for gap
+            current_height += part.rows.as_usize();
+            current_y_position += part.rows.as_usize() + 1; // 1 for gap
         }
     }
 
@@ -290,7 +288,8 @@ fn split_space_to_parts_horizontally(
         // we have some extra space left, let's add it to the last flexible part
         let extra = max_height - current_height;
         let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.rows += extra;
+        // FIXME: This will be destroyed!
+        last_part.rows = Dimension::fixed(last_part.rows.as_usize() + extra);
         for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
             part.y += extra;
         }

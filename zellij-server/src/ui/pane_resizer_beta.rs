@@ -1,3 +1,4 @@
+#![cfg(feature = "parametric_resizer_beta")]
 #![allow(dead_code)]
 use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use cassowary::{

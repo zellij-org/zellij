@@ -28,7 +28,7 @@ use zellij_utils::{
         parse_keys,
     },
     pane_size::{Dimension, PositionAndSize},
-    position::Position
+    position::Position,
     serde,
     shared::adjust_to_size,
     zellij_tile,
@@ -43,31 +43,33 @@ const MIN_TERMINAL_WIDTH: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
+// FIXME: These functions need to properly handle different constraints!
 fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
-    let width_of_each_half = (rect.cols - 1) / 2;
+    let width_of_each_half = (rect.cols.as_usize() - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
-    if rect.cols % 2 == 0 {
-        first_rect.cols = width_of_each_half + 1;
+    if rect.cols.as_usize() % 2 == 0 {
+        first_rect.cols = Dimension::fixed(width_of_each_half + 1);
     } else {
-        first_rect.cols = width_of_each_half;
+        first_rect.cols = Dimension::fixed(width_of_each_half);
     }
-    second_rect.x = first_rect.x + first_rect.cols + 1;
-    second_rect.cols = width_of_each_half;
+    second_rect.x = first_rect.x + first_rect.cols.as_usize() + 1;
+    second_rect.cols = Dimension::fixed(width_of_each_half);
     (first_rect, second_rect)
 }
 
+// FIXME: These functions need to properly handle different constraints!
 fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
-    let height_of_each_half = (rect.rows - 1) / 2;
+    let height_of_each_half = (rect.rows.as_usize() - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
-    if rect.rows % 2 == 0 {
-        first_rect.rows = height_of_each_half + 1;
+    if rect.rows.as_usize() % 2 == 0 {
+        first_rect.rows = Dimension::fixed(height_of_each_half + 1);
     } else {
-        first_rect.rows = height_of_each_half;
+        first_rect.rows = Dimension::fixed(height_of_each_half);
     }
-    second_rect.y = first_rect.y + first_rect.rows + 1;
-    second_rect.rows = height_of_each_half;
+    second_rect.y = first_rect.y + first_rect.rows.as_usize() + 1;
+    second_rect.rows = Dimension::fixed(height_of_each_half);
     (first_rect, second_rect)
 }
 
@@ -1554,7 +1556,8 @@ impl Tab {
             return false;
         }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.cols += increase_by;
+        new_pos_and_size_for_pane.cols =
+            Dimension::fixed(new_pos_and_size_for_pane.cols.as_usize() + increase_by);
 
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
             return panes_to_the_right.iter().all(|id| {
@@ -1604,7 +1607,8 @@ impl Tab {
             return false;
         }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.rows += increase_by;
+        new_pos_and_size_for_pane.rows =
+            Dimension::fixed(new_pos_and_size_for_pane.rows.as_usize() + increase_by);
 
         if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
             return panes_below.iter().all(|id| {

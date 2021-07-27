@@ -219,38 +219,46 @@ impl Pane for TerminalPane {
     }
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
-        self.position_and_size.rows -= count;
+        self.position_and_size.rows =
+            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
         self.reflow_lines();
     }
     fn increase_height_down(&mut self, count: usize) {
-        self.position_and_size.rows += count;
+        self.position_and_size.rows =
+            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
         self.reflow_lines();
     }
     fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
-        self.position_and_size.rows += count;
+        self.position_and_size.rows =
+            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
         self.reflow_lines();
     }
     fn reduce_height_up(&mut self, count: usize) {
-        self.position_and_size.rows -= count;
+        self.position_and_size.rows =
+            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
         self.reflow_lines();
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
-        self.position_and_size.cols -= count;
+        self.position_and_size.cols =
+            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
         self.reflow_lines();
     }
     fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.cols -= count;
+        self.position_and_size.cols =
+            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
         self.reflow_lines();
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
-        self.position_and_size.cols += count;
+        self.position_and_size.cols =
+            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
         self.reflow_lines();
     }
     fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.cols += count;
+        self.position_and_size.cols =
+            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
         self.reflow_lines();
     }
     fn push_down(&mut self, count: usize) {
