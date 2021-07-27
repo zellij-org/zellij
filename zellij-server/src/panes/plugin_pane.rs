@@ -14,6 +14,8 @@ use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
 };
+use log::info;
+use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize, position::Position, shared::ansi_len, zellij_tile::prelude::{Event, Mouse, PaletteColor}};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -254,14 +256,56 @@ impl Pane for PluginPane {
         self.geom.y -= count;
         self.should_render = true;
     }
-    fn scroll_up(&mut self, _count: usize) {
-        //unimplemented!()
+    fn scroll_up(&mut self, count: usize) {
+        info!("Got scroll_up event: {}, sending to: {}", count, self.pid);
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::ScrollUp(count)),
+            ))
+            .unwrap();
     }
-    fn scroll_down(&mut self, _count: usize) {
-        //unimplemented!()
+    fn scroll_down(&mut self, count: usize) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::ScrollDown(count)),
+            ))
+            .unwrap();
     }
     fn clear_scroll(&mut self) {
-        //unimplemented!()
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::ClearScroll),
+            ))
+            .unwrap();
+    }
+    fn start_selection(&mut self, start: &Position) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
+            ))
+            .unwrap();
+    }
+    fn update_selection(&mut self, position: &Position) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::MouseHold(position.line.0, position.column.0)),
+            ))
+            .unwrap();
+    }
+    fn end_selection(&mut self, end: Option<&Position>) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::MouseRelease(
+                    end.map(|Position { line, column }| (line.0, column.0)),
+                )),
+            ))
+            .unwrap();
     }
     fn is_scrolled(&self) -> bool {
         false

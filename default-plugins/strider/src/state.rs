@@ -7,6 +7,7 @@ pub struct State {
     pub files: Vec<FsEntry>,
     pub cursor_hist: HashMap<PathBuf, (usize, usize)>,
     pub hide_hidden_files: bool,
+    pub key_pressed_in_last_render_window: bool,
 }
 
 impl State {
@@ -24,6 +25,12 @@ impl State {
     }
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
+    }
+    pub fn set_key_pressed_in_last_render_window(&mut self, value: bool) {
+        self.key_pressed_in_last_render_window = value;
+    }
+    pub fn get_key_pressed_in_last_render_window(&self) -> bool {
+        self.key_pressed_in_last_render_window
     }
 }
 

@@ -5,6 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 
 use zellij_utils::pane_size::Size;
+use log::info;
 use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
@@ -638,6 +639,7 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::ScrollUp => {
+                info!("Scrollup");
                 screen
                     .get_active_tab_mut()
                     .unwrap()
@@ -646,6 +648,7 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::ScrollUpAt(point) => {
+                info!("Scollup at: {:?}", point);
                 screen
                     .get_active_tab_mut()
                     .unwrap()
