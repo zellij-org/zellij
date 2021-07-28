@@ -44,6 +44,7 @@ struct Span {
     direction: Direction,
     pos: usize,
     size: Dimension,
+    // FIXME: The solver shouldn't need to touch positions!
     pos_var: Variable,
     size_var: Variable,
 }
@@ -85,15 +86,48 @@ impl<'a> PaneResizer<'a> {
         if current_size.cols != new_size.cols {
             // FIXME: Please don't forget that using this type for window sizes is dumb!
             // `new_size.cols` should be a plain usize!!!
-            let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
-            self.collapse_spans(&spans);
+            // let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
+            // self.apply_spans(&spans);
+            self.layout_direction(Direction::Horizontal, new_size.cols.as_usize());
         }
         self.solver.reset();
         if current_size.rows != new_size.rows {
             let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
-            self.collapse_spans(&spans);
+            self.apply_spans(&spans);
         }
         Some((new_size.cols.as_usize(), new_size.rows.as_usize()))
+    }
+
+    fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Option<()> {
+        let mut spans = self.solve_direction(direction, new_size)?;
+        let mut rounded_size = 0;
+        for span in &mut spans {
+            let size = self.solver.get_value(span.size_var);
+            span.size.set_inner(size as usize);
+            log::info!("Size: {} -> {}", size, span.size.as_usize());
+            rounded_size += span.size.as_usize() + GAP_SIZE;
+        }
+        rounded_size -= GAP_SIZE;
+        let error = new_size - rounded_size;
+        let mut flex_spans: Vec<&mut Span> = spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
+        flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
+        for i in 0..error {
+            // FIXME: If this causes errors, `i % flex_spans.len()`
+            // FIXME: Think about implementing `AddAssign`
+            let sz = flex_spans[i].size.as_usize() + 1;
+            flex_spans[i].size.set_inner(sz);
+        }
+        let mut offset = 0;
+        for span in &mut spans {
+            span.pos = offset;
+            offset += span.size.as_usize() + GAP_SIZE;
+            log::info!("Size: {}; Pos: {}", span.size.as_usize(), span.pos);
+        }
+        log::info!("New {}; Rounded: {}", new_size, offset - GAP_SIZE);
+        self.apply_spans(&spans);
+        // FIXME: This is beyond stupid. I need to break this code up so this useless return isn't
+        // needed... Maybe up in `resize`: solve -> discretize_spans -> apply_spans
+        Some(())
     }
 
     fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
@@ -178,26 +212,18 @@ impl<'a> PaneResizer<'a> {
         }
     }
 
-    fn collapse_spans(&mut self, spans: &[Span]) {
+    fn apply_spans(&mut self, spans: &[Span]) {
         for span in spans {
-            let solver = &self.solver; // Hand-holding the borrow-checker
             let pane = self.panes.get_mut(&span.pid).unwrap();
-            let fetch_usize = |v| solver.get_value(v).round() as usize;
             match span.direction {
                 Direction::Horizontal => pane.change_pos_and_size(&PositionAndSize {
-                    x: fetch_usize(span.pos_var),
-                    // FIXME: Obviously this `fixed` is test code. This should operate in terms of
-                    // percent!
-                    cols: {
-                        let mut cols = pane.position_and_size().cols;
-                        cols.set_inner(fetch_usize(span.size_var));
-                        cols
-                    },
+                    x: span.pos,
+                    cols: span.size,
                     ..pane.position_and_size()
                 }),
                 Direction::Vertical => pane.change_pos_and_size(&PositionAndSize {
-                    y: fetch_usize(span.pos_var),
-                    rows: Dimension::fixed(fetch_usize(span.size_var)),
+                    y: span.pos,
+                    rows: span.size,
                     ..pane.position_and_size()
                 }),
             }
@@ -242,9 +268,8 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
             Constraint::Fixed => {
                 constraints.insert(span.size_var | EQ(REQUIRED) | span.size.as_usize() as f64)
             }
-            Constraint::Percent(p) => {
-                constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | p / 100.)
-            }
+            Constraint::Percent(p) => constraints
+                .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.)),
         };
     }
 

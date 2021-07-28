@@ -1719,8 +1719,15 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         for (id, pane) in &self.panes {
-            let PositionAndSize { rows, cols, .. } = pane.position_and_size();
-            log::info!("\n\tID: {:?}\n\tRows: {:?}\n\tCols: {:?}", id, rows, cols);
+            let PositionAndSize { x, y, rows, cols } = pane.position_and_size();
+            log::info!(
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
+                id,
+                x,
+                y,
+                rows,
+                cols
+            );
         }
         if let Some((cols, rows)) = PaneResizer::new(&mut self.panes, &mut self.os_api)
             .resize(self.full_screen_ws, new_screen_size)
@@ -1734,8 +1741,15 @@ impl Tab {
         }
         log::info!("Finished resizing (maybe) the panes!");
         for (id, pane) in &self.panes {
-            let PositionAndSize { rows, cols, .. } = pane.position_and_size();
-            log::info!("\n\tID: {:?}\n\tRows: {:?}\n\tCols: {:?}", id, rows, cols);
+            let PositionAndSize { x, y, rows, cols } = pane.position_and_size();
+            log::info!(
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
+                id,
+                x,
+                y,
+                rows,
+                cols
+            );
         }
     }
     pub fn resize_left(&mut self) {
