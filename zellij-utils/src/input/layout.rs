@@ -183,23 +183,24 @@ fn split_space_to_parts_vertically(
 
     // First fit in the parameterized sizes
     for size in sizes {
+        log::info!("Size: {:?}", size);
         let columns = match size {
-            Some(SplitSize::Percent(percent)) => {
-                (max_width as f32 * (percent as f32 / 100.0)) as usize
-            } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64), // TODO: round properly
+            Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
             None => {
                 parts_to_grow.push(current_x_position);
-                1 // This is grown later on
+                // FIXME: Should be a percent constraint calculated from the number of parts
+                Dimension::fixed(1) // This is grown later on
             }
         };
         split_parts.push(PositionAndSize {
             x: current_x_position,
             y: space_to_split.y,
             // FIXME: This is likely wrong and percent should be considered!
-            cols: Dimension::fixed(columns),
+            cols: columns,
             rows: space_to_split.rows,
         });
+        let columns = 1;
         current_width += columns;
         current_x_position += columns + 1; // 1 for gap
     }
@@ -222,7 +223,7 @@ fn split_space_to_parts_vertically(
             current_x_position += part.cols.as_usize() + 1; // 1 for gap
         }
     }
-
+    /*
     if current_width < max_width {
         // we have some extra space left, let's add it to the last flexible part
         let extra = max_width - current_width;
@@ -231,7 +232,7 @@ fn split_space_to_parts_vertically(
         for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
             part.x += extra;
         }
-    }
+    }*/
     split_parts
 }
 

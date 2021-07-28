@@ -1,14 +1,14 @@
 use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
-    Constraint, Solver, Variable,
+    Solver, Variable,
     WeightedRelation::*,
 };
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Not,
 };
-use zellij_utils::pane_size::{Dimension, PositionAndSize};
+use zellij_utils::pane_size::{Constraint, Dimension, PositionAndSize};
 
 const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
 
@@ -188,7 +188,11 @@ impl<'a> PaneResizer<'a> {
                     x: fetch_usize(span.pos_var),
                     // FIXME: Obviously this `fixed` is test code. This should operate in terms of
                     // percent!
-                    cols: Dimension::fixed(fetch_usize(span.size_var)),
+                    cols: {
+                        let mut cols = pane.position_and_size().cols;
+                        cols.set_inner(fetch_usize(span.size_var));
+                        cols
+                    },
                     ..pane.position_and_size()
                 }),
                 Direction::Vertical => pane.change_pos_and_size(&PositionAndSize {
@@ -205,7 +209,7 @@ impl<'a> PaneResizer<'a> {
     }
 }
 
-fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
+fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constraint> {
     let mut constraints = HashSet::new();
 
     // The first span needs to start at 0
@@ -234,11 +238,14 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
-        /*if span.constraint {
-            constraints.insert(span.size_var | EQ(REQUIRED) | span.size as f64);
-        } else {*/
-        let ratio = span.size.as_usize() as f64 / old_flex_space as f64;
-        constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | ratio);
+        match span.size.constraint {
+            Constraint::Fixed => {
+                constraints.insert(span.size_var | EQ(REQUIRED) | span.size.as_usize() as f64)
+            }
+            Constraint::Percent(p) => {
+                constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | p / 100.)
+            }
+        };
     }
 
     // The last pane needs to end at the end of the space

@@ -15,7 +15,8 @@ pub struct PositionAndSize {
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Dimension {
-    constraint: Constraint,
+    // FIXME: Think about if `pub` is the right choice here
+    pub constraint: Constraint,
     inner: usize,
 }
 
@@ -38,6 +39,15 @@ impl Dimension {
         self.inner
     }
 
+    // FIXME: Not sold on the existence of this yet, either...
+    pub fn set_inner(&mut self, inner: usize) {
+        match self.constraint {
+            Constraint::Percent(_) => self.inner = inner,
+            _ => (),
+        };
+    }
+
+    // FIXME: Is this really worth keeping around?
     pub fn is_fixed(&self) -> bool {
         self.constraint == Constraint::Fixed
     }
