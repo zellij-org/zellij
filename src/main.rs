@@ -1,7 +1,5 @@
 mod install;
 mod sessions;
-#[cfg(test)]
-mod tests;
 
 use crate::install::populate_data_dir;
 use sessions::{assert_session, assert_session_ne, get_active_session, list_sessions};

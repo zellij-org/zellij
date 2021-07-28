@@ -2379,7 +2379,3 @@ impl Tab {
             .unwrap();
     }
 }
-
-#[cfg(test)]
-#[path = "./unit/tab_tests.rs"]
-mod tab_tests;

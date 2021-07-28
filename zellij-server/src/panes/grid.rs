@@ -2088,7 +2088,3 @@ impl Row {
         parts
     }
 }
-
-#[cfg(test)]
-#[path = "./unit/grid_tests.rs"]
-mod grid_tests;

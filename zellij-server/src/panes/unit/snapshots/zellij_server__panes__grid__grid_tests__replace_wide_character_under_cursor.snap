@@ -1,8 +1,0 @@
----
-source: zellij-server/src/panes/./unit/grid_tests.rs
-expression: "format!(\"{:?}\", grid)"
-
----
-00 (C): 12  4
-01 (C): 
-
