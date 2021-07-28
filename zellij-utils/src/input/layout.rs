@@ -175,8 +175,8 @@ fn split_space_to_parts_vertically(
     // First fit in the parameterized sizes
     for size in sizes {
         log::info!("Size: {:?}", size);
-        let columns = match size {
-            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64), // TODO: round properly
+        let cols = match size {
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
             None => {
                 parts_to_grow.push(current_x_position);
@@ -188,9 +188,11 @@ fn split_space_to_parts_vertically(
             x: current_x_position,
             y: space_to_split.y,
             // FIXME: This is likely wrong and percent should be considered!
-            cols: columns,
-            rows: space_to_split.rows,
+            cols,
+            rows: Dimension::percent(100.0),
         });
+        // FIXME: What exactly is happening here? I should only need to preserve the ordering of
+        // panes
         let columns = 1;
         current_width += columns;
         current_x_position += columns + 1; // 1 for gap
@@ -239,24 +241,23 @@ fn split_space_to_parts_horizontally(
     let mut parts_to_grow = Vec::new();
 
     for size in sizes {
+        log::info!("Size: {:?}", size);
         let rows = match size {
-            Some(SplitSize::Percent(percent)) => {
-                (max_height as f32 * (percent as f32 / 100.0)) as usize
-            } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
+            Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
             None => {
                 parts_to_grow.push(current_y_position);
-                1 // This is grown later on
+                Dimension::fixed(1) // This is grown later on
             }
         };
         split_parts.push(PositionAndSize {
             x: space_to_split.x,
             y: current_y_position,
             cols: space_to_split.cols,
-            rows: Dimension::fixed(rows),
+            rows,
         });
-        current_height += rows;
-        current_y_position += rows + 1; // 1 for gap
+        current_height += 1;
+        current_y_position += 1; // 1 for gap
     }
 
     if current_height > max_height {
@@ -280,16 +281,6 @@ fn split_space_to_parts_horizontally(
         }
     }
 
-    if current_height < max_height {
-        // we have some extra space left, let's add it to the last flexible part
-        let extra = max_height - current_height;
-        let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        // FIXME: This will be destroyed!
-        last_part.rows = Dimension::fixed(last_part.rows.as_usize() + extra);
-        for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
-            part.y += extra;
-        }
-    }
     split_parts
 }
 

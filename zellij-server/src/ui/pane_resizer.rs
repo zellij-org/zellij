@@ -92,38 +92,15 @@ impl<'a> PaneResizer<'a> {
         }
         self.solver.reset();
         if current_size.rows != new_size.rows {
-            let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
-            self.apply_spans(&spans);
+            self.layout_direction(Direction::Vertical, new_size.rows.as_usize());
+            //let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
+            //self.apply_spans(&spans);
         }
         Some((new_size.cols.as_usize(), new_size.rows.as_usize()))
     }
 
     fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Option<()> {
-        let mut spans = self.solve_direction(direction, new_size)?;
-        let mut rounded_size = 0;
-        for span in &mut spans {
-            let size = self.solver.get_value(span.size_var);
-            span.size.set_inner(size as usize);
-            log::info!("Size: {} -> {}", size, span.size.as_usize());
-            rounded_size += span.size.as_usize() + GAP_SIZE;
-        }
-        rounded_size -= GAP_SIZE;
-        let error = new_size - rounded_size;
-        let mut flex_spans: Vec<&mut Span> = spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
-        flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
-        for i in 0..error {
-            // FIXME: If this causes errors, `i % flex_spans.len()`
-            // FIXME: Think about implementing `AddAssign`
-            let sz = flex_spans[i].size.as_usize() + 1;
-            flex_spans[i].size.set_inner(sz);
-        }
-        let mut offset = 0;
-        for span in &mut spans {
-            span.pos = offset;
-            offset += span.size.as_usize() + GAP_SIZE;
-            log::info!("Size: {}; Pos: {}", span.size.as_usize(), span.pos);
-        }
-        log::info!("New {}; Rounded: {}", new_size, offset - GAP_SIZE);
+        let spans = self.solve_direction(direction, new_size)?;
         self.apply_spans(&spans);
         // FIXME: This is beyond stupid. I need to break this code up so this useless return isn't
         // needed... Maybe up in `resize`: solve -> discretize_spans -> apply_spans
@@ -144,6 +121,35 @@ impl<'a> PaneResizer<'a> {
         // FIXME: This line needs to be restored before merging!
         //self.solver.add_constraints(&constraints).ok()?;
         self.solver.add_constraints(&constraints).unwrap();
+        log::info!("Grid: {:#?}", grid);
+        for spans in &mut grid {
+            let mut rounded_size = 0;
+            for span in spans.iter_mut() {
+                let size = self.solver.get_value(span.size_var);
+                span.size.set_inner(size as usize);
+                log::info!("Size: {} -> {}", size, span.size.as_usize());
+                rounded_size += span.size.as_usize() + GAP_SIZE;
+            }
+            rounded_size -= GAP_SIZE;
+            log::info!("New: {}; Rounded: {}", space, rounded_size);
+            let error = space - rounded_size;
+            let mut flex_spans: Vec<&mut Span> =
+                spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
+            flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
+            for i in 0..error {
+                // FIXME: If this causes errors, `i % flex_spans.len()`
+                // FIXME: Think about implementing `AddAssign`
+                let sz = flex_spans[i].size.as_usize() + 1;
+                flex_spans[i].size.set_inner(sz);
+            }
+            let mut offset = 0;
+            for span in spans.iter_mut() {
+                span.pos = offset;
+                offset += span.size.as_usize() + GAP_SIZE;
+                log::info!("Size: {}; Pos: {}", span.size.as_usize(), span.pos);
+            }
+            log::info!("New {}; Rounded: {}", space, offset - GAP_SIZE);
+        }
         Some(grid.into_iter().flatten().collect())
     }
 
@@ -243,11 +249,14 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
     let gap_space = GAP_SIZE * (spans.len() - 1);
-    let new_flex_space =
-        spans.iter().fold(
-            space - gap_space,
-            |a, s| if s.size.is_fixed() { a - s.size.as_usize() } else { a },
-        );
+    let new_flex_space = spans.iter().fold(space - gap_space, |a, s| {
+        if s.size.is_fixed() {
+            a - s.size.as_usize()
+        } else {
+            a
+        }
+    });
+    log::info!("Flex Space: {}", new_flex_space);
 
     // Keep spans stuck together
     for pair in spans.windows(2) {

@@ -31,7 +31,7 @@ impl Dimension {
     pub fn percent(percent: f64) -> Dimension {
         Self {
             constraint: Constraint::Percent(percent),
-            inner: 0,
+            inner: 1,
         }
     }
 
