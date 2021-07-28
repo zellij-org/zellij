@@ -80,8 +80,8 @@ impl Layout {
         layout: Option<&PathBuf>,
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Option<Layout> {
-        let layout_result = layout
+    ) -> Option<Result<Layout, ConfigError>> {
+        layout
             .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
             .or_else(|| layout_path.map(|p| Layout::new(p)))
             .or_else(|| {
@@ -89,16 +89,7 @@ impl Layout {
                     &std::path::PathBuf::from("default"),
                     layout_dir.as_ref(),
                 ))
-            });
-
-        match layout_result {
-            None => None,
-            Some(Ok(layout)) => Some(layout),
-            Some(Err(e)) => {
-                eprintln!("There was an error in the layout file:\n{}", e);
-                std::process::exit(1);
-            }
-        }
+            })
     }
 
     // Currently still needed but on nightly

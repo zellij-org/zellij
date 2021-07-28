@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   * `zellij setup --dump-layout [LAYOUT]` [default, strider, disable-status]
 * Add `action`: `ScrollToBottom` (https://github.com/zellij-org/zellij/pull/626)
   * Bound by default to `^c` in `scroll` mode, scrolls to bottom and exists the scroll mode
+* Simplify deserialization slightly (https://github.com/zellij-org/zellij/pull/633)
 
 ## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
