@@ -243,18 +243,12 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
     let gap_space = GAP_SIZE * (spans.len() - 1);
-    let old_flex_space = spans.iter().fold(0, |a, s| a + s.size.as_usize());
-    let new_flex_space = space - gap_space;
-    /*
-    let old_flex_space = spans
-        .iter()
-        .fold(0, |a, s| if !s.constraint { a + s.size } else { a });
     let new_flex_space =
         spans.iter().fold(
             space - gap_space,
-            |a, s| if s.constraint { a - s.size } else { a },
+            |a, s| if s.size.is_fixed() { a - s.size.as_usize() } else { a },
         );
-    */
+
     // Keep spans stuck together
     for pair in spans.windows(2) {
         let (ls, rs) = (pair[0], pair[1]);
