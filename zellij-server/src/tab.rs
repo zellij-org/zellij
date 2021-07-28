@@ -1718,18 +1718,14 @@ impl Tab {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
         }
-        if let Some((column_difference, row_difference)) =
-            PaneResizer::new(&mut self.panes, &mut self.os_api)
-                .resize(self.full_screen_ws, new_screen_size)
-        {
+        if let Some((cols, rows)) = PaneResizer::new(&mut self.panes, &mut self.os_api).resize(self.full_screen_ws, new_screen_size) {
             self.should_clear_display_before_rendering = true;
-            self.full_screen_ws.cols = Dimension::fixed(
-                (self.full_screen_ws.cols.as_usize() as isize + column_difference) as usize,
-            );
-            self.full_screen_ws.rows = Dimension::fixed(
-                (self.full_screen_ws.rows.as_usize() as isize + row_difference) as usize,
-            );
-        };
+            // FIXME: A different type should be used here. The PositionAndSize is only really sensible
+            // for panes now. I should probably rename it to something like PaneGeometry and revert
+            // PositionAndSize. TL;DR `Fixed` is stupid here – so is `Percent`
+            self.full_screen_ws.cols = Dimension::fixed(cols);
+            self.full_screen_ws.rows = Dimension::fixed(rows);
+        }
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much

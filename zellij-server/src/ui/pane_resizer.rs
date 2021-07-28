@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
@@ -9,7 +8,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     ops::Not,
 };
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::pane_size::{Dimension, PositionAndSize};
 
 const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
 
@@ -37,13 +36,14 @@ impl Not for Direction {
     }
 }
 
+// FIXME: Just hold a mutable Pane reference instead of the PaneId, fixed, pos, and size?
+// Do this after panes are no longer trait-objects!
 #[derive(Debug, Clone, Copy)]
 struct Span {
     pid: PaneId,
     direction: Direction,
-    fixed: bool,
     pos: usize,
-    size: usize,
+    size: Dimension,
     pos_var: Variable,
     size_var: Variable,
 }
@@ -81,19 +81,19 @@ impl<'a> PaneResizer<'a> {
         &mut self,
         current_size: PositionAndSize,
         new_size: PositionAndSize,
-    ) -> Option<(isize, isize)> {
-        let col_delta = new_size.cols as isize - current_size.cols as isize;
-        let row_delta = new_size.rows as isize - current_size.rows as isize;
-        if col_delta != 0 {
-            let spans = self.solve_direction(Direction::Horizontal, new_size.cols)?;
+    ) -> Option<(usize, usize)> {
+        if current_size.cols != new_size.cols {
+            // FIXME: Please don't forget that using this type for window sizes is dumb!
+            // `new_size.cols` should be a plain usize!!!
+            let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
             self.collapse_spans(&spans);
         }
         self.solver.reset();
-        if row_delta != 0 {
-            let spans = self.solve_direction(Direction::Vertical, new_size.rows)?;
+        if current_size.rows != new_size.rows {
+            let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
             self.collapse_spans(&spans);
         }
-        Some((col_delta, row_delta))
+        Some((new_size.cols.as_usize(), new_size.rows.as_usize()))
     }
 
     fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
@@ -113,6 +113,7 @@ impl<'a> PaneResizer<'a> {
         Some(grid.into_iter().flatten().collect())
     }
 
+    // FIXME: Functions like this should have unit tests!
     fn grid_boundaries(&self, direction: Direction) -> Vec<(usize, usize)> {
         // Select the spans running *perpendicular* to the direction of resize
         let spans: Vec<Span> = self
@@ -126,9 +127,9 @@ impl<'a> PaneResizer<'a> {
         loop {
             let mut spans_on_edge: Vec<&Span> =
                 spans.iter().filter(|p| p.pos == last_edge).collect();
-            spans_on_edge.sort_unstable_by_key(|s| s.size);
+            spans_on_edge.sort_unstable_by_key(|s| s.size.as_usize());
             if let Some(next) = spans_on_edge.first() {
-                let next_edge = last_edge + next.size;
+                let next_edge = last_edge + next.size.as_usize();
                 bounds.push((last_edge, next_edge));
                 last_edge = next_edge + GAP_SIZE;
             } else {
@@ -146,7 +147,7 @@ impl<'a> PaneResizer<'a> {
             .values()
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
-                bwn(s.pos) || bwn(s.pos + s.size)
+                bwn(s.pos) || bwn(s.pos + s.size.as_usize())
             })
             .map(|p| self.get_span(direction, p.as_ref()))
             .collect();
@@ -161,7 +162,6 @@ impl<'a> PaneResizer<'a> {
             Direction::Horizontal => Span {
                 pid: pane.pid(),
                 direction,
-                fixed: pas.cols_fixed,
                 pos: pas.x,
                 size: pas.cols,
                 pos_var,
@@ -170,7 +170,6 @@ impl<'a> PaneResizer<'a> {
             Direction::Vertical => Span {
                 pid: pane.pid(),
                 direction,
-                fixed: pas.rows_fixed,
                 pos: pas.y,
                 size: pas.rows,
                 pos_var,
@@ -187,12 +186,14 @@ impl<'a> PaneResizer<'a> {
             match span.direction {
                 Direction::Horizontal => pane.change_pos_and_size(&PositionAndSize {
                     x: fetch_usize(span.pos_var),
-                    cols: fetch_usize(span.size_var),
+                    // FIXME: Obviously this `fixed` is test code. This should operate in terms of
+                    // percent!
+                    cols: Dimension::fixed(fetch_usize(span.size_var)),
                     ..pane.position_and_size()
                 }),
                 Direction::Vertical => pane.change_pos_and_size(&PositionAndSize {
                     y: fetch_usize(span.pos_var),
-                    rows: fetch_usize(span.size_var),
+                    rows: Dimension::fixed(fetch_usize(span.size_var)),
                     ..pane.position_and_size()
                 }),
             }
@@ -212,14 +213,18 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
     let gap_space = GAP_SIZE * (spans.len() - 1);
+    let old_flex_space = spans.iter().fold(0, |a, s| a + s.size.as_usize());
+    let new_flex_space = space - gap_space;
+    /*
     let old_flex_space = spans
         .iter()
-        .fold(0, |a, s| if !s.fixed { a + s.size } else { a });
-    let new_flex_space = spans.iter().fold(
-        space - gap_space,
-        |a, s| if s.fixed { a - s.size } else { a },
-    );
-
+        .fold(0, |a, s| if !s.constraint { a + s.size } else { a });
+    let new_flex_space =
+        spans.iter().fold(
+            space - gap_space,
+            |a, s| if s.constraint { a - s.size } else { a },
+        );
+    */
     // Keep spans stuck together
     for pair in spans.windows(2) {
         let (ls, rs) = (pair[0], pair[1]);
@@ -229,12 +234,11 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<Constraint> {
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
-        if span.fixed {
+        /*if span.constraint {
             constraints.insert(span.size_var | EQ(REQUIRED) | span.size as f64);
-        } else {
-            let ratio = span.size as f64 / old_flex_space as f64;
-            constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | ratio);
-        }
+        } else {*/
+        let ratio = span.size.as_usize() as f64 / old_flex_space as f64;
+        constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | ratio);
     }
 
     // The last pane needs to end at the end of the space
