@@ -14,8 +14,12 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
-        dbg!(&event);
-        let prev_event = self.ev_history.pop_front();
+        dbg!(&event, self.selected(), self.scroll());
+        let prev_event = if self.ev_history.len() == 2 {
+            self.ev_history.pop_front()
+        } else {
+            None
+        };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
             Event::KeyPress(key) => {
@@ -60,13 +64,14 @@ impl ZellijPlugin for State {
                 Mouse::ScrollUp(count) => {
                     *self.scroll_mut() = self.scroll().saturating_sub(count);
                 }
-                Mouse::LeftClick(line, _) => {
+                Mouse::MouseRelease(Some((line, _))) => {
                     let mut should_select = true;
                     dbg!(&prev_event);
                     if let Some((Event::Mouse(Mouse::MouseRelease(Some((prev_line, _)))), t)) =
                         prev_event
                     {
                         if prev_line == line
+                            && (prev_line as usize) == self.selected()
                             && Instant::now().saturating_duration_since(t).as_millis() < 400
                         {
                             self.traverse_dir_or_open_file();
@@ -75,7 +80,9 @@ impl ZellijPlugin for State {
                         }
                     }
                     if should_select {
-                        *self.selected_mut() = self.scroll() + (line as usize);
+                        if self.scroll() + (line as usize) < self.files.len() {
+                            *self.selected_mut() = self.scroll() + (line as usize);
+                        }
                     }
                 }
                 _ => {}

@@ -16,6 +16,8 @@ pub struct LinePart {
 struct State {
     tabs: Vec<TabInfo>,
     mode_info: ModeInfo,
+    mouse_click_pos: usize,
+    should_render: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -25,13 +27,21 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
-        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
+        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate, EventType::Mouse, ]);
     }
 
     fn update(&mut self, event: Event) {
+        dbg!(&event);
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
+            Event::Mouse(me) => match me {
+                Mouse::LeftClick(line, col) => {
+                    self.mouse_click_pos = col;
+                    self.should_render = true;
+                }
+                _ => {}
+            },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
     }
@@ -70,8 +80,17 @@ impl ZellijPlugin for State {
             self.mode_info.capabilities,
         );
         let mut s = String::new();
+        let mut len_cnt = 0;
         for bar_part in tab_line {
             s = format!("{}{}", s, bar_part.part);
+            if self.should_render
+                && self.mouse_click_pos > len_cnt
+                && self.mouse_click_pos <= len_cnt + bar_part.len
+            {
+                dbg!("Mouse clicked here");
+                dbg!(bar_part.part);
+            }
+            len_cnt += bar_part.len;
         }
         match self.mode_info.palette.cyan {
             PaletteColor::Rgb((r, g, b)) => {
@@ -81,5 +100,6 @@ impl ZellijPlugin for State {
                 println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
             }
         }
+        self.should_render = false;
     }
 }
