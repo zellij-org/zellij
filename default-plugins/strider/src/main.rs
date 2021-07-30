@@ -1,11 +1,9 @@
 mod state;
 
 use colored::*;
-use state::{FsEntry, State};
-use std::{cmp::min, fs::read_dir, path::Path};
+use state::{refresh_directory, FsEntry, State};
+use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
-
-const ROOT: &str = "/host";
 
 register_plugin!(State);
 
@@ -16,6 +14,9 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
+        dbg!(&event);
+        let prev_event = self.ev_history.pop_front();
+        self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
             Event::KeyPress(key) => {
                 self.set_key_pressed_in_last_render_window(true);
@@ -28,22 +29,18 @@ impl ZellijPlugin for State {
                         *self.selected_mut() = min(self.files.len() - 1, next);
                     }
                     Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
-                        match self.files[self.selected()].clone() {
-                            FsEntry::Dir(p, _) => {
-                                self.path = p;
-                                refresh_directory(self);
-                            }
-                            FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
-                        }
+                        self.traverse_dir_or_open_file();
+                        self.ev_history.clear();
                     }
-                   Key::Left | Key::Char('h') => {
-                    if self.path.components().count() > 2 {
-                        // don't descend into /host
-                        // the reason this is a hard-coded number (2) and not "== ROOT"
-                        // or some such is that there are certain cases in which self.path
-                        // is empty and this will work then too
-                        self.path.pop();
-                        refresh_directory(self);
+                    Key::Left | Key::Char('h') => {
+                        if self.path.components().count() > 2 {
+                            // don't descend into /host
+                            // the reason this is a hard-coded number (2) and not "== ROOT"
+                            // or some such is that there are certain cases in which self.path
+                            // is empty and this will work then too
+                            self.path.pop();
+                            refresh_directory(self);
+                        }
                     }
                     Key::Char('.') => {
                         self.toggle_hidden_files();
@@ -52,8 +49,7 @@ impl ZellijPlugin for State {
 
                     _ => (),
                 }
-                
-            },
+            }
             Event::Mouse(mouse_event) => match mouse_event {
                 Mouse::ClearScroll => {
                     *self.scroll_mut() = 0;
@@ -65,7 +61,22 @@ impl ZellijPlugin for State {
                     *self.scroll_mut() = self.scroll().saturating_sub(count);
                 }
                 Mouse::LeftClick(line, _) => {
-                    *self.selected_mut() = self.scroll() + (line as usize);
+                    let mut should_select = true;
+                    dbg!(&prev_event);
+                    if let Some((Event::Mouse(Mouse::MouseRelease(Some((prev_line, _)))), t)) =
+                        prev_event
+                    {
+                        if prev_line == line
+                            && Instant::now().saturating_duration_since(t).as_millis() < 400
+                        {
+                            self.traverse_dir_or_open_file();
+                            self.ev_history.clear();
+                            should_select = false;
+                        }
+                    }
+                    if should_select {
+                        *self.selected_mut() = self.scroll() + (line as usize);
+                    }
                 }
                 _ => {}
             },
@@ -109,25 +120,4 @@ impl ZellijPlugin for State {
         }
         self.set_key_pressed_in_last_render_window(false);
     }
-}
-
-fn refresh_directory(state: &mut State) {
-    state.files = read_dir(Path::new(ROOT).join(&state.path))
-        .unwrap()
-        .filter_map(|res| {
-            res.and_then(|d| {
-                if d.metadata()?.is_dir() {
-                    let children = read_dir(d.path())?.count();
-                    Ok(FsEntry::Dir(d.path(), children))
-                } else {
-                    let size = d.metadata()?.len();
-                    Ok(FsEntry::File(d.path(), size))
-                }
-            })
-            .ok()
-            .filter(|d| !d.is_hidden_file() || !state.hide_hidden_files)
-        })
-        .collect();
-
-    state.files.sort_unstable();
 }
