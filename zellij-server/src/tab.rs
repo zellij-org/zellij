@@ -1720,18 +1720,6 @@ impl Tab {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
         }
-        log::info!("The panes on screen:");
-        for (id, pane) in &self.panes {
-            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
-            log::info!(
-                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
-                id,
-                x,
-                y,
-                rows,
-                cols
-            );
-        }
         // FIXME: This is a temporary solution (and a massive mess)
         if let PaneGeom {
             rows:
@@ -1756,7 +1744,6 @@ impl Tab {
                 // PositionAndSize. TL;DR `Fixed` is stupid here – so is `Percent`
                 self.full_screen_ws.cols.set_inner(cols);
                 self.full_screen_ws.rows.set_inner(rows);
-                log::info!("Full WS: {:?}", self.full_screen_ws);
             }
         }
         log::info!("Finished resizing (maybe) the panes!");

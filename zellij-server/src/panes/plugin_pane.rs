@@ -74,11 +74,9 @@ impl Pane for PluginPane {
     fn change_pos_and_size(&mut self, position_and_size: &PaneGeom) {
         self.position_and_size = *position_and_size;
         self.should_render = true;
-        log::info!("Plugin Resized: {:?}", position_and_size);
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom) {
-        log::info!("OVVVVVVVVVVVVVVVVVVEEEEEEEEEEEERIDE Pane");
         let position_and_size_override = PaneGeom {
             x,
             y,
@@ -126,7 +124,6 @@ impl Pane for PluginPane {
         //self.position_and_size.cols = Dimension::fixed(fixed_width);
     }
     fn render(&mut self) -> Option<String> {
-        log::info!("Plugin rendering size: ({}, {})", self.cols(), self.rows());
         // if self.should_render {
         if true {
             // while checking should_render rather than rendering each pane every time

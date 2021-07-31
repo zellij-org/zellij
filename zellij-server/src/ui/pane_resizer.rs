@@ -83,10 +83,8 @@ impl<'a> PaneResizer<'a> {
         // `new_size.cols` should be a plain usize!!!
         // let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
         // self.apply_spans(&spans);
-        log::info!("Time for a horizontal resize!\nNew Size: {:?}", new_size);
         self.layout_direction(Direction::Horizontal, new_size.cols);
         self.solver.reset();
-        log::info!("Time for a vertical resize!");
         self.layout_direction(Direction::Vertical, new_size.rows);
         //let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
         //self.apply_spans(&spans);
@@ -104,11 +102,9 @@ impl<'a> PaneResizer<'a> {
     fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
         let mut grid = Vec::new();
         for boundary in self.grid_boundaries(direction) {
-            log::info!("Boundary: {:?}",  boundary);
             grid.push(self.spans_in_boundary(direction, boundary));
         }
         let dbg_grid: Vec<Vec<PaneId>> = grid.iter().map(|r| r.iter().map(|s| s.pid).collect()).collect();
-        log::info!("Grid: {:#?}\nSpace: {}", dbg_grid, space);
         let constraints: Vec<_> = grid
             .iter()
             .flat_map(|s| constrain_spans(space, s))
@@ -122,12 +118,9 @@ impl<'a> PaneResizer<'a> {
             for span in spans.iter_mut() {
                 let size = self.solver.get_value(span.size_var);
                 span.size.set_inner(size as usize);
-                log::info!("Span {:?}; Size: {}", span.pid, span.size.as_usize());
                 rounded_size += span.size.as_usize() + GAP_SIZE;
-                log::info!("Rounded Size: {}", rounded_size);
             }
             rounded_size -= GAP_SIZE;
-            log::info!("Space: {}; Rounded: {}", space, rounded_size);
             let error = space - rounded_size;
             let mut flex_spans: Vec<&mut Span> =
                 spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
@@ -161,7 +154,6 @@ impl<'a> PaneResizer<'a> {
         let mut edges: Vec<usize> = spans.iter().map(|s| s.pos + s.size.as_usize() + 1).collect();
         edges.sort_unstable();
         edges.dedup();
-        log::info!("Edges: {:?}", &edges);
         for next in edges {
             let next_edge = next;
             bounds.push((last_edge, next_edge));
@@ -247,7 +239,6 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
             a
         }
     });
-    log::info!("Space: {}; New Flex: {}", space, new_flex_space);
 
     // Keep spans stuck together
     for pair in spans.windows(2) {

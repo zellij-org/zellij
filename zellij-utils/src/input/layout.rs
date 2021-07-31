@@ -172,7 +172,6 @@ fn split_space_to_parts_vertically(
 
     // First fit in the parameterized sizes
     for size in sizes {
-        log::info!("Size: {:?}", size);
         let cols = match size {
             Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
@@ -234,7 +233,6 @@ fn split_space_to_parts_horizontally(
     let mut parts_to_grow = Vec::new();
 
     for size in sizes {
-        log::info!("Size: {:?}", size);
         let rows = match size {
             Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),

@@ -389,7 +389,6 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_rows();
         let columns = self.get_columns();
-        log::info!("Reflowing ({},{})", columns, rows);
         self.grid.change_size(rows, columns);
         self.set_should_render(true);
     }
