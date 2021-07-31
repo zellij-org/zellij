@@ -186,7 +186,7 @@ fn split_space_to_parts_vertically(
             y: space_to_split.y,
             // FIXME: This is likely wrong and percent should be considered!
             cols,
-            rows: Dimension::percent(50.0),
+            rows: space_to_split.rows,
         });
         // FIXME: What exactly is happening here? I should only need to preserve the ordering of
         // panes
@@ -245,7 +245,7 @@ fn split_space_to_parts_horizontally(
             x: space_to_split.x,
             y: current_y_position,
             // FIXME: This is probably wrong
-            cols: Dimension::percent(100.0),
+            cols: space_to_split.cols,
             rows,
         });
         current_y_position += 1 + 1; // 1 for gap

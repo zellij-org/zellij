@@ -104,7 +104,6 @@ impl<'a> PaneResizer<'a> {
         for boundary in self.grid_boundaries(direction) {
             grid.push(self.spans_in_boundary(direction, boundary));
         }
-        let dbg_grid: Vec<Vec<PaneId>> = grid.iter().map(|r| r.iter().map(|s| s.pid).collect()).collect();
         let constraints: Vec<_> = grid
             .iter()
             .flat_map(|s| constrain_spans(space, s))

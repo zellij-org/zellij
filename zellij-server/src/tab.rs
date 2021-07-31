@@ -303,8 +303,8 @@ impl Tab {
         let free_space = PaneGeom {
             x: 0,
             y: 0,
-            rows: self.full_screen_ws.rows,
-            cols: self.full_screen_ws.cols,
+            rows: Dimension::percent(100.0),
+            cols: Dimension::percent(100.0),
         };
         self.panes_to_hide.clear();
         let positions_in_layout = layout.position_panes_in_space(&free_space);
@@ -1719,6 +1719,18 @@ impl Tab {
         if self.fullscreen_is_active {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
+        }
+        log::info!("Here are the panes:");
+        for (id, pane) in &self.panes {
+            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
+            log::info!(
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
+                id,
+                x,
+                y,
+                rows,
+                cols
+            );
         }
         // FIXME: This is a temporary solution (and a massive mess)
         if let PaneGeom {
