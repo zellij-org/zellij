@@ -104,6 +104,12 @@ impl<'a> PaneResizer<'a> {
         for boundary in self.grid_boundaries(direction) {
             grid.push(self.spans_in_boundary(direction, boundary));
         }
+        let dbg_grid: Vec<Vec<PaneId>> = grid
+            .iter()
+            .map(|r| r.iter().map(|s| s.pid).collect())
+            .collect();
+        log::info!("Grid: {:#?}\nSpace: {}", dbg_grid, space);
+
         let constraints: Vec<_> = grid
             .iter()
             .flat_map(|s| constrain_spans(space, s))
@@ -150,7 +156,10 @@ impl<'a> PaneResizer<'a> {
 
         let mut last_edge = 0;
         let mut bounds = Vec::new();
-        let mut edges: Vec<usize> = spans.iter().map(|s| s.pos + s.size.as_usize() + 1).collect();
+        let mut edges: Vec<usize> = spans
+            .iter()
+            .map(|s| s.pos + s.size.as_usize() + 1)
+            .collect();
         edges.sort_unstable();
         edges.dedup();
         for next in edges {
@@ -162,14 +171,16 @@ impl<'a> PaneResizer<'a> {
     }
 
     fn spans_in_boundary(&self, direction: Direction, boundary: (usize, usize)) -> Vec<Span> {
-        let (start, end) = boundary;
-        let bwn = |v| start <= v && v < end;
+        let bwn = |v, (s, e)| s <= v && v < e;
         let mut spans: Vec<_> = self
             .panes
             .values()
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
-                bwn(s.pos) || bwn(s.pos + s.size.as_usize())
+                let span_bounds = (s.pos, s.pos + s.size.as_usize());
+                bwn(span_bounds.0, boundary)
+                    || bwn(span_bounds.1, boundary)
+                    || (bwn(boundary.0, span_bounds) && bwn(boundary.1, span_bounds))
             })
             .map(|p| self.get_span(direction, p.as_ref()))
             .collect();
@@ -249,9 +260,7 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
         match span.size.constraint {
-            Constraint::Fixed(s) => {
-                constraints.insert(span.size_var | EQ(REQUIRED) | s as f64)
-            }
+            Constraint::Fixed(s) => constraints.insert(span.size_var | EQ(REQUIRED) | s as f64),
             Constraint::Percent(p) => constraints
                 .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
         };

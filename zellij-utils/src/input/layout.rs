@@ -10,16 +10,19 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     input::{command::RunCommand, config::ConfigError},
-    pane_size::{Dimension, PaneGeom},
+    pane_size::{Constraint, Dimension, PaneGeom},
     setup,
 };
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    cmp::max,
+    path::{Path, PathBuf},
+};
 use std::{fs::File, io::prelude::*};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
     Horizontal,
@@ -29,8 +32,8 @@ pub enum Direction {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "self::serde")]
 pub enum SplitSize {
-    Percent(u8), // 1 to 100
-    Fixed(u16),  // An absolute number of columns or rows
+    Percent(f64), // 1 to 100
+    Fixed(usize), // An absolute number of columns or rows
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -153,117 +156,106 @@ impl Layout {
         run_instructions
     }
 
-    pub fn position_panes_in_space(
-        &self,
-        space: &PaneGeom,
-    ) -> Vec<(Layout, PaneGeom)> {
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
         split_space(space, self)
     }
 }
 
-fn split_space_to_parts_vertically(
-    space_to_split: &PaneGeom,
-    sizes: Vec<Option<SplitSize>>,
-) -> Vec<PaneGeom> {
-    let mut split_parts = Vec::new();
-    let mut current_x_position = space_to_split.x;
-
-    let mut parts_to_grow = Vec::new();
-
-    // First fit in the parameterized sizes
-    for size in sizes {
-        let cols = match size {
-            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
-            Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
-            None => {
-                parts_to_grow.push(current_x_position);
-                // FIXME: Should be a percent constraint calculated from the number of parts
-                Dimension::percent(100.0) // This is grown later on
-            }
-        };
-        split_parts.push(PaneGeom {
-            x: current_x_position,
-            y: space_to_split.y,
-            // FIXME: This is likely wrong and percent should be considered!
-            cols,
-            rows: space_to_split.rows,
-        });
-        // FIXME: What exactly is happening here? I should only need to preserve the ordering of
-        // panes
-        let columns = 1;
-        current_x_position += columns + 1 + 1; // 1 for gap
-    }
-
-    /*
-    let mut last_flexible_index = split_parts.len() - 1;
-    if let Some(new_columns) = (max_width - current_width).checked_div(parts_to_grow.len()) {
-        current_width = 0;
-        current_x_position = 0;
-        for (idx, part) in split_parts.iter_mut().enumerate() {
-            part.x = current_x_position;
-            if parts_to_grow.contains(&part.x) {
-                part.cols = Dimension::fixed(new_columns);
-                last_flexible_index = idx;
-            }
-            current_width += part.cols.as_usize();
-            current_x_position += part.cols.as_usize() + 1; // 1 for gap
+fn layout_size(direction: Direction, layout: &Layout) -> usize {
+    fn child_layout_size(direction: Direction, parent_direction: Direction, layout: &Layout) -> usize {
+        let size = if parent_direction == direction { 1 } else { 0 };
+        if layout.parts.is_empty() {
+            size
+        } else {
+            let children_size = layout
+                .parts
+                .iter()
+                .map(|p| child_layout_size(direction, layout.direction, p))
+                .sum::<usize>();
+            max(size, children_size)
         }
     }
-    */
-    /*
-    if current_width < max_width {
-        // we have some extra space left, let's add it to the last flexible part
-        let extra = max_width - current_width;
-        let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.cols = Dimension::fixed(last_part.cols.as_usize() + extra);
-        for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
-            part.x += extra;
-        }
-    }*/
-    split_parts
+    child_layout_size(direction, direction, layout)
 }
 
-fn split_space_to_parts_horizontally(
-    space_to_split: &PaneGeom,
-    sizes: Vec<Option<SplitSize>>,
-) -> Vec<PaneGeom> {
-    let mut split_parts = Vec::new();
-    let mut current_y_position = space_to_split.y;
-
-    let mut parts_to_grow = Vec::new();
-
-    for size in sizes {
-        let rows = match size {
-            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
-            Some(SplitSize::Fixed(size)) => Dimension::fixed(size as usize),
-            None => {
-                parts_to_grow.push(current_y_position);
-                Dimension::fixed(1) // This is grown later on
-            }
-        };
-        split_parts.push(PaneGeom {
-            x: space_to_split.x,
-            y: current_y_position,
-            // FIXME: This is probably wrong
-            cols: space_to_split.cols,
-            rows,
-        });
-        current_y_position += 1 + 1; // 1 for gap
-    }
-
-    split_parts
-}
-
-fn split_space(
-    space_to_split: &PaneGeom,
-    layout: &Layout,
-) -> Vec<(Layout, PaneGeom)> {
+fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneGeom)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
     let split_parts = match layout.direction {
-        Direction::Vertical => split_space_to_parts_vertically(space_to_split, sizes),
-        Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, sizes),
+        Direction::Vertical => {
+            let mut split_parts = Vec::new();
+            let mut current_x_position = space_to_split.x;
+
+            let flex_parts = sizes
+                .iter()
+                .filter(|s| !matches!(s, Some(SplitSize::Fixed(_))))
+                .count();
+
+            // First fit in the parameterized sizes
+            for (&size, part) in sizes.iter().zip(&layout.parts) {
+                let cols = match size {
+                    Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
+                    Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
+                    None => {
+                        if let Constraint::Percent(p) = space_to_split.cols.constraint {
+                            Dimension::percent(p / flex_parts as f64)
+                        } else {
+                            panic!("Implicit sizing within fixed-size panes is not supported");
+                        }
+                    }
+                };
+                split_parts.push(PaneGeom {
+                    x: current_x_position,
+                    y: space_to_split.y,
+                    // FIXME: This is likely wrong and percent should be considered!
+                    cols,
+                    // FIXME: Set the inner layout usize using layout_size for fib.yaml
+                    rows: space_to_split.rows,
+                });
+                log::info!(
+                    "Part size: {};\n{:#?}",
+                    layout_size(Direction::Vertical, part),
+                    part
+                );
+                current_x_position += layout_size(Direction::Vertical, part);
+            }
+
+            split_parts
+        }
+        Direction::Horizontal => {
+            let mut split_parts = Vec::new();
+            let mut current_y_position = space_to_split.y;
+
+            let flex_parts = sizes
+                .iter()
+                .filter(|s| !matches!(s, Some(SplitSize::Fixed(_))))
+                .count();
+
+            for (&size, part) in sizes.iter().zip(&layout.parts) {
+                let rows = match size {
+                    Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
+                    Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
+                    None => {
+                        if let Constraint::Percent(p) = space_to_split.rows.constraint {
+                            Dimension::percent(p / flex_parts as f64)
+                        } else {
+                            panic!("Implicit sizing within fixed-size panes is not supported");
+                        }
+                    }
+                };
+                split_parts.push(PaneGeom {
+                    x: space_to_split.x,
+                    y: current_y_position,
+                    // FIXME: This is probably wrong
+                    cols: space_to_split.cols,
+                    rows,
+                });
+                current_y_position += layout_size(Direction::Horizontal, part);
+            }
+
+            split_parts
+        }
     };
     for (i, part) in layout.parts.iter().enumerate() {
         let part_position_and_size = split_parts.get(i).unwrap();
