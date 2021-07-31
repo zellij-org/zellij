@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::{
-    pane_size::{Dimension, PositionAndSize},
+    pane_size::{Dimension, PaneGeom},
     position::Position,
     vte,
     zellij_tile::data::{Palette, PaletteColor},
@@ -29,8 +29,8 @@ pub struct TerminalPane {
     pub grid: Grid,
     pub pid: RawFd,
     pub selectable: bool,
-    pub position_and_size: PositionAndSize,
-    pub position_and_size_override: Option<PositionAndSize>,
+    pub position_and_size: PaneGeom,
+    pub position_and_size_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
@@ -54,12 +54,12 @@ impl Pane for TerminalPane {
         self.position_and_size_override = None;
         self.reflow_lines();
     }
-    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
+    fn change_pos_and_size(&mut self, position_and_size: &PaneGeom) {
         self.position_and_size = *position_and_size;
         self.reflow_lines();
     }
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
-        let position_and_size_override = PositionAndSize {
+    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom) {
+        let position_and_size_override = PaneGeom {
             x,
             y,
             rows: size.rows,
@@ -120,10 +120,10 @@ impl Pane for TerminalPane {
         };
         input_bytes
     }
-    fn position_and_size(&self) -> PositionAndSize {
+    fn position_and_size(&self) -> PaneGeom {
         self.position_and_size
     }
-    fn position_and_size_override(&self) -> Option<PositionAndSize> {
+    fn position_and_size_override(&self) -> Option<PaneGeom> {
         self.position_and_size_override
     }
     fn should_render(&self) -> bool {
@@ -344,7 +344,7 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette) -> TerminalPane {
+    pub fn new(pid: RawFd, position_and_size: PaneGeom, palette: Palette) -> TerminalPane {
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
@@ -389,6 +389,7 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_rows();
         let columns = self.get_columns();
+        log::info!("Reflowing ({},{})", columns, rows);
         self.grid.change_size(rows, columns);
         self.set_should_render(true);
     }

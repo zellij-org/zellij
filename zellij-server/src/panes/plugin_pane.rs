@@ -8,7 +8,7 @@ use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::{
     channels::SenderWithContext,
-    pane_size::{Dimension, PositionAndSize},
+    pane_size::{Dimension, PaneGeom},
 };
 
 pub(crate) struct PluginPane {
@@ -16,8 +16,8 @@ pub(crate) struct PluginPane {
     pub should_render: bool,
     pub selectable: bool,
     pub invisible_borders: bool,
-    pub position_and_size: PositionAndSize,
-    pub position_and_size_override: Option<PositionAndSize>,
+    pub position_and_size: PaneGeom,
+    pub position_and_size_override: Option<PaneGeom>,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
 }
@@ -25,7 +25,7 @@ pub(crate) struct PluginPane {
 impl PluginPane {
     pub fn new(
         pid: u32,
-        position_and_size: PositionAndSize,
+        position_and_size: PaneGeom,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
     ) -> Self {
         Self {
@@ -71,13 +71,15 @@ impl Pane for PluginPane {
         self.position_and_size_override = None;
         self.should_render = true;
     }
-    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
+    fn change_pos_and_size(&mut self, position_and_size: &PaneGeom) {
         self.position_and_size = *position_and_size;
         self.should_render = true;
+        log::info!("Plugin Resized: {:?}", position_and_size);
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
-        let position_and_size_override = PositionAndSize {
+    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom) {
+        log::info!("OVVVVVVVVVVVVVVVVVVEEEEEEEEEEEERIDE Pane");
+        let position_and_size_override = PaneGeom {
             x,
             y,
             rows: size.rows,
@@ -95,10 +97,10 @@ impl Pane for PluginPane {
     fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
         unimplemented!() // FIXME: Shouldn't need this implmented?
     }
-    fn position_and_size(&self) -> PositionAndSize {
+    fn position_and_size(&self) -> PaneGeom {
         self.position_and_size
     }
-    fn position_and_size_override(&self) -> Option<PositionAndSize> {
+    fn position_and_size_override(&self) -> Option<PaneGeom> {
         self.position_and_size_override
     }
     fn should_render(&self) -> bool {
@@ -116,13 +118,15 @@ impl Pane for PluginPane {
     fn set_invisible_borders(&mut self, invisible_borders: bool) {
         self.invisible_borders = invisible_borders;
     }
+    // FIXME: This needs to be removed or changed somehow!
     fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = Dimension::fixed(fixed_height);
+        //self.position_and_size.rows = Dimension::fixed(fixed_height);
     }
     fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = Dimension::fixed(fixed_width);
+        //self.position_and_size.cols = Dimension::fixed(fixed_width);
     }
     fn render(&mut self) -> Option<String> {
+        log::info!("Plugin rendering size: ({}, {})", self.cols(), self.rows());
         // if self.should_render {
         if true {
             // while checking should_render rather than rendering each pane every time

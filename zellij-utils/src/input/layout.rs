@@ -10,7 +10,7 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     input::{command::RunCommand, config::ConfigError},
-    pane_size::{Dimension, PositionAndSize},
+    pane_size::{Dimension, PaneGeom},
     setup,
 };
 use crate::{serde, serde_yaml};
@@ -155,20 +155,18 @@ impl Layout {
 
     pub fn position_panes_in_space(
         &self,
-        space: &PositionAndSize,
-    ) -> Vec<(Layout, PositionAndSize)> {
+        space: &PaneGeom,
+    ) -> Vec<(Layout, PaneGeom)> {
         split_space(space, self)
     }
 }
 
 fn split_space_to_parts_vertically(
-    space_to_split: &PositionAndSize,
+    space_to_split: &PaneGeom,
     sizes: Vec<Option<SplitSize>>,
-) -> Vec<PositionAndSize> {
+) -> Vec<PaneGeom> {
     let mut split_parts = Vec::new();
     let mut current_x_position = space_to_split.x;
-    let mut current_width = 0;
-    let max_width = space_to_split.cols.as_usize() - (sizes.len() - 1); // minus space for gaps
 
     let mut parts_to_grow = Vec::new();
 
@@ -181,27 +179,23 @@ fn split_space_to_parts_vertically(
             None => {
                 parts_to_grow.push(current_x_position);
                 // FIXME: Should be a percent constraint calculated from the number of parts
-                Dimension::fixed(1) // This is grown later on
+                Dimension::percent(100.0) // This is grown later on
             }
         };
-        split_parts.push(PositionAndSize {
+        split_parts.push(PaneGeom {
             x: current_x_position,
             y: space_to_split.y,
             // FIXME: This is likely wrong and percent should be considered!
             cols,
-            rows: Dimension::percent(100.0),
+            rows: Dimension::percent(50.0),
         });
         // FIXME: What exactly is happening here? I should only need to preserve the ordering of
         // panes
         let columns = 1;
-        current_width += columns;
-        current_x_position += columns + 1; // 1 for gap
+        current_x_position += columns + 1 + 1; // 1 for gap
     }
 
-    if current_width > max_width {
-        panic!("Layout contained too many columns to fit onto the screen!");
-    }
-
+    /*
     let mut last_flexible_index = split_parts.len() - 1;
     if let Some(new_columns) = (max_width - current_width).checked_div(parts_to_grow.len()) {
         current_width = 0;
@@ -216,6 +210,7 @@ fn split_space_to_parts_vertically(
             current_x_position += part.cols.as_usize() + 1; // 1 for gap
         }
     }
+    */
     /*
     if current_width < max_width {
         // we have some extra space left, let's add it to the last flexible part
@@ -230,13 +225,11 @@ fn split_space_to_parts_vertically(
 }
 
 fn split_space_to_parts_horizontally(
-    space_to_split: &PositionAndSize,
+    space_to_split: &PaneGeom,
     sizes: Vec<Option<SplitSize>>,
-) -> Vec<PositionAndSize> {
+) -> Vec<PaneGeom> {
     let mut split_parts = Vec::new();
     let mut current_y_position = space_to_split.y;
-    let mut current_height = 0;
-    let max_height = space_to_split.rows.as_usize() - (sizes.len() - 1); // minus space for gaps
 
     let mut parts_to_grow = Vec::new();
 
@@ -250,44 +243,23 @@ fn split_space_to_parts_horizontally(
                 Dimension::fixed(1) // This is grown later on
             }
         };
-        split_parts.push(PositionAndSize {
+        split_parts.push(PaneGeom {
             x: space_to_split.x,
             y: current_y_position,
-            cols: space_to_split.cols,
+            // FIXME: This is probably wrong
+            cols: Dimension::percent(100.0),
             rows,
         });
-        current_height += 1;
-        current_y_position += 1; // 1 for gap
-    }
-
-    if current_height > max_height {
-        panic!("Layout contained too many rows to fit onto the screen!");
-    }
-
-    let mut last_flexible_index = split_parts.len() - 1;
-    if let Some(new_rows) = (max_height - current_height).checked_div(parts_to_grow.len()) {
-        current_height = 0;
-        current_y_position = 0;
-
-        for (idx, part) in split_parts.iter_mut().enumerate() {
-            part.y = current_y_position;
-            if parts_to_grow.contains(&part.y) {
-                // FIXME: Yet another line to purge...
-                part.rows = Dimension::fixed(new_rows);
-                last_flexible_index = idx;
-            }
-            current_height += part.rows.as_usize();
-            current_y_position += part.rows.as_usize() + 1; // 1 for gap
-        }
+        current_y_position += 1 + 1; // 1 for gap
     }
 
     split_parts
 }
 
 fn split_space(
-    space_to_split: &PositionAndSize,
+    space_to_split: &PaneGeom,
     layout: &Layout,
-) -> Vec<(Layout, PositionAndSize)> {
+) -> Vec<(Layout, PaneGeom)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 

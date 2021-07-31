@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::pane_size::PositionAndSize;
+use crate::pane_size::PaneGeom;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
 pub struct Position {
@@ -16,7 +16,7 @@ impl Position {
         }
     }
 
-    pub fn relative_to(&self, position_and_size: &PositionAndSize) -> Self {
+    pub fn relative_to(&self, position_and_size: &PaneGeom) -> Self {
         Self {
             line: Line(self.line.0 - position_and_size.y as isize),
             column: Column(self.column.0.saturating_sub(position_and_size.x)),

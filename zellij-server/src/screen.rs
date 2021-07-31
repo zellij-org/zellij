@@ -20,7 +20,7 @@ use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::ClientAttributes,
-    pane_size::PositionAndSize,
+    pane_size::PaneGeom,
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -69,7 +69,7 @@ pub(crate) enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
-    TerminalResize(PositionAndSize),
+    TerminalResize(PaneGeom),
     ChangeMode(ModeInfo),
     LeftClick(Position),
     MouseRelease(Position),
@@ -147,7 +147,7 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
-    position_and_size: PositionAndSize,
+    position_and_size: PaneGeom,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     mode_info: ModeInfo,
@@ -293,7 +293,7 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
+    pub fn resize_to_screen(&mut self, new_screen_size: PaneGeom) {
         self.position_and_size = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);

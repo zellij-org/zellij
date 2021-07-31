@@ -867,10 +867,9 @@ impl Grid {
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        self.viewport
-            .get_mut(self.cursor.y)
-            .unwrap()
-            .replace_and_pad_end(self.cursor.x, self.width, replace_with);
+        if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+            row.replace_and_pad_end(self.cursor.x, self.width, replace_with);
+        }
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {

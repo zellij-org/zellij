@@ -15,7 +15,7 @@ use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
-    pane_size::PositionAndSize,
+    pane_size::PaneGeom,
     shared::default_palette,
 };
 
@@ -35,7 +35,7 @@ fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
     };
 }
 
-pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
+pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> PaneGeom {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCGWINSZ;
@@ -54,7 +54,7 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> PositionAndSize {
     unsafe {
         ioctl(fd, TIOCGWINSZ.into(), &mut winsize)
     };
-    PositionAndSize::from(winsize)
+    PaneGeom::from(winsize)
 }
 
 #[derive(Clone)]
@@ -69,7 +69,7 @@ pub struct ClientOsInputOutput {
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync {
     /// Returns the size of the terminal associated to file descriptor `fd`.
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize;
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PaneGeom;
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     fn set_raw_mode(&mut self, fd: RawFd);
@@ -98,7 +98,7 @@ pub trait ClientOsApi: Send + Sync {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PositionAndSize {
+    fn get_terminal_size_using_fd(&self, fd: RawFd) -> PaneGeom {
         get_terminal_size_using_fd(fd)
     }
     fn set_raw_mode(&mut self, fd: RawFd) {

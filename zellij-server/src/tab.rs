@@ -19,12 +19,13 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_tile::data::{Event, ModeInfo, Palette};
+use zellij_utils::pane_size::{Constraint, Size};
 use zellij_utils::{
     input::{
         layout::{Layout, Run},
         parse_keys,
     },
-    pane_size::{Dimension, PositionAndSize},
+    pane_size::{Dimension, PaneGeom},
     position::Position,
     serde,
     shared::adjust_to_size,
@@ -41,7 +42,7 @@ const MIN_TERMINAL_WIDTH: usize = 4;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 // FIXME: These functions need to properly handle different constraints!
-fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
+fn split_vertically_with_gap(rect: &PaneGeom) -> (PaneGeom, PaneGeom) {
     let width_of_each_half = (rect.cols.as_usize() - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
@@ -56,7 +57,7 @@ fn split_vertically_with_gap(rect: &PositionAndSize) -> (PositionAndSize, Positi
 }
 
 // FIXME: These functions need to properly handle different constraints!
-fn split_horizontally_with_gap(rect: &PositionAndSize) -> (PositionAndSize, PositionAndSize) {
+fn split_horizontally_with_gap(rect: &PaneGeom) -> (PaneGeom, PaneGeom) {
     let height_of_each_half = (rect.rows.as_usize() - 1) / 2;
     let mut first_rect = *rect;
     let mut second_rect = *rect;
@@ -78,7 +79,7 @@ pub(crate) struct Tab {
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
-    full_screen_ws: PositionAndSize,
+    full_screen_ws: PaneGeom,
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
@@ -106,13 +107,13 @@ pub trait Pane {
     fn rows(&self) -> usize;
     fn cols(&self) -> usize;
     fn reset_size_and_position_override(&mut self);
-    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize);
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize);
+    fn change_pos_and_size(&mut self, position_and_size: &PaneGeom);
+    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
-    fn position_and_size(&self) -> PositionAndSize;
-    fn position_and_size_override(&self) -> Option<PositionAndSize>;
+    fn position_and_size(&self) -> PaneGeom;
+    fn position_and_size_override(&self) -> Option<PaneGeom>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
     fn selectable(&self) -> bool;
@@ -248,7 +249,7 @@ impl Tab {
         index: usize,
         position: usize,
         name: String,
-        full_screen_ws: &PositionAndSize,
+        full_screen_ws: &PaneGeom,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -299,7 +300,7 @@ impl Tab {
 
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
-        let free_space = PositionAndSize {
+        let free_space = PaneGeom {
             x: 0,
             y: 0,
             rows: self.full_screen_ws.rows,
@@ -373,6 +374,7 @@ impl Tab {
                 .unwrap();
         }
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
+        self.resize_whole_tab(self.full_screen_ws);
         self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
@@ -1713,13 +1715,14 @@ impl Tab {
             false
         }
     }
-    pub fn resize_whole_tab(&mut self, new_screen_size: PositionAndSize) {
+    pub fn resize_whole_tab(&mut self, new_screen_size: PaneGeom) {
         if self.fullscreen_is_active {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
         }
+        log::info!("The panes on screen:");
         for (id, pane) in &self.panes {
-            let PositionAndSize { x, y, rows, cols } = pane.position_and_size();
+            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
             log::info!(
                 "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
                 id,
@@ -1729,19 +1732,36 @@ impl Tab {
                 cols
             );
         }
-        if let Some((cols, rows)) = PaneResizer::new(&mut self.panes, &mut self.os_api)
-            .resize(self.full_screen_ws, new_screen_size)
+        // FIXME: This is a temporary solution (and a massive mess)
+        if let PaneGeom {
+            rows:
+                Dimension {
+                    constraint: Constraint::Fixed(rows),
+                    ..
+                },
+            cols:
+                Dimension {
+                    constraint: Constraint::Fixed(cols),
+                    ..
+                },
+            ..
+        } = new_screen_size
         {
-            self.should_clear_display_before_rendering = true;
-            // FIXME: A different type should be used here. The PositionAndSize is only really sensible
-            // for panes now. I should probably rename it to something like PaneGeometry and revert
-            // PositionAndSize. TL;DR `Fixed` is stupid here – so is `Percent`
-            self.full_screen_ws.cols = Dimension::fixed(cols);
-            self.full_screen_ws.rows = Dimension::fixed(rows);
+            if let Some((cols, rows)) =
+                PaneResizer::new(&mut self.panes, &mut self.os_api).resize(Size { rows, cols })
+            {
+                self.should_clear_display_before_rendering = true;
+                // FIXME: A different type should be used here. The PositionAndSize is only really sensible
+                // for panes now. I should probably rename it to something like PaneGeometry and revert
+                // PositionAndSize. TL;DR `Fixed` is stupid here – so is `Percent`
+                self.full_screen_ws.cols.set_inner(cols);
+                self.full_screen_ws.rows.set_inner(rows);
+                log::info!("Full WS: {:?}", self.full_screen_ws);
+            }
         }
         log::info!("Finished resizing (maybe) the panes!");
         for (id, pane) in &self.panes {
-            let PositionAndSize { x, y, rows, cols } = pane.position_and_size();
+            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
             log::info!(
                 "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
                 id,
