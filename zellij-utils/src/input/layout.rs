@@ -205,19 +205,21 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         }
                     }
                 };
+                let mut rows = space_to_split.rows.clone();
+                rows.set_inner(layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).max().unwrap() - 1);
                 split_parts.push(PaneGeom {
                     x: current_x_position,
                     y: space_to_split.y,
                     // FIXME: This is likely wrong and percent should be considered!
                     cols,
                     // FIXME: Set the inner layout usize using layout_size for fib.yaml
-                    rows: space_to_split.rows,
+                    rows,
                 });
-                log::info!(
-                    "Part size: {};\n{:#?}",
-                    layout_size(Direction::Vertical, part),
-                    part
-                );
+                log::info!("space_to_split.rows = {:?}; rows = {:?}", space_to_split.rows, rows);
+                log::info!("Self: {:#?}", part);
+                log::info!("Siblings: {:#?}", layout.parts);
+                log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
+                log::info!("Sibling Sizes: {:?}", layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).collect::<Vec<_>>());
                 current_x_position += layout_size(Direction::Vertical, part);
             }
 
@@ -244,13 +246,19 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         }
                     }
                 };
+                let mut cols = space_to_split.cols.clone();
+                cols.set_inner(layout.parts.iter().map(|p| layout_size(Direction::Vertical, p)).max().unwrap() - 1);
                 split_parts.push(PaneGeom {
                     x: space_to_split.x,
                     y: current_y_position,
                     // FIXME: This is probably wrong
-                    cols: space_to_split.cols,
+                    cols,
                     rows,
                 });
+                log::info!("Self: {:#?}", part);
+                log::info!("Siblings: {:#?}", layout.parts);
+                log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
+                log::info!("Sibling Sizes: {:?}", layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).collect::<Vec<_>>());
                 current_y_position += layout_size(Direction::Horizontal, part);
             }
 

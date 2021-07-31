@@ -118,27 +118,39 @@ impl<'a> PaneResizer<'a> {
         // FIXME: This line needs to be restored before merging!
         //self.solver.add_constraints(&constraints).ok()?;
         self.solver.add_constraints(&constraints).unwrap();
+        // FIXME: Yuck, flatten things for this loop or find a better way to separate the
+        // truncating and padding steps (so that the truncating operation doesn't undo the work of
+        // the padding operation when a span appears in several rows of a grid
+        for spans in &mut grid {
+            for span in spans.iter_mut() {
+                let size = self.solver.get_value(span.size_var);
+                span.size.set_inner(size.round() as usize);
+                log::info!("Pane {:?}, {} rounded to: {}", span.pid, size, span.size.as_usize());
+            }
+        }
         for spans in &mut grid {
             let mut rounded_size = 0;
             for span in spans.iter_mut() {
-                let size = self.solver.get_value(span.size_var);
-                span.size.set_inner(size as usize);
                 rounded_size += span.size.as_usize() + GAP_SIZE;
             }
             rounded_size -= GAP_SIZE;
-            let error = space - rounded_size;
+            log::info!("Space: {}; Rounded: {}", space, rounded_size);
+            let mut error = space as isize - rounded_size as isize;
             let mut flex_spans: Vec<&mut Span> =
                 spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
-            flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
-            for i in 0..error {
-                // FIXME: If this causes errors, `i % flex_spans.len()`
+            //flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
+            for span in flex_spans {
                 // FIXME: Think about implementing `AddAssign`
-                let sz = flex_spans[i].size.as_usize() + 1;
-                flex_spans[i].size.set_inner(sz);
+                log::info!("Adding rounding correction {} to {:?}", error.signum(), span.pid);
+                let sz = span.size.as_usize() as isize + error.signum();
+                log::info!("Corrected Size: {}", sz);
+                span.size.set_inner(sz as usize);
+                error -= error.signum();
             }
             let mut offset = 0;
             for span in spans.iter_mut() {
                 span.pos = offset;
+                log::info!("Offset: {}", span.size.as_usize());
                 offset += span.size.as_usize() + GAP_SIZE;
             }
         }
