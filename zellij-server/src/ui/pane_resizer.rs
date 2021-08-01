@@ -153,8 +153,10 @@ impl<'a> PaneResizer<'a> {
             }
             rounded_size -= GAP_SIZE as isize;
             let mut error = space as isize - rounded_size as isize;
-            let mut flex_spans: Vec<&mut Span> =
-                spans.iter_mut().filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid)).collect();
+            let mut flex_spans: Vec<&mut Span> = spans
+                .iter_mut()
+                .filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid))
+                .collect();
             // FIXME: Reverse the order when shrinking panes (to shrink the largest)
             flex_spans.sort_by_key(|s| rounded_sizes[&s.size_var]);
             if error < 0 {
@@ -219,7 +221,8 @@ impl<'a> PaneResizer<'a> {
                 // FIXME: This needs some cleaning up! These conditions are ridiculous!
                 bwn(span_bounds.0, boundary)
                     || bwn(span_bounds.1, boundary)
-                    || (bwn(boundary.0, span_bounds) && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
+                    || (bwn(boundary.0, span_bounds)
+                        && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
             })
             .map(|p| self.get_span(direction, p.as_ref()))
             .collect();

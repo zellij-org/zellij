@@ -162,7 +162,11 @@ impl Layout {
 }
 
 fn layout_size(direction: Direction, layout: &Layout) -> usize {
-    fn child_layout_size(direction: Direction, parent_direction: Direction, layout: &Layout) -> usize {
+    fn child_layout_size(
+        direction: Direction,
+        parent_direction: Direction,
+        layout: &Layout,
+    ) -> usize {
         let size = if parent_direction == direction { 1 } else { 0 };
         if layout.parts.is_empty() {
             size
@@ -182,15 +186,13 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
+    // FIXME: Merge the two branches of this match statement and deduplicate
     let split_parts = match layout.direction {
         Direction::Vertical => {
             let mut split_parts = Vec::new();
             let mut current_x_position = space_to_split.x;
 
-            let flex_parts = sizes
-                .iter()
-                .filter(|s| !matches!(s, Some(SplitSize::Fixed(_))))
-                .count();
+            let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
             // First fit in the parameterized sizes
             for (&size, part) in sizes.iter().zip(&layout.parts) {
@@ -198,15 +200,34 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
                     Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
                     None => {
-                        if let Constraint::Percent(p) = space_to_split.cols.constraint {
-                            Dimension::percent(p / flex_parts as f64)
-                        } else {
-                            panic!("Implicit sizing within fixed-size panes is not supported");
-                        }
+                        let free_percent =
+                            if let Constraint::Percent(p) = space_to_split.cols.constraint {
+                                p - sizes
+                                    .iter()
+                                    .map(|&s| {
+                                        if let Some(SplitSize::Percent(ip)) = s {
+                                            ip
+                                        } else {
+                                            0.0
+                                        }
+                                    })
+                                    .sum::<f64>()
+                            } else {
+                                panic!("Implicit sizing within fixed-size panes is not supported");
+                            };
+                        Dimension::percent(free_percent / flex_parts as f64)
                     }
                 };
-                let mut rows = space_to_split.rows.clone();
-                rows.set_inner(layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).max().unwrap() - 1);
+                let mut rows = space_to_split.rows;
+                rows.set_inner(
+                    layout
+                        .parts
+                        .iter()
+                        .map(|p| layout_size(Direction::Horizontal, p))
+                        .max()
+                        .unwrap()
+                        - 1,
+                );
                 split_parts.push(PaneGeom {
                     x: current_x_position,
                     y: space_to_split.y,
@@ -215,11 +236,22 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     // FIXME: Set the inner layout usize using layout_size for fib.yaml
                     rows,
                 });
-                log::info!("space_to_split.rows = {:?}; rows = {:?}", space_to_split.rows, rows);
+                log::info!(
+                    "space_to_split.rows = {:?}; rows = {:?}",
+                    space_to_split.rows,
+                    rows
+                );
                 log::info!("Self: {:#?}", part);
                 log::info!("Siblings: {:#?}", layout.parts);
                 log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
-                log::info!("Sibling Sizes: {:?}", layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).collect::<Vec<_>>());
+                log::info!(
+                    "Sibling Sizes: {:?}",
+                    layout
+                        .parts
+                        .iter()
+                        .map(|p| layout_size(Direction::Horizontal, p))
+                        .collect::<Vec<_>>()
+                );
                 current_x_position += layout_size(Direction::Vertical, part);
             }
 
@@ -229,25 +261,41 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
             let mut split_parts = Vec::new();
             let mut current_y_position = space_to_split.y;
 
-            let flex_parts = sizes
-                .iter()
-                .filter(|s| !matches!(s, Some(SplitSize::Fixed(_))))
-                .count();
+            let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
             for (&size, part) in sizes.iter().zip(&layout.parts) {
                 let rows = match size {
                     Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
                     Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
                     None => {
-                        if let Constraint::Percent(p) = space_to_split.rows.constraint {
-                            Dimension::percent(p / flex_parts as f64)
-                        } else {
-                            panic!("Implicit sizing within fixed-size panes is not supported");
-                        }
+                        let free_percent =
+                            if let Constraint::Percent(p) = space_to_split.cols.constraint {
+                                p - sizes
+                                    .iter()
+                                    .map(|&s| {
+                                        if let Some(SplitSize::Percent(ip)) = s {
+                                            ip
+                                        } else {
+                                            0.0
+                                        }
+                                    })
+                                    .sum::<f64>()
+                            } else {
+                                panic!("Implicit sizing within fixed-size panes is not supported");
+                            };
+                        Dimension::percent(free_percent / flex_parts as f64)
                     }
                 };
-                let mut cols = space_to_split.cols.clone();
-                cols.set_inner(layout.parts.iter().map(|p| layout_size(Direction::Vertical, p)).max().unwrap() - 1);
+                let mut cols = space_to_split.cols;
+                cols.set_inner(
+                    layout
+                        .parts
+                        .iter()
+                        .map(|p| layout_size(Direction::Vertical, p))
+                        .max()
+                        .unwrap()
+                        - 1,
+                );
                 split_parts.push(PaneGeom {
                     x: space_to_split.x,
                     y: current_y_position,
@@ -258,7 +306,14 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                 log::info!("Self: {:#?}", part);
                 log::info!("Siblings: {:#?}", layout.parts);
                 log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
-                log::info!("Sibling Sizes: {:?}", layout.parts.iter().map(|p| layout_size(Direction::Horizontal, p)).collect::<Vec<_>>());
+                log::info!(
+                    "Sibling Sizes: {:?}",
+                    layout
+                        .parts
+                        .iter()
+                        .map(|p| layout_size(Direction::Horizontal, p))
+                        .collect::<Vec<_>>()
+                );
                 current_y_position += layout_size(Direction::Horizontal, part);
             }
 
