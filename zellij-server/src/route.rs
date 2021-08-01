@@ -127,6 +127,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::ScrollDownAt(point))
                 .unwrap();
         }
+        Action::ScrollToBottom => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollToBottom)
+                .unwrap();
+        }
         Action::PageScrollUp => {
             session
                 .senders

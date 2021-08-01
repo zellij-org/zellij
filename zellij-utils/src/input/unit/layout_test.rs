@@ -528,10 +528,7 @@ fn no_tabs_specified_should_panic() {
 }
 
 #[test]
-#[should_panic]
-// TODO Make error out of this
-// Only untill #631 is fixed
-fn multiple_tabs_specified_should_panic() {
+fn multiple_tabs_specified_should_not_panic() {
     let path = layout_test_dir("multiple-tabs-should-panic.yaml".into());
     let layout = Layout::new(&path);
     let _main_layout = layout.unwrap().construct_main_layout();

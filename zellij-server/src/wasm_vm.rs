@@ -28,8 +28,8 @@ use zellij_utils::{input::command::TerminalAction, serde, zellij_tile};
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
-    Load(Sender<u32>, PathBuf),
-    Update(Option<u32>, Event), // Focused plugin / broadcast, event data
+    Load(Sender<u32>, PathBuf, usize), // tx_pid, path_of_plugin , tab_index
+    Update(Option<u32>, Event),        // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
     Exit,
@@ -50,6 +50,7 @@ impl From<&PluginInstruction> for PluginContext {
 #[derive(WasmerEnv, Clone)]
 pub(crate) struct PluginEnv {
     pub plugin_id: u32,
+    pub tab_index: usize,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
@@ -64,7 +65,7 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(pid_tx, path) => {
+            PluginInstruction::Load(pid_tx, path, tab_index) => {
                 let plugin_dir = data_dir.join("plugins/");
                 let wasm_bytes = fs::read(&path)
                     .or_else(|_| fs::read(&path.with_extension("wasm")))
@@ -100,6 +101,7 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
 
                 let plugin_env = PluginEnv {
                     plugin_id,
+                    tab_index,
                     senders: bus.senders.clone(),
                     wasi_env,
                     subscriptions: Arc::new(Mutex::new(HashSet::new())),
@@ -193,6 +195,7 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         .send_to_screen(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
+            plugin_env.tab_index,
         ))
         .unwrap()
 }
@@ -204,6 +207,7 @@ fn host_set_fixed_height(plugin_env: &PluginEnv, fixed_height: i32) {
         .send_to_screen(ScreenInstruction::SetFixedHeight(
             PaneId::Plugin(plugin_env.plugin_id),
             fixed_height,
+            plugin_env.tab_index,
         ))
         .unwrap()
 }
@@ -215,6 +219,7 @@ fn host_set_fixed_width(plugin_env: &PluginEnv, fixed_width: i32) {
         .send_to_screen(ScreenInstruction::SetFixedWidth(
             PaneId::Plugin(plugin_env.plugin_id),
             fixed_width,
+            plugin_env.tab_index,
         ))
         .unwrap()
 }
@@ -226,6 +231,7 @@ fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
         .send_to_screen(ScreenInstruction::SetInvisibleBorders(
             PaneId::Plugin(plugin_env.plugin_id),
             invisible_borders,
+            plugin_env.tab_index,
         ))
         .unwrap()
 }

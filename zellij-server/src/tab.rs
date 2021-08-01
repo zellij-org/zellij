@@ -301,7 +301,7 @@ impl Tab {
         }
     }
 
-    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PositionAndSize {
             x: 0,
@@ -340,7 +340,7 @@ impl Tab {
             if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone(), tab_index))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let new_plugin = PluginPane::new(
@@ -2277,6 +2277,16 @@ impl Tab {
             // prevent overflow when row == 0
             let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_down(scroll_columns);
+            self.render();
+        }
+    }
+    pub fn scroll_active_terminal_to_bottom(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            active_terminal.clear_scroll();
             self.render();
         }
     }

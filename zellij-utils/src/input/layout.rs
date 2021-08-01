@@ -123,8 +123,8 @@ impl Layout {
         layout: Option<&PathBuf>,
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Option<Layout> {
-        let layout_result = layout
+    ) -> Option<Result<Layout, ConfigError>> {
+        layout
             .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
             .or_else(|| layout_path.map(|p| Layout::new(p)))
             .or_else(|| {
@@ -132,16 +132,7 @@ impl Layout {
                     &std::path::PathBuf::from("default"),
                     layout_dir.as_ref(),
                 ))
-            });
-
-        match layout_result {
-            None => None,
-            Some(Ok(layout)) => Some(layout),
-            Some(Err(e)) => {
-                eprintln!("There was an error in the layout file:\n{}", e);
-                std::process::exit(1);
-            }
-        }
+            })
     }
 
     // Currently still needed but on nightly
@@ -297,12 +288,9 @@ impl Layout {
     pub fn construct_main_layout(&self) -> MainLayout {
         let (pre_tab, post_tab, tabs) = self.split_main_and_tab_layout();
 
+        // Todo: A proper LayoutError
         if tabs.is_empty() {
-            panic!("The layout file should have a `tabs` section specified");
-        }
-
-        if tabs.len() > 1 {
-            panic!("The layout file should have one single tab in the `tabs` section specified");
+            panic!("The layout file should have a [`tabs`] section specified");
         }
 
         MainLayout {
