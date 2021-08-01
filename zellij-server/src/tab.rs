@@ -298,7 +298,7 @@ impl Tab {
         }
     }
 
-    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PaneGeom {
             x: 0,
@@ -336,7 +336,7 @@ impl Tab {
             if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone(), tab_index))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let new_plugin = PluginPane::new(

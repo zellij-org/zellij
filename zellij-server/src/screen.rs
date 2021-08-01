@@ -56,10 +56,10 @@ pub(crate) enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
-    SetSelectable(PaneId, bool),
-    SetFixedHeight(PaneId, usize),
-    SetFixedWidth(PaneId, usize),
-    SetInvisibleBorders(PaneId, bool),
+    SetSelectable(PaneId, bool, usize),
+    SetFixedHeight(PaneId, usize, usize),
+    SetFixedWidth(PaneId, usize, usize),
+    SetInvisibleBorders(PaneId, bool, usize),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
     NewTab(RawFd),
@@ -337,6 +337,11 @@ impl Screen {
         }
     }
 
+    /// Returns a mutable reference to this [`Screen`]'s indexed [`Tab`].
+    pub fn get_indexed_tab_mut(&mut self, tab_index: usize) -> Option<&mut Tab> {
+        self.get_tabs_mut().get_mut(&tab_index)
+    }
+
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
@@ -355,7 +360,7 @@ impl Screen {
             self.colors,
             self.session_state.clone(),
         );
-        tab.apply_layout(layout, new_pids);
+        tab.apply_layout(layout, new_pids, tab_index);
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
@@ -599,29 +604,53 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_tab_mut().unwrap().close_focused_pane();
                 screen.render();
             }
-            ScreenInstruction::SetSelectable(id, selectable) => {
-                screen
-                    .get_active_tab_mut()
-                    .unwrap()
-                    .set_pane_selectable(id, selectable);
+            ScreenInstruction::SetSelectable(id, selectable, tab_index) => {
+                screen.get_indexed_tab_mut(tab_index).map_or_else(
+                    || {
+                        log::warn!(
+                            "Tab index #{} not found, could not set selectable for plugin #{:?}.",
+                            tab_index,
+                            id
+                        )
+                    },
+                    |tab| tab.set_pane_selectable(id, selectable),
+                );
             }
-            ScreenInstruction::SetFixedHeight(id, fixed_height) => {
-                screen
-                    .get_active_tab_mut()
-                    .unwrap()
-                    .set_pane_fixed_height(id, fixed_height);
+            ScreenInstruction::SetFixedHeight(id, fixed_height, tab_index) => {
+                screen.get_indexed_tab_mut(tab_index).map_or_else(
+                    || {
+                        log::warn!(
+                            "Tab index #{} not found, could not set fixed height for plugin #{:?}.",
+                            tab_index,
+                            id
+                        )
+                    },
+                    |tab| tab.set_pane_fixed_height(id, fixed_height),
+                );
             }
-            ScreenInstruction::SetFixedWidth(id, fixed_width) => {
-                screen
-                    .get_active_tab_mut()
-                    .unwrap()
-                    .set_pane_fixed_width(id, fixed_width);
+            ScreenInstruction::SetFixedWidth(id, fixed_width, tab_index) => {
+                screen.get_indexed_tab_mut(tab_index).map_or_else(
+                    || {
+                        log::warn!(
+                            "Tab index #{} not found, could not set fixed width for plugin #{:?}.",
+                            tab_index,
+                            id
+                        )
+                    },
+                    |tab| tab.set_pane_fixed_width(id, fixed_width),
+                );
             }
-            ScreenInstruction::SetInvisibleBorders(id, invisible_borders) => {
-                screen
-                    .get_active_tab_mut()
-                    .unwrap()
-                    .set_pane_invisible_borders(id, invisible_borders);
+            ScreenInstruction::SetInvisibleBorders(id, invisible_borders, tab_index) => {
+                screen.get_indexed_tab_mut(tab_index).map_or_else(
+                    || {
+                        log::warn!(
+                            r#"Tab index #{} not found, could not set invisible borders for plugin #{:?}."#,
+                            tab_index,
+                            id
+                        )
+                    },
+                    |tab| tab.set_pane_invisible_borders(id, invisible_borders),
+                );
                 screen.render();
             }
             ScreenInstruction::ClosePane(id) => {
