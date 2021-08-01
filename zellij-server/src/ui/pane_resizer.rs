@@ -119,6 +119,7 @@ impl<'a> PaneResizer<'a> {
     fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
         let mut grid = Vec::new();
         for boundary in self.grid_boundaries(direction) {
+            log::info!("Boundary: {:?}", boundary);
             grid.push(self.spans_in_boundary(direction, boundary));
         }
         let dbg_grid: Vec<Vec<PaneId>> = grid
@@ -215,9 +216,10 @@ impl<'a> PaneResizer<'a> {
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
                 let span_bounds = (s.pos, s.pos + s.size.as_usize());
+                // FIXME: This needs some cleaning up! These conditions are ridiculous!
                 bwn(span_bounds.0, boundary)
                     || bwn(span_bounds.1, boundary)
-                    || (bwn(boundary.0, span_bounds) && bwn(boundary.1, span_bounds))
+                    || (bwn(boundary.0, span_bounds) && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
             })
             .map(|p| self.get_span(direction, p.as_ref()))
             .collect();
