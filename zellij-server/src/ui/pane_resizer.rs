@@ -5,7 +5,7 @@ use cassowary::{
     WeightedRelation::*,
 };
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ops::Not,
 };
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom, Size};
@@ -84,6 +84,20 @@ impl<'a> PaneResizer<'a> {
         // let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
         // self.apply_spans(&spans);
         self.layout_direction(Direction::Horizontal, new_size.cols);
+        /*
+        log::info!("Finished the Horizontal resize:");
+        for (id, pane) in self.panes.iter() {
+            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
+            log::info!(
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
+                id,
+                x,
+                y,
+                rows,
+                cols
+            );
+        }
+        */
         self.solver.reset();
         self.layout_direction(Direction::Vertical, new_size.rows);
         //let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
@@ -93,6 +107,9 @@ impl<'a> PaneResizer<'a> {
 
     fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Option<()> {
         let spans = self.solve_direction(direction, new_size)?;
+        for span in &spans {
+            log::info!("ID: {:?}; Size: {}", span.pid, span.size.as_usize());
+        }
         self.apply_spans(&spans);
         // FIXME: This is beyond stupid. I need to break this code up so this useless return isn't
         // needed... Maybe up in `resize`: solve -> discretize_spans -> apply_spans
@@ -118,28 +135,48 @@ impl<'a> PaneResizer<'a> {
         // FIXME: This line needs to be restored before merging!
         //self.solver.add_constraints(&constraints).ok()?;
         self.solver.add_constraints(&constraints).unwrap();
+        // FIXME: This chunk needs to be broken up into smaller functions!
+        let mut rounded_sizes = HashMap::new();
+        // FIXME: This should loop over something flattened, not be a nested loop
+        for spans in &mut grid {
+            for span in spans.iter_mut() {
+                let size = self.solver.get_value(span.size_var);
+                rounded_sizes.insert(span.size_var, size as isize);
+            }
+        }
+        let mut finalised = Vec::new();
         for spans in &mut grid {
             let mut rounded_size = 0;
             for span in spans.iter_mut() {
-                let size = self.solver.get_value(span.size_var);
-                span.size.set_inner(size as usize);
-                rounded_size += span.size.as_usize() + GAP_SIZE;
+                rounded_size += rounded_sizes[&span.size_var] + GAP_SIZE as isize;
             }
-            rounded_size -= GAP_SIZE;
-            let error = space - rounded_size;
+            rounded_size -= GAP_SIZE as isize;
+            let mut error = space as isize - rounded_size as isize;
             let mut flex_spans: Vec<&mut Span> =
-                spans.iter_mut().filter(|s| !s.size.is_fixed()).collect();
-            flex_spans.sort_unstable_by_key(|s| s.size.as_usize());
-            for i in 0..error {
-                // FIXME: If this causes errors, `i % flex_spans.len()`
-                // FIXME: Think about implementing `AddAssign`
-                let sz = flex_spans[i].size.as_usize() + 1;
-                flex_spans[i].size.set_inner(sz);
+                spans.iter_mut().filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid)).collect();
+            // FIXME: Reverse the order when shrinking panes (to shrink the largest)
+            flex_spans.sort_by_key(|s| rounded_sizes[&s.size_var]);
+            if error < 0 {
+                flex_spans.reverse();
             }
+            log::info!("Finalised: {:?}", &finalised);
+            for span in flex_spans {
+                log::info!("Error: {}", error);
+                // FIXME: If this causes errors, `i % flex_spans.len()`
+                *rounded_sizes.get_mut(&span.size_var).unwrap() += error.signum();
+                error -= error.signum();
+            }
+            finalised.extend(spans.iter().map(|s| s.pid));
+        }
+        for spans in &mut grid {
             let mut offset = 0;
             for span in spans.iter_mut() {
                 span.pos = offset;
+                span.size.set_inner(rounded_sizes[&span.size_var] as usize);
                 offset += span.size.as_usize() + GAP_SIZE;
+            }
+            if offset - GAP_SIZE != space {
+                log::error!("\n\n\nThe spans don't add up properly!\n\n\n");
             }
         }
         Some(grid.into_iter().flatten().collect())
