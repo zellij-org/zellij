@@ -269,7 +269,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
                     None => {
                         let free_percent =
-                            if let Constraint::Percent(p) = space_to_split.cols.constraint {
+                            if let Constraint::Percent(p) = space_to_split.rows.constraint {
                                 p - sizes
                                     .iter()
                                     .map(|&s| {
