@@ -40,9 +40,12 @@ pub struct TerminalPane {
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
     boundaries_frame: Option<PaneBoundariesFrame>,
+    content_position_and_size: PositionAndSize,
     should_render_only_title: bool,
     should_render_boundaries_frame: bool,
     pane_title: String,
+    content_columns_offset: usize,
+    content_rows_offset: usize,
 }
 
 impl Pane for TerminalPane {
@@ -70,12 +73,29 @@ impl Pane for TerminalPane {
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(position_and_size);
         }
+        if self.should_render_boundaries_frame {
+            if self.should_render_only_title {
+                self.content_position_and_size = position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = position_and_size;
+        }
         self.reflow_lines();
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(*position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -91,6 +111,15 @@ impl Pane for TerminalPane {
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(position_and_size_override);
         }
+        if self.should_render_boundaries_frame {
+            if self.should_render_only_title {
+                self.content_position_and_size = position_and_size_override.reduce_top_line();
+            } else {
+                self.content_position_and_size = position_and_size_override.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = position_and_size_override;
+        }
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
@@ -102,7 +131,7 @@ impl Pane for TerminalPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         // self.grid.cursor_coordinates()
-        if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+        let ret = if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
             // TODO: better
             if boundaries_frame.draw_title_only {
                 self.grid.cursor_coordinates().map(|(x, y)| (x, y + 1))
@@ -111,7 +140,9 @@ impl Pane for TerminalPane {
             }
         } else {
             self.grid.cursor_coordinates()
-        }
+        };
+        debug_log_to_file(format!("cursor_coordinates {:?}", ret));
+        ret
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
@@ -266,6 +297,15 @@ impl Pane for TerminalPane {
         self.position_and_size.rows -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -273,6 +313,15 @@ impl Pane for TerminalPane {
         self.position_and_size.rows += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -281,6 +330,15 @@ impl Pane for TerminalPane {
         self.position_and_size.rows += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -288,6 +346,15 @@ impl Pane for TerminalPane {
         self.position_and_size.rows -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -296,6 +363,15 @@ impl Pane for TerminalPane {
         self.position_and_size.cols -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -303,6 +379,15 @@ impl Pane for TerminalPane {
         self.position_and_size.cols -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -311,6 +396,15 @@ impl Pane for TerminalPane {
         self.position_and_size.cols += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -318,6 +412,15 @@ impl Pane for TerminalPane {
         self.position_and_size.cols += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -325,24 +428,60 @@ impl Pane for TerminalPane {
         self.position_and_size.y += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
     }
     fn push_right(&mut self, count: usize) {
         self.position_and_size.x += count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
     }
     fn pull_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
     }
     fn pull_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.change_pos_and_size(self.position_and_size);
+            if self.should_render_only_title {
+                self.content_position_and_size = self.position_and_size.reduce_top_line();
+            } else {
+                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
+            }
+        } else {
+            self.content_position_and_size = self.position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
     }
     fn scroll_up(&mut self, count: usize) {
@@ -427,19 +566,28 @@ impl Pane for TerminalPane {
         position_on_screen.relative_to(&pane_position_and_size)
     }
     fn set_should_render_only_title(&mut self, should_render_only_title: bool) {
-        debug_log_to_file(format!("set_should_render_only_title"));
         self.should_render_only_title = should_render_only_title;
         if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
             boundaries_frame.draw_title_only = should_render_only_title;
             self.redistribute_space();
         }
     }
+    fn offset_content_columns(&mut self, by: usize) {
+        self.content_columns_offset = by;
+        self.content_position_and_size.cols = self.position_and_size.cols - by;
+        self.reflow_lines();
+        self.set_should_render(true);
+    }
+    fn offset_content_rows(&mut self, by: usize) {
+        self.content_rows_offset = by;
+        self.content_position_and_size.rows = self.position_and_size.rows - by;
+        self.reflow_lines();
+        self.set_should_render(true);
+    }
 }
 
 impl TerminalPane {
     pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, draw_boundaries_frame: bool, pane_position: usize, frame_title_only: bool) -> TerminalPane {
-
-        // let frame_title_only = true;
 
         if draw_boundaries_frame {
             if frame_title_only {
@@ -454,6 +602,7 @@ impl TerminalPane {
                 );
                 TerminalPane {
                     boundaries_frame: Some(boundaries_frame),
+                    content_position_and_size: grid_position_and_size,
                     pid,
                     grid,
                     selectable: true,
@@ -466,6 +615,8 @@ impl TerminalPane {
                     should_render_only_title: frame_title_only,
                     pane_title: initial_pane_title,
                     should_render_boundaries_frame: draw_boundaries_frame,
+                    content_columns_offset: 0,
+                    content_rows_offset: 0,
                 }
             } else {
                 let initial_pane_title = format!("Pane #{}", pane_position);
@@ -479,6 +630,7 @@ impl TerminalPane {
                 );
                 TerminalPane {
                     boundaries_frame: Some(boundaries_frame),
+                    content_position_and_size: grid_position_and_size,
                     pid,
                     grid,
                     selectable: true,
@@ -491,6 +643,8 @@ impl TerminalPane {
                     should_render_only_title: frame_title_only,
                     pane_title: initial_pane_title,
                     should_render_boundaries_frame: draw_boundaries_frame,
+                    content_columns_offset: 0,
+                    content_rows_offset: 0,
                 }
             }
         } else {
@@ -502,6 +656,7 @@ impl TerminalPane {
             );
             TerminalPane {
                 boundaries_frame: None,
+                content_position_and_size: position_and_size,
                 pid,
                 grid,
                 selectable: true,
@@ -514,6 +669,8 @@ impl TerminalPane {
                 should_render_only_title: false,
                 pane_title: initial_pane_title,
                 should_render_boundaries_frame: draw_boundaries_frame,
+                content_columns_offset: 0,
+                content_rows_offset: 0,
             }
         }
     }
@@ -562,14 +719,22 @@ impl TerminalPane {
         self.get_content_posision_and_size().rows
     }
     pub fn get_content_posision_and_size(&self) -> PositionAndSize {
-        match (self.boundaries_frame.as_ref(), self.position_and_size_override.as_ref()) {
-            (Some(boundaries_frame), _) => {
-                // boundaries_frame.position_and_size.reduce_outer_frame(1)
-                boundaries_frame.content_position_and_size()
-            }
-            (None, Some(position_and_size_override)) => *position_and_size_override,
-            _ => self.position_and_size,
-        }
+//         match (self.boundaries_frame.as_ref(), self.position_and_size_override.as_ref()) {
+//             (Some(boundaries_frame), _) => {
+//                 // boundaries_frame.position_and_size.reduce_outer_frame(1)
+//                 boundaries_frame.content_position_and_size()
+//             }
+//             (None, Some(position_and_size_override)) => *position_and_size_override,
+//             _ => self.position_and_size,
+//         }
+        // TODO:
+        // * if there's a position_and_size_override, use it, otherwise use
+        // content_position_and_size
+        self.content_position_and_size
+//         match self.position_and_size_override.as_ref() {
+//             Some(position_and_size) => *position_and_size,
+//             None => self.content_position_and_size
+//         }
     }
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();

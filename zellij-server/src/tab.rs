@@ -36,8 +36,8 @@ const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of 
 
 // MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
 // this is a dirty hack until we implement fixed panes
-const MIN_TERMINAL_HEIGHT: usize = 3;
-const MIN_TERMINAL_WIDTH: usize = 4;
+const MIN_TERMINAL_HEIGHT: usize = 5;
+const MIN_TERMINAL_WIDTH: usize = 5;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -116,6 +116,8 @@ pub(crate) struct Tab {
     pub input_mode: InputMode,
     pub colors: Palette,
     draw_pane_frames: bool,
+    fullscreen_columns_offset: usize,
+    fullscreen_rows_offset: usize,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -306,6 +308,8 @@ pub trait Pane {
     }
     fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
     fn set_should_render_only_title(&mut self, should_render_only_title: bool) {}
+    fn offset_content_columns(&mut self, by: usize) {}
+    fn offset_content_rows(&mut self, by: usize) {}
 }
 
 impl Tab {
@@ -325,7 +329,11 @@ impl Tab {
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
-        let draw_pane_frames = true; // TODO: do something with this
+        // TODO:
+        // 1. if not draw_pane frames, when creating terminal panes that are not on bottom/right
+        //    edges, they should be 1 column/row smaller
+        // 2. once we do that, we can probably bring back the Boundaries thing as is
+        let draw_pane_frames = false; // TODO: do something with this
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let pane_title_only = true;
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames, 1, pane_title_only);
@@ -356,6 +364,8 @@ impl Tab {
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
             full_screen_ws: *full_screen_ws,
+            fullscreen_columns_offset: 0,
+            fullscreen_rows_offset: 0,
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
@@ -379,7 +389,18 @@ impl Tab {
             ..Default::default()
         };
         self.panes_to_hide.clear();
-        let positions_in_layout = layout.position_panes_in_space(&free_space, !self.draw_pane_frames);
+        // let positions_in_layout = layout.position_panes_in_space(&free_space, !self.draw_pane_frames);
+        let positions_in_layout = layout.position_panes_in_space(&free_space, false); // false == no gap
+
+        for (layout, position_and_size) in &positions_in_layout {
+            // we need to do this first because it decides the size of the screen
+            // which we use for other stuff in the main loop below (eg. which type of frames the
+            // panes should have)
+            if layout.borderless {
+                self.offset_fullscreen(&position_and_size);
+            }
+        }
+
         let mut positions_and_size = positions_in_layout.iter();
         let total_borderless_panes = layout.total_borderless_panes();
         let total_panes_with_border = positions_in_layout.iter().count().saturating_sub(total_borderless_panes);
@@ -405,6 +426,7 @@ impl Tab {
             }
         }
         let mut new_pids = new_pids.iter();
+
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
             if let Some(plugin) = &layout.plugin {
@@ -425,6 +447,9 @@ impl Tab {
                     draw_pane_frames,
                     pane_title_only,
                 );
+//                 if layout.borderless {
+//                     self.offset_fullscreen(&position_and_size);
+//                 }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -439,7 +464,7 @@ impl Tab {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1 && total_panes_with_border == 1;
                 let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
-                let new_terminal = TerminalPane::new(
+                let mut new_terminal = TerminalPane::new(
                     *pid,
                     *position_and_size,
                     self.colors,
@@ -447,6 +472,15 @@ impl Tab {
                     next_selectable_pane_position,
                     pane_title_only,
                 );
+                if !draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+                    new_terminal.offset_content_columns(1);
+                }
+                if !draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+                    new_terminal.offset_content_rows(1);
+                }
+                if layout.borderless {
+                    self.offset_fullscreen(&position_and_size);
+                }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -533,7 +567,19 @@ impl Tab {
                         split_horizontally_without_gap(&terminal_ws)
                     };
                     let pane_title_only = next_selectable_pane_position == 1;
-                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                    let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+
+                    if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.full_screen_ws.cols {
+                        new_terminal.offset_content_columns(1);
+                    } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.full_screen_ws.cols {
+                        new_terminal.offset_content_columns(0);
+                    }
+                    if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.full_screen_ws.rows {
+                        new_terminal.offset_content_rows(1);
+                    } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.full_screen_ws.rows {
+                        new_terminal.offset_content_rows(0);
+                    }
+
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         new_terminal.get_content_columns() as u16,
@@ -544,6 +590,18 @@ impl Tab {
                         terminal_to_split.set_should_render_only_title(false);
                     }
                     terminal_to_split.change_pos_and_size(&top_winsize);
+
+                    if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.full_screen_ws.cols {
+                        terminal_to_split.offset_content_columns(1);
+                    } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.full_screen_ws.cols {
+                        terminal_to_split.offset_content_columns(0);
+                    }
+                    if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.full_screen_ws.rows {
+                        terminal_to_split.offset_content_rows(1);
+                    } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.full_screen_ws.rows {
+                        terminal_to_split.offset_content_rows(0);
+                    }
+
                     let terminal_to_split_content_columns = terminal_to_split.get_content_columns();
                     let terminal_to_split_content_rows = terminal_to_split.get_content_rows();
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -564,7 +622,19 @@ impl Tab {
                         split_vertically_without_gap(&terminal_ws)
                     };
                     let pane_title_only = next_selectable_pane_position == 1;
-                    let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                    let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+
+                    if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.full_screen_ws.cols {
+                        new_terminal.offset_content_columns(1);
+                    } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.full_screen_ws.cols {
+                        new_terminal.offset_content_columns(0);
+                    }
+                    if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.full_screen_ws.rows {
+                        new_terminal.offset_content_rows(1);
+                    } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.full_screen_ws.rows {
+                        new_terminal.offset_content_rows(0);
+                    }
+
                     self.os_api.set_terminal_size_using_fd(
                         new_terminal.pid,
                         new_terminal.get_content_columns() as u16,
@@ -575,6 +645,18 @@ impl Tab {
                         terminal_to_split.set_should_render_only_title(false);
                     }
                     terminal_to_split.change_pos_and_size(&left_winsize);
+
+                    if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.full_screen_ws.cols {
+                        terminal_to_split.offset_content_columns(1);
+                    } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.full_screen_ws.cols {
+                        terminal_to_split.offset_content_columns(0);
+                    }
+                    if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.full_screen_ws.rows {
+                        terminal_to_split.offset_content_rows(1);
+                    } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.full_screen_ws.rows {
+                        terminal_to_split.offset_content_rows(0);
+                    }
+
                     let terminal_to_split_content_columns = terminal_to_split.get_content_columns();
                     let terminal_to_split_content_rows = terminal_to_split.get_content_rows();
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -625,7 +707,8 @@ impl Tab {
                 cols: active_pane.columns(),
                 ..Default::default()
             };
-            let (top_winsize, bottom_winsize) = if self.draw_pane_frames {
+            // let (top_winsize, bottom_winsize) = if self.draw_pane_frames {
+            let (top_winsize, bottom_winsize) = if true {
                 split_horizontally_without_gap(&terminal_ws)
             } else {
                 split_horizontally_with_gap(&terminal_ws)
@@ -636,12 +719,36 @@ impl Tab {
                 active_pane.set_should_render_only_title(false);
             }
             active_pane.change_pos_and_size(&top_winsize);
+
+            if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.full_screen_ws.cols {
+                active_pane.offset_content_columns(1);
+            } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.full_screen_ws.cols {
+                active_pane.offset_content_columns(0);
+            }
+            if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.full_screen_ws.rows {
+                active_pane.offset_content_rows(1);
+            } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.full_screen_ws.rows {
+                active_pane.offset_content_rows(0);
+            }
+
             let active_pane_content_columns = active_pane.get_content_columns();
             let active_pane_content_rows = active_pane.get_content_rows();
 
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let pane_title_only = next_selectable_pane_position == 1;
-            let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+            let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+
+            if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.full_screen_ws.cols {
+                new_terminal.offset_content_columns(1);
+            } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.full_screen_ws.cols {
+                new_terminal.offset_content_columns(0);
+            }
+            if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.full_screen_ws.rows {
+                new_terminal.offset_content_rows(1);
+            } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.full_screen_ws.rows {
+                new_terminal.offset_content_rows(0);
+            }
+
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.get_content_columns() as u16,
@@ -696,7 +803,8 @@ impl Tab {
                 cols: active_pane.columns(),
                 ..Default::default()
             };
-            let (left_winsize, right_winsize) = if self.draw_pane_frames {
+            // let (left_winsize, right_winsize) = if self.draw_pane_frames {
+            let (left_winsize, right_winsize) = if true {
                 split_vertically_without_gap(&terminal_ws)
             } else {
                 split_vertically_with_gap(&terminal_ws)
@@ -707,12 +815,36 @@ impl Tab {
             }
 
             active_pane.change_pos_and_size(&left_winsize);
+
+            if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.full_screen_ws.cols {
+                active_pane.offset_content_columns(1);
+            } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.full_screen_ws.cols {
+                active_pane.offset_content_columns(0);
+            }
+            if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.full_screen_ws.rows {
+                active_pane.offset_content_rows(1);
+            } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.full_screen_ws.rows {
+                active_pane.offset_content_rows(0);
+            }
+
             let active_pane_content_columns = active_pane.get_content_columns();
             let active_pane_content_rows = active_pane.get_content_rows();
 
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let pane_title_only = next_selectable_pane_position == 1;
-            let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+            let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+
+            if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.full_screen_ws.cols {
+                new_terminal.offset_content_columns(1);
+            } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.full_screen_ws.cols {
+                new_terminal.offset_content_columns(0);
+            }
+            if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.full_screen_ws.rows {
+                new_terminal.offset_content_rows(1);
+            } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.full_screen_ws.rows {
+                new_terminal.offset_content_rows(0);
+            }
+
             self.os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.get_content_columns() as u16,
@@ -821,10 +953,10 @@ impl Tab {
                 self.panes_to_hide.clear();
                 let selectable_pane_count = self.get_selectable_pane_count();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                active_terminal.reset_size_and_position_override();
                 if active_terminal.selectable() && selectable_pane_count > 1 {
                     active_terminal.set_should_render_only_title(false);
                 }
+                active_terminal.reset_size_and_position_override();
             } else {
                 let panes = self.get_panes();
                 let pane_ids_to_hide =
@@ -897,10 +1029,10 @@ impl Tab {
             return;
         }
         let mut output = String::new();
-        let mut boundaries = Boundaries::new(
-            self.full_screen_ws.cols as u16,
-            self.full_screen_ws.rows as u16,
-        );
+        let mut boundaries = Boundaries::new(&self.full_screen_ws);
+//             self.full_screen_ws.cols as u16,
+//             self.full_screen_ws.rows as u16,
+//         );
         let hide_cursor = "\u{1b}[?25l";
         output.push_str(hide_cursor);
         if self.should_clear_display_before_rendering {
@@ -925,7 +1057,9 @@ impl Tab {
                     }
                     false => {
                         pane.set_boundary_color(None);
-                        boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
+                        if !pane.invisible_borders() {
+                            boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
+                        }
                     }
                 }
                 if let Some(vte_output) = pane.render() {
@@ -948,6 +1082,7 @@ impl Tab {
 
         // TODO: only render (and calculate) boundaries if there was a resize
         if !self.draw_pane_frames {
+        // if false {
             // TODO: better, probably need to refactor the render method finally
             output.push_str(&boundaries.vte_output());
         }
@@ -1183,8 +1318,10 @@ impl Tab {
                 terminals.push(terminal);
             }
         }
+        debug_log_to_file(format!("terminal_borders_to_the_right: {:?}", terminal_borders_to_the_right));
         // bottom-most border aligned with a pane border to the right
-        let mut bottom_resize_border = self.full_screen_ws.rows;
+        // let mut bottom_resize_border = self.full_screen_ws.rows;
+        let mut bottom_resize_border = self.full_screen_ws.y + self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_right
@@ -1276,7 +1413,8 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the left
-        let mut bottom_resize_border = self.full_screen_ws.rows;
+        // let mut bottom_resize_border = self.full_screen_ws.rows;
+        let mut bottom_resize_border = self.full_screen_ws.y + self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_left
@@ -1367,7 +1505,7 @@ impl Tab {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.cols;
+        let mut right_resize_border = self.full_screen_ws.x + self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_above
@@ -1451,7 +1589,7 @@ impl Tab {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.cols;
+        let mut right_resize_border = self.full_screen_ws.x + self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_below
@@ -1475,6 +1613,17 @@ impl Tab {
     fn reduce_pane_height_down(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_down(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = id {
             self.os_api.set_terminal_size_using_fd(
                 *pid,
@@ -1486,6 +1635,17 @@ impl Tab {
     fn reduce_pane_height_up(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_up(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = id {
             self.os_api.set_terminal_size_using_fd(
                 *pid,
@@ -1497,6 +1657,17 @@ impl Tab {
     fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_down(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1508,6 +1679,17 @@ impl Tab {
     fn increase_pane_height_up(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_up(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1519,6 +1701,17 @@ impl Tab {
     fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_right(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1530,6 +1723,17 @@ impl Tab {
     fn increase_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_left(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1541,6 +1745,17 @@ impl Tab {
     fn reduce_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_right(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1552,6 +1767,17 @@ impl Tab {
     fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_left(count);
+        let position_and_size = terminal.position_and_size();
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+            terminal.offset_content_columns(1);
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+            terminal.offset_content_columns(0);
+        }
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+            terminal.offset_content_rows(1);
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+            terminal.offset_content_rows(0);
+        }
         if let PaneId::Terminal(pid) = terminal.pid() {
             self.os_api.set_terminal_size_using_fd(
                 pid,
@@ -1599,6 +1825,18 @@ impl Tab {
         terminals_below.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
+
+        for terminal_id in terminals_to_the_left
+            .iter()
+            .chain(terminals_to_the_right.iter())
+        {
+            let pane = self.panes.get(terminal_id).unwrap();
+            if (pane.rows() as isize) - (count as isize) < pane.min_height() as isize {
+                // dirty, dirty hack - should be fixed by the resizing overhaul
+                return;
+            }
+        }
+
         self.reduce_pane_height_up(id, count);
         for terminal_id in terminals_below {
             self.increase_pane_height_up(&terminal_id, count);
@@ -1625,6 +1863,18 @@ impl Tab {
         terminals_above.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
+
+        for terminal_id in terminals_to_the_left
+            .iter()
+            .chain(terminals_to_the_right.iter())
+        {
+            let pane = self.panes.get(terminal_id).unwrap();
+            if (pane.rows() as isize) - (count as isize) < pane.min_height() as isize {
+                // dirty, dirty hack - should be fixed by the resizing overhaul
+                return;
+            }
+        }
+
         self.reduce_pane_height_down(id, count);
         for terminal_id in terminals_above {
             self.increase_pane_height_down(&terminal_id, count);
@@ -1640,7 +1890,6 @@ impl Tab {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't reduce pane size right if there are no terminals to the left");
-        debug_log_to_file(format!("terminals_to_the_left 1 {:?}", terminals_to_the_left));
         let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
             .iter()
             .map(|t| self.panes.get(t).unwrap().y())
@@ -1652,7 +1901,15 @@ impl Tab {
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        debug_log_to_file(format!("terminals_to_the_left 2 {:?}", terminals_to_the_left));
+
+        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+            let pane = self.panes.get(terminal_id).unwrap();
+            if (pane.columns() as isize) - (count as isize) < pane.min_width() as isize {
+                // dirty, dirty hack - should be fixed by the resizing overhaul
+                return;
+            }
+        }
+
         self.reduce_pane_width_right(id, count);
         for terminal_id in terminals_to_the_left {
             self.increase_pane_width_right(&terminal_id, count);
@@ -1676,6 +1933,15 @@ impl Tab {
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
+
+        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+            let pane = self.panes.get(terminal_id).unwrap();
+            if (pane.columns() as isize) - (count as isize) < pane.min_width() as isize {
+                // dirty, dirty hack - should be fixed by the resizing overhaul
+                return;
+            }
+        }
+
         self.reduce_pane_width_left(id, count);
         for terminal_id in terminals_to_the_right {
             self.increase_pane_width_left(&terminal_id, count);
@@ -1737,12 +2003,17 @@ impl Tab {
         }
     }
     fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
+        debug_log_to_file(format!("increase_pane_and_surroundings_right"));
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
         let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
             .iter()
-            .map(|t| self.panes.get(t).unwrap().y())
+            // .map(|t| self.panes.get(t).unwrap().y())
+            .map(|t| {
+                debug_log_to_file(format!("t: {:?}", self.panes.get(t).unwrap().position_and_size()));
+                return self.panes.get(t).unwrap().y();
+            })
             .collect();
         let (top_resize_border, terminals_above) =
             self.right_aligned_contiguous_panes_above(id, &terminal_borders_to_the_right);
@@ -1751,6 +2022,7 @@ impl Tab {
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
+        debug_log_to_file(format!("2 terminals: {:?}", terminals_to_the_right));
         self.increase_pane_width_right(id, count);
         for terminal_id in terminals_to_the_right {
             self.reduce_pane_width_right(&terminal_id, count);
@@ -1990,7 +2262,6 @@ impl Tab {
             if self.can_increase_pane_and_surroundings_right(&active_pane_id, count) {
                 self.increase_pane_and_surroundings_right(&active_pane_id, count);
             } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
-                debug_log_to_file(format!("here"));
                 self.reduce_pane_and_surroundings_right(&active_pane_id, count);
             }
         }
@@ -2111,7 +2382,8 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_left_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
+                    // c.is_directly_left_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
+                    c.is_directly_left_of(active, false) && c.horizontally_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
@@ -2150,7 +2422,8 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_below(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
+                    // c.is_directly_below(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
+                    c.is_directly_below(active, false) && c.vertically_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
@@ -2187,7 +2460,8 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_above(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
+                    // c.is_directly_above(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
+                    c.is_directly_above(active, false) && c.vertically_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
@@ -2225,7 +2499,8 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    c.is_directly_right_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
+                    // c.is_directly_right_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
+                    c.is_directly_right_of(active, false) && c.horizontally_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
@@ -2403,6 +2678,7 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
+        debug_log_to_file(format!("close_pane_without_rerender"));
         let border_width = self.border_width_between_panes();
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
@@ -2411,6 +2687,7 @@ impl Tab {
             let pane_to_close_width = pane_to_close.columns();
             let pane_to_close_height = pane_to_close.rows();
             if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
+                debug_log_to_file(format!("panes_to_the_left_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_width_by(pane_to_close_width + 1)
@@ -2436,6 +2713,7 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
+                debug_log_to_file(format!("panes_to_the_right_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_width_by(pane_to_close_width + 1)
@@ -2463,6 +2741,7 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_above_between_aligning_borders(id) {
+                debug_log_to_file(format!("panes_above_between_aligning_borders, pane_to_close_height: {:?}", pane_to_close_height));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     pane.can_increase_height_by(pane_to_close_height + border_width)
@@ -2489,6 +2768,7 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_below_between_aligning_borders(id) {
+                debug_log_to_file(format!("can has panes_below_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_height_by(pane_to_close_height + 1)
@@ -2673,11 +2953,31 @@ impl Tab {
             .unwrap();
     }
     fn border_width_between_panes(&self) -> usize {
-        if self.draw_pane_frames {
+        // if self.draw_pane_frames {
+        if true {
             0 // in this case the panes draw their own borders and we don't draw any borders between them
         } else {
             1
         }
+    }
+    fn offset_fullscreen(&mut self, position_and_size: &PositionAndSize) {
+        if position_and_size.x == self.full_screen_ws.x && position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
+            if position_and_size.y == self.full_screen_ws.y {
+                self.full_screen_ws.y += position_and_size.rows;
+                self.full_screen_ws.rows -= position_and_size.rows;
+            } else if position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
+                self.full_screen_ws.rows -= position_and_size.rows;
+            }
+        }
+        if position_and_size.y == self.full_screen_ws.y && position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
+            if position_and_size.x == self.full_screen_ws.x {
+                self.full_screen_ws.x += position_and_size.cols;
+                self.full_screen_ws.cols -= position_and_size.cols;
+            } else if position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
+                self.full_screen_ws.cols -= position_and_size.cols;
+            }
+        }
+
     }
 }
 
