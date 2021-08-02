@@ -159,13 +159,10 @@ impl Setup {
             _ => false,
         };
 
-        log::info!("{:?}", clean);
-
         let config = if !clean {
             match Config::try_from(opts) {
                 Ok(config) => config,
                 Err(e) => {
-                    eprintln!("There was an error in the config file:");
                     return Err(e);
                 }
             }
@@ -188,11 +185,18 @@ impl Setup {
             None => None,
             Some(Ok(layout)) => Some(layout),
             Some(Err(e)) => {
-                eprintln!("There was an error in the layout file:");
                 return Err(e);
             }
         }
         .map(|layout| layout.construct_main_layout());
+
+        let layout = match layout {
+            None => None,
+            Some(Ok(layout)) => Some(layout),
+            Some(Err(e)) => {
+                return Err(e);
+            }
+        };
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup.from_cli(opts, &config_options).map_or_else(

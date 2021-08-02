@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 use std::vec::Vec;
 use std::{fs::File, io::prelude::*};
 
+use super::config::{LayoutMissingTabSectionError, LayoutPartAndTabError};
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
@@ -43,7 +45,7 @@ pub enum Run {
     Command(RunCommand),
 }
 
-// The layout struct that is ultimately used to build the layouts
+// The layout struct ultimately used to build the layouts.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub struct Layout {
@@ -56,6 +58,7 @@ pub struct Layout {
     pub run: Option<Run>,
 }
 
+// The tab-layout struct used to specify each individual tab.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub struct TabLayout {
@@ -66,8 +69,8 @@ pub struct TabLayout {
     pub run: Option<Run>,
 }
 
-// Main layout struct, that carries information based on
-// position of tabs
+// Main layout struct, that carries information based on position of tabs
+// in relation to the whole layout.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub struct MainLayout {
@@ -205,7 +208,9 @@ impl Layout {
 
     // Split the layout into parts that can be reassebled per tab
     // returns the layout pre tab, the parts post tab and the tab layouts
-    pub fn split_main_and_tab_layout(&self) -> (Layout, Vec<Layout>, Vec<TabLayout>) {
+    pub fn split_main_and_tab_layout(
+        &self,
+    ) -> Result<(Layout, Vec<Layout>, Vec<TabLayout>), LayoutPartAndTabError> {
         let mut main_layout = self.clone();
         let mut pre_tab_layout = self.clone();
         let mut post_tab_layout = vec![];
@@ -220,23 +225,21 @@ impl Layout {
             post_tab = true;
         }
 
+        if !main_layout.tabs.is_empty() && !main_layout.parts.is_empty() {
+            return Err(LayoutPartAndTabError);
+        }
+
         for part in main_layout.parts.drain(..) {
             let (curr_pre_layout, mut curr_post_layout, mut curr_tabs) =
-                part.split_main_and_tab_layout();
+                part.split_main_and_tab_layout()?;
 
             // Leaf
             if !post_tab && part.tabs.is_empty() {
                 pre_tab_layout.parts.push(curr_pre_layout);
             }
 
-            // Todo: Convert into actual Error, or use the future logging system.
             if !part.tabs.is_empty() && !part.parts.is_empty() {
-                panic!("Tabs and Parts need to be specified separately.");
-            }
-
-            // Todo: Convert into actual Error, or use the future logging system.
-            if (!part.tabs.is_empty() || !curr_tabs.is_empty()) && post_tab {
-                panic!("Only one tab section should be specified.");
+                return Err(LayoutPartAndTabError);
             }
 
             // Node
@@ -259,7 +262,7 @@ impl Layout {
                 }
             }
         }
-        (pre_tab_layout, post_tab_layout, tabs)
+        Ok((pre_tab_layout, post_tab_layout, tabs))
     }
 
     pub fn merge_tab_layout(&mut self, tab: TabLayout) {
@@ -271,33 +274,31 @@ impl Layout {
     }
 
     pub fn construct_full_layout(&self, tab_layout: Option<TabLayout>) -> Self {
+        // The `split_main_and_tab_layout()` error should have returned
+        // already from deserialisation, so we can assume it is `Ok()`.
+        let (mut pre_tab_layout, post_tab_layout, _) = self.split_main_and_tab_layout().unwrap();
         if let Some(tab_layout) = tab_layout {
-            let (mut pre_tab_layout, post_tab_layout, _) = self.split_main_and_tab_layout();
             pre_tab_layout.merge_tab_layout(tab_layout);
-            pre_tab_layout.merge_layout_parts(post_tab_layout);
-            pre_tab_layout
         } else {
-            let (mut pre_tab_layout, post_tab_layout, _) = self.split_main_and_tab_layout();
             let default_tab_layout = TabLayout::default();
             pre_tab_layout.merge_tab_layout(default_tab_layout);
-            pre_tab_layout.merge_layout_parts(post_tab_layout);
-            pre_tab_layout
         }
+        pre_tab_layout.merge_layout_parts(post_tab_layout);
+        pre_tab_layout
     }
 
-    pub fn construct_main_layout(&self) -> MainLayout {
-        let (pre_tab, post_tab, tabs) = self.split_main_and_tab_layout();
+    pub fn construct_main_layout(&self) -> Result<MainLayout, ConfigError> {
+        let (pre_tab, post_tab, tabs) = self.split_main_and_tab_layout()?;
 
-        // Todo: A proper LayoutError
         if tabs.is_empty() {
-            panic!("The layout file should have a [`tabs`] section specified");
+            return Err(ConfigError::Layout(LayoutMissingTabSectionError));
         }
 
-        MainLayout {
+        Ok(MainLayout {
             pre_tab,
             post_tab,
             tabs,
-        }
+        })
     }
 
     fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {

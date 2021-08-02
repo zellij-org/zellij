@@ -17,6 +17,7 @@ parts:
         split_size:
           Percent: 50
     - direction: Vertical
+    - direction: Vertical
       parts:
         - direction: Vertical
           split_size:

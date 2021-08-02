@@ -23,7 +23,7 @@ fn default_layout_is_ok() {
 fn default_layout_has_one_tab() {
     let path = default_layout_dir("default.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.tabs.len(), 1);
 }
 
@@ -31,7 +31,7 @@ fn default_layout_has_one_tab() {
 fn default_layout_has_one_pre_tab() {
     let path = default_layout_dir("default.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.pre_tab.parts.len(), 1);
 }
 
@@ -39,7 +39,7 @@ fn default_layout_has_one_pre_tab() {
 fn default_layout_has_one_post_tab() {
     let path = default_layout_dir("default.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.post_tab.len(), 1);
 }
 
@@ -47,7 +47,7 @@ fn default_layout_has_one_post_tab() {
 fn default_layout_merged_correctly() {
     let path = default_layout_dir("default.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -85,7 +85,7 @@ fn default_layout_merged_correctly() {
 fn default_layout_new_tab_correct() {
     let path = default_layout_dir("default.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -137,7 +137,7 @@ fn default_disable_status_layout_is_ok() {
 fn default_disable_status_layout_has_one_tab() {
     let path = default_layout_dir("disable-status-bar.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.tabs.len(), 1);
 }
 
@@ -145,7 +145,7 @@ fn default_disable_status_layout_has_one_tab() {
 fn default_disable_status_layout_has_one_pre_tab() {
     let path = default_layout_dir("disable-status-bar.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.pre_tab.parts.len(), 1);
 }
 
@@ -153,7 +153,7 @@ fn default_disable_status_layout_has_one_pre_tab() {
 fn default_disable_status_layout_has_no_post_tab() {
     let path = default_layout_dir("disable-status-bar.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     assert!(main_layout.post_tab.is_empty());
 }
 
@@ -168,7 +168,7 @@ fn three_panes_with_tab_is_ok() {
 fn three_panes_with_tab_has_one_tab() {
     let path = layout_test_dir("three-panes-with-tab.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.tabs.len(), 1);
 }
 
@@ -176,7 +176,7 @@ fn three_panes_with_tab_has_one_tab() {
 fn three_panes_with_tab_no_post_tab() {
     let path = layout_test_dir("three-panes-with-tab.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert!(main_layout.post_tab.is_empty());
 }
 
@@ -184,7 +184,7 @@ fn three_panes_with_tab_no_post_tab() {
 fn three_panes_with_tab_no_pre_tab() {
     let path = layout_test_dir("three-panes-with-tab.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert!(main_layout.pre_tab.parts.is_empty());
 }
 
@@ -192,7 +192,7 @@ fn three_panes_with_tab_no_pre_tab() {
 fn three_panes_with_tab_merged_correctly() {
     let path = layout_test_dir("three-panes-with-tab.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -244,7 +244,7 @@ fn three_panes_with_tab_merged_correctly() {
 fn three_panes_with_tab_new_tab_is_correct() {
     let path = layout_test_dir("three-panes-with-tab.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -273,7 +273,7 @@ fn three_panes_with_tab_and_default_plugins_is_ok() {
 fn three_panes_with_tab_and_default_plugins_has_one_tab() {
     let path = layout_test_dir("three-panes-with-tab-and-default-plugins.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.tabs.len(), 1);
 }
 
@@ -281,7 +281,7 @@ fn three_panes_with_tab_and_default_plugins_has_one_tab() {
 fn three_panes_with_tab_and_default_plugins_one_post_tab() {
     let path = layout_test_dir("three-panes-with-tab-and-default-plugins.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.post_tab.len(), 1);
 }
 
@@ -289,7 +289,7 @@ fn three_panes_with_tab_and_default_plugins_one_post_tab() {
 fn three_panes_with_tab_and_default_plugins_has_pre_tab() {
     let path = layout_test_dir("three-panes-with-tab-and-default-plugins.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert!(!main_layout.pre_tab.parts.is_empty());
 }
 
@@ -297,7 +297,7 @@ fn three_panes_with_tab_and_default_plugins_has_pre_tab() {
 fn three_panes_with_tab_and_default_plugins_merged_correctly() {
     let path = layout_test_dir("three-panes-with-tab-and-default-plugins.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -365,7 +365,7 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
 fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
     let path = layout_test_dir("three-panes-with-tab-and-default-plugins.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -410,7 +410,7 @@ fn deeply_nested_tab_is_ok() {
 fn deeply_nested_tab_has_one_tab() {
     let path = layout_test_dir("deeply-nested-tab-layout.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.tabs.len(), 1);
 }
 
@@ -418,7 +418,7 @@ fn deeply_nested_tab_has_one_tab() {
 fn deeply_nested_tab_three_post_tab() {
     let path = layout_test_dir("deeply-nested-tab-layout.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert_eq!(main_layout.post_tab.len(), 3);
 }
 
@@ -426,7 +426,7 @@ fn deeply_nested_tab_three_post_tab() {
 fn deeply_nested_tab_has_many_pre_tab() {
     let path = layout_test_dir("deeply-nested-tab-layout.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
     assert!(!main_layout.pre_tab.parts.is_empty());
 }
 
@@ -434,7 +434,7 @@ fn deeply_nested_tab_has_many_pre_tab() {
 fn deeply_nested_tab_merged_correctly() {
     let path = layout_test_dir("deeply-nested-tab-layout.yaml".into());
     let layout = Layout::new(&path);
-    let main_layout = layout.as_ref().unwrap().construct_main_layout();
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
     let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
@@ -519,17 +519,172 @@ fn deeply_nested_tab_merged_correctly() {
 }
 
 #[test]
-#[should_panic]
-// TODO Make error out of this
-fn no_tabs_specified_should_panic() {
-    let path = layout_test_dir("no-tabs-should-panic.yaml".into());
+fn no_tabs_specified_should_err() {
+    let path = layout_test_dir("no-tabs-should-error.yaml".into());
     let layout = Layout::new(&path);
-    let _main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout();
+    assert!(main_layout.is_err());
 }
 
 #[test]
-fn multiple_tabs_specified_should_not_panic() {
-    let path = layout_test_dir("multiple-tabs-should-panic.yaml".into());
+fn tabs_and_parts_specified_together_should_should_err() {
+    let path = layout_test_dir("tabs-and-parts-together-should-error.yaml".into());
     let layout = Layout::new(&path);
-    let _main_layout = layout.unwrap().construct_main_layout();
+    let main_layout = layout.unwrap().construct_main_layout();
+    assert!(main_layout.is_err());
+}
+
+#[test]
+fn multiple_tabs_specified_should_not_err() {
+    let path = layout_test_dir("multiple-tabs-should-not-error.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.unwrap().construct_main_layout();
+    assert!(main_layout.is_ok())
+}
+#[test]
+fn three_tabs_is_ok() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    assert!(layout.is_ok());
+}
+
+#[test]
+fn three_tabs_has_three_tabs() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
+    assert_eq!(main_layout.tabs.len(), 3);
+}
+
+#[test]
+fn three_tabs_has_one_post_tab() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.unwrap().construct_main_layout().unwrap();
+    assert_eq!(main_layout.post_tab.len(), 1);
+}
+
+#[test]
+fn three_tabs_tab_one_merged_correctly() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
+    let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[0].clone()));
+    let merged_layout = Layout {
+        direction: Direction::Vertical,
+        parts: vec![
+            Layout {
+                direction: Direction::Horizontal,
+                parts: vec![],
+                tabs: vec![],
+                split_size: Some(SplitSize::Percent(50)),
+                run: None,
+            },
+            Layout {
+                direction: Direction::Horizontal,
+                parts: vec![],
+                tabs: vec![],
+                split_size: None,
+                run: None,
+            },
+        ],
+        tabs: vec![],
+        split_size: None,
+        run: None,
+    };
+
+    assert_eq!(merged_layout, tab_layout);
+}
+
+#[test]
+fn three_tabs_tab_two_merged_correctly() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
+    let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[1].clone()));
+    let merged_layout = Layout {
+        direction: Direction::Vertical,
+        parts: vec![
+            Layout {
+                direction: Direction::Horizontal,
+                parts: vec![
+                    Layout {
+                        direction: Direction::Horizontal,
+                        parts: vec![],
+                        tabs: vec![],
+                        split_size: Some(SplitSize::Percent(50)),
+                        run: None,
+                    },
+                    Layout {
+                        direction: Direction::Horizontal,
+                        parts: vec![],
+                        tabs: vec![],
+                        split_size: None,
+                        run: None,
+                    },
+                ],
+                tabs: vec![],
+                split_size: Some(SplitSize::Percent(50)),
+                run: None,
+            },
+            Layout {
+                direction: Direction::Horizontal,
+                parts: vec![],
+                tabs: vec![],
+                split_size: None,
+                run: None,
+            },
+        ],
+        tabs: vec![],
+        split_size: None,
+        run: None,
+    };
+
+    assert_eq!(merged_layout, tab_layout);
+}
+
+#[test]
+fn three_tabs_tab_three_merged_correctly() {
+    let path = layout_test_dir("three-tabs-merged-correctly.yaml".into());
+    let layout = Layout::new(&path);
+    let main_layout = layout.as_ref().unwrap().construct_main_layout().unwrap();
+    let tab_layout = main_layout.construct_tab_layout(Some(main_layout.tabs[2].clone()));
+    let merged_layout = Layout {
+        direction: Direction::Vertical,
+        parts: vec![
+            Layout {
+                direction: Direction::Vertical,
+                parts: vec![
+                    Layout {
+                        direction: Direction::Vertical,
+                        parts: vec![],
+                        tabs: vec![],
+                        split_size: Some(SplitSize::Percent(50)),
+                        run: None,
+                    },
+                    Layout {
+                        direction: Direction::Horizontal,
+                        parts: vec![],
+                        tabs: vec![],
+                        split_size: None,
+                        run: None,
+                    },
+                ],
+                tabs: vec![],
+                split_size: Some(SplitSize::Percent(50)),
+                run: None,
+            },
+            Layout {
+                direction: Direction::Horizontal,
+                parts: vec![],
+                tabs: vec![],
+                split_size: None,
+                run: None,
+            },
+        ],
+        tabs: vec![],
+        split_size: None,
+        run: None,
+    };
+    assert_eq!(merged_layout, tab_layout);
 }
