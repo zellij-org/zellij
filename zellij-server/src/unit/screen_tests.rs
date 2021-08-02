@@ -195,7 +195,7 @@ pub fn close_the_middle_tab() {
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(
         screen.get_active_tab().unwrap().position,
-        0,
+        1,
         "Active tab switched to previous tab"
     );
 }
@@ -294,11 +294,22 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
     screen.new_tab(2);
     screen.new_tab(3);
 
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1)],
+        "Tab history is invalid"
+    );
+
     screen.toggle_tab();
     assert_eq!(
         screen.get_active_tab().unwrap().position,
         1,
         "Active tab toggler to previous tab"
+    );
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(2)],
+        "Tab history is invalid"
     );
 
     screen.toggle_tab();
@@ -306,6 +317,11 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         screen.get_active_tab().unwrap().position,
         2,
         "Active tab toggler to previous tab"
+    );
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1)],
+        "Tab history is invalid"
     );
 
     screen.toggle_tab();
@@ -327,48 +343,90 @@ pub fn toggle_to_previous_tab_delete() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
-    screen.new_tab(3);
+    screen.new_tab(1); // 0
+    screen.new_tab(2); // 1
+    screen.new_tab(3); // 2
+    screen.new_tab(4); // 3
+
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1), Some(2)],
+        "Tab history is invalid"
+    );
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        3,
+        "Active tab toggler to previous tab"
+    );
 
     screen.toggle_tab();
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1), Some(3)],
+        "Tab history is invalid"
+    );
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        2,
+        "Active tab toggler to previous tab"
+    );
+
+    screen.toggle_tab();
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1), Some(2)],
+        "Tab history is invalid"
+    );
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        3,
+        "Active tab toggler to previous tab"
+    );
+
+    screen.switch_tab_prev();
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(1), Some(3)],
+        "Tab history is invalid"
+    );
+    assert_eq!(
+        screen.get_active_tab().unwrap().position,
+        2,
+        "Active tab toggler to previous tab"
+    );
+    screen.switch_tab_prev();
+    assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(3), Some(2)],
+        "Tab history is invalid"
+    );
     assert_eq!(
         screen.get_active_tab().unwrap().position,
         1,
         "Active tab toggler to previous tab"
-    );
-    assert_eq!(
-        screen.get_previous_tab().unwrap().position,
-        2,
-        "Previous active tab invalid"
     );
 
     screen.close_tab();
     assert_eq!(
+        screen.tab_history,
+        vec![None, Some(0), Some(3)],
+        "Tab history is invalid"
+    );
+    assert_eq!(
         screen.get_active_tab().unwrap().position,
-        0,
-        "Active tab toggler to previous tab"
-    );
-    assert_eq!(
-        screen.get_previous_tab().unwrap().position,
         1,
-        "Previous active tab invalid"
-    );
-    assert_eq!(
-        screen.get_previous_tab().unwrap().index,
-        2,
-        "Previous active tab invalid"
+        "Active tab toggler to previous tab"
     );
 
     screen.toggle_tab();
     assert_eq!(
         screen.get_active_tab().unwrap().position,
-        1,
+        2,
         "Active tab toggler to previous tab"
     );
     assert_eq!(
-        screen.get_previous_tab().unwrap().position,
-        0,
-        "Previous active tab invalid"
+        screen.tab_history,
+        vec![None, Some(0), Some(2)],
+        "Tab history is invalid"
     );
 }

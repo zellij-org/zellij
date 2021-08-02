@@ -152,7 +152,7 @@ pub(crate) struct Screen {
     position_and_size: PositionAndSize,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
-    previous_active_tab_index: Option<usize>,
+    tab_history: Vec<Option<usize>>,
     mode_info: ModeInfo,
     colors: Palette,
     session_state: Arc<RwLock<SessionState>>,
@@ -173,8 +173,8 @@ impl Screen {
             position_and_size: client_attributes.position_and_size,
             colors: client_attributes.palette,
             active_tab_index: None,
-            previous_active_tab_index: None,
             tabs: BTreeMap::new(),
+            tab_history: Vec::with_capacity(32),
             mode_info,
             session_state,
         }
@@ -198,7 +198,7 @@ impl Screen {
             self.colors,
             self.session_state.clone(),
         );
-        self.previous_active_tab_index = self.active_tab_index;
+        self.tab_history.push(self.active_tab_index);
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
@@ -224,7 +224,8 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
                 tab.set_force_render();
-                self.previous_active_tab_index = self.active_tab_index;
+                self.tab_history.retain(|&e| e != Some(tab.index));
+                self.tab_history.push(self.active_tab_index);
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -244,7 +245,8 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             if tab.position == new_tab_pos {
                 tab.set_force_render();
-                self.previous_active_tab_index = self.active_tab_index;
+                self.tab_history.retain(|&e| e != Some(tab.index));
+                self.tab_history.push(self.active_tab_index);
                 self.active_tab_index = Some(tab.index);
                 break;
             }
@@ -259,7 +261,8 @@ impl Screen {
         if let Some(t) = self.tabs.values_mut().find(|t| t.position == tab_index) {
             if t.index != active_tab_index {
                 t.set_force_render();
-                self.previous_active_tab_index = self.active_tab_index;
+                self.tab_history.retain(|&e| e != Some(t.index));
+                self.tab_history.push(self.active_tab_index);
                 self.active_tab_index = Some(t.index);
                 self.update_tabs();
                 self.render();
@@ -270,11 +273,7 @@ impl Screen {
     /// Closes this [`Screen`]'s active [`Tab`], exiting the application if it happens
     /// to be the last tab.
     pub fn close_tab(&mut self) {
-        let future_previous = self.previous_active_tab_index;
         let active_tab_index = self.active_tab_index.unwrap();
-        if self.tabs.len() > 1 {
-            self.switch_tab_prev();
-        }
         let active_tab = self.tabs.remove(&active_tab_index).unwrap();
         let pane_ids = active_tab.get_pane_ids();
         // below we don't check the result of sending the CloseTab instruction to the pty thread
@@ -286,7 +285,6 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            self.previous_active_tab_index = None;
             if *self.session_state.read().unwrap() == SessionState::Attached {
                 self.bus
                     .senders
@@ -294,6 +292,7 @@ impl Screen {
                     .unwrap();
             }
         } else {
+            self.active_tab_index = self.tab_history.pop().unwrap();
             for t in self.tabs.values_mut() {
                 if t.position > active_tab.position {
                     t.position -= 1;
@@ -301,7 +300,6 @@ impl Screen {
             }
             self.update_tabs();
         }
-        self.previous_active_tab_index = future_previous;
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
@@ -341,8 +339,13 @@ impl Screen {
     }
 
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
-    pub fn get_previous_tab(&self) -> Option<&Tab> {
-        match self.previous_active_tab_index {
+    /// Consumes the last entry in tab history.
+    pub fn get_previous_tab(&mut self) -> Option<&Tab> {
+        let last = self.tab_history.pop();
+        if last.is_none() {
+            return None;
+        }
+        match last.unwrap() {
             Some(tab) => self.tabs.get(&tab),
             None => None,
         }
@@ -380,7 +383,7 @@ impl Screen {
             self.session_state.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index);
-        self.previous_active_tab_index = self.active_tab_index;
+        self.tab_history.push(self.active_tab_index);
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
@@ -438,12 +441,12 @@ impl Screen {
         }
     }
     pub fn toggle_tab(&mut self) {
-        let active_tab_index = self.active_tab_index.unwrap();
-        if self.previous_active_tab_index.is_some() {
-            let position = self.get_previous_tab().unwrap().position;
+        let tab = self.get_previous_tab();
+        if let Some(t) = tab {
+            let position = t.position;
             self.go_to_tab(position + 1);
-        }
-        self.previous_active_tab_index = Some(active_tab_index);
+        };
+
         self.update_tabs();
         self.render();
     }
