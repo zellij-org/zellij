@@ -1056,7 +1056,6 @@ impl Tab {
                 }
             }
         }
-        // self.render();
     }
     pub fn render(&mut self) {
         if self.active_terminal.is_none()
