@@ -310,6 +310,8 @@ pub trait Pane {
     fn set_should_render_only_title(&mut self, should_render_only_title: bool) {}
     fn offset_content_columns(&mut self, by: usize) {}
     fn offset_content_rows(&mut self, by: usize) {}
+    fn show_boundaries_frame(&mut self) {}
+    fn remove_boundaries_frame(&mut self) {}
 }
 
 impl Tab {
@@ -329,11 +331,7 @@ impl Tab {
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
-        // TODO:
-        // 1. if not draw_pane frames, when creating terminal panes that are not on bottom/right
-        //    edges, they should be 1 column/row smaller
-        // 2. once we do that, we can probably bring back the Boundaries thing as is
-        let draw_pane_frames = false; // TODO: do something with this
+        let draw_pane_frames = false; // TODO: !!MOVE THIS TO SCREEN OTHERWISE TABS WILL NO TBE SYNCED WITH THEIR FRAME ON/OFF STATUS!!
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let pane_title_only = true;
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames, 1, pane_title_only);
@@ -1018,6 +1016,59 @@ impl Tab {
         &self.active_terminal
             .and_then(|active_terminal_id| self.panes.get_mut(&active_terminal_id))
             .map(|active_terminal| active_terminal.set_should_render(true));
+    }
+    pub fn toggle_pane_frames(&mut self) {
+        let draw_pane_frames = !self.draw_pane_frames;
+        self.draw_pane_frames = draw_pane_frames;
+        let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
+        for (pane_id, pane) in self.panes.iter_mut() {
+            if draw_pane_frames {
+                let should_render_only_title = (selectable_pane_count == 1 && self.active_terminal == Some(*pane_id)) || (self.fullscreen_is_active && self.active_terminal == Some(*pane_id));
+                pane.offset_content_rows(0);
+                pane.offset_content_columns(0);
+                pane.show_boundaries_frame();
+                pane.set_should_render_only_title(should_render_only_title);
+                if let PaneId::Terminal(pid) = pane_id {
+                    self.os_api.set_terminal_size_using_fd(
+                        *pid,
+                        pane.get_content_columns() as u16,
+                        pane.get_content_rows() as u16,
+                    );
+                }
+                // TODO:
+                // 1. reset offsets
+                // 2. create boundaries frame
+                // 3. redistribute space (unless it's done internally somewhere?)
+                // 4. handle should render only title stuff
+
+            } else {
+                let position_and_size = pane.position_and_size();
+                if position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
+                    pane.offset_content_columns(0);
+                } else {
+                    pane.offset_content_columns(1);
+                }
+                if position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
+                    pane.offset_content_rows(0);
+                } else {
+                    pane.offset_content_rows(1);
+                }
+                pane.remove_boundaries_frame();
+                if let PaneId::Terminal(pid) = pane_id {
+                    self.os_api.set_terminal_size_using_fd(
+                        *pid,
+                        pane.get_content_columns() as u16,
+                        pane.get_content_rows() as u16,
+                    );
+                }
+                // TODO:
+                // 1. set offsets (according to self.full_screen_ws)
+                // 2. remove boundaries frame
+                // 3. redistribute space
+
+            }
+        }
+        self.render();
     }
     pub fn render(&mut self) {
         if self.active_terminal.is_none()

@@ -81,6 +81,8 @@ impl Pane for TerminalPane {
             }
         } else {
             self.content_position_and_size = position_and_size;
+            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
+            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
         }
         self.reflow_lines();
     }
@@ -581,6 +583,36 @@ impl Pane for TerminalPane {
     fn offset_content_rows(&mut self, by: usize) {
         self.content_rows_offset = by;
         self.content_position_and_size.rows = self.position_and_size.rows - by;
+        self.reflow_lines();
+        self.set_should_render(true);
+    }
+    fn show_boundaries_frame(&mut self) {
+        self.should_render_boundaries_frame = true;
+        // TODO: move all this logic to self.redistribute_space
+        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
+        if self.should_render_only_title {
+            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone()).frame_title_only();
+            let content_position_and_size = position_and_size.reduce_top_line();
+            self.content_position_and_size = content_position_and_size;
+            self.boundaries_frame = Some(boundaries_frame);
+            self.reflow_lines();
+        } else {
+            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+            let content_position_and_size = position_and_size.reduce_outer_frame(1);
+            self.content_position_and_size = content_position_and_size;
+            self.boundaries_frame = Some(boundaries_frame);
+            self.reflow_lines();
+        }
+        self.set_should_render(true);
+    }
+    fn remove_boundaries_frame(&mut self) {
+        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
+        self.should_render_boundaries_frame = false;
+        self.boundaries_frame = None;
+        let mut content_position_and_size = position_and_size;
+        content_position_and_size.rows = position_and_size.rows - self.content_rows_offset;
+        content_position_and_size.cols = position_and_size.cols - self.content_columns_offset;
+        self.content_position_and_size = content_position_and_size;
         self.reflow_lines();
         self.set_should_render(true);
     }

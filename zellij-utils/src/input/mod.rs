@@ -34,6 +34,7 @@ pub fn get_mode_info(
             keybinds.push(("r".to_string(), "Right split".to_string()));
             keybinds.push(("x".to_string(), "Close".to_string()));
             keybinds.push(("f".to_string(), "Fullscreen".to_string()));
+            keybinds.push(("z".to_string(), "Frames".to_string()));
         }
         InputMode::Tab => {
             keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));

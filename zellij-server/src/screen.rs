@@ -55,6 +55,7 @@ pub(crate) enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
+    TogglePaneFrames,
     SetSelectable(PaneId, bool),
     SetFixedHeight(PaneId, usize),
     SetFixedWidth(PaneId, usize),
@@ -110,6 +111,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
+            ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
             ScreenInstruction::SetFixedHeight(..) => ScreenContext::SetFixedHeight,
@@ -634,6 +636,11 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .toggle_active_pane_fullscreen();
+            }
+            ScreenInstruction::TogglePaneFrames => {
+                for (_, tab) in screen.tabs.iter_mut() {
+                    tab.toggle_pane_frames();
+                }
             }
             ScreenInstruction::NewTab(pane_id) => {
                 screen.new_tab(pane_id);

@@ -208,6 +208,7 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
+    TogglePaneFrames,
     SetSelectable,
     SetInvisibleBorders,
     SetFixedHeight,

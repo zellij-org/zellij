@@ -105,6 +105,8 @@ keybinds:
           key: [Char: 'x',]
         - action: [ToggleFocusFullscreen,]
           key: [Char: 'f',]
+        - action: [TogglePaneFrames,]
+          key: [Char: 'z',]
         - action: [FocusPreviousPane,]
           key: [ Alt: '[',]
         - action: [FocusNextPane,]

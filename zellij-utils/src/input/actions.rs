@@ -53,6 +53,8 @@ pub enum Action {
     PageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
+    /// Toggle frames around panes in the UI
+    TogglePaneFrames,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
