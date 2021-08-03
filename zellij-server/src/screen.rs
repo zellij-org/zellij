@@ -342,9 +342,7 @@ impl Screen {
     /// Consumes the last entry in tab history.
     pub fn get_previous_tab(&mut self) -> Option<&Tab> {
         let last = self.tab_history.pop();
-        if last.is_none() {
-            return None;
-        }
+        last?;
         match last.unwrap() {
             Some(tab) => self.tabs.get(&tab),
             None => None,
