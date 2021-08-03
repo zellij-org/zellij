@@ -30,6 +30,9 @@ pub struct Options {
     #[structopt(long)]
     #[serde(default)]
     pub disable_mouse_mode: bool,
+    #[structopt(long)]
+    #[serde(default)]
+    pub no_pane_frames: bool,
 }
 
 impl Options {
@@ -49,6 +52,12 @@ impl Options {
             true
         } else {
             self.simplified_ui
+        };
+
+        let no_pane_frames = if other.no_pane_frames {
+            true
+        } else {
+            self.no_pane_frames
         };
 
         let default_mode = match other.default_mode {
@@ -84,6 +93,7 @@ impl Options {
             default_shell,
             layout_dir,
             disable_mouse_mode,
+            no_pane_frames,
         }
     }
 

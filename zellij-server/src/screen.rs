@@ -154,6 +154,7 @@ pub(crate) struct Screen {
     input_mode: InputMode,
     colors: Palette,
     session_state: Arc<RwLock<SessionState>>,
+    draw_pane_frames: bool,
 }
 
 impl Screen {
@@ -165,6 +166,7 @@ impl Screen {
         mode_info: ModeInfo,
         input_mode: InputMode,
         session_state: Arc<RwLock<SessionState>>,
+        draw_pane_frames: bool,
     ) -> Self {
         Screen {
             bus,
@@ -176,6 +178,7 @@ impl Screen {
             mode_info,
             input_mode,
             session_state,
+            draw_pane_frames,
         }
     }
 
@@ -197,6 +200,7 @@ impl Screen {
             self.input_mode,
             self.colors,
             self.session_state.clone(),
+            self.draw_pane_frames,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -359,6 +363,7 @@ impl Screen {
             self.input_mode,
             self.colors,
             self.session_state.clone(),
+            self.draw_pane_frames,
         );
         tab.apply_layout(layout, new_pids);
         self.active_tab_index = Some(tab_index);
@@ -431,6 +436,7 @@ pub(crate) fn screen_thread_main(
     session_state: Arc<RwLock<SessionState>>,
 ) {
     let capabilities = config_options.simplified_ui;
+    let draw_pane_frames = !config_options.no_pane_frames;
     let default_mode = config_options.default_mode.unwrap_or_default();
 
     let mut screen = Screen::new(
@@ -447,6 +453,7 @@ pub(crate) fn screen_thread_main(
         },
         default_mode,
         session_state,
+        draw_pane_frames,
     );
     loop {
         let (event, mut err_ctx) = screen
@@ -638,9 +645,11 @@ pub(crate) fn screen_thread_main(
                     .toggle_active_pane_fullscreen();
             }
             ScreenInstruction::TogglePaneFrames => {
+                screen.draw_pane_frames = !screen.draw_pane_frames;
                 for (_, tab) in screen.tabs.iter_mut() {
-                    tab.toggle_pane_frames();
+                    tab.set_pane_frames(screen.draw_pane_frames);
                 }
+                screen.render();
             }
             ScreenInstruction::NewTab(pane_id) => {
                 screen.new_tab(pane_id);

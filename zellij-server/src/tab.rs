@@ -330,8 +330,8 @@ impl Tab {
         input_mode: InputMode,
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
+        draw_pane_frames: bool,
     ) -> Self {
-        let draw_pane_frames = false; // TODO: !!MOVE THIS TO SCREEN OTHERWISE TABS WILL NO TBE SYNCED WITH THEIR FRAME ON/OFF STATUS!!
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let pane_title_only = true;
             let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames, 1, pane_title_only);
@@ -1017,8 +1017,7 @@ impl Tab {
             .and_then(|active_terminal_id| self.panes.get_mut(&active_terminal_id))
             .map(|active_terminal| active_terminal.set_should_render(true));
     }
-    pub fn toggle_pane_frames(&mut self) {
-        let draw_pane_frames = !self.draw_pane_frames;
+    pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
         let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
         for (pane_id, pane) in self.panes.iter_mut() {
@@ -1035,12 +1034,6 @@ impl Tab {
                         pane.get_content_rows() as u16,
                     );
                 }
-                // TODO:
-                // 1. reset offsets
-                // 2. create boundaries frame
-                // 3. redistribute space (unless it's done internally somewhere?)
-                // 4. handle should render only title stuff
-
             } else {
                 let position_and_size = pane.position_and_size();
                 if position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
@@ -1061,14 +1054,9 @@ impl Tab {
                         pane.get_content_rows() as u16,
                     );
                 }
-                // TODO:
-                // 1. set offsets (according to self.full_screen_ws)
-                // 2. remove boundaries frame
-                // 3. redistribute space
-
             }
         }
-        self.render();
+        // self.render();
     }
     pub fn render(&mut self) {
         if self.active_terminal.is_none()
