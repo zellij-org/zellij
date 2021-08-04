@@ -131,8 +131,8 @@ impl<'a> PaneResizer<'a> {
             .collect();
 
         // FIXME: This line needs to be restored before merging!
-        self.solver.add_constraints(&constraints).ok()?;
-        //self.solver.add_constraints(&constraints).unwrap();
+        //self.solver.add_constraints(&constraints).ok()?;
+        self.solver.add_constraints(&constraints).unwrap();
         // FIXME: This chunk needs to be broken up into smaller functions!
         let mut rounded_sizes = HashMap::new();
         // FIXME: This should loop over something flattened, not be a nested loop
