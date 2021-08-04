@@ -105,7 +105,8 @@ pub(crate) struct Tab {
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
-    full_screen_ws: PositionAndSize,
+    viewport: PositionAndSize, // includes all selectable panes
+    display_area: PositionAndSize, // includes all panes (including eg. the status bar and tab bar in the default layout)
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
@@ -321,7 +322,7 @@ impl Tab {
         index: usize,
         position: usize,
         name: String,
-        full_screen_ws: &PositionAndSize,
+        viewport: &PositionAndSize,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -334,7 +335,7 @@ impl Tab {
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let pane_title_only = true;
-            let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors, draw_pane_frames, 1, pane_title_only);
+            let new_terminal = TerminalPane::new(pid, *viewport, colors, draw_pane_frames, 1, pane_title_only);
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -361,7 +362,8 @@ impl Tab {
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
-            full_screen_ws: *full_screen_ws,
+            viewport: *viewport,
+            display_area: *viewport,
             fullscreen_columns_offset: 0,
             fullscreen_rows_offset: 0,
             fullscreen_is_active: false,
@@ -378,12 +380,12 @@ impl Tab {
     }
 
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
-        // TODO: this should be an attribute on Screen instead of full_screen_ws
+        // TODO: this should be an attribute on Screen instead of viewport
         let free_space = PositionAndSize {
             x: 0,
             y: 0,
-            rows: self.full_screen_ws.rows,
-            cols: self.full_screen_ws.cols,
+            rows: self.viewport.rows,
+            cols: self.viewport.cols,
             ..Default::default()
         };
         self.panes_to_hide.clear();
@@ -395,7 +397,7 @@ impl Tab {
             // which we use for other stuff in the main loop below (eg. which type of frames the
             // panes should have)
             if layout.borderless {
-                self.offset_fullscreen(&position_and_size);
+                self.offset_viewport(&position_and_size);
             }
         }
 
@@ -445,9 +447,6 @@ impl Tab {
                     draw_pane_frames,
                     pane_title_only,
                 );
-//                 if layout.borderless {
-//                     self.offset_fullscreen(&position_and_size);
-//                 }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -470,15 +469,15 @@ impl Tab {
                     next_selectable_pane_position,
                     pane_title_only,
                 );
-                if !draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+                if !draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
                     new_terminal.offset_content_columns(1);
                 }
-                if !draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+                if !draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
                     new_terminal.offset_content_rows(1);
                 }
-                if layout.borderless {
-                    self.offset_fullscreen(&position_and_size);
-                }
+//                 if layout.borderless {
+//                     self.offset_viewport(&position_and_size);
+//                 }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -508,7 +507,7 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -567,14 +566,14 @@ impl Tab {
                     let pane_title_only = next_selectable_pane_position == 1;
                     let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
 
-                    if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.full_screen_ws.cols {
+                    if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.viewport.cols {
                         new_terminal.offset_content_columns(1);
-                    } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.full_screen_ws.cols {
+                    } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.viewport.cols {
                         new_terminal.offset_content_columns(0);
                     }
-                    if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.full_screen_ws.rows {
+                    if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.viewport.rows {
                         new_terminal.offset_content_rows(1);
-                    } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.full_screen_ws.rows {
+                    } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.viewport.rows {
                         new_terminal.offset_content_rows(0);
                     }
 
@@ -589,14 +588,14 @@ impl Tab {
                     }
                     terminal_to_split.change_pos_and_size(&top_winsize);
 
-                    if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.full_screen_ws.cols {
+                    if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.viewport.cols {
                         terminal_to_split.offset_content_columns(1);
-                    } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.full_screen_ws.cols {
+                    } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.viewport.cols {
                         terminal_to_split.offset_content_columns(0);
                     }
-                    if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.full_screen_ws.rows {
+                    if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.viewport.rows {
                         terminal_to_split.offset_content_rows(1);
-                    } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.full_screen_ws.rows {
+                    } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.viewport.rows {
                         terminal_to_split.offset_content_rows(0);
                     }
 
@@ -622,14 +621,14 @@ impl Tab {
                     let pane_title_only = next_selectable_pane_position == 1;
                     let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
 
-                    if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.full_screen_ws.cols {
+                    if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.viewport.cols {
                         new_terminal.offset_content_columns(1);
-                    } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.full_screen_ws.cols {
+                    } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.viewport.cols {
                         new_terminal.offset_content_columns(0);
                     }
-                    if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.full_screen_ws.rows {
+                    if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.viewport.rows {
                         new_terminal.offset_content_rows(1);
-                    } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.full_screen_ws.rows {
+                    } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.viewport.rows {
                         new_terminal.offset_content_rows(0);
                     }
 
@@ -644,14 +643,14 @@ impl Tab {
                     }
                     terminal_to_split.change_pos_and_size(&left_winsize);
 
-                    if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.full_screen_ws.cols {
+                    if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.viewport.cols {
                         terminal_to_split.offset_content_columns(1);
-                    } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.full_screen_ws.cols {
+                    } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.viewport.cols {
                         terminal_to_split.offset_content_columns(0);
                     }
-                    if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.full_screen_ws.rows {
+                    if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.viewport.rows {
                         terminal_to_split.offset_content_rows(1);
-                    } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.full_screen_ws.rows {
+                    } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.viewport.rows {
                         terminal_to_split.offset_content_rows(0);
                     }
 
@@ -680,7 +679,7 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -718,14 +717,14 @@ impl Tab {
             }
             active_pane.change_pos_and_size(&top_winsize);
 
-            if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.full_screen_ws.cols {
+            if !self.draw_pane_frames && top_winsize.x + top_winsize.cols < self.viewport.cols {
                 active_pane.offset_content_columns(1);
-            } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.full_screen_ws.cols {
+            } else if !self.draw_pane_frames && top_winsize.x + top_winsize.cols == self.viewport.cols {
                 active_pane.offset_content_columns(0);
             }
-            if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.full_screen_ws.rows {
+            if !self.draw_pane_frames && top_winsize.y + top_winsize.rows < self.viewport.rows {
                 active_pane.offset_content_rows(1);
-            } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.full_screen_ws.rows {
+            } else if !self.draw_pane_frames && top_winsize.y + top_winsize.rows == self.viewport.rows {
                 active_pane.offset_content_rows(0);
             }
 
@@ -736,14 +735,14 @@ impl Tab {
             let pane_title_only = next_selectable_pane_position == 1;
             let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
 
-            if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.full_screen_ws.cols {
+            if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.viewport.cols {
                 new_terminal.offset_content_columns(1);
-            } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.full_screen_ws.cols {
+            } else if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols == self.viewport.cols {
                 new_terminal.offset_content_columns(0);
             }
-            if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.full_screen_ws.rows {
+            if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows < self.viewport.rows {
                 new_terminal.offset_content_rows(1);
-            } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.full_screen_ws.rows {
+            } else if !self.draw_pane_frames && bottom_winsize.y + bottom_winsize.rows == self.viewport.rows {
                 new_terminal.offset_content_rows(0);
             }
 
@@ -775,7 +774,7 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -814,14 +813,14 @@ impl Tab {
 
             active_pane.change_pos_and_size(&left_winsize);
 
-            if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.full_screen_ws.cols {
+            if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.viewport.cols {
                 active_pane.offset_content_columns(1);
-            } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.full_screen_ws.cols {
+            } else if !self.draw_pane_frames && left_winsize.x + left_winsize.cols == self.viewport.cols {
                 active_pane.offset_content_columns(0);
             }
-            if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.full_screen_ws.rows {
+            if !self.draw_pane_frames && left_winsize.y + left_winsize.rows < self.viewport.rows {
                 active_pane.offset_content_rows(1);
-            } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.full_screen_ws.rows {
+            } else if !self.draw_pane_frames && left_winsize.y + left_winsize.rows == self.viewport.rows {
                 active_pane.offset_content_rows(0);
             }
 
@@ -832,14 +831,14 @@ impl Tab {
             let pane_title_only = next_selectable_pane_position == 1;
             let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
 
-            if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.full_screen_ws.cols {
+            if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.viewport.cols {
                 new_terminal.offset_content_columns(1);
-            } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.full_screen_ws.cols {
+            } else if !self.draw_pane_frames && right_winsize.x + right_winsize.cols == self.viewport.cols {
                 new_terminal.offset_content_columns(0);
             }
-            if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.full_screen_ws.rows {
+            if !self.draw_pane_frames && right_winsize.y + right_winsize.rows < self.viewport.rows {
                 new_terminal.offset_content_rows(1);
-            } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.full_screen_ws.rows {
+            } else if !self.draw_pane_frames && right_winsize.y + right_winsize.rows == self.viewport.rows {
                 new_terminal.offset_content_rows(0);
             }
 
@@ -978,9 +977,9 @@ impl Tab {
                         active_terminal.set_should_render_only_title(true);
                     }
                     active_terminal.override_size_and_position(
-                        self.full_screen_ws.x,
-                        self.full_screen_ws.y,
-                        &self.full_screen_ws,
+                        self.viewport.x,
+                        self.viewport.y,
+                        &self.viewport,
                     );
                 }
             }
@@ -1036,12 +1035,12 @@ impl Tab {
                 }
             } else {
                 let position_and_size = pane.position_and_size();
-                if position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
+                if position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols {
                     pane.offset_content_columns(0);
                 } else {
                     pane.offset_content_columns(1);
                 }
-                if position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
+                if position_and_size.y + position_and_size.rows == self.viewport.y + self.viewport.rows {
                     pane.offset_content_rows(0);
                 } else {
                     pane.offset_content_rows(1);
@@ -1067,9 +1066,9 @@ impl Tab {
             return;
         }
         let mut output = String::new();
-        let mut boundaries = Boundaries::new(&self.full_screen_ws);
-//             self.full_screen_ws.cols as u16,
-//             self.full_screen_ws.rows as u16,
+        let mut boundaries = Boundaries::new(&self.viewport);
+//             self.viewport.cols as u16,
+//             self.viewport.rows as u16,
 //         );
         let hide_cursor = "\u{1b}[?25l";
         output.push_str(hide_cursor);
@@ -1356,10 +1355,9 @@ impl Tab {
                 terminals.push(terminal);
             }
         }
-        debug_log_to_file(format!("terminal_borders_to_the_right: {:?}", terminal_borders_to_the_right));
         // bottom-most border aligned with a pane border to the right
-        // let mut bottom_resize_border = self.full_screen_ws.rows;
-        let mut bottom_resize_border = self.full_screen_ws.y + self.full_screen_ws.rows;
+        // let mut bottom_resize_border = self.viewport.rows;
+        let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_right
@@ -1451,8 +1449,8 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the left
-        // let mut bottom_resize_border = self.full_screen_ws.rows;
-        let mut bottom_resize_border = self.full_screen_ws.y + self.full_screen_ws.rows;
+        // let mut bottom_resize_border = self.viewport.rows;
+        let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_left
@@ -1543,7 +1541,7 @@ impl Tab {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.x + self.full_screen_ws.cols;
+        let mut right_resize_border = self.viewport.x + self.viewport.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_above
@@ -1627,7 +1625,7 @@ impl Tab {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.x + self.full_screen_ws.cols;
+        let mut right_resize_border = self.viewport.x + self.viewport.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_below
@@ -1652,14 +1650,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_down(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = id {
@@ -1674,14 +1672,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_up(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = id {
@@ -1696,14 +1694,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_down(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1718,14 +1716,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_up(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1740,14 +1738,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_right(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1762,14 +1760,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_left(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1784,14 +1782,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_right(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1806,14 +1804,14 @@ impl Tab {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_left(count);
         let position_and_size = terminal.position_and_size();
-        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.full_screen_ws.cols {
+        if !self.draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
             terminal.offset_content_columns(1);
-        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.full_screen_ws.cols {
+        } else if !self.draw_pane_frames && position_and_size.x + position_and_size.cols == self.viewport.cols {
             terminal.offset_content_columns(0);
         }
-        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.full_screen_ws.rows {
+        if !self.draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
             terminal.offset_content_rows(1);
-        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.full_screen_ws.rows {
+        } else if !self.draw_pane_frames && position_and_size.y + position_and_size.rows == self.viewport.rows {
             terminal.offset_content_rows(0);
         }
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -2041,7 +2039,6 @@ impl Tab {
         }
     }
     fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
-        debug_log_to_file(format!("increase_pane_and_surroundings_right"));
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
@@ -2049,7 +2046,6 @@ impl Tab {
             .iter()
             // .map(|t| self.panes.get(t).unwrap().y())
             .map(|t| {
-                debug_log_to_file(format!("t: {:?}", self.panes.get(t).unwrap().position_and_size()));
                 return self.panes.get(t).unwrap().y();
             })
             .collect();
@@ -2060,7 +2056,6 @@ impl Tab {
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        debug_log_to_file(format!("2 terminals: {:?}", terminals_to_the_right));
         self.increase_pane_width_right(id, count);
         for terminal_id in terminals_to_the_right {
             self.reduce_pane_width_right(&terminal_id, count);
@@ -2272,13 +2267,18 @@ impl Tab {
         let border_width = self.border_width_between_panes();
         if let Some((column_difference, row_difference)) =
             PaneResizer::new(&mut self.panes, &mut self.os_api, border_width)
-                .resize(self.full_screen_ws, new_screen_size)
+                .resize(self.display_area, new_screen_size)
         {
             self.should_clear_display_before_rendering = true;
-            self.full_screen_ws.cols =
-                (self.full_screen_ws.cols as isize + column_difference) as usize;
-            self.full_screen_ws.rows =
-                (self.full_screen_ws.rows as isize + row_difference) as usize;
+
+            self.viewport.cols =
+                (self.viewport.cols as isize + column_difference) as usize;
+            self.viewport.rows =
+                (self.viewport.rows as isize + row_difference) as usize;
+            self.display_area.cols =
+                (self.display_area.cols as isize + column_difference) as usize;
+            self.display_area.rows =
+                (self.display_area.rows as isize + row_difference) as usize;
         };
     }
     pub fn resize_left(&mut self) {
@@ -2716,7 +2716,6 @@ impl Tab {
         }
     }
     pub fn close_pane_without_rerender(&mut self, id: PaneId) {
-        debug_log_to_file(format!("close_pane_without_rerender"));
         let border_width = self.border_width_between_panes();
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
@@ -2725,7 +2724,6 @@ impl Tab {
             let pane_to_close_width = pane_to_close.columns();
             let pane_to_close_height = pane_to_close.rows();
             if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
-                debug_log_to_file(format!("panes_to_the_left_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_width_by(pane_to_close_width + 1)
@@ -2751,7 +2749,6 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
-                debug_log_to_file(format!("panes_to_the_right_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_width_by(pane_to_close_width + 1)
@@ -2779,7 +2776,6 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_above_between_aligning_borders(id) {
-                debug_log_to_file(format!("panes_above_between_aligning_borders, pane_to_close_height: {:?}", pane_to_close_height));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     pane.can_increase_height_by(pane_to_close_height + border_width)
@@ -2806,7 +2802,6 @@ impl Tab {
                 }
             }
             if let Some(panes) = self.panes_below_between_aligning_borders(id) {
-                debug_log_to_file(format!("can has panes_below_between_aligning_borders"));
                 if panes.iter().all(|p| {
                     let pane = self.panes.get(p).unwrap();
                     // pane.can_increase_height_by(pane_to_close_height + 1)
@@ -2998,21 +2993,21 @@ impl Tab {
             1
         }
     }
-    fn offset_fullscreen(&mut self, position_and_size: &PositionAndSize) {
-        if position_and_size.x == self.full_screen_ws.x && position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
-            if position_and_size.y == self.full_screen_ws.y {
-                self.full_screen_ws.y += position_and_size.rows;
-                self.full_screen_ws.rows -= position_and_size.rows;
-            } else if position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
-                self.full_screen_ws.rows -= position_and_size.rows;
+    fn offset_viewport(&mut self, position_and_size: &PositionAndSize) {
+        if position_and_size.x == self.viewport.x && position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols {
+            if position_and_size.y == self.viewport.y {
+                self.viewport.y += position_and_size.rows;
+                self.viewport.rows -= position_and_size.rows;
+            } else if position_and_size.y + position_and_size.rows == self.viewport.y + self.viewport.rows {
+                self.viewport.rows -= position_and_size.rows;
             }
         }
-        if position_and_size.y == self.full_screen_ws.y && position_and_size.y + position_and_size.rows == self.full_screen_ws.y + self.full_screen_ws.rows {
-            if position_and_size.x == self.full_screen_ws.x {
-                self.full_screen_ws.x += position_and_size.cols;
-                self.full_screen_ws.cols -= position_and_size.cols;
-            } else if position_and_size.x + position_and_size.cols == self.full_screen_ws.x + self.full_screen_ws.cols {
-                self.full_screen_ws.cols -= position_and_size.cols;
+        if position_and_size.y == self.viewport.y && position_and_size.y + position_and_size.rows == self.viewport.y + self.viewport.rows {
+            if position_and_size.x == self.viewport.x {
+                self.viewport.x += position_and_size.cols;
+                self.viewport.cols -= position_and_size.cols;
+            } else if position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols {
+                self.viewport.cols -= position_and_size.cols;
             }
         }
 

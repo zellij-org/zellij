@@ -4,6 +4,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::logging::debug_log_to_file;
 
 pub(crate) struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,

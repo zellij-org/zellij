@@ -133,7 +133,7 @@ impl Pane for TerminalPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         // self.grid.cursor_coordinates()
-        let ret = if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
+        if let Some(boundaries_frame) = self.boundaries_frame.as_ref() {
             // TODO: better
             if boundaries_frame.draw_title_only {
                 self.grid.cursor_coordinates().map(|(x, y)| (x, y + 1))
@@ -142,9 +142,7 @@ impl Pane for TerminalPane {
             }
         } else {
             self.grid.cursor_coordinates()
-        };
-        debug_log_to_file(format!("cursor_coordinates {:?}", ret));
-        ret
+        }
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
