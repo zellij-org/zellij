@@ -4,10 +4,7 @@ use cassowary::{
     Solver, Variable,
     WeightedRelation::*,
 };
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    ops::Not,
-};
+use std::{cmp::max, collections::{BTreeMap, HashMap, HashSet}, ops::Not};
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom, Size};
 
 const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
@@ -134,8 +131,8 @@ impl<'a> PaneResizer<'a> {
             .collect();
 
         // FIXME: This line needs to be restored before merging!
-        //self.solver.add_constraints(&constraints).ok()?;
-        self.solver.add_constraints(&constraints).unwrap();
+        self.solver.add_constraints(&constraints).ok()?;
+        //self.solver.add_constraints(&constraints).unwrap();
         // FIXME: This chunk needs to be broken up into smaller functions!
         let mut rounded_sizes = HashMap::new();
         // FIXME: This should loop over something flattened, not be a nested loop
@@ -175,7 +172,12 @@ impl<'a> PaneResizer<'a> {
             let mut offset = 0;
             for span in spans.iter_mut() {
                 span.pos = offset;
-                span.size.set_inner(rounded_sizes[&span.size_var] as usize);
+                let sz = rounded_sizes[&span.size_var];
+                // FIXME: This could be 1, but the pane render seems to choke on that?
+                if sz < 1 {
+                    return None
+                }
+                span.size.set_inner(sz as usize);
                 offset += span.size.as_usize() + GAP_SIZE;
             }
             if offset - GAP_SIZE != space {
@@ -255,6 +257,7 @@ impl<'a> PaneResizer<'a> {
 
     fn apply_spans(&mut self, spans: &[Span]) {
         for span in spans {
+            log::info!("Applying span: {:#?}", span);
             let pane = self.panes.get_mut(&span.pid).unwrap();
             match span.direction {
                 Direction::Horizontal => pane.change_pos_and_size(&PaneGeom {
@@ -269,8 +272,10 @@ impl<'a> PaneResizer<'a> {
                 }),
             }
             if let PaneId::Terminal(pid) = pane.pid() {
+                log::info!("Starting to set {:?} terminal size", pid);
                 self.os_api
                     .set_terminal_size_using_fd(pid, pane.cols() as u16, pane.rows() as u16);
+                log::info!("Finished setting terminal size!");
             }
         }
     }
@@ -284,9 +289,9 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
     let gap_space = GAP_SIZE * (spans.len() - 1);
-    let new_flex_space = spans.iter().fold(space - gap_space, |a, s| {
+    let new_flex_space = spans.iter().fold(space.saturating_sub(gap_space), |a, s| {
         if let Constraint::Fixed(sz) = s.size.constraint {
-            a - sz
+            a.saturating_sub(sz)
         } else {
             a
         }

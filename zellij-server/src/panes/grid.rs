@@ -541,6 +541,11 @@ impl Grid {
                     } else {
                         canonical_line.columns.drain(..).collect()
                     };
+                    // If the next character is wider than the grid (i.e. there is nothing in
+                    // `next_wrap`, then just abort the resizing
+                    if next_wrap.is_empty() {
+                        break;
+                    }
                     let row = Row::from_columns(next_wrap);
                     // if there are no more parts, this row is canonical as long as it originally
                     // was canonical (it might not have been for example if it's the first row in
