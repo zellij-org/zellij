@@ -956,11 +956,17 @@ impl Tab {
                 active_terminal.reset_size_and_position_override();
             } else {
                 let panes = self.get_panes();
+                let viewport = self.viewport;
                 let pane_ids_to_hide =
                     panes.filter_map(
-                        |(&id, _)| {
+                        |(&id, pane)| {
                             if id != active_pane_id {
-                                Some(id)
+                                let pane_position_and_size = pane.position_and_size();
+                                if pane_position_and_size.y >= viewport.y && pane_position_and_size.y + pane_position_and_size.rows <= viewport.y + viewport.rows {
+                                    Some(id)
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }

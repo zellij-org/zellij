@@ -410,7 +410,17 @@ impl Grid {
         self.cursor.get_shape()
     }
     pub fn scrollback_position_and_length(&self) -> (usize, usize) { // (position, length)
-        (self.lines_below.len(), self.lines_above.len() + self.lines_below.len())
+        let mut scrollback_buffer_count = 0;
+        for row in self.lines_above.iter() {
+            let row_width = row.width();
+            // rows in lines_above are unwrapped, so we need to account for that
+            if row_width > self.width {
+                scrollback_buffer_count += (row_width as f64 / self.width as f64).ceil() as usize;
+            } else {
+                scrollback_buffer_count += 1;
+            }
+        }
+        (self.lines_below.len(), (scrollback_buffer_count + self.lines_below.len()))
     }
     fn set_horizontal_tabstop(&mut self) {
         self.horizontal_tabstops.insert(self.cursor.x);
@@ -481,11 +491,23 @@ impl Grid {
     }
     pub fn scroll_up_one_line(&mut self) {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
-            let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
-            self.viewport.insert(0, line_to_insert_at_viewport_top);
+
+            transfer_rows_down(
+                &mut self.lines_above,
+                &mut self.viewport,
+                1,
+                None,
+                Some(self.width),
+            );
+
+
+//             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
+//             self.viewport.insert(0, line_to_insert_at_viewport_top);
             self.selection.move_down(1);
+
         }
         self.output_buffer.update_all_lines();
     }
