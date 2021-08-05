@@ -691,7 +691,7 @@ impl Tab {
         } else if let PaneId::Terminal(term_pid) = pid {
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-            if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 + 1 {
+            if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
                     .unwrap();
@@ -787,7 +787,7 @@ impl Tab {
             // TODO: check minimum size of active terminal
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-            if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 + 1 {
+            if active_pane.columns() < MIN_TERMINAL_WIDTH * 2 {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
                     .unwrap();

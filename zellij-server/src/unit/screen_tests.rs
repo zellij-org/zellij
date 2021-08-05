@@ -90,6 +90,7 @@ fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
         mode_info,
         input_mode,
         session_state,
+        false // draw_pane_frames
     )
 }
 
