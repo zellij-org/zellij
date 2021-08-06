@@ -57,6 +57,13 @@ fn start_zellij(channel: &mut ssh2::Channel, session_name: Option<&String>) {
     channel.flush().unwrap();
 }
 
+fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
+    channel
+        .write_all(format!("{} options --no-pane-frames\n", ZELLIJ_EXECUTABLE_LOCATION).as_bytes())
+        .unwrap();
+    channel.flush().unwrap();
+}
+
 fn start_zellij_with_layout(
     channel: &mut ssh2::Channel,
     layout_path: &str,
@@ -136,7 +143,8 @@ impl<'a> RemoteTerminal<'a> {
         self.current_snapshot.contains("Tip:")
     }
     pub fn status_bar_appears(&self) -> bool {
-        self.current_snapshot.contains("Ctrl +") && !self.current_snapshot.contains("─────")
+        self.current_snapshot.contains("Ctrl +")
+        // self.current_snapshot.contains("Ctrl +") && !self.current_snapshot.contains("─────")
         // this is a bug that happens because the app draws borders around the status bar momentarily on first render
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
@@ -198,6 +206,7 @@ pub struct RemoteRunner {
     retries_left: usize,
     win_size: PositionAndSize,
     layout_file_name: Option<&'static str>,
+    without_frames: bool,
 }
 
 impl RemoteRunner {
@@ -210,7 +219,7 @@ impl RemoteRunner {
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
         let draw_frame = false;
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0);
+        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0, false); // false is draw_pane_frames
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel, session_name.as_ref());
         RemoteRunner {
@@ -225,6 +234,34 @@ impl RemoteRunner {
             retries_left: 3,
             win_size,
             layout_file_name: None,
+            without_frames: false,
+        }
+    }
+    pub fn new_without_frames(
+        test_name: &'static str,
+        win_size: PositionAndSize,
+        session_name: Option<String>,
+    ) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let vte_parser = vte::Parser::new();
+        let draw_frame = false;
+        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0, false); // false is draw_pane_frames
+        setup_remote_environment(&mut channel, win_size);
+        start_zellij_without_frames(&mut channel);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            terminal_output,
+            vte_parser,
+            session_name,
+            test_name,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: 3,
+            win_size,
+            layout_file_name: None,
+            without_frames: true,
         }
     }
     pub fn new_with_layout(
@@ -233,13 +270,12 @@ impl RemoteRunner {
         layout_file_name: &'static str,
         session_name: Option<String>,
     ) -> Self {
-        // let layout_file_name = local_layout_path.file_name().unwrap();
-        let remote_path = Path::new(ZELLIJ_LAYOUT_PATH).join(layout_file_name); // TODO: not hardcoded
+        let remote_path = Path::new(ZELLIJ_LAYOUT_PATH).join(layout_file_name);
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
         let draw_frame = false;
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0);
+        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), draw_frame, 0, false); // false is draw_pane_frames
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_layout(
             &mut channel,
@@ -258,6 +294,7 @@ impl RemoteRunner {
             retries_left: 3,
             win_size,
             layout_file_name: Some(layout_file_name),
+            without_frames: false,
         }
     }
     pub fn add_step(mut self, step: Step) -> Self {
@@ -313,6 +350,12 @@ impl RemoteRunner {
                 layout_file_name,
                 session_name,
             );
+            new_runner.retries_left = self.retries_left - 1;
+            new_runner.replace_steps(self.steps.clone());
+            drop(std::mem::replace(self, new_runner));
+            self.run_all_steps()
+        } else if self.without_frames {
+            let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size, session_name);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
