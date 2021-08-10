@@ -2,7 +2,7 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::PaneId;
+use crate::panes::{PaneId, PaneDecoration};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
@@ -19,15 +19,11 @@ pub(crate) struct PluginPane {
     pub invisible_borders: bool,
     pub position_and_size: PositionAndSize,
     pub position_and_size_override: Option<PositionAndSize>,
-    pub content_position_and_size: PositionAndSize, // TODO: do we need this?
-    pub content_columns_offset: usize,
-    pub content_rows_offset: usize,
-    pub should_render_only_title: bool,
+    pub content_position_and_size: PositionAndSize,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
     pub pane_title: String,
-    boundaries_frame: Option<PaneBoundariesFrame>,
-    should_render_boundaries_frame: bool,
+    pane_decoration: PaneDecoration,
 }
 
 impl PluginPane {
@@ -36,38 +32,7 @@ impl PluginPane {
         position_and_size: PositionAndSize,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         title: String,
-        draw_boundaries_frame: bool,
-        frame_title_only: bool,
     ) -> Self {
-        let (boundaries_frame, content_position_and_size) = if draw_boundaries_frame {
-            if frame_title_only {
-                if position_and_size.rows > 2 && position_and_size.cols > 2 {
-                    // hacky hacky, hack hack hack
-                    let boundaries_frame = Some(PaneBoundariesFrame::new(position_and_size, title.clone()).frame_title_only());
-                    let content_position_and_size = position_and_size.reduce_top_line();
-                    (boundaries_frame, content_position_and_size)
-                } else {
-                    let boundaries_frame = None;
-                    let content_position_and_size = position_and_size;
-                    (boundaries_frame, content_position_and_size)
-                }
-            } else {
-                if position_and_size.rows > 2 && position_and_size.cols > 2 {
-                    // hacky hacky, hack hack hack
-                    let boundaries_frame = Some(PaneBoundariesFrame::new(position_and_size, title.clone()));
-                    let content_position_and_size = position_and_size.reduce_outer_frame(1);
-                    (boundaries_frame, content_position_and_size)
-                } else {
-                    let boundaries_frame = None;
-                    let content_position_and_size = position_and_size;
-                    (boundaries_frame, content_position_and_size)
-                }
-            }
-        } else {
-            let boundaries_frame = None;
-            let content_position_and_size = position_and_size;
-            (boundaries_frame, content_position_and_size)
-        };
         Self {
             pid,
             should_render: true,
@@ -77,13 +42,9 @@ impl PluginPane {
             position_and_size_override: None,
             send_plugin_instructions,
             active_at: Instant::now(),
-            boundaries_frame,
-            content_position_and_size,
-            content_rows_offset: 0,
-            content_columns_offset: 0,
+            pane_decoration: PaneDecoration::ContentOffset((0, 0)),
+            content_position_and_size: position_and_size,
             pane_title: title,
-            should_render_boundaries_frame: draw_boundaries_frame,
-            should_render_only_title: frame_title_only,
         }
     }
     pub fn get_content_x(&self) -> usize {
@@ -104,14 +65,21 @@ impl PluginPane {
     }
     pub fn get_content_posision_and_size(&self) -> PositionAndSize {
         self.content_position_and_size
-//         match (self.boundaries_frame.as_ref(), self.position_and_size_override.as_ref()) {
-//             (Some(boundaries_frame), _) => {
-//                 // boundaries_frame.position_and_size.reduce_outer_frame(1)
-//                 boundaries_frame.content_position_and_size()
-//             }
-//             (None, Some(position_and_size_override)) => *position_and_size_override,
-//             _ => self.position_and_size,
-//         }
+    }
+    fn redistribute_space(&mut self) {
+        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size());
+        match &mut self.pane_decoration {
+            PaneDecoration::BoundariesFrame(boundaries_frame) => {
+                boundaries_frame.change_pos_and_size(position_and_size);
+                self.content_position_and_size = boundaries_frame.content_position_and_size();
+            }
+            PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
+                self.content_position_and_size = position_and_size;
+                self.content_position_and_size.cols = position_and_size.cols - *content_columns_offset;
+                self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
+            }
+        };
+        self.set_should_render(true);
     }
 }
 
@@ -139,39 +107,20 @@ impl Pane for PluginPane {
             .unwrap_or(self.position_and_size)
             .cols
     }
+    fn get_content_columns(&self) -> usize {
+        self.get_content_columns()
+    }
+    fn get_content_rows(&self) -> usize {
+        self.get_content_rows()
+    }
     fn reset_size_and_position_override(&mut self) {
         self.position_and_size_override = None;
-        let position_and_size = self.position_and_size();
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(position_and_size);
-        }
-        if self.should_render_boundaries_frame {
-            if self.should_render_only_title {
-                self.content_position_and_size = position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
         self.position_and_size = *position_and_size;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(*position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
-        self.should_render = true;
+        self.redistribute_space();
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
     fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
@@ -183,18 +132,7 @@ impl Pane for PluginPane {
             ..Default::default()
         };
         self.position_and_size_override = Some(position_and_size_override);
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(position_and_size_override);
-        }
-        if self.should_render_boundaries_frame {
-            if self.should_render_only_title {
-                self.content_position_and_size = position_and_size_override.reduce_top_line();
-            } else {
-                self.content_position_and_size = position_and_size_override.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = position_and_size_override;
-        }
+        self.redistribute_space();
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {
         unimplemented!()
@@ -217,18 +155,16 @@ impl Pane for PluginPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.should_render = should_render;
     }
+    fn set_should_render_boundaries(&mut self, should_render: bool) {
+        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
+            boundaries_frame.set_should_render(should_render);
+        }
+    }
     fn selectable(&self) -> bool {
         self.selectable
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
-        if !selectable {
-            self.boundaries_frame = None;
-            self.content_position_and_size = self.position_and_size;
-            // TODO: position_and_size_override?
-        } else {
-            // TBD
-        }
     }
     fn set_invisible_borders(&mut self, invisible_borders: bool) {
         self.invisible_borders = invisible_borders;
@@ -261,10 +197,11 @@ impl Pane for PluginPane {
                 .unwrap();
 
             self.should_render = false;
-            // Some(buf_rx.recv().unwrap())
             let contents = buf_rx.recv().unwrap();
-            if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-                vte_output.push_str(&boundaries_frame.render());
+            if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
+                if let Some(boundaries_frame_vte) = boundaries_frame.render() {
+                    vte_output.push_str(&boundaries_frame_vte);
+                }
             }
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
@@ -317,194 +254,66 @@ impl Pane for PluginPane {
     fn reduce_height_down(&mut self, count: usize) {
         self.position_and_size.y += count;
         self.position_and_size.rows -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn increase_height_down(&mut self, count: usize) {
         self.position_and_size.rows += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn increase_height_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
         self.position_and_size.rows += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn reduce_height_up(&mut self, count: usize) {
         self.position_and_size.rows -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn reduce_width_right(&mut self, count: usize) {
         self.position_and_size.x += count;
         self.position_and_size.cols -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn reduce_width_left(&mut self, count: usize) {
         self.position_and_size.cols -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn increase_width_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
         self.position_and_size.cols += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn increase_width_right(&mut self, count: usize) {
         self.position_and_size.cols += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
         self.should_render = true;
     }
     fn push_down(&mut self, count: usize) {
         self.position_and_size.y += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
+        self.should_render = true;
     }
     fn push_right(&mut self, count: usize) {
         self.position_and_size.x += count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
+        self.should_render = true;
     }
     fn pull_left(&mut self, count: usize) {
         self.position_and_size.x -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
+        self.should_render = true;
     }
     fn pull_up(&mut self, count: usize) {
         self.position_and_size.y -= count;
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.change_pos_and_size(self.position_and_size);
-            if self.should_render_only_title {
-                self.content_position_and_size = self.position_and_size.reduce_top_line();
-            } else {
-                self.content_position_and_size = self.position_and_size.reduce_outer_frame(1);
-            }
-        } else {
-            self.content_position_and_size = self.position_and_size;
-            self.content_position_and_size.cols = self.position_and_size.cols - self.content_columns_offset;
-            self.content_position_and_size.rows = self.position_and_size.rows - self.content_rows_offset;
-        }
+        self.redistribute_space();
+        self.should_render = true;
     }
     fn scroll_up(&mut self, _count: usize) {
         unimplemented!()
@@ -543,65 +352,57 @@ impl Pane for PluginPane {
         self.active_at = time;
     }
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            if boundaries_frame.color != color {
-                boundaries_frame.set_color(color);
-                self.should_render = true;
-            }
-        }
-    }
-    fn set_should_render_only_title(&mut self, should_render_only_title: bool) {
-        if let Some(boundaries_frame) = self.boundaries_frame.as_mut() {
-            boundaries_frame.draw_title_only = should_render_only_title;
+        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
+            boundaries_frame.set_color(color);
         }
     }
     fn offset_content_columns(&mut self, by: usize) {
         if !self.selectable {
             return;
         }
-        self.content_columns_offset = by;
-        self.content_position_and_size.cols = self.position_and_size.cols - by;
+        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
+            content_offset.0 = by;
+        } else {
+            self.pane_decoration = PaneDecoration::ContentOffset((by, 0));
+        }
+        self.redistribute_space();
         self.set_should_render(true);
     }
     fn offset_content_rows(&mut self, by: usize) {
         if !self.selectable {
             return;
         }
-        self.content_rows_offset = by;
-        self.content_position_and_size.rows = self.position_and_size.rows - by;
+        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
+            content_offset.1 = by;
+        } else {
+            self.pane_decoration = PaneDecoration::ContentOffset((0, by));
+        }
+        self.redistribute_space();
         self.set_should_render(true);
     }
-    fn show_boundaries_frame(&mut self) {
+    fn show_boundaries_frame(&mut self, should_render_only_title: bool) {
         if !self.selectable {
             return;
         }
-        self.should_render_boundaries_frame = true;
-        // TODO: move all this logic to self.redistribute_space
         let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
-        if self.should_render_only_title {
-            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone()).frame_title_only();
-            let content_position_and_size = position_and_size.reduce_top_line();
-            self.content_position_and_size = content_position_and_size;
-            self.boundaries_frame = Some(boundaries_frame);
+        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
+            boundaries_frame.render_only_title(should_render_only_title);
+            self.content_position_and_size = boundaries_frame.content_position_and_size();
         } else {
-            let boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
-            let content_position_and_size = position_and_size.reduce_outer_frame(1);
-            self.content_position_and_size = content_position_and_size;
-            self.boundaries_frame = Some(boundaries_frame);
+            let mut boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+            boundaries_frame.render_only_title(should_render_only_title);
+            self.content_position_and_size = boundaries_frame.content_position_and_size();
+            self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);
         }
+        self.redistribute_space();
         self.set_should_render(true);
     }
     fn remove_boundaries_frame(&mut self) {
         if !self.selectable {
             return;
         }
-        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
-        self.should_render_boundaries_frame = false;
-        self.boundaries_frame = None;
-        let mut content_position_and_size = position_and_size;
-        content_position_and_size.rows = position_and_size.rows - self.content_rows_offset;
-        content_position_and_size.cols = position_and_size.cols - self.content_columns_offset;
-        self.content_position_and_size = content_position_and_size;
+        self.pane_decoration = PaneDecoration::ContentOffset((0, 0));
+        self.redistribute_space();
         self.set_should_render(true);
     }
 }

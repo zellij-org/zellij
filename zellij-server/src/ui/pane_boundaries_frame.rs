@@ -25,7 +25,8 @@ pub struct PaneBoundariesFrame {
     title: String,
     scroll_position: (usize, usize), // (position, length)
     pub color: Option<PaletteColor>,
-    pub draw_title_only: bool,
+    draw_title_only: bool,
+    should_render: bool,
 }
 
 impl PaneBoundariesFrame {
@@ -37,31 +38,50 @@ impl PaneBoundariesFrame {
             title,
             scroll_position: (0, 0),
             draw_title_only: false,
+            should_render: true,
         }
     }
     pub fn frame_title_only(mut self) -> Self {
+        // TODO: remove this?
         self.draw_title_only = true;
+        self.should_render = true;
         self
     }
-    pub fn set_should_render_frame_title(&mut self, should_render_frame_title: bool) {
-        self.draw_title_only = should_render_frame_title;
+    pub fn render_only_title(&mut self, should_render_only_title: bool) {
+        if should_render_only_title != self.draw_title_only {
+            self.should_render = true;
+            self.draw_title_only = should_render_only_title;
+        }
     }
     pub fn change_pos_and_size(&mut self, position_and_size: PositionAndSize) {
-        self.position_and_size = position_and_size;
+        if position_and_size != self.position_and_size {
+            self.position_and_size = position_and_size;
+            self.should_render = true;
+        }
     }
     pub fn set_color(&mut self, color: Option<PaletteColor>) {
-        self.color = color;
+        if color != self.color {
+            self.color = color;
+            self.should_render = true;
+        }
     }
     pub fn update_scroll(&mut self, scroll_position: (usize, usize)) {
-        self.scroll_position = scroll_position;
+        if scroll_position != self.scroll_position {
+            self.scroll_position = scroll_position;
+            self.should_render = true;
+        }
     }
     pub fn update_title(&mut self, title: Option<&String>) {
         match title {
             Some(title) => {
-                self.title = title.clone();
+                if title != &self.title {
+                    self.title = title.clone();
+                    self.should_render = true;
+                }
             }
             None => {
                 self.title = self.base_title.clone();
+                self.should_render = true;
             }
         }
     }
@@ -71,6 +91,15 @@ impl PaneBoundariesFrame {
         } else {
             self.position_and_size.reduce_outer_frame(1)
         }
+    }
+    pub fn content_offset(&self) -> (usize, usize) { // (column_difference, row_difference)
+        let content_position_and_size = self.content_position_and_size();
+        let column_difference = content_position_and_size.x.saturating_sub(self.position_and_size.x);
+        let row_difference = content_position_and_size.y.saturating_sub(self.position_and_size.y);
+        (column_difference, row_difference)
+    }
+    pub fn set_should_render(&mut self, should_render: bool) {
+        self.should_render = should_render;
     }
     fn render_title_right_side(&self, max_length: usize) -> Option<String> {
         if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
@@ -127,8 +156,6 @@ impl PaneBoundariesFrame {
             });
         let title_text = match (left_side, right_side) {
             (Some(left_side), Some(right_side)) => {
-                debug_log_to_file(format!("left_side: {:?}", left_side));
-                debug_log_to_file(format!("right_side: {:?}", right_side));
                 let mut middle = String::new();
                 for _ in (left_side.chars().count() + right_side.chars().count())..total_title_length {
                     middle.push_str(boundary_type::HORIZONTAL);
@@ -157,7 +184,10 @@ impl PaneBoundariesFrame {
             color_string(&title_text, self.color),
         )); // goto row/col + boundary character
     }
-    pub fn render(&self) -> String {
+    pub fn render(&mut self) -> Option<String> {
+        if !self.should_render {
+            return None;
+        }
         let mut vte_output = String::new();
         if self.draw_title_only {
             self.render_title(&mut vte_output);
@@ -210,6 +240,7 @@ impl PaneBoundariesFrame {
                 }
             }
         }
-        vte_output
+        self.should_render = false;
+        Some(vte_output)
     }
 }

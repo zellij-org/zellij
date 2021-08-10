@@ -117,8 +117,6 @@ pub(crate) struct Tab {
     pub input_mode: InputMode,
     pub colors: Palette,
     draw_pane_frames: bool,
-    fullscreen_columns_offset: usize,
-    fullscreen_rows_offset: usize,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -149,6 +147,7 @@ pub trait Pane {
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
+    fn set_should_render_boundaries(&mut self, should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
@@ -308,10 +307,10 @@ pub trait Pane {
         self.columns()
     }
     fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
-    fn set_should_render_only_title(&mut self, should_render_only_title: bool) {}
-    fn offset_content_columns(&mut self, by: usize) {}
-    fn offset_content_rows(&mut self, by: usize) {}
-    fn show_boundaries_frame(&mut self) {}
+    // fn set_should_render_only_title(&mut self, should_render_only_title: bool) {}
+    fn offset_content_columns(&mut self, _by: usize) {}
+    fn offset_content_rows(&mut self, _by: usize) {}
+    fn show_boundaries_frame(&mut self, _render_only_title: bool) {}
     fn remove_boundaries_frame(&mut self) {}
 }
 
@@ -335,7 +334,10 @@ impl Tab {
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
             let pane_title_only = true;
-            let new_terminal = TerminalPane::new(pid, *viewport, colors, draw_pane_frames, 1, pane_title_only);
+            let mut new_terminal = TerminalPane::new(pid, *viewport, colors, 1);
+            if draw_pane_frames {
+                new_terminal.show_boundaries_frame(pane_title_only);
+            }
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.columns() as u16,
@@ -364,8 +366,6 @@ impl Tab {
             active_terminal: pane_id,
             viewport: *viewport,
             display_area: *viewport,
-            fullscreen_columns_offset: 0,
-            fullscreen_rows_offset: 0,
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
@@ -439,14 +439,15 @@ impl Tab {
                 let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
                 let pane_title_only = !layout.borderless && total_panes_with_border == 1;
                 let title = String::from(layout.plugin.as_ref().unwrap().clone().into_os_string().to_string_lossy()); // TODO: better
-                let new_plugin = PluginPane::new(
+                let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                     title,
-                    draw_pane_frames,
-                    pane_title_only,
                 );
+                if draw_pane_frames && !layout.borderless {
+                    new_plugin.show_boundaries_frame(pane_title_only);
+                }
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -465,19 +466,17 @@ impl Tab {
                     *pid,
                     *position_and_size,
                     self.colors,
-                    draw_pane_frames,
                     next_selectable_pane_position,
-                    pane_title_only,
                 );
+                if draw_pane_frames {
+                    new_terminal.show_boundaries_frame(pane_title_only);
+                }
                 if !draw_pane_frames && position_and_size.x + position_and_size.cols < self.viewport.cols {
                     new_terminal.offset_content_columns(1);
                 }
                 if !draw_pane_frames && position_and_size.y + position_and_size.rows < self.viewport.rows {
                     new_terminal.offset_content_rows(1);
                 }
-//                 if layout.borderless {
-//                     self.offset_viewport(&position_and_size);
-//                 }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -507,7 +506,10 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let mut new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, next_selectable_pane_position);
+                if self.draw_pane_frames {
+                    new_terminal.show_boundaries_frame(pane_title_only);
+                }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.columns() as u16,
@@ -564,7 +566,10 @@ impl Tab {
                         split_horizontally_without_gap(&terminal_ws)
                     };
                     let pane_title_only = next_selectable_pane_position == 1;
-                    let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                    let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, next_selectable_pane_position);
+                    if self.draw_pane_frames {
+                        new_terminal.show_boundaries_frame(pane_title_only);
+                    }
 
                     if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.viewport.cols {
                         new_terminal.offset_content_columns(1);
@@ -582,9 +587,9 @@ impl Tab {
                         new_terminal.get_content_columns() as u16,
                         new_terminal.get_content_rows() as u16,
                     );
-                    if terminal_to_split.selectable() {
-                        // TODO better: connect this with boundaries_frame somehow...
-                        terminal_to_split.set_should_render_only_title(false);
+                    if self.draw_pane_frames {
+                        let only_title = false;
+                        terminal_to_split.show_boundaries_frame(only_title);
                     }
                     terminal_to_split.change_pos_and_size(&top_winsize);
 
@@ -619,7 +624,10 @@ impl Tab {
                         split_vertically_without_gap(&terminal_ws)
                     };
                     let pane_title_only = next_selectable_pane_position == 1;
-                    let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                    let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, next_selectable_pane_position);
+                    if self.draw_pane_frames {
+                        new_terminal.show_boundaries_frame(pane_title_only);
+                    }
 
                     if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.viewport.cols {
                         new_terminal.offset_content_columns(1);
@@ -637,9 +645,9 @@ impl Tab {
                         new_terminal.get_content_columns() as u16,
                         new_terminal.get_content_rows() as u16,
                     );
-                    if terminal_to_split.selectable() {
-                        // TODO better: connect this with boundaries_frame somehow...
-                        terminal_to_split.set_should_render_only_title(false);
+                    if self.draw_pane_frames {
+                        let only_title = false;
+                        terminal_to_split.show_boundaries_frame(only_title);
                     }
                     terminal_to_split.change_pos_and_size(&left_winsize);
 
@@ -679,7 +687,10 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let mut new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, next_selectable_pane_position);
+                if self.draw_pane_frames {
+                    new_terminal.show_boundaries_frame(pane_title_only);
+                }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -711,9 +722,9 @@ impl Tab {
                 split_horizontally_with_gap(&terminal_ws)
             };
 
-            if active_pane.selectable() {
-                // TODO better: connect this with boundaries_frame somehow...
-                active_pane.set_should_render_only_title(false);
+            if self.draw_pane_frames {
+                let only_title = false;
+                active_pane.show_boundaries_frame(only_title);
             }
             active_pane.change_pos_and_size(&top_winsize);
 
@@ -733,7 +744,10 @@ impl Tab {
 
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let pane_title_only = next_selectable_pane_position == 1;
-            let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+            let mut new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors, next_selectable_pane_position);
+            if self.draw_pane_frames {
+                new_terminal.show_boundaries_frame(pane_title_only);
+            }
 
             if !self.draw_pane_frames && bottom_winsize.x + bottom_winsize.cols < self.viewport.cols {
                 new_terminal.offset_content_columns(1);
@@ -774,7 +788,10 @@ impl Tab {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let pane_title_only = next_selectable_pane_position == 1;
-                let new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+                let mut new_terminal = TerminalPane::new(term_pid, self.viewport, self.colors, next_selectable_pane_position);
+                if self.draw_pane_frames {
+                    new_terminal.show_boundaries_frame(pane_title_only);
+                }
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.get_content_columns() as u16,
@@ -806,11 +823,10 @@ impl Tab {
             } else {
                 split_vertically_with_gap(&terminal_ws)
             };
-            if active_pane.selectable() {
-                // TODO better: connect this with boundaries_frame somehow...
-                active_pane.set_should_render_only_title(false);
+            if self.draw_pane_frames {
+                let only_title = false;
+                active_pane.show_boundaries_frame(only_title);
             }
-
             active_pane.change_pos_and_size(&left_winsize);
 
             if !self.draw_pane_frames && left_winsize.x + left_winsize.cols < self.viewport.cols {
@@ -829,7 +845,10 @@ impl Tab {
 
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let pane_title_only = next_selectable_pane_position == 1;
-            let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, self.draw_pane_frames, next_selectable_pane_position, pane_title_only);
+            let mut new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors, next_selectable_pane_position);
+            if self.draw_pane_frames {
+                new_terminal.show_boundaries_frame(pane_title_only);
+            }
 
             if !self.draw_pane_frames && right_winsize.x + right_winsize.cols < self.viewport.cols {
                 new_terminal.offset_content_columns(1);
@@ -942,16 +961,30 @@ impl Tab {
         if let Some(active_pane_id) = self.get_active_pane_id() {
             if self.fullscreen_is_active {
                 for terminal_id in self.panes_to_hide.iter() {
-                    self.panes
-                        .get_mut(terminal_id)
-                        .unwrap()
-                        .set_should_render(true);
+                    let pane = self.panes.get_mut(terminal_id).unwrap();
+                    pane.set_should_render(true);
+                    pane.set_should_render_boundaries(true);
+//                     self.panes
+//                         .get_mut(terminal_id)
+//                         .unwrap()
+//                         .set_should_render(true);
                 }
                 self.panes_to_hide.clear();
                 let selectable_pane_count = self.get_selectable_pane_count();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                if active_terminal.selectable() && selectable_pane_count > 1 {
-                    active_terminal.set_should_render_only_title(false);
+                if selectable_pane_count > 1 && self.draw_pane_frames {
+                    // active_terminal.set_should_render_only_title(false);
+                    let only_title = false;
+                    active_terminal.show_boundaries_frame(only_title);
+                }
+                if !self.draw_pane_frames {
+                    if active_terminal.x() + active_terminal.columns() == self.viewport.x + self.viewport.cols {
+                        active_terminal.offset_content_columns(1);
+                    }
+                    if active_terminal.y() + active_terminal.rows() == self.viewport.y + self.viewport.rows {
+                        active_terminal.offset_content_rows(1);
+                    }
+
                 }
                 active_terminal.reset_size_and_position_override();
             } else {
@@ -978,10 +1011,18 @@ impl Tab {
                     return;
                 } else {
                     let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                    if active_terminal.selectable() {
+                    if self.draw_pane_frames {
                         // full screen panes don't need their full frame
-                        active_terminal.set_should_render_only_title(true);
+                        let only_title = true;
+                        active_terminal.show_boundaries_frame(only_title);
+                    } else {
+                        active_terminal.offset_content_rows(0);
+                        active_terminal.offset_content_columns(0);
                     }
+                    // TODO: CONTINUE HERE
+                    // * if !self.draw_pane_frames, reset the offset
+                    // * then above, when resetting the override, offset accordingly (maybe want to
+                    // put that in an outside function)
                     active_terminal.override_size_and_position(
                         self.viewport.x,
                         self.viewport.y,
@@ -1030,8 +1071,8 @@ impl Tab {
                 let should_render_only_title = (selectable_pane_count == 1 && self.active_terminal == Some(*pane_id)) || (self.fullscreen_is_active && self.active_terminal == Some(*pane_id));
                 pane.offset_content_rows(0);
                 pane.offset_content_columns(0);
-                pane.show_boundaries_frame();
-                pane.set_should_render_only_title(should_render_only_title);
+                pane.show_boundaries_frame(should_render_only_title);
+                // pane.set_should_render_only_title(should_render_only_title);
                 if let PaneId::Terminal(pid) = pane_id {
                     self.os_api.set_terminal_size_using_fd(
                         *pid,
@@ -1040,7 +1081,8 @@ impl Tab {
                     );
                 }
             } else {
-                let position_and_size = pane.position_and_size();
+                let position_and_size = pane.position_and_size_override().unwrap_or(pane.position_and_size());
+                pane.remove_boundaries_frame();
                 if position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols {
                     pane.offset_content_columns(0);
                 } else {
@@ -1051,7 +1093,6 @@ impl Tab {
                 } else {
                     pane.offset_content_rows(1);
                 }
-                pane.remove_boundaries_frame();
                 if let PaneId::Terminal(pid) = pane_id {
                     self.os_api.set_terminal_size_using_fd(
                         *pid,
@@ -2741,8 +2782,10 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                         if let Some(next_active_pane) = next_active_pane {
-                            if self.is_the_only_selectable_pane(&next_active_pane) {
-                                self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                            if self.is_the_only_selectable_pane(&next_active_pane) && self.draw_pane_frames {
+                                // self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                                let should_render_only_title = true;
+                                self.panes.get_mut(&next_active_pane).unwrap().show_boundaries_frame(should_render_only_title);
                             }
                         }
                     }
@@ -2765,8 +2808,10 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                         if let Some(next_active_pane) = next_active_pane {
-                            if self.is_the_only_selectable_pane(&next_active_pane) {
-                                self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                            if self.is_the_only_selectable_pane(&next_active_pane) && self.draw_pane_frames {
+                                // self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                                let should_render_only_title = true;
+                                self.panes.get_mut(&next_active_pane).unwrap().show_boundaries_frame(should_render_only_title);
                             }
                         }
                     }
@@ -2794,8 +2839,10 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                         if let Some(next_active_pane) = next_active_pane {
-                            if self.is_the_only_selectable_pane(&next_active_pane) {
-                                self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                            if self.is_the_only_selectable_pane(&next_active_pane) && self.draw_pane_frames {
+                                // self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                                let should_render_only_title = true;
+                                self.panes.get_mut(&next_active_pane).unwrap().show_boundaries_frame(should_render_only_title);
                             }
                         }
                     }
@@ -2821,8 +2868,10 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                         if let Some(next_active_pane) = next_active_pane {
-                            if self.is_the_only_selectable_pane(&next_active_pane) {
-                                self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                            if self.is_the_only_selectable_pane(&next_active_pane) && self.draw_pane_frames {
+                                // self.panes.get_mut(&next_active_pane).unwrap().set_should_render_only_title(true);
+                                let should_render_only_title = true;
+                                self.panes.get_mut(&next_active_pane).unwrap().show_boundaries_frame(should_render_only_title);
                             }
                         }
                     }
