@@ -106,13 +106,17 @@ pub fn start_client(
     std::env::set_var(&"ZELLIJ", "0");
 
     let config_options = Options::from_cli(&config.options, opts.command.clone());
-    let palette = config.themes.clone().map_or_else(
-        || os_input.load_palette(),
-        |t| {
-            t.theme_config(&config_options)
-                .unwrap_or_else(|| os_input.load_palette())
-        },
-    );
+    let palette = if config_options.monochrome {
+        None
+    } else {
+        Some(config.themes.clone().map_or_else(
+            || os_input.load_palette(),
+            |t| {
+                t.theme_config(&config_options)
+                    .unwrap_or_else(|| os_input.load_palette())
+            },
+        ))
+    };
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {

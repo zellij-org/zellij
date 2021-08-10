@@ -216,7 +216,7 @@ impl RemoteRunner {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, win_size, Some(Palette::default()), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel, session_name.as_ref());
         RemoteRunner {
@@ -242,7 +242,7 @@ impl RemoteRunner {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, win_size, Some(Palette::default()), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
         RemoteRunner {
@@ -270,7 +270,7 @@ impl RemoteRunner {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, win_size, Some(Palette::default()), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_layout(
             &mut channel,

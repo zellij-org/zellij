@@ -16,7 +16,7 @@ use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 /// (as pairs of [`String`]s).
 pub fn get_mode_info(
     mode: InputMode,
-    palette: Palette,
+    palette: Option<Palette>,
     capabilities: PluginCapabilities,
 ) -> ModeInfo {
     let keybinds = match mode {

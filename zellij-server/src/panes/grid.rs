@@ -288,7 +288,7 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
-    colors: Palette,
+    colors: Option<Palette>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     pub changed_colors: [Option<AnsiCode>; 256],
@@ -319,7 +319,7 @@ impl Debug for Grid {
 }
 
 impl Grid {
-    pub fn new(rows: usize, columns: usize, colors: Palette) -> Self {
+    pub fn new(rows: usize, columns: usize, colors: Option<Palette>) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(SCROLL_BACK),
             viewport: vec![Row::new(columns).canonical()],
@@ -1404,8 +1404,11 @@ impl Perform for Grid {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-                                let color_response_message = match self.colors.bg {
-                                    PaletteColor::Rgb((r, g, b)) => {
+                                let color_response_message = match self.colors {
+                                    Some(Palette {
+                                        bg: PaletteColor::Rgb((r, g, b)),
+                                        ..
+                                    }) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator

@@ -41,7 +41,7 @@ pub struct TerminalPane {
     position_and_size: PositionAndSize,
     position_and_size_override: Option<PositionAndSize>,
     pub active_at: Instant,
-    pub colors: Palette,
+    pub colors: Option<Palette>,
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
     content_position_and_size: PositionAndSize,
@@ -224,21 +224,33 @@ impl Pane for TerminalPane {
                     // adjust the background of currently selected characters
                     // doing it here is much easier than in grid
                     if self.grid.selection.contains(character_chunk.y, chunk_width) {
-                        let color = match self.colors.bg {
-                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                        let color = match self.colors {
+                            Some(Palette {
+                                bg: PaletteColor::Rgb(rgb),
+                                ..
+                            }) => Some(AnsiCode::RgbCode(rgb)),
+                            Some(Palette {
+                                bg: PaletteColor::EightBit(col),
+                                ..
+                            }) => Some(AnsiCode::ColorIndex(col)),
+                            _ => None,
                         };
 
-                        t_character.styles = t_character.styles.background(Some(color));
+                        t_character.styles = t_character.styles.background(color);
                     }
                     chunk_width += t_character.width;
                     if chunk_width > max_width {
                         break;
                     }
 
-                    if let Some(new_styles) =
+                    if let Some(mut new_styles) =
                         character_styles.update_and_return_diff(&t_character.styles)
                     {
+                        if self.colors.is_none() {
+                            // Currently only background and foreground styles should be stripped.
+                            new_styles.background = None;
+                            new_styles.foreground = None;
+                        }
                         vte_output.push_str(&new_styles.to_string());
                     }
                     vte_output.push(t_character.character);
@@ -436,7 +448,7 @@ impl TerminalPane {
     pub fn new(
         pid: RawFd,
         position_and_size: PositionAndSize,
-        palette: Palette,
+        palette: Option<Palette>,
         pane_position: usize,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_position);

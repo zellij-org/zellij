@@ -11,24 +11,38 @@ fn full_length_shortcut(
     is_first_shortcut: bool,
     letter: &str,
     description: &str,
-    palette: Palette,
+    palette: Option<Palette>,
 ) -> LinePart {
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let white_color_style = match palette {
+        Some(Palette {
+            white: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            white: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let green_color_style = match palette {
+        Some(Palette {
+            green: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            green: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(white_color).paint(separator);
+    let separator = white_color_style.paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
+    let shortcut_left_separator = white_color_style.paint("<");
+    let shortcut = green_color_style.bold().paint(letter);
+    let shortcut_right_separator = white_color_style.paint("> ");
     let description_len = description.chars().count();
-    let description = Style::new().fg(white_color).bold().paint(description);
+    let description = white_color_style.bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
         part: format!(
@@ -49,28 +63,39 @@ fn first_word_shortcut(
     is_first_shortcut: bool,
     letter: &str,
     description: &str,
-    palette: Palette,
+    palette: Option<Palette>,
 ) -> LinePart {
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let white_color_style = match palette {
+        Some(Palette {
+            white: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            white: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let green_color_style = match palette {
+        Some(Palette {
+            green: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            green: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(white_color).paint(separator);
+    let separator = white_color_style.paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
+    let shortcut_left_separator = white_color_style.paint("<");
+    let shortcut = green_color_style.bold().paint(letter);
+    let shortcut_right_separator = white_color_style.paint("> ");
     let description_first_word = description.split(' ').next().unwrap_or("");
     let description_first_word_length = description_first_word.chars().count();
-    let description_first_word = Style::new()
-        .fg(white_color)
-        .bold()
-        .paint(description_first_word);
+    let description_first_word = white_color_style.bold().paint(description_first_word);
     let len = shortcut_len + description_first_word_length + separator.chars().count();
     LinePart {
         part: format!(
@@ -86,7 +111,7 @@ fn first_word_shortcut(
         len,
     }
 }
-fn quicknav_full(palette: Palette) -> LinePart {
+fn quicknav_full(palette: Option<Palette>) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -109,37 +134,48 @@ fn quicknav_full(palette: Palette) -> LinePart {
         + text_fifth_part.chars().count()
         + hjkl_navigation.chars().count()
         + text_sixths_part.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let green_color_style = match palette {
+        Some(Palette {
+            green: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            green: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let orange_color_style = match palette {
+        Some(Palette {
+            orange: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            orange: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
     LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
+            orange_color_style.bold().paint(alt),
             text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
+            green_color_style.bold().paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(orange_color).bold().paint(second_alt),
+            orange_color_style.bold().paint(second_alt),
             text_fourth_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
+            green_color_style.bold().paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
+            green_color_style.bold().paint(hjkl_navigation),
             text_sixths_part,
         ),
         len,
     }
 }
 
-fn quicknav_medium(palette: Palette) -> LinePart {
+fn quicknav_medium(palette: Option<Palette>) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -162,37 +198,48 @@ fn quicknav_medium(palette: Palette) -> LinePart {
         + text_fifth_part.chars().count()
         + hjkl_navigation.chars().count()
         + text_sixths_part.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let green_color_style = match palette {
+        Some(Palette {
+            green: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            green: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let orange_color_style = match palette {
+        Some(Palette {
+            orange: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            orange: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
     LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
+            orange_color_style.bold().paint(alt),
             text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
+            green_color_style.bold().paint(new_pane_shortcut),
             text_third_part,
-            Style::new().fg(orange_color).bold().paint(second_alt),
+            orange_color_style.bold().paint(second_alt),
             text_fourth_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
+            green_color_style.bold().paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
+            green_color_style.bold().paint(hjkl_navigation),
             text_sixths_part,
         ),
         len,
     }
 }
 
-fn quicknav_short(palette: Palette) -> LinePart {
+fn quicknav_short(palette: Option<Palette>) -> LinePart {
     let text_first_part = " QuickNav: ";
     let alt = "Alt";
     let text_second_part = " + ";
@@ -209,66 +256,98 @@ fn quicknav_short(palette: Palette) -> LinePart {
         + brackets_navigation.chars().count()
         + text_fifth_part.chars().count()
         + hjkl_navigation.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let green_color_style = match palette {
+        Some(Palette {
+            green: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            green: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let orange_color_style = match palette {
+        Some(Palette {
+            orange: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            orange: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
     LinePart {
         part: format!(
             "{}{}{}{}{}{}{}{}",
             text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
+            orange_color_style.bold().paint(alt),
             text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
+            green_color_style.bold().paint(new_pane_shortcut),
             text_third_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
+            green_color_style.bold().paint(brackets_navigation),
             text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
+            green_color_style.bold().paint(hjkl_navigation),
         ),
         len,
     }
 }
 
-fn locked_interface_indication(palette: Palette) -> LinePart {
+fn locked_interface_indication(palette: Option<Palette>) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let locked_text_len = locked_text.chars().count();
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let white_color_style = match palette {
+        Some(Palette {
+            white: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            white: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let locked_styled_text = Style::new().fg(white_color).bold().paint(locked_text);
+    let locked_styled_text = white_color_style.bold().paint(locked_text);
     LinePart {
         part: format!("{}", locked_styled_text),
         len: locked_text_len,
     }
 }
 
-fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
+fn select_pane_shortcut(is_first_shortcut: bool, palette: Option<Palette>) -> LinePart {
     let shortcut = "ENTER";
     let description = "Select pane";
     let separator = if is_first_shortcut { " " } else { " / " };
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let white_color_style = match palette {
+        Some(Palette {
+            white: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            white: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+    let orange_color_style = match palette {
+        Some(Palette {
+            orange: PaletteColor::Rgb((r, g, b)),
+            ..
+        }) => Style::new().fg(RGB(r, g, b)),
+        Some(Palette {
+            orange: PaletteColor::EightBit(color),
+            ..
+        }) => Style::new().fg(Fixed(color)),
+        _ => Style::new(),
     };
-    let separator = Style::new().fg(white_color).paint(separator);
+    let separator = white_color_style.paint(separator);
     let shortcut_len = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
-    let shortcut = Style::new().fg(orange_color).bold().paint(shortcut);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
+    let shortcut_left_separator = white_color_style.paint("<");
+    let shortcut = orange_color_style.bold().paint(shortcut);
+    let shortcut_right_separator = white_color_style.paint("> ");
     let description_len = description.chars().count();
-    let description = Style::new().fg(white_color).bold().paint(description);
+    let description = white_color_style.bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
         part: format!(

@@ -1,4 +1,4 @@
-use ansi_term::ANSIStrings;
+use ansi_term::{ANSIStrings, Style};
 
 use crate::{LinePart, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
@@ -48,7 +48,11 @@ fn populate_tabs_in_tab_line(
     }
 }
 
-fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: &str) -> LinePart {
+fn left_more_message(
+    tab_count_to_the_left: usize,
+    palette: Option<Palette>,
+    separator: &str,
+) -> LinePart {
     if tab_count_to_the_left == 0 {
         return LinePart {
             part: String::new(),
@@ -62,11 +66,24 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
     };
     // 238
     let more_text_len = more_text.chars().count() + 2; // 2 for the arrows
-    let left_separator = style!(palette.cyan, palette.orange).paint(separator);
-    let more_styled_text = style!(palette.black, palette.orange)
-        .bold()
-        .paint(more_text);
-    let right_separator = style!(palette.orange, palette.cyan).paint(separator);
+    let left_separator_style = if let Some(palette) = palette {
+        style!(palette.cyan, palette.orange)
+    } else {
+        Style::new()
+    };
+    let left_separator = left_separator_style.paint(separator);
+    let more_style = if let Some(palette) = palette {
+        style!(palette.black, palette.orange)
+    } else {
+        Style::new()
+    };
+    let more_styled_text = more_style.bold().paint(more_text);
+    let right_separator_style = if let Some(palette) = palette {
+        style!(palette.orange, palette.cyan)
+    } else {
+        Style::new()
+    };
+    let right_separator = right_separator_style.paint(separator);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, more_styled_text, right_separator,])
@@ -79,7 +96,7 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
 
 fn right_more_message(
     tab_count_to_the_right: usize,
-    palette: Palette,
+    palette: Option<Palette>,
     separator: &str,
 ) -> LinePart {
     if tab_count_to_the_right == 0 {
@@ -94,11 +111,24 @@ fn right_more_message(
         " +many → ".to_string()
     };
     let more_text_len = more_text.chars().count() + 1; // 2 for the arrow
-    let left_separator = style!(palette.cyan, palette.orange).paint(separator);
-    let more_styled_text = style!(palette.black, palette.orange)
-        .bold()
-        .paint(more_text);
-    let right_separator = style!(palette.orange, palette.cyan).paint(separator);
+    let left_separator_style = if let Some(palette) = palette {
+        style!(palette.cyan, palette.orange)
+    } else {
+        Style::new()
+    };
+    let left_separator = left_separator_style.paint(separator);
+    let more_style = if let Some(palette) = palette {
+        style!(palette.black, palette.orange)
+    } else {
+        Style::new()
+    };
+    let more_styled_text = more_style.bold().paint(more_text);
+    let right_separator_style = if let Some(palette) = palette {
+        style!(palette.orange, palette.cyan)
+    } else {
+        Style::new()
+    };
+    let right_separator = right_separator_style.paint(separator);
     let more_styled_text = format!(
         "{}",
         ANSIStrings(&[left_separator, more_styled_text, right_separator,])
@@ -114,7 +144,7 @@ fn add_previous_tabs_msg(
     tabs_to_render: &mut Vec<LinePart>,
     title_bar: &mut Vec<LinePart>,
     cols: usize,
-    palette: Palette,
+    palette: Option<Palette>,
     separator: &str,
 ) {
     while get_current_title_len(tabs_to_render)
@@ -131,7 +161,7 @@ fn add_next_tabs_msg(
     tabs_after_active: &mut Vec<LinePart>,
     title_bar: &mut Vec<LinePart>,
     cols: usize,
-    palette: Palette,
+    palette: Option<Palette>,
     separator: &str,
 ) {
     while get_current_title_len(title_bar)
@@ -144,16 +174,19 @@ fn add_next_tabs_msg(
     title_bar.push(right_more_message);
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Palette) -> LinePart {
+fn tab_line_prefix(session_name: Option<&str>, palette: Option<Palette>) -> LinePart {
     let mut prefix_text = " Zellij ".to_string();
     if let Some(name) = session_name {
         prefix_text.push_str(&format!("({}) ", name));
     }
 
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = style!(palette.white, palette.cyan)
-        .bold()
-        .paint(prefix_text);
+    let prefix_style = if let Some(palette) = palette {
+        style!(palette.white, palette.cyan)
+    } else {
+        Style::new()
+    };
+    let prefix_styled_text = prefix_style.bold().paint(prefix_text);
     LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
@@ -173,7 +206,7 @@ pub fn tab_line(
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
-    palette: Palette,
+    palette: Option<Palette>,
     capabilities: PluginCapabilities,
 ) -> Vec<LinePart> {
     let mut tabs_to_render: Vec<LinePart> = vec![];

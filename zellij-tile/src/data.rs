@@ -146,7 +146,7 @@ pub struct ModeInfo {
     pub mode: InputMode,
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
-    pub palette: Palette,
+    pub palette: Option<Palette>,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
 }

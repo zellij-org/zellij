@@ -82,7 +82,7 @@ fn create_new_tab(position_and_size: PositionAndSize) -> Tab {
     let max_panes = None;
     let first_pane_id = Some(PaneId::Terminal(1));
     let mode_info = ModeInfo::default();
-    let colors = Palette::default();
+    let colors = Some(Palette::default());
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
     Tab::new(
         index,

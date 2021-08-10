@@ -38,7 +38,7 @@ pub enum ClientType {
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ClientAttributes {
     pub position_and_size: PositionAndSize,
-    pub palette: Palette,
+    pub palette: Option<Palette>,
 }
 
 // Types of messages sent from the client to the server

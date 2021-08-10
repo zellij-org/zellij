@@ -153,7 +153,7 @@ pub(crate) struct Screen {
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     mode_info: ModeInfo,
-    colors: Palette,
+    colors: Option<Palette>,
     session_state: Arc<RwLock<SessionState>>,
     draw_pane_frames: bool,
 }

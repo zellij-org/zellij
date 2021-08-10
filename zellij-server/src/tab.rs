@@ -108,7 +108,7 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
-    pub colors: Palette,
+    pub colors: Option<Palette>,
     draw_pane_frames: bool,
 }
 
@@ -296,7 +296,7 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
-        colors: Palette,
+        colors: Option<Palette>,
         session_state: Arc<RwLock<SessionState>>,
         draw_pane_frames: bool,
     ) -> Self {
@@ -1035,18 +1035,14 @@ impl Tab {
                         pane.set_active_at(Instant::now());
                         match self.mode_info.mode {
                             InputMode::Normal | InputMode::Locked => {
-                                pane.set_boundary_color(Some(self.colors.green));
+                                pane.set_boundary_color(self.colors.map(|colors| colors.green));
                             }
                             _ => {
-                                pane.set_boundary_color(Some(self.colors.orange));
+                                pane.set_boundary_color(self.colors.map(|colors| colors.orange));
                             }
                         }
                         if !self.draw_pane_frames {
-                            boundaries.add_rect(
-                                pane.as_ref(),
-                                self.mode_info.mode,
-                                Some(self.colors),
-                            )
+                            boundaries.add_rect(pane.as_ref(), self.mode_info.mode, self.colors)
                         }
                     }
                     false => {
