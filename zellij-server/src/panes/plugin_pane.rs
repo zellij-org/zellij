@@ -209,22 +209,6 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         //unimplemented!()
     }
-    // FIXME: This need to be reevaluated and deleted if possible.
-    // `max` doesn't make sense when things are fixed...
-    fn max_height(&self) -> Option<usize> {
-        if self.position_and_size.rows.is_fixed() {
-            Some(self.position_and_size.rows.as_usize())
-        } else {
-            None
-        }
-    }
-    fn max_width(&self) -> Option<usize> {
-        if self.position_and_size.cols.is_fixed() {
-            Some(self.position_and_size.cols.as_usize())
-        } else {
-            None
-        }
-    }
     fn invisible_borders(&self) -> bool {
         self.invisible_borders
     }

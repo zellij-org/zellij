@@ -134,14 +134,14 @@ pub trait Pane {
     fn set_fixed_width(&mut self, fixed_width: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
-    fn reduce_height_down(&mut self, count: usize);
-    fn increase_height_down(&mut self, count: usize);
-    fn increase_height_up(&mut self, count: usize);
-    fn reduce_height_up(&mut self, count: usize);
-    fn increase_width_right(&mut self, count: usize);
-    fn reduce_width_right(&mut self, count: usize);
-    fn reduce_width_left(&mut self, count: usize);
-    fn increase_width_left(&mut self, count: usize);
+    fn reduce_height_down(&mut self, count: f64);
+    fn increase_height_down(&mut self, count: f64);
+    fn increase_height_up(&mut self, count: f64);
+    fn reduce_height_up(&mut self, count: f64);
+    fn increase_width_right(&mut self, count: f64);
+    fn reduce_width_right(&mut self, count: f64);
+    fn reduce_width_left(&mut self, count: f64);
+    fn increase_width_left(&mut self, count: f64);
     fn push_down(&mut self, count: usize);
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
@@ -208,16 +208,6 @@ pub trait Pane {
         std::cmp::min(self.x() + self.cols(), other.x() + other.cols())
             - std::cmp::max(self.x(), other.x())
     }
-    fn can_increase_height_by(&self, increase_by: usize) -> bool {
-        self.max_height()
-            .map(|max_height| self.rows() + increase_by <= max_height)
-            .unwrap_or(true)
-    }
-    fn can_increase_width_by(&self, increase_by: usize) -> bool {
-        self.max_width()
-            .map(|max_width| self.cols() + increase_by <= max_width)
-            .unwrap_or(true)
-    }
     fn can_reduce_height_by(&self, reduce_by: usize) -> bool {
         self.rows() > reduce_by && self.rows() - reduce_by >= self.min_height()
     }
@@ -229,12 +219,6 @@ pub trait Pane {
     }
     fn min_height(&self) -> usize {
         MIN_TERMINAL_HEIGHT
-    }
-    fn max_width(&self) -> Option<usize> {
-        None
-    }
-    fn max_height(&self) -> Option<usize> {
-        None
     }
     fn invisible_borders(&self) -> bool {
         false
@@ -1202,7 +1186,7 @@ impl Tab {
         let terminal_ids: Vec<PaneId> = terminals.iter().map(|t| t.pid()).collect();
         (right_resize_border, terminal_ids)
     }
-    fn reduce_pane_height_down(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_height_down(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_down(count);
         if let PaneId::Terminal(pid) = id {
@@ -1213,7 +1197,7 @@ impl Tab {
             );
         }
     }
-    fn reduce_pane_height_up(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_height_up(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_height_up(count);
         if let PaneId::Terminal(pid) = id {
@@ -1224,7 +1208,7 @@ impl Tab {
             );
         }
     }
-    fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_height_down(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_down(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1235,7 +1219,7 @@ impl Tab {
             );
         }
     }
-    fn increase_pane_height_up(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_height_up(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_height_up(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1246,7 +1230,7 @@ impl Tab {
             );
         }
     }
-    fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_width_right(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_right(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1257,7 +1241,7 @@ impl Tab {
             );
         }
     }
-    fn increase_pane_width_left(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_width_left(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.increase_width_left(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1268,7 +1252,7 @@ impl Tab {
             );
         }
     }
-    fn reduce_pane_width_right(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_width_right(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_right(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1279,7 +1263,7 @@ impl Tab {
             );
         }
     }
-    fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_width_left(&mut self, id: &PaneId, count: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
         terminal.reduce_width_left(count);
         if let PaneId::Terminal(pid) = terminal.pid() {
@@ -1314,7 +1298,7 @@ impl Tab {
             .expect("could not find terminal to check between borders");
         terminal.y() >= top_border_y && terminal.y() + terminal.rows() <= bottom_border_y
     }
-    fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, count: f64) {
         let mut terminals_below = self
             .pane_ids_directly_below(id)
             .expect("can't reduce pane size up if there are no terminals below");
@@ -1340,7 +1324,7 @@ impl Tab {
             self.reduce_pane_height_up(terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
         let mut terminals_above = self
             .pane_ids_directly_above(id)
             .expect("can't reduce pane size down if there are no terminals above");
@@ -1366,7 +1350,7 @@ impl Tab {
             self.reduce_pane_height_down(terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't reduce pane size right if there are no terminals to the left");
@@ -1389,7 +1373,7 @@ impl Tab {
             self.reduce_pane_width_right(terminal_id, count);
         }
     }
-    fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, count: usize) {
+    fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't reduce pane size left if there are no terminals to the right");
@@ -1412,7 +1396,7 @@ impl Tab {
             self.reduce_pane_width_left(terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, count: f64) {
         let mut terminals_above = self
             .pane_ids_directly_above(id)
             .expect("can't increase pane size up if there are no terminals above");
@@ -1438,7 +1422,7 @@ impl Tab {
             self.increase_pane_height_up(terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
         let mut terminals_below = self
             .pane_ids_directly_below(id)
             .expect("can't increase pane size down if there are no terminals below");
@@ -1464,7 +1448,7 @@ impl Tab {
             self.increase_pane_height_down(terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
@@ -1487,7 +1471,7 @@ impl Tab {
             self.increase_pane_width_right(terminal_id, count);
         }
     }
-    fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, count: usize) {
+    fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
@@ -1516,13 +1500,6 @@ impl Tab {
         increase_by: usize,
     ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let can_increase_pane_size = pane
-            .max_width()
-            .map(|max_width| pane.cols() + increase_by <= max_width)
-            .unwrap_or(true); // no max width, increase to your heart's content
-        if !can_increase_pane_size {
-            return false;
-        }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.cols =
             Dimension::fixed(new_pos_and_size_for_pane.cols.as_usize() + increase_by);
@@ -1542,13 +1519,6 @@ impl Tab {
         increase_by: usize,
     ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let can_increase_pane_size = pane
-            .max_width()
-            .map(|max_width| pane.cols() + increase_by <= max_width)
-            .unwrap_or(true); // no max width, increase to your heart's content
-        if !can_increase_pane_size {
-            return false;
-        }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.x = new_pos_and_size_for_pane.x.saturating_sub(increase_by);
 
@@ -1567,13 +1537,6 @@ impl Tab {
         increase_by: usize,
     ) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let can_increase_pane_size = pane
-            .max_height()
-            .map(|max_height| pane.rows() + increase_by <= max_height)
-            .unwrap_or(true); // no max width, increase to your heart's content
-        if !can_increase_pane_size {
-            return false;
-        }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.rows =
             Dimension::fixed(new_pos_and_size_for_pane.rows.as_usize() + increase_by);
@@ -1589,13 +1552,6 @@ impl Tab {
     }
     fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let can_increase_pane_size = pane
-            .max_height()
-            .map(|max_height| pane.rows() + increase_by <= max_height)
-            .unwrap_or(true); // no max width, increase to your heart's content
-        if !can_increase_pane_size {
-            return false;
-        }
         let mut new_pos_and_size_for_pane = pane.position_and_size();
         new_pos_and_size_for_pane.y = new_pos_and_size_for_pane.y.saturating_sub(increase_by);
 
@@ -1616,16 +1572,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
-            return panes_to_the_left.iter().all(|id| {
-                let p = self.panes.get(id).unwrap();
-                p.max_width()
-                    .map(|max_width| p.cols() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
-            });
-        } else {
-            false
-        }
+        self.pane_ids_directly_left_of(pane_id).is_some()
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
@@ -1635,16 +1582,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
-            return panes_to_the_right.iter().all(|id| {
-                let p = self.panes.get(id).unwrap();
-                p.max_width()
-                    .map(|max_width| p.cols() + reduce_by <= max_width)
-                    .unwrap_or(true) // no max width, increase to your heart's content
-            });
-        } else {
-            false
-        }
+        self.pane_ids_directly_right_of(pane_id).is_some()
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
@@ -1654,16 +1592,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
-            return panes_above.iter().all(|id| {
-                let p = self.panes.get(id).unwrap();
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
-            });
-        } else {
-            false
-        }
+        self.pane_ids_directly_above(pane_id).is_some()
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
@@ -1673,16 +1602,7 @@ impl Tab {
         if !can_reduce_pane_size {
             return false;
         }
-        if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
-            return panes_below.iter().all(|id| {
-                let p = self.panes.get(id).unwrap();
-                p.max_height()
-                    .map(|max_height| p.rows() + reduce_by <= max_height)
-                    .unwrap_or(true) // no max height, increase to your heart's content
-            });
-        } else {
-            false
-        }
+        self.pane_ids_directly_below(pane_id).is_some()
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         if self.fullscreen_is_active {
@@ -2132,16 +2052,14 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         if let Some(pane_to_close) = self.panes.get(&id) {
-            let pane_to_close_width = pane_to_close.cols();
-            let pane_to_close_height = pane_to_close.rows();
-            if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
-                if panes.iter().all(|p| {
-                    let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_width_by(pane_to_close_width + 1)
-                }) {
+            let freed_space = pane_to_close.position_and_size();
+            // FIXME: This is pretty rank (two) line(s) of code...
+            if let (Constraint::Percent(freed_width), Constraint::Percent(freed_height)) =
+                (freed_space.cols.constraint, freed_space.rows.constraint)
+            {
+                if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_right(pane_id, pane_to_close_width + 1);
-                        // 1 for the border
+                        self.increase_pane_width_right(pane_id, freed_width);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
@@ -2149,15 +2067,9 @@ impl Tab {
                     }
                     return;
                 }
-            }
-            if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
-                if panes.iter().all(|p| {
-                    let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_width_by(pane_to_close_width + 1)
-                }) {
+                if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_left(pane_id, pane_to_close_width + 1);
-                        // 1 for the border
+                        self.increase_pane_width_left(pane_id, freed_width);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
@@ -2165,15 +2077,9 @@ impl Tab {
                     }
                     return;
                 }
-            }
-            if let Some(panes) = self.panes_above_between_aligning_borders(id) {
-                if panes.iter().all(|p| {
-                    let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_height_by(pane_to_close_height + 1)
-                }) {
+                if let Some(panes) = self.panes_above_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_down(pane_id, pane_to_close_height + 1);
-                        // 1 for the border
+                        self.increase_pane_height_down(pane_id, freed_height);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
@@ -2181,15 +2087,9 @@ impl Tab {
                     }
                     return;
                 }
-            }
-            if let Some(panes) = self.panes_below_between_aligning_borders(id) {
-                if panes.iter().all(|p| {
-                    let pane = self.panes.get(p).unwrap();
-                    pane.can_increase_height_by(pane_to_close_height + 1)
-                }) {
+                if let Some(panes) = self.panes_below_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_up(pane_id, pane_to_close_height + 1);
-                        // 1 for the border
+                        self.increase_pane_height_up(pane_id, freed_height);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
