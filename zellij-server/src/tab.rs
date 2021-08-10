@@ -130,8 +130,6 @@ pub trait Pane {
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
-    fn set_fixed_height(&mut self, fixed_height: usize);
-    fn set_fixed_width(&mut self, fixed_width: usize);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: f64);
@@ -633,8 +631,8 @@ impl Tab {
                     active_terminal.override_size_and_position(PaneGeom {
                         x: 0,
                         y: 0,
-                        rows: Dimension::fixed(self.full_screen_ws.rows),
-                        cols: Dimension::fixed(self.full_screen_ws.cols),
+                        rows: Dimension::percent(100.0),
+                        cols: Dimension::percent(100.0),
                     });
                 }
             }
@@ -647,6 +645,7 @@ impl Tab {
                 );
             }
             self.set_force_render();
+            self.resize_whole_tab(self.full_screen_ws);
             self.render();
             self.toggle_fullscreen_is_active();
         }
@@ -1494,121 +1493,97 @@ impl Tab {
             self.increase_pane_width_left(terminal_id, count);
         }
     }
-    fn can_increase_pane_and_surroundings_right(
-        &self,
-        pane_id: &PaneId,
-        increase_by: usize,
-    ) -> bool {
-        let pane = self.panes.get(pane_id).unwrap();
-        let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.cols =
-            Dimension::fixed(new_pos_and_size_for_pane.cols.as_usize() + increase_by);
-
+    // FIXME: The if-let nesting and explicit `false`s are... suboptimal.
+    // FIXME: Quite a lot of duplication between these functions...
+    fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
-            return panes_to_the_right.iter().all(|id| {
+            panes_to_the_right.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.cols() > increase_by && p.cols() - increase_by >= p.min_width()
-            });
+                if let Some(cols) = p.position_and_size().cols.as_percent() {
+                    cols - increase_by >= RESIZE_PERCENT
+                } else {
+                    false
+                }
+            })
         } else {
             false
         }
     }
-    fn can_increase_pane_and_surroundings_left(
-        &self,
-        pane_id: &PaneId,
-        increase_by: usize,
-    ) -> bool {
-        let pane = self.panes.get(pane_id).unwrap();
-        let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.x = new_pos_and_size_for_pane.x.saturating_sub(increase_by);
-
+    fn can_increase_pane_and_surroundings_left(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
-            return panes_to_the_left.iter().all(|id| {
+            panes_to_the_left.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.cols() > increase_by && p.cols() - increase_by >= p.min_width()
-            });
+                if let Some(cols) = p.position_and_size().cols.as_percent() {
+                    cols - increase_by >= RESIZE_PERCENT
+                } else {
+                    false
+                }
+            })
         } else {
             false
         }
     }
-    fn can_increase_pane_and_surroundings_down(
-        &self,
-        pane_id: &PaneId,
-        increase_by: usize,
-    ) -> bool {
-        let pane = self.panes.get(pane_id).unwrap();
-        let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.rows =
-            Dimension::fixed(new_pos_and_size_for_pane.rows.as_usize() + increase_by);
-
+    fn can_increase_pane_and_surroundings_down(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
-            return panes_below.iter().all(|id| {
+            panes_below.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
-            });
+                if let Some(rows) = p.position_and_size().rows.as_percent() {
+                    rows - increase_by >= RESIZE_PERCENT
+                } else {
+                    false
+                }
+            })
         } else {
             false
         }
     }
-    fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: usize) -> bool {
-        let pane = self.panes.get(pane_id).unwrap();
-        let mut new_pos_and_size_for_pane = pane.position_and_size();
-        new_pos_and_size_for_pane.y = new_pos_and_size_for_pane.y.saturating_sub(increase_by);
-
+    fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
-            return panes_above.iter().all(|id| {
+            panes_above.iter().all(|id| {
                 let p = self.panes.get(id).unwrap();
-                p.rows() > increase_by && p.rows() - increase_by >= p.min_height()
-            });
+                if let Some(rows) = p.position_and_size().rows.as_percent() {
+                    rows - increase_by >= RESIZE_PERCENT
+                } else {
+                    false
+                }
+            })
         } else {
             false
         }
     }
-    fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
+    fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let pane_columns = pane.cols();
-        let can_reduce_pane_size =
-            pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
-        if !can_reduce_pane_size {
-            return false;
+        if let Some(cols) = pane.position_and_size().cols.as_percent() {
+            cols - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_left_of(pane_id).is_some()
+        } else {
+            false
         }
-        self.pane_ids_directly_left_of(pane_id).is_some()
     }
-    fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
+    fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let pane_columns = pane.cols();
-        let can_reduce_pane_size =
-            pane_columns > reduce_by && pane_columns - reduce_by >= pane.min_width();
-        if !can_reduce_pane_size {
-            return false;
+        if let Some(cols) = pane.position_and_size().cols.as_percent() {
+            cols - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_right_of(pane_id).is_some()
+        } else {
+            false
         }
-        self.pane_ids_directly_right_of(pane_id).is_some()
     }
-    fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
+    fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let pane_rows = pane.rows();
-        let can_reduce_pane_size =
-            pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
-        if !can_reduce_pane_size {
-            return false;
+        if let Some(rows) = pane.position_and_size().rows.as_percent() {
+            rows - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_above(pane_id).is_some()
+        } else {
+            false
         }
-        self.pane_ids_directly_above(pane_id).is_some()
     }
-    fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: usize) -> bool {
+    fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
-        let pane_rows = pane.rows();
-        let can_reduce_pane_size =
-            pane_rows > reduce_by && pane_rows - reduce_by >= pane.min_height();
-        if !can_reduce_pane_size {
-            return false;
+        if let Some(rows) = pane.position_and_size().rows.as_percent() {
+            rows - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_below(pane_id).is_some()
+        } else {
+            false
         }
-        self.pane_ids_directly_below(pane_id).is_some()
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
-        if self.fullscreen_is_active {
-            // this is not ideal, we can improve this
-            self.toggle_active_pane_fullscreen();
-        }
         log::info!("Here are the panes:");
         for (id, pane) in &self.panes {
             let PaneGeom { x, y, rows, cols } = pane.position_and_size();
@@ -1647,50 +1622,50 @@ impl Tab {
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 10;
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_left(&active_pane_id, count) {
-                self.increase_pane_and_surroundings_left(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_left(&active_pane_id, count) {
-                self.reduce_pane_and_surroundings_left(&active_pane_id, count);
+            if self.can_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT) {
+                self.increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
+            } else if self.can_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT) {
+                self.reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
             }
         }
+        self.resize_whole_tab(self.full_screen_ws);
         self.render();
     }
     pub fn resize_right(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 10;
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_right(&active_pane_id, count) {
-                self.increase_pane_and_surroundings_right(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, count) {
-                self.reduce_pane_and_surroundings_right(&active_pane_id, count);
+            if self.can_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT) {
+                self.increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
+            } else if self.can_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT) {
+                self.reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
             }
         }
+        self.resize_whole_tab(self.full_screen_ws);
         self.render();
     }
     pub fn resize_down(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 2;
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_down(&active_pane_id, count) {
-                self.increase_pane_and_surroundings_down(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, count) {
-                self.reduce_pane_and_surroundings_down(&active_pane_id, count);
+            if self.can_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT) {
+                self.increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
+            } else if self.can_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT) {
+                self.reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
             }
         }
+        self.resize_whole_tab(self.full_screen_ws);
         self.render();
     }
     pub fn resize_up(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        let count = 2;
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            if self.can_increase_pane_and_surroundings_up(&active_pane_id, count) {
-                self.increase_pane_and_surroundings_up(&active_pane_id, count);
-            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, count) {
-                self.reduce_pane_and_surroundings_up(&active_pane_id, count);
+            if self.can_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT) {
+                self.increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+            } else if self.can_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT) {
+                self.reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
             }
         }
+        self.resize_whole_tab(self.full_screen_ws);
         self.render();
     }
     pub fn move_focus(&mut self) {
@@ -2012,7 +1987,7 @@ impl Tab {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
                     .unwrap();
-                self.close_pane_without_rerender(pid);
+                self.close_pane(pid);
             }
         }
     }
@@ -2032,22 +2007,7 @@ impl Tab {
             pane.set_invisible_borders(invisible_borders);
         }
     }
-    pub fn set_pane_fixed_height(&mut self, id: PaneId, fixed_height: usize) {
-        if let Some(pane) = self.panes.get_mut(&id) {
-            pane.set_fixed_height(fixed_height);
-        }
-    }
-    pub fn set_pane_fixed_width(&mut self, id: PaneId, fixed_width: usize) {
-        if let Some(pane) = self.panes.get_mut(&id) {
-            pane.set_fixed_width(fixed_width);
-        }
-    }
     pub fn close_pane(&mut self, id: PaneId) {
-        if self.panes.get(&id).is_some() {
-            self.close_pane_without_rerender(id);
-        }
-    }
-    pub fn close_pane_without_rerender(&mut self, id: PaneId) {
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
         }
@@ -2101,6 +2061,7 @@ impl Tab {
             // if we reached here, this is either the last pane or there's some sort of
             // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
             self.panes.remove(&id);
+            self.resize_whole_tab(self.full_screen_ws);
         }
     }
     pub fn close_focused_pane(&mut self) {

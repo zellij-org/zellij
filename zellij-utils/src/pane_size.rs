@@ -44,6 +44,14 @@ impl Dimension {
         self.inner
     }
 
+    pub fn as_percent(&self) -> Option<f64> {
+        if let Constraint::Percent(p) = self.constraint {
+            Some(p)
+        } else {
+            None
+        }
+    }
+
     // FIXME: Not sold on the existence of this yet, either...
     pub fn set_inner(&mut self, inner: usize) {
         self.inner = inner;

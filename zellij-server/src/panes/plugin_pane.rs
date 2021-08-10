@@ -8,7 +8,7 @@ use crate::tab::Pane;
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::{
     channels::SenderWithContext,
-    pane_size::{Dimension, PaneGeom},
+    pane_size::{Constraint, Dimension, PaneGeom},
 };
 
 pub(crate) struct PluginPane {
@@ -110,13 +110,6 @@ impl Pane for PluginPane {
     fn set_invisible_borders(&mut self, invisible_borders: bool) {
         self.invisible_borders = invisible_borders;
     }
-    // FIXME: This needs to be removed or changed somehow!
-    fn set_fixed_height(&mut self, fixed_height: usize) {
-        //self.position_and_size.rows = Dimension::fixed(fixed_height);
-    }
-    fn set_fixed_width(&mut self, fixed_width: usize) {
-        //self.position_and_size.cols = Dimension::fixed(fixed_width);
-    }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
         if true {
@@ -144,49 +137,43 @@ impl Pane for PluginPane {
     fn pid(&self) -> PaneId {
         PaneId::Plugin(self.pid)
     }
-    fn reduce_height_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
-        self.should_render = true;
+    // FIXME: I might be able to make do without the up, down, left, and right stuff
+    // FIXME: Also rename the `count` to something like `percent`
+    fn reduce_height_down(&mut self, count: f64) {
+        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
+            self.position_and_size.rows = Dimension::percent(p - count);
+            self.should_render = true;
+        }
     }
-    fn increase_height_down(&mut self, count: usize) {
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
-        self.should_render = true;
+    fn increase_height_down(&mut self, count: f64) {
+        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
+            self.position_and_size.rows = Dimension::percent(p + count);
+            self.should_render = true;
+        }
     }
-    fn increase_height_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
-        self.should_render = true;
+    fn increase_height_up(&mut self, count: f64) {
+        self.increase_height_down(count);
     }
-    fn reduce_height_up(&mut self, count: usize) {
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
-        self.should_render = true;
+    fn reduce_height_up(&mut self, count: f64) {
+        self.reduce_height_down(count);
     }
-    fn reduce_width_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
-        self.should_render = true;
+    fn reduce_width_right(&mut self, count: f64) {
+        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
+            self.position_and_size.cols = Dimension::percent(p - count);
+            self.should_render = true;
+        }
     }
-    fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
-        self.should_render = true;
+    fn reduce_width_left(&mut self, count: f64) {
+        self.reduce_width_right(count);
     }
-    fn increase_width_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
-        self.should_render = true;
+    fn increase_width_left(&mut self, count: f64) {
+        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
+            self.position_and_size.cols = Dimension::percent(p + count);
+            self.should_render = true;
+        }
     }
-    fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
-        self.should_render = true;
+    fn increase_width_right(&mut self, count: f64) {
+        self.increase_width_left(count);
     }
     fn push_down(&mut self, count: usize) {
         self.position_and_size.y += count;

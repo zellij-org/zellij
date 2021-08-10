@@ -1036,7 +1036,7 @@ impl Grid {
         self.scroll_region = None;
     }
     pub fn set_scroll_region_to_viewport_size(&mut self) {
-        self.scroll_region = Some((0, self.height - 1));
+        self.scroll_region = Some((0, self.height.saturating_sub(1)));
     }
     pub fn delete_lines_in_scroll_region(
         &mut self,

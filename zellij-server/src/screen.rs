@@ -57,8 +57,6 @@ pub(crate) enum ScreenInstruction {
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
     SetSelectable(PaneId, bool, usize),
-    SetFixedHeight(PaneId, usize, usize),
-    SetFixedWidth(PaneId, usize, usize),
     SetInvisibleBorders(PaneId, bool, usize),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
@@ -114,8 +112,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
-            ScreenInstruction::SetFixedHeight(..) => ScreenContext::SetFixedHeight,
-            ScreenInstruction::SetFixedWidth(..) => ScreenContext::SetFixedWidth,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
@@ -615,30 +611,6 @@ pub(crate) fn screen_thread_main(
                         )
                     },
                     |tab| tab.set_pane_selectable(id, selectable),
-                );
-            }
-            ScreenInstruction::SetFixedHeight(id, fixed_height, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            "Tab index #{} not found, could not set fixed height for plugin #{:?}.",
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_fixed_height(id, fixed_height),
-                );
-            }
-            ScreenInstruction::SetFixedWidth(id, fixed_width, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            "Tab index #{} not found, could not set fixed width for plugin #{:?}.",
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_fixed_width(id, fixed_width),
                 );
             }
             ScreenInstruction::SetInvisibleBorders(id, invisible_borders, tab_index) => {

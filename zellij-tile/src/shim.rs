@@ -17,14 +17,6 @@ pub fn unsubscribe(event_types: &[EventType]) {
 
 // Plugin Settings
 
-pub fn set_fixed_height(fixed_height: i32) {
-    unsafe { host_set_fixed_height(fixed_height) };
-}
-
-pub fn set_fixed_width(fixed_width: i32) {
-    unsafe { host_set_fixed_width(fixed_width) };
-}
-
 pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(if selectable { 1 } else { 0 }) };
 }
@@ -68,8 +60,6 @@ pub fn object_to_stdout(object: &impl Serialize) {
 extern "C" {
     fn host_subscribe();
     fn host_unsubscribe();
-    fn host_set_fixed_height(fixed_height: i32);
-    fn host_set_fixed_width(fixed_width: i32);
     fn host_set_selectable(selectable: i32);
     fn host_set_invisible_borders(invisible_borders: i32);
     fn host_get_plugin_ids();

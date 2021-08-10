@@ -135,7 +135,6 @@ impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
         set_invisible_borders(true);
-        set_fixed_height(2);
         subscribe(&[EventType::ModeUpdate]);
     }
 

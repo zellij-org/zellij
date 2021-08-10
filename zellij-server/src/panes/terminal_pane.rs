@@ -10,6 +10,7 @@ use crate::tab::Pane;
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
+use zellij_utils::pane_size::Constraint;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
@@ -135,12 +136,6 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = Dimension::fixed(fixed_height);
-    }
-    fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = Dimension::fixed(fixed_width);
-    }
     fn set_invisible_borders(&mut self, _invisible_borders: bool) {
         unimplemented!();
     }
@@ -211,49 +206,43 @@ impl Pane for TerminalPane {
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
     }
+    // FIXME: I might be able to make do without the up, down, left, and right stuff
+    // FIXME: Also rename the `count` to something like `percent`
     fn reduce_height_down(&mut self, count: f64) {
-        self.position_and_size.y += count;
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
-        self.reflow_lines();
+        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
+            self.position_and_size.rows = Dimension::percent(p - count);
+            self.reflow_lines();
+        }
     }
     fn increase_height_down(&mut self, count: f64) {
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
-        self.reflow_lines();
+        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
+            self.position_and_size.rows = Dimension::percent(p + count);
+            self.reflow_lines();
+        }
     }
     fn increase_height_up(&mut self, count: f64) {
-        self.position_and_size.y -= count;
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() + count);
-        self.reflow_lines();
+        self.increase_height_down(count);
     }
     fn reduce_height_up(&mut self, count: f64) {
-        self.position_and_size.rows =
-            Dimension::fixed(self.position_and_size.rows.as_usize() - count);
-        self.reflow_lines();
+        self.reduce_height_down(count);
     }
     fn reduce_width_right(&mut self, count: f64) {
-        self.position_and_size.x += count;
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
-        self.reflow_lines();
+        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
+            self.position_and_size.cols = Dimension::percent(p - count);
+            self.reflow_lines();
+        }
     }
     fn reduce_width_left(&mut self, count: f64) {
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() - count);
-        self.reflow_lines();
+        self.reduce_width_right(count);
     }
     fn increase_width_left(&mut self, count: f64) {
-        self.position_and_size.x -= count;
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
-        self.reflow_lines();
+        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
+            self.position_and_size.cols = Dimension::percent(p + count);
+            self.reflow_lines();
+        }
     }
     fn increase_width_right(&mut self, count: f64) {
-        self.position_and_size.cols =
-            Dimension::fixed(self.position_and_size.cols.as_usize() + count);
-        self.reflow_lines();
+        self.increase_width_left(count);
     }
     fn push_down(&mut self, count: usize) {
         self.position_and_size.y += count;
