@@ -4,7 +4,10 @@ use cassowary::{
     Solver, Variable,
     WeightedRelation::*,
 };
-use std::{cmp::max, collections::{BTreeMap, HashMap, HashSet}, ops::Not};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    ops::Not,
+};
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom, Size};
 
 const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
@@ -48,15 +51,6 @@ struct Span {
 
 // TODO: currently there are some functions here duplicated with Tab
 // all resizing functions should move here
-
-// FIXME:
-// 1. Rounding causes a loss of ratios, I need to store an internal f64 for
-//    each pane as well as the displayed usize and add custom rounding logic.
-// 2. Vertical resizing doesn't seem to respect the space consumed by the tab
-//    and status bars?
-// 3. A 2x2 layout and simultaneous vertical + horizontal resizing sometimes
-//    leads to unsolvable constraints? Maybe related to 2 (and possibly 1).
-//    I should sanity-check the `spans_in_boundary()` here!
 
 impl<'a> PaneResizer<'a> {
     pub fn new(
@@ -175,7 +169,7 @@ impl<'a> PaneResizer<'a> {
                 let sz = rounded_sizes[&span.size_var];
                 // FIXME: This could be 1, but the pane render seems to choke on that?
                 if sz < 1 {
-                    return None
+                    return None;
                 }
                 span.size.set_inner(sz as usize);
                 offset += span.size.as_usize() + GAP_SIZE;

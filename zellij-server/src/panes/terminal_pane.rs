@@ -58,14 +58,8 @@ impl Pane for TerminalPane {
         self.position_and_size = *position_and_size;
         self.reflow_lines();
     }
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom) {
-        let position_and_size_override = PaneGeom {
-            x,
-            y,
-            rows: size.rows,
-            cols: size.cols,
-        };
-        self.position_and_size_override = Some(position_and_size_override);
+    fn override_size_and_position(&mut self, pane_geom: PaneGeom) {
+        self.position_and_size_override = Some(pane_geom);
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {

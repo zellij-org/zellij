@@ -234,7 +234,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session_data = rlock.as_ref().unwrap();
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.position_and_size))
+                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.size))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =

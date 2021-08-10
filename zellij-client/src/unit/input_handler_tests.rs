@@ -2,7 +2,7 @@ use super::input_loop;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
-use zellij_utils::pane_size::PaneGeom;
+use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::zellij_tile::data::Palette;
 
 use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
@@ -93,7 +93,7 @@ impl FakeClientOsApi {
 }
 
 impl ClientOsApi for FakeClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: RawFd) -> PaneGeom {
+    fn get_terminal_size_using_fd(&self, _fd: RawFd) -> Size {
         unimplemented!()
     }
     fn set_raw_mode(&mut self, _fd: RawFd) {

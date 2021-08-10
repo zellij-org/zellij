@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 
 use crate::cli::CliArgs;
-use crate::pane_size::PaneGeom;
+use crate::pane_size::Size;
 use crate::{
     errors::{get_current_ctx, ErrorContext},
     input::{actions::Action, layout::Layout, options::Options},
@@ -37,7 +37,7 @@ pub enum ClientType {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ClientAttributes {
-    pub position_and_size: PaneGeom,
+    pub size: Size,
     pub palette: Palette,
 }
 
@@ -55,7 +55,7 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
-    TerminalResize(PaneGeom),
+    TerminalResize(Size),
     NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, Option<Layout>),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),

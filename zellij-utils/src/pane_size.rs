@@ -1,4 +1,3 @@
-use nix::pty::Winsize;
 use serde::{Deserialize, Serialize};
 
 use crate::position::Position;
@@ -64,13 +63,13 @@ pub enum Constraint {
     Percent(f64),
 }
 
-impl From<Winsize> for PaneGeom {
-    fn from(winsize: Winsize) -> PaneGeom {
+impl From<Size> for PaneGeom {
+    fn from(size: Size) -> PaneGeom {
         PaneGeom {
             x: 0,
             y: 0,
-            cols: Dimension::fixed(winsize.ws_col as usize),
-            rows: Dimension::fixed(winsize.ws_row as usize),
+            cols: Dimension::fixed(size.cols),
+            rows: Dimension::fixed(size.rows),
         }
     }
 }

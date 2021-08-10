@@ -498,6 +498,10 @@ impl Grid {
         }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
+        // Do nothing if this pane hasn't been given a proper size yet
+        if new_columns == 0 {
+            return;
+        }
         self.selection.reset();
         if new_columns != self.width {
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();

@@ -76,14 +76,8 @@ impl Pane for PluginPane {
         self.should_render = true;
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom) {
-        let position_and_size_override = PaneGeom {
-            x,
-            y,
-            rows: size.rows,
-            cols: size.cols,
-        };
-        self.position_and_size_override = Some(position_and_size_override);
+    fn override_size_and_position(&mut self, pane_geom: PaneGeom) {
+        self.position_and_size_override = Some(pane_geom);
         self.should_render = true;
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {

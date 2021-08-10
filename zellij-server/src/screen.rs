@@ -5,6 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
+use zellij_utils::pane_size::Size;
 use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
@@ -20,7 +21,6 @@ use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::ClientAttributes,
-    pane_size::PaneGeom,
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -69,7 +69,7 @@ pub(crate) enum ScreenInstruction {
     CloseTab,
     GoToTab(u32),
     UpdateTabName(Vec<u8>),
-    TerminalResize(PaneGeom),
+    TerminalResize(Size),
     ChangeMode(ModeInfo),
     LeftClick(Position),
     MouseRelease(Position),
@@ -147,7 +147,7 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
-    position_and_size: PaneGeom,
+    position_and_size: Size,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     mode_info: ModeInfo,
@@ -167,7 +167,7 @@ impl Screen {
         Screen {
             bus,
             max_panes,
-            position_and_size: client_attributes.position_and_size,
+            position_and_size: client_attributes.size,
             colors: client_attributes.palette,
             active_tab_index: None,
             tabs: BTreeMap::new(),
@@ -185,7 +185,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            &self.position_and_size,
+            self.position_and_size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -293,8 +293,9 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self, new_screen_size: PaneGeom) {
+    pub fn resize_to_screen(&mut self, new_screen_size: Size) {
         self.position_and_size = new_screen_size;
+        log::info!("New Size: {:?}", new_screen_size);
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
@@ -351,7 +352,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            &self.position_and_size,
+            self.position_and_size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,

@@ -32,43 +32,54 @@ use zellij_utils::{
     zellij_tile,
 };
 
+// FIXME: Can I destroy this yet?
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
+// FIXME: Can probably wreck this too?
 // MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
 // this is a dirty hack until we implement fixed panes
 const MIN_TERMINAL_HEIGHT: usize = 3;
 const MIN_TERMINAL_WIDTH: usize = 4;
 
+const RESIZE_PERCENT: f64 = 3.5;
+
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
-// FIXME: These functions need to properly handle different constraints!
-fn split_vertically_with_gap(rect: &PaneGeom) -> (PaneGeom, PaneGeom) {
-    let width_of_each_half = (rect.cols.as_usize() - 1) / 2;
-    let mut first_rect = *rect;
-    let mut second_rect = *rect;
-    if rect.cols.as_usize() % 2 == 0 {
-        first_rect.cols = Dimension::fixed(width_of_each_half + 1);
-    } else {
-        first_rect.cols = Dimension::fixed(width_of_each_half);
+// FIXME: These functions need to be de-duplicated
+fn split_vertically_with_gap(rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+    match rect.cols.constraint {
+        Constraint::Fixed(_) => None,
+        Constraint::Percent(p) => {
+            let first_rect = PaneGeom {
+                cols: Dimension::percent(p / 2.0),
+                ..*rect
+            };
+            let second_rect = PaneGeom {
+                x: first_rect.x + 1,
+                cols: first_rect.cols,
+                ..*rect
+            };
+            Some((first_rect, second_rect))
+        }
     }
-    second_rect.x = first_rect.x + first_rect.cols.as_usize() + 1;
-    second_rect.cols = Dimension::fixed(width_of_each_half);
-    (first_rect, second_rect)
 }
 
-// FIXME: These functions need to properly handle different constraints!
-fn split_horizontally_with_gap(rect: &PaneGeom) -> (PaneGeom, PaneGeom) {
-    let height_of_each_half = (rect.rows.as_usize() - 1) / 2;
-    let mut first_rect = *rect;
-    let mut second_rect = *rect;
-    if rect.rows.as_usize() % 2 == 0 {
-        first_rect.rows = Dimension::fixed(height_of_each_half + 1);
-    } else {
-        first_rect.rows = Dimension::fixed(height_of_each_half);
+fn split_horizontally_with_gap(rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+    match rect.rows.constraint {
+        Constraint::Fixed(_) => None,
+        Constraint::Percent(p) => {
+            let first_rect = PaneGeom {
+                rows: Dimension::percent(p / 2.0),
+                ..*rect
+            };
+            let second_rect = PaneGeom {
+                y: first_rect.y + 1,
+                rows: first_rect.rows,
+                ..*rect
+            };
+            Some((first_rect, second_rect))
+        }
     }
-    second_rect.y = first_rect.y + first_rect.rows.as_usize() + 1;
-    second_rect.rows = Dimension::fixed(height_of_each_half);
-    (first_rect, second_rect)
 }
 
 pub(crate) struct Tab {
@@ -79,7 +90,7 @@ pub(crate) struct Tab {
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
-    full_screen_ws: PaneGeom,
+    full_screen_ws: Size,
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
@@ -108,7 +119,7 @@ pub trait Pane {
     fn cols(&self) -> usize;
     fn reset_size_and_position_override(&mut self);
     fn change_pos_and_size(&mut self, position_and_size: &PaneGeom);
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PaneGeom);
+    fn override_size_and_position(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
@@ -249,7 +260,7 @@ impl Tab {
         index: usize,
         position: usize,
         name: String,
-        full_screen_ws: &PaneGeom,
+        full_screen_ws: Size,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -259,7 +270,7 @@ impl Tab {
         session_state: Arc<RwLock<SessionState>>,
     ) -> Self {
         let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
-            let new_terminal = TerminalPane::new(pid, *full_screen_ws, colors);
+            let new_terminal = TerminalPane::new(pid, full_screen_ws.into(), colors);
             os_api.set_terminal_size_using_fd(
                 new_terminal.pid,
                 new_terminal.cols() as u16,
@@ -286,7 +297,7 @@ impl Tab {
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
-            full_screen_ws: *full_screen_ws,
+            full_screen_ws,
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
@@ -384,7 +395,8 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
+                let new_terminal =
+                    TerminalPane::new(term_pid, self.full_screen_ws.into(), self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.cols() as u16,
@@ -427,45 +439,27 @@ impl Tab {
                 && terminal_to_split.rows() > terminal_to_split.min_height() * 2
             {
                 if let PaneId::Terminal(term_pid) = pid {
-                    let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-                    let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
-                    self.os_api.set_terminal_size_using_fd(
-                        new_terminal.pid,
-                        bottom_winsize.cols.as_usize() as u16,
-                        bottom_winsize.rows.as_usize() as u16,
-                    );
-                    terminal_to_split.change_pos_and_size(&top_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
-                    if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
-                        self.os_api.set_terminal_size_using_fd(
-                            terminal_id_to_split,
-                            top_winsize.cols.as_usize() as u16,
-                            top_winsize.rows.as_usize() as u16,
-                        );
+                    if let Some((top_winsize, bottom_winsize)) =
+                        split_horizontally_with_gap(&terminal_ws)
+                    {
+                        let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
+                        terminal_to_split.change_pos_and_size(&top_winsize);
+                        self.panes.insert(pid, Box::new(new_terminal));
                     }
-                    self.active_terminal = Some(pid);
                 }
             } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
                 if let PaneId::Terminal(term_pid) = pid {
-                    let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
-                    let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
-                    self.os_api.set_terminal_size_using_fd(
-                        new_terminal.pid,
-                        right_winsize.cols.as_usize() as u16,
-                        right_winsize.rows.as_usize() as u16,
-                    );
-                    terminal_to_split.change_pos_and_size(&left_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
-                    if let PaneId::Terminal(terminal_id_to_split) = terminal_id_to_split {
-                        self.os_api.set_terminal_size_using_fd(
-                            terminal_id_to_split,
-                            left_winsize.cols.as_usize() as u16,
-                            left_winsize.rows.as_usize() as u16,
-                        );
+                    if let Some((left_winsize, right_winsize)) =
+                        split_vertically_with_gap(&terminal_ws)
+                    {
+                        let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
+                        terminal_to_split.change_pos_and_size(&left_winsize);
+                        self.panes.insert(pid, Box::new(new_terminal));
                     }
                 }
             }
             self.active_terminal = Some(pid);
+            self.resize_whole_tab(self.full_screen_ws);
             self.render();
         }
     }
@@ -476,7 +470,8 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
+                let new_terminal =
+                    TerminalPane::new(term_pid, self.full_screen_ws.into(), self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.cols() as u16,
@@ -496,28 +491,14 @@ impl Tab {
                 return;
             }
             let terminal_ws = active_pane.position_and_size();
-            let (top_winsize, bottom_winsize) = split_horizontally_with_gap(&terminal_ws);
-
-            active_pane.change_pos_and_size(&top_winsize);
-
-            let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
-            self.os_api.set_terminal_size_using_fd(
-                new_terminal.pid,
-                bottom_winsize.cols.as_usize() as u16,
-                bottom_winsize.rows.as_usize() as u16,
-            );
-            self.panes.insert(pid, Box::new(new_terminal));
-
-            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    *active_terminal_pid,
-                    top_winsize.cols.as_usize() as u16,
-                    top_winsize.rows.as_usize() as u16,
-                );
+            if let Some((top_winsize, bottom_winsize)) = split_horizontally_with_gap(&terminal_ws) {
+                let new_terminal = TerminalPane::new(term_pid, bottom_winsize, self.colors);
+                active_pane.change_pos_and_size(&top_winsize);
+                self.panes.insert(pid, Box::new(new_terminal));
+                self.active_terminal = Some(pid);
+                self.resize_whole_tab(self.full_screen_ws);
+                self.render();
             }
-
-            self.active_terminal = Some(pid);
-            self.render();
         }
     }
     pub fn vertical_split(&mut self, pid: PaneId) {
@@ -527,7 +508,8 @@ impl Tab {
         }
         if !self.has_panes() {
             if let PaneId::Terminal(term_pid) = pid {
-                let new_terminal = TerminalPane::new(term_pid, self.full_screen_ws, self.colors);
+                let new_terminal =
+                    TerminalPane::new(term_pid, self.full_screen_ws.into(), self.colors);
                 self.os_api.set_terminal_size_using_fd(
                     new_terminal.pid,
                     new_terminal.cols() as u16,
@@ -547,28 +529,14 @@ impl Tab {
                 return;
             }
             let terminal_ws = active_pane.position_and_size();
-            let (left_winsize, right_winsize) = split_vertically_with_gap(&terminal_ws);
-
-            active_pane.change_pos_and_size(&left_winsize);
-
-            let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
-            self.os_api.set_terminal_size_using_fd(
-                new_terminal.pid,
-                right_winsize.cols.as_usize() as u16,
-                right_winsize.rows.as_usize() as u16,
-            );
-            self.panes.insert(pid, Box::new(new_terminal));
-
-            if let PaneId::Terminal(active_terminal_pid) = active_pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    *active_terminal_pid,
-                    left_winsize.cols.as_usize() as u16,
-                    left_winsize.rows.as_usize() as u16,
-                );
+            if let Some((left_winsize, right_winsize)) = split_vertically_with_gap(&terminal_ws) {
+                let new_terminal = TerminalPane::new(term_pid, right_winsize, self.colors);
+                active_pane.change_pos_and_size(&left_winsize);
+                self.panes.insert(pid, Box::new(new_terminal));
+                self.active_terminal = Some(pid);
+                self.resize_whole_tab(self.full_screen_ws);
+                self.render();
             }
-
-            self.active_terminal = Some(pid);
-            self.render();
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
@@ -678,11 +646,12 @@ impl Tab {
                     return;
                 } else {
                     let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
-                    active_terminal.override_size_and_position(
-                        self.full_screen_ws.x,
-                        self.full_screen_ws.y,
-                        &self.full_screen_ws,
-                    );
+                    active_terminal.override_size_and_position(PaneGeom {
+                        x: 0,
+                        y: 0,
+                        rows: Dimension::fixed(self.full_screen_ws.rows),
+                        cols: Dimension::fixed(self.full_screen_ws.cols),
+                    });
                 }
             }
             let active_terminal = self.panes.get(&active_pane_id).unwrap();
@@ -724,8 +693,8 @@ impl Tab {
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(
-            self.full_screen_ws.cols.as_usize() as u16,
-            self.full_screen_ws.rows.as_usize() as u16,
+            self.full_screen_ws.cols as u16,
+            self.full_screen_ws.rows as u16,
         );
         let hide_cursor = "\u{1b}[?25l";
         output.push_str(hide_cursor);
@@ -964,7 +933,7 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the right
-        let mut bottom_resize_border = self.full_screen_ws.rows.as_usize();
+        let mut bottom_resize_border = self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_right
@@ -1050,7 +1019,7 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the left
-        let mut bottom_resize_border = self.full_screen_ws.rows.as_usize();
+        let mut bottom_resize_border = self.full_screen_ws.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
             if terminal_borders_to_the_left
@@ -1135,7 +1104,7 @@ impl Tab {
             }
         }
         // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.cols.as_usize();
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_above
@@ -1213,7 +1182,7 @@ impl Tab {
             }
         }
         // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.full_screen_ws.cols.as_usize();
+        let mut right_resize_border = self.full_screen_ws.cols;
         for terminal in &terminals {
             let left_terminal_boundary = terminal.x();
             if terminal_borders_below
@@ -1715,7 +1684,7 @@ impl Tab {
             false
         }
     }
-    pub fn resize_whole_tab(&mut self, new_screen_size: PaneGeom) {
+    pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         if self.fullscreen_is_active {
             // this is not ideal, we can improve this
             self.toggle_active_pane_fullscreen();
@@ -1733,30 +1702,15 @@ impl Tab {
             );
         }
         // FIXME: This is a temporary solution (and a massive mess)
-        if let PaneGeom {
-            rows:
-                Dimension {
-                    constraint: Constraint::Fixed(rows),
-                    ..
-                },
-            cols:
-                Dimension {
-                    constraint: Constraint::Fixed(cols),
-                    ..
-                },
-            ..
-        } = new_screen_size
+        let Size { rows, cols } = new_screen_size;
+        if let Some((cols, rows)) =
+            PaneResizer::new(&mut self.panes, &mut self.os_api).resize(Size { rows, cols })
         {
-            if let Some((cols, rows)) =
-                PaneResizer::new(&mut self.panes, &mut self.os_api).resize(Size { rows, cols })
-            {
-                self.should_clear_display_before_rendering = true;
-                // FIXME: A different type should be used here. The PositionAndSize is only really sensible
-                // for panes now. I should probably rename it to something like PaneGeometry and revert
-                // PositionAndSize. TL;DR `Fixed` is stupid here – so is `Percent`
-                self.full_screen_ws.cols.set_inner(cols);
-                self.full_screen_ws.rows.set_inner(rows);
-            }
+            self.should_clear_display_before_rendering = true;
+            self.full_screen_ws.cols = cols;
+            self.full_screen_ws.rows = rows;
+        } else {
+            log::error!("Failed to resize the tab!!!");
         }
         log::info!("Finished resizing (maybe) the panes!");
         for (id, pane) in &self.panes {
