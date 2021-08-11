@@ -206,7 +206,6 @@ impl<'a> PaneResizer<'a> {
         pane.reduce_height_up(count);
         if let PaneId::Terminal(pid) = id {
             self.os_api
-                // .set_terminal_size_using_fd(*pid, pane.columns() as u16, pane.rows() as u16);
                 .set_terminal_size_using_fd(*pid, pane.get_content_columns() as u16, pane.get_content_rows() as u16);
         }
     }
