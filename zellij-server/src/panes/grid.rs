@@ -527,6 +527,16 @@ impl Grid {
             self.output_buffer.update_all_lines();
         }
     }
+    fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
+        // this is an ugly hack - it's here because sometimes we need to change_size to the
+        // existing size (eg. when resizing an alternative_grid to the current height/width) and
+        // the change_size method is a no-op in that case. Should be fixed by making the
+        // change_size method atomic
+        let intermediate_rows = if new_rows == self.height { new_rows + 1 } else { new_rows };
+        let intermediate_columns = if new_columns == self.width { new_columns + 1 } else { new_columns };
+        self.change_size(intermediate_rows, intermediate_columns);
+        self.change_size(new_rows, new_columns);
+    }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.selection.reset();
         if new_columns != self.width {
@@ -1572,7 +1582,7 @@ impl Perform for Grid {
                         }
                         self.alternative_lines_above_viewport_and_cursor = None;
                         self.clear_viewport_before_rendering = true;
-                        self.change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                        self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
                     }
                     Some(25) => {
