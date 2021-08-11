@@ -989,11 +989,13 @@ impl Tab {
                                 pane.set_boundary_color(Some(self.colors.orange));
                             }
                         }
-                        boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(self.colors))
+                        if !self.draw_pane_frames {
+                            boundaries.add_rect(pane.as_ref(), self.mode_info.mode, Some(self.colors))
+                        }
                     }
                     false => {
                         pane.set_boundary_color(None);
-                        if !pane.invisible_borders() {
+                        if !pane.invisible_borders() && !self.draw_pane_frames {
                             boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
                         }
                     }
@@ -1010,7 +1012,6 @@ impl Tab {
             }
         }
 
-        // TODO: only render (and calculate) boundaries if there was a resize
         if !self.draw_pane_frames {
             output.push_str(&boundaries.vte_output());
         }
