@@ -138,7 +138,7 @@ pub trait Pane {
     fn position_and_size_override(&self) -> Option<PositionAndSize>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
-    fn set_should_render_boundaries(&mut self, should_render: bool) {}
+    fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn set_invisible_borders(&mut self, invisible_borders: bool);
@@ -186,40 +186,19 @@ pub trait Pane {
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
     }
-    fn is_directly_right_of(&self, other: &dyn Pane, has_boundaries: bool) -> bool {
-        if has_boundaries {
-            // there is a space of 1 between all panes
-            self.x() == other.x() + other.columns() + 1
-        } else {
-            self.x() == other.x() + other.columns()
-        }
+    fn is_directly_right_of(&self, other: &dyn Pane) -> bool {
+        self.x() == other.x() + other.columns()
     }
-    fn is_directly_left_of(&self, other: &dyn Pane, has_boundaries: bool) -> bool {
-        if has_boundaries {
-            // there is a space of 1 between all panes
-            self.x() + self.columns() + 1 == other.x()
-        } else {
-            self.x() + self.columns() == other.x()
-        }
+    fn is_directly_left_of(&self, other: &dyn Pane) -> bool {
+        self.x() + self.columns() == other.x()
     }
-    fn is_directly_below(&self, other: &dyn Pane, has_boundaries: bool) -> bool {
-        if has_boundaries {
-            // there is a space of 1 between all panes
-            self.y() == other.y() + other.rows() + 1
-        } else {
-            self.y() == other.y() + other.rows()
-        }
+    fn is_directly_below(&self, other: &dyn Pane) -> bool {
+        self.y() == other.y() + other.rows()
     }
-    fn is_directly_above(&self, other: &dyn Pane, has_boundaries: bool) -> bool {
-        if has_boundaries {
-            // there is a space of 1 between all panes
-            self.y() + self.rows() + 1 == other.y()
-        } else {
-            self.y() + self.rows() == other.y()
-        }
+    fn is_directly_above(&self, other: &dyn Pane) -> bool {
+        self.y() + self.rows() == other.y()
     }
     fn horizontally_overlaps_with(&self, other: &dyn Pane) -> bool {
-        // (self.y() >= other.y() && self.y() <= (other.y() + other.rows()))
         (self.y() >= other.y() && self.y() < (other.y() + other.rows()))
             || ((self.y() + self.rows()) <= (other.y() + other.rows())
                 && (self.y() + self.rows()) > other.y())
@@ -231,7 +210,6 @@ pub trait Pane {
             - std::cmp::max(self.y(), other.y())
     }
     fn vertically_overlaps_with(&self, other: &dyn Pane) -> bool {
-        // (self.x() >= other.x() && self.x() <= (other.x() + other.columns()))
         (self.x() >= other.x() && self.x() < (other.x() + other.columns()))
             || ((self.x() + self.columns()) <= (other.x() + other.columns())
                 && (self.x() + self.columns()) > other.x())
@@ -379,7 +357,6 @@ impl Tab {
             ..Default::default()
         };
         self.panes_to_hide.clear();
-        // let positions_in_layout = layout.position_panes_in_space(&free_space, !self.draw_pane_frames);
         let positions_in_layout = layout.position_panes_in_space(&free_space, false); // false == no gap
 
         for (layout, position_and_size) in &positions_in_layout {
@@ -425,7 +402,6 @@ impl Tab {
                     .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let next_selectable_pane_position = self.get_next_selectable_pane_position();
                 let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
                 let pane_title_only = !layout.borderless && total_panes_with_border == 1;
                 let title = String::from(plugin.as_path().as_os_str().to_string_lossy());
@@ -888,8 +864,7 @@ impl Tab {
                 active_terminal.reset_size_and_position_override();
             } else {
                 let panes = self.get_panes();
-                let viewport = self.viewport;
-                let pane_ids_to_hide = panes.filter_map(|(&id, pane)| {
+                let pane_ids_to_hide = panes.filter_map(|(&id, _pane)| {
                     if id != active_pane_id && self.is_inside_viewport(&id) {
                         Some(id)
                     } else {
@@ -994,9 +969,6 @@ impl Tab {
         }
         let mut output = String::new();
         let mut boundaries = Boundaries::new(&self.viewport);
-//             self.viewport.cols as u16,
-//             self.viewport.rows as u16,
-//         );
         let hide_cursor = "\u{1b}[?25l";
         output.push_str(hide_cursor);
         if self.should_clear_display_before_rendering {
@@ -1004,7 +976,7 @@ impl Tab {
             output.push_str(clear_display);
             self.should_clear_display_before_rendering = false;
         }
-        for (kind, pane) in self.panes.iter_mut() {
+        for (_kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 match self.active_terminal.unwrap() == pane.pid() {
                     true => {
@@ -1027,12 +999,6 @@ impl Tab {
                     }
                 }
                 if let Some(vte_output) = pane.render() {
-                    let vte_output = if let PaneId::Terminal(_) = kind {
-                        vte_output
-                    } else {
-                        // adjust_to_size(&vte_output, pane.rows(), pane.columns())
-                        vte_output
-                    };
                     // FIXME: Use Termion for cursor and style clearing?
                     output.push_str(&format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
@@ -1102,7 +1068,6 @@ impl Tab {
         let mut all_terminals = self.get_selectable_panes();
         all_terminals.next().is_some()
     }
-    // fn next_active_pane(&self, panes: Vec<PaneId>) -> Option<PaneId> {
     fn next_active_pane(&self, panes: &Vec<PaneId>) -> Option<PaneId> {
         panes
             .into_iter()
@@ -1117,7 +1082,6 @@ impl Tab {
             return None;
         }
         for (&pid, terminal) in self.get_panes() {
-            // if terminal.x() + terminal.columns() == terminal_to_check.x() - 1 {
             if terminal.x() + terminal.columns() == terminal_to_check.x() {
                 ids.push(pid);
             }
@@ -1220,7 +1184,6 @@ impl Tab {
         right_aligned_terminals.sort_by_key(|a| Reverse(a.y()));
         for terminal in right_aligned_terminals {
             let terminal_to_check = terminals.last().unwrap_or(&terminal_to_check);
-            // if terminal.y() + terminal.rows() + 1 == terminal_to_check.y() {
             if terminal.y() + terminal.rows() == terminal_to_check.y() {
                 terminals.push(terminal);
             }
@@ -1269,7 +1232,6 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the right
-        // let mut bottom_resize_border = self.viewport.rows;
         let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
@@ -1321,7 +1283,6 @@ impl Tab {
                 .is_some()
                 && top_resize_border < bottom_terminal_boundary
             {
-                // top_resize_border = bottom_terminal_boundary + 1;
                 top_resize_border = bottom_terminal_boundary;
             }
         }
@@ -1357,7 +1318,6 @@ impl Tab {
             }
         }
         // bottom-most border aligned with a pane border to the left
-        // let mut bottom_resize_border = self.viewport.rows;
         let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
         for terminal in &terminals {
             let top_terminal_boundary = terminal.y();
@@ -1901,7 +1861,6 @@ impl Tab {
             .expect("can't increase pane size right if there are no terminals to the right");
         let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
             .iter()
-            // .map(|t| self.panes.get(t).unwrap().y())
             .map(|t| {
                 return self.panes.get(t).unwrap().y();
             })
@@ -2276,15 +2235,15 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    // c.is_directly_left_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
-                    c.is_directly_left_of(active, false) && c.horizontally_overlaps_with(active)
+                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
 
-                    // TODO: better
+                    // render previously active pane so that its frame does not remain actively
+                    // colored
                     let previously_active_pane = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2316,15 +2275,15 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    // c.is_directly_below(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
-                    c.is_directly_below(active, false) && c.vertically_overlaps_with(active)
+                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
                     
-                    // TODO: better
+                    // render previously active pane so that its frame does not remain actively
+                    // colored
                     let previously_active_pane = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2354,15 +2313,15 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    // c.is_directly_above(active, !self.draw_pane_frames) && c.vertically_overlaps_with(active)
-                    c.is_directly_above(active, false) && c.vertically_overlaps_with(active)
+                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
 
-                    // TODO: better
+                    // render previously active pane so that its frame does not remain actively
+                    // colored
                     let previously_active_pane = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2393,15 +2352,15 @@ impl Tab {
             let next_index = terminals
                 .enumerate()
                 .filter(|(_, (_, c))| {
-                    // c.is_directly_right_of(active, !self.draw_pane_frames) && c.horizontally_overlaps_with(active)
-                    c.is_directly_right_of(active, false) && c.horizontally_overlaps_with(active)
+                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid);
             match next_index {
                 Some(&p) => {
 
-                    // TODO: better
+                    // render previously active pane so that its frame does not remain actively
+                    // colored
                     let previously_active_pane = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
