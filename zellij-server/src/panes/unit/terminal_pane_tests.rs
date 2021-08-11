@@ -15,8 +15,7 @@ pub fn scrolling_inside_a_pane() {
     };
     let pid = 1;
     let palette = Palette::default();
-    let draw_frame = false;
-    let mut terminal_pane = TerminalPane::new(pid, fake_win_size, palette, draw_frame, 0, false);
+    let mut terminal_pane = TerminalPane::new(pid, fake_win_size, palette, 0); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {
         text_to_fill_pane.push_str(&format!("\rline {}\n", i + 1));
