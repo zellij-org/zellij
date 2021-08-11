@@ -357,7 +357,7 @@ impl Tab {
             ..Default::default()
         };
         self.panes_to_hide.clear();
-        let positions_in_layout = layout.position_panes_in_space(&free_space, false); // false == no gap
+        let positions_in_layout = layout.position_panes_in_space(&free_space);
 
         for (layout, position_and_size) in &positions_in_layout {
             // we need to do this first because it decides the size of the screen

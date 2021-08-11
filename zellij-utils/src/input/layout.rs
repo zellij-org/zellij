@@ -148,27 +148,19 @@ impl Layout {
     pub fn position_panes_in_space(
         &self,
         space: &PositionAndSize,
-        with_gaps: bool,
     ) -> Vec<(Layout, PositionAndSize)> {
-        split_space(space, self, with_gaps)
+        split_space(space, self)
     }
 }
 
 fn split_space_to_parts_vertically(
     space_to_split: &PositionAndSize,
     sizes: Vec<Option<SplitSize>>,
-    with_gaps: bool,
 ) -> Vec<PositionAndSize> {
-    let border_width = if with_gaps { 1 } else { 0 };
     let mut split_parts = Vec::new();
     let mut current_x_position = space_to_split.x;
     let mut current_width = 0;
-    let max_width = if with_gaps {
-        space_to_split.cols - (sizes.len() - border_width) // minus space for gaps
-    } else {
-        space_to_split.cols
-    };
-    // let max_width = space_to_split.cols - (sizes.len() - border_width); // minus space for gaps
+    let max_width = space_to_split.cols;
 
     let mut parts_to_grow = Vec::new();
 
@@ -192,8 +184,7 @@ fn split_space_to_parts_vertically(
             ..Default::default()
         });
         current_width += columns;
-        // current_x_position += columns + 1; // 1 for gap
-        current_x_position += columns + border_width; // 1 for gap
+        current_x_position += columns;
     }
 
     if current_width > max_width {
@@ -211,8 +202,7 @@ fn split_space_to_parts_vertically(
                 last_flexible_index = idx;
             }
             current_width += part.cols;
-            // current_x_position += part.cols + 1; // 1 for gap
-            current_x_position += part.cols + border_width; // 1 for gap
+            current_x_position += part.cols;
         }
     }
 
@@ -231,18 +221,11 @@ fn split_space_to_parts_vertically(
 fn split_space_to_parts_horizontally(
     space_to_split: &PositionAndSize,
     sizes: Vec<Option<SplitSize>>,
-    with_gaps: bool,
 ) -> Vec<PositionAndSize> {
-    let border_width = if with_gaps { 1 } else { 0 };
     let mut split_parts = Vec::new();
     let mut current_y_position = space_to_split.y;
     let mut current_height = 0;
-    let max_height = if with_gaps {
-        space_to_split.rows - (sizes.len() - border_width) // minus space for gaps
-    } else {
-        space_to_split.rows
-    };
-    // let max_height = space_to_split.rows - (sizes.len() - border_width); // minus space for gaps
+    let max_height = space_to_split.rows;
 
     let mut parts_to_grow = Vec::new();
 
@@ -265,8 +248,7 @@ fn split_space_to_parts_horizontally(
             ..Default::default()
         });
         current_height += rows;
-        // current_y_position += rows + 1; // 1 for gap
-        current_y_position += rows + border_width; // 1 for gap
+        current_y_position += rows;
     }
 
     if current_height > max_height {
@@ -285,8 +267,7 @@ fn split_space_to_parts_horizontally(
                 last_flexible_index = idx;
             }
             current_height += part.rows;
-            // current_y_position += part.rows + 1; // 1 for gap
-            current_y_position += part.rows + border_width; // 1 for gap
+            current_y_position += part.rows;
         }
     }
 
@@ -305,19 +286,18 @@ fn split_space_to_parts_horizontally(
 fn split_space(
     space_to_split: &PositionAndSize,
     layout: &Layout,
-    with_gaps: bool,
 ) -> Vec<(Layout, PositionAndSize)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
     let split_parts = match layout.direction {
-        Direction::Vertical => split_space_to_parts_vertically(space_to_split, sizes, with_gaps),
-        Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, sizes, with_gaps),
+        Direction::Vertical => split_space_to_parts_vertically(space_to_split, sizes),
+        Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, sizes),
     };
     for (i, part) in layout.parts.iter().enumerate() {
         let part_position_and_size = split_parts.get(i).unwrap();
         if !part.parts.is_empty() {
-            let mut part_positions = split_space(part_position_and_size, part, with_gaps);
+            let mut part_positions = split_space(part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {
             pane_positions.push((part.clone(), *part_position_and_size));
