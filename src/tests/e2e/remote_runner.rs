@@ -352,7 +352,8 @@ impl RemoteRunner {
             drop(std::mem::replace(self, new_runner));
             self.run_all_steps()
         } else if self.without_frames {
-            let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size, session_name);
+            let mut new_runner =
+                RemoteRunner::new_without_frames(self.test_name, self.win_size, session_name);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));

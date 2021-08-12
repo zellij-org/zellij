@@ -2,15 +2,14 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::{PaneId, PaneDecoration};
+use crate::panes::{PaneDecoration, PaneId};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::wasm_vm::PluginInstruction;
-use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize};
-use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::shared::ansi_len;
-use zellij_utils::logging::debug_log_to_file;
 use crate::ui::pane_boundaries_frame::PaneBoundariesFrame;
+use crate::wasm_vm::PluginInstruction;
+use zellij_utils::shared::ansi_len;
+use zellij_utils::zellij_tile::prelude::PaletteColor;
+use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -67,7 +66,9 @@ impl PluginPane {
         self.content_position_and_size
     }
     fn redistribute_space(&mut self) {
-        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size());
+        let position_and_size = self
+            .position_and_size_override
+            .unwrap_or(self.position_and_size());
         match &mut self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundaries_frame) => {
                 boundaries_frame.change_pos_and_size(position_and_size);
@@ -75,7 +76,8 @@ impl PluginPane {
             }
             PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
                 self.content_position_and_size = position_and_size;
-                self.content_position_and_size.cols = position_and_size.cols - *content_columns_offset;
+                self.content_position_and_size.cols =
+                    position_and_size.cols - *content_columns_offset;
                 self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
             }
         };
@@ -210,7 +212,11 @@ impl Pane for PluginPane {
                     line.truncate(self.get_content_columns());
                     line
                 } else {
-                    [line, &str::repeat(" ", self.get_content_columns() - ansi_len(line))].concat()
+                    [
+                        line,
+                        &str::repeat(" ", self.get_content_columns() - ansi_len(line)),
+                    ]
+                    .concat()
                 };
 
                 vte_output.push_str(&format!(
@@ -384,12 +390,15 @@ impl Pane for PluginPane {
         if !self.selectable {
             return;
         }
-        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
+        let position_and_size = self
+            .position_and_size_override
+            .unwrap_or(self.position_and_size);
         if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
             boundaries_frame.render_only_title(should_render_only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
         } else {
-            let mut boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+            let mut boundaries_frame =
+                PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
             boundaries_frame.render_only_title(should_render_only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
             self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);

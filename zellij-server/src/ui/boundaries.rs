@@ -1,12 +1,11 @@
-use zellij_utils::zellij_tile;
 use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::zellij_tile;
 
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use zellij_tile::data::{InputMode, Palette, PaletteColor};
 use zellij_utils::shared::colors;
-use zellij_utils::logging::debug_log_to_file;
 
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {
@@ -437,13 +436,16 @@ impl Boundaries {
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
-                let mut symbol_to_add = if row == first_row_coordinates && row != self.position_and_size.y {
-                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
-                } else if row == last_row_coordinates - 1 && row != self.position_and_size.y + self.position_and_size.rows - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
-                } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
-                };
+                let mut symbol_to_add =
+                    if row == first_row_coordinates && row != self.position_and_size.y {
+                        BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                    } else if row == last_row_coordinates - 1
+                        && row != self.position_and_size.y + self.position_and_size.rows - 1
+                    {
+                        BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
+                    } else {
+                        BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                    };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
@@ -462,9 +464,12 @@ impl Boundaries {
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
-                let mut symbol_to_add = if col == first_col_coordinates && col != self.position_and_size.x {
+                let mut symbol_to_add = if col == first_col_coordinates
+                    && col != self.position_and_size.x
+                {
                     BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1 {
+                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1
+                {
                     BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else {
                     BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
@@ -487,13 +492,16 @@ impl Boundaries {
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
-                let mut symbol_to_add = if row == first_row_coordinates && row != self.position_and_size.y {
-                    BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
-                } else if row == last_row_coordinates - 1 && row != self.position_and_size.y + self.position_and_size.rows - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
-                } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
-                };
+                let mut symbol_to_add =
+                    if row == first_row_coordinates && row != self.position_and_size.y {
+                        BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
+                    } else if row == last_row_coordinates - 1
+                        && row != self.position_and_size.y + self.position_and_size.rows - 1
+                    {
+                        BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
+                    } else {
+                        BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                    };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
@@ -512,9 +520,12 @@ impl Boundaries {
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
-                let mut symbol_to_add = if col == first_col_coordinates && col != self.position_and_size.x {
+                let mut symbol_to_add = if col == first_col_coordinates
+                    && col != self.position_and_size.x
+                {
                     BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1 {
+                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1
+                {
                     BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
                     BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
@@ -572,9 +583,9 @@ impl Boundaries {
         rect_right_col
     }
     fn is_fully_inside_screen(&self, rect: &dyn Pane) -> bool {
-        rect.x() >= self.position_and_size.x &&
-            rect.x() + rect.columns() <= self.position_and_size.x + self.position_and_size.cols &&
-            rect.y() >= self.position_and_size.y &&
-            rect.y() + rect.rows() <= self.position_and_size.y + self.position_and_size.rows
+        rect.x() >= self.position_and_size.x
+            && rect.x() + rect.columns() <= self.position_and_size.x + self.position_and_size.cols
+            && rect.y() >= self.position_and_size.y
+            && rect.y() + rect.rows() <= self.position_and_size.y + self.position_and_size.rows
     }
 }

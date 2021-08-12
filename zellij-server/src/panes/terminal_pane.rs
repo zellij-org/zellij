@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_tile::data::Palette;
+
 use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::logging::debug_log_to_file;
 
 use crate::panes::AnsiCode;
 use crate::panes::{
@@ -96,14 +96,15 @@ impl Pane for TerminalPane {
         // (x, y)
         let (x_offset, y_offset) = match &self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundries_frame) => {
-                let (content_columns_offset, content_rows_offset) = boundries_frame.content_offset();
+                let (content_columns_offset, content_rows_offset) =
+                    boundries_frame.content_offset();
                 (content_columns_offset, content_rows_offset)
-            },
-            PaneDecoration::ContentOffset(_) => {
-                (0, 0)
             }
+            PaneDecoration::ContentOffset(_) => (0, 0),
         };
-        self.grid.cursor_coordinates().map(|(x, y)| (x + x_offset, y + y_offset))
+        self.grid
+            .cursor_coordinates()
+            .map(|(x, y)| (x + x_offset, y + y_offset))
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
@@ -410,13 +411,15 @@ impl Pane for TerminalPane {
         self.redistribute_space();
     }
     fn show_boundaries_frame(&mut self, only_title: bool) {
-
-        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size);
+        let position_and_size = self
+            .position_and_size_override
+            .unwrap_or(self.position_and_size);
         if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
             boundaries_frame.render_only_title(only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
         } else {
-            let mut boundaries_frame = PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+            let mut boundaries_frame =
+                PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
             boundaries_frame.render_only_title(only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
             self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);
@@ -430,13 +433,14 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
-    pub fn new(pid: RawFd, position_and_size: PositionAndSize, palette: Palette, pane_position: usize) -> TerminalPane {
+    pub fn new(
+        pid: RawFd,
+        position_and_size: PositionAndSize,
+        palette: Palette,
+        pane_position: usize,
+    ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_position);
-        let grid = Grid::new(
-            position_and_size.rows,
-            position_and_size.cols,
-            palette
-        );
+        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
         TerminalPane {
             pane_decoration: PaneDecoration::ContentOffset((0, 0)),
             content_position_and_size: position_and_size,
@@ -510,7 +514,9 @@ impl TerminalPane {
         self.grid.cursor_coordinates()
     }
     fn redistribute_space(&mut self) {
-        let position_and_size = self.position_and_size_override.unwrap_or(self.position_and_size());
+        let position_and_size = self
+            .position_and_size_override
+            .unwrap_or(self.position_and_size());
         match &mut self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundaries_frame) => {
                 boundaries_frame.change_pos_and_size(position_and_size);
@@ -518,7 +524,8 @@ impl TerminalPane {
             }
             PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
                 self.content_position_and_size = position_and_size;
-                self.content_position_and_size.cols = position_and_size.cols - *content_columns_offset;
+                self.content_position_and_size.cols =
+                    position_and_size.cols - *content_columns_offset;
                 self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
             }
         };

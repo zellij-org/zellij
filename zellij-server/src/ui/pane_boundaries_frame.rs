@@ -1,9 +1,8 @@
-use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::logging::debug_log_to_file;
 use crate::ui::boundaries::boundary_type;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
+use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::zellij_tile::prelude::PaletteColor;
 
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
@@ -92,10 +91,15 @@ impl PaneBoundariesFrame {
             self.position_and_size.reduce_outer_frame(1)
         }
     }
-    pub fn content_offset(&self) -> (usize, usize) { // (column_difference, row_difference)
+    pub fn content_offset(&self) -> (usize, usize) {
+        // (column_difference, row_difference)
         let content_position_and_size = self.content_position_and_size();
-        let column_difference = content_position_and_size.x.saturating_sub(self.position_and_size.x);
-        let row_difference = content_position_and_size.y.saturating_sub(self.position_and_size.y);
+        let column_difference = content_position_and_size
+            .x
+            .saturating_sub(self.position_and_size.x);
+        let row_difference = content_position_and_size
+            .y
+            .saturating_sub(self.position_and_size.y);
         (column_difference, row_difference)
     }
     pub fn set_should_render(&mut self, should_render: bool) {
@@ -104,7 +108,8 @@ impl PaneBoundariesFrame {
     fn render_title_right_side(&self, max_length: usize) -> Option<String> {
         if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
             let prefix = " SCROLL: ";
-            let full_indication = format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
+            let full_indication =
+                format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
             let short_indication = format!(" {} ", self.scroll_position.0);
             if prefix.chars().count() + full_indication.chars().count() <= max_length {
                 Some(format!("{}{}", prefix, full_indication))
@@ -130,10 +135,20 @@ impl PaneBoundariesFrame {
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.chars().count()) / 2;
             let first_part: String = full_text.chars().take(length_of_each_half).collect();
-            let second_part: String = full_text.chars().skip(full_text.chars().count() - length_of_each_half).collect();
-            let title_left_side = if first_part.chars().count() + middle_truncated_sign.chars().count() + second_part.chars().count() < max_length {
+            let second_part: String = full_text
+                .chars()
+                .skip(full_text.chars().count() - length_of_each_half)
+                .collect();
+            let title_left_side = if first_part.chars().count()
+                + middle_truncated_sign.chars().count()
+                + second_part.chars().count()
+                < max_length
+            {
                 // this means we lost 1 character when dividing the total length into halves
-                format!("{}{}{}", first_part, middle_truncated_sign_long, second_part)
+                format!(
+                    "{}{}{}",
+                    first_part, middle_truncated_sign_long, second_part
+                )
             } else {
                 format!("{}{}{}", first_part, middle_truncated_sign, second_part)
             };
@@ -142,32 +157,43 @@ impl PaneBoundariesFrame {
     }
     fn render_title(&self, vte_output: &mut String) {
         let total_title_length = self.position_and_size.cols - 2; // 2 for the left and right corners
-        let max_length_of_each_half = (total_title_length / 2) - 1; // 1 for the middle between left and right
-
-
-        let left_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_LEFT};
-        let right_boundary = if self.draw_title_only { boundary_type::HORIZONTAL } else { boundary_type::TOP_RIGHT };
+        let left_boundary = if self.draw_title_only {
+            boundary_type::HORIZONTAL
+        } else {
+            boundary_type::TOP_LEFT
+        };
+        let right_boundary = if self.draw_title_only {
+            boundary_type::HORIZONTAL
+        } else {
+            boundary_type::TOP_RIGHT
+        };
         let left_side = self.render_title_left_side(total_title_length);
-        let right_side = left_side
-            .as_ref()
-            .and_then(|left_side| {
-                let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
-                self.render_title_right_side(space_left)
-            });
+        let right_side = left_side.as_ref().and_then(|left_side| {
+            let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
+            self.render_title_right_side(space_left)
+        });
         let title_text = match (left_side, right_side) {
             (Some(left_side), Some(right_side)) => {
                 let mut middle = String::new();
-                for _ in (left_side.chars().count() + right_side.chars().count())..total_title_length {
+                for _ in
+                    (left_side.chars().count() + right_side.chars().count())..total_title_length
+                {
                     middle.push_str(boundary_type::HORIZONTAL);
                 }
-                format!("{}{}{}{}{}", left_boundary, left_side, middle, right_side, right_boundary)
-            },
+                format!(
+                    "{}{}{}{}{}",
+                    left_boundary, left_side, middle, right_side, right_boundary
+                )
+            }
             (Some(left_side), None) => {
                 let mut middle_padding = String::new();
                 for _ in left_side.chars().count()..total_title_length {
                     middle_padding.push_str(boundary_type::HORIZONTAL);
                 }
-                format!("{}{}{}{}", left_boundary, left_side, middle_padding, right_boundary)
+                format!(
+                    "{}{}{}{}",
+                    left_boundary, left_side, middle_padding, right_boundary
+                )
             }
             _ => {
                 let mut middle_padding = String::new();
@@ -192,13 +218,17 @@ impl PaneBoundariesFrame {
         if self.draw_title_only {
             self.render_title(&mut vte_output);
         } else {
-            for row in self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows) {
+            for row in
+                self.position_and_size.y..(self.position_and_size.y + self.position_and_size.rows)
+            {
                 if row == self.position_and_size.y {
                     // top row
                     self.render_title(&mut vte_output);
                 } else if row == self.position_and_size.y + self.position_and_size.rows - 1 {
                     // bottom row
-                    for col in self.position_and_size.x..(self.position_and_size.x + self.position_and_size.cols) {
+                    for col in self.position_and_size.x
+                        ..(self.position_and_size.x + self.position_and_size.cols)
+                    {
                         if col == self.position_and_size.x {
                             // bottom left corner
                             vte_output.push_str(&format!(
@@ -207,7 +237,8 @@ impl PaneBoundariesFrame {
                                 col + 1,
                                 color_string(boundary_type::BOTTOM_LEFT, self.color),
                             )); // goto row/col + boundary character
-                        } else if col == self.position_and_size.x + self.position_and_size.cols - 1 {
+                        } else if col == self.position_and_size.x + self.position_and_size.cols - 1
+                        {
                             // bottom right corner
                             vte_output.push_str(&format!(
                                 "\u{1b}[{};{}H\u{1b}[m{}",

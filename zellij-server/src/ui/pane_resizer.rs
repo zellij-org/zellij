@@ -4,7 +4,6 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::logging::debug_log_to_file;
 
 pub(crate) struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
@@ -205,32 +204,44 @@ impl<'a> PaneResizer<'a> {
         let pane = self.panes.get_mut(id).unwrap();
         pane.reduce_height_up(count);
         if let PaneId::Terminal(pid) = id {
-            self.os_api
-                .set_terminal_size_using_fd(*pid, pane.get_content_columns() as u16, pane.get_content_rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                *pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.increase_height_down(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.get_content_columns() as u16, pane.get_content_rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.increase_width_right(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.get_content_columns() as u16, pane.get_content_rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.reduce_width_left(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.get_content_columns() as u16, pane.get_content_rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
 }
@@ -241,9 +252,7 @@ fn find_next_increasable_horizontal_pane(
     increase_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| {
-            p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of)
-        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+        |p| p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of), // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates =
         next_pane_candidates.filter(|p| p.can_increase_height_by(increase_by));
@@ -311,9 +320,7 @@ fn find_next_reducible_horizontal_pane(
     reduce_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| {
-            p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of)
-        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+        |p| p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of), // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_height_by(reduce_by));
     resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {

@@ -22,7 +22,6 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
 };
 use zellij_utils::errors::{ContextType, PluginContext};
-use zellij_utils::logging::debug_log_to_file;
 use zellij_utils::{input::command::TerminalAction, serde, zellij_tile};
 
 #[derive(Clone, Debug)]

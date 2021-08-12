@@ -409,7 +409,8 @@ impl Grid {
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
     }
-    pub fn scrollback_position_and_length(&self) -> (usize, usize) { // (position, length)
+    pub fn scrollback_position_and_length(&self) -> (usize, usize) {
+        // (position, length)
         let mut scrollback_buffer_count = 0;
         for row in self.lines_above.iter() {
             let row_width = row.width();
@@ -420,7 +421,10 @@ impl Grid {
                 scrollback_buffer_count += 1;
             }
         }
-        (self.lines_below.len(), (scrollback_buffer_count + self.lines_below.len()))
+        (
+            self.lines_below.len(),
+            (scrollback_buffer_count + self.lines_below.len()),
+        )
     }
     fn set_horizontal_tabstop(&mut self) {
         self.horizontal_tabstops.insert(self.cursor.x);
@@ -491,7 +495,6 @@ impl Grid {
     }
     pub fn scroll_up_one_line(&mut self) {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
-
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
@@ -503,11 +506,9 @@ impl Grid {
                 Some(self.width),
             );
 
-
-//             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
-//             self.viewport.insert(0, line_to_insert_at_viewport_top);
+            //             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
+            //             self.viewport.insert(0, line_to_insert_at_viewport_top);
             self.selection.move_down(1);
-
         }
         self.output_buffer.update_all_lines();
     }
@@ -532,8 +533,16 @@ impl Grid {
         // existing size (eg. when resizing an alternative_grid to the current height/width) and
         // the change_size method is a no-op in that case. Should be fixed by making the
         // change_size method atomic
-        let intermediate_rows = if new_rows == self.height { new_rows + 1 } else { new_rows };
-        let intermediate_columns = if new_columns == self.width { new_columns + 1 } else { new_columns };
+        let intermediate_rows = if new_rows == self.height {
+            new_rows + 1
+        } else {
+            new_rows
+        };
+        let intermediate_columns = if new_columns == self.width {
+            new_columns + 1
+        } else {
+            new_columns
+        };
         self.change_size(intermediate_rows, intermediate_columns);
         self.change_size(new_rows, new_columns);
     }
