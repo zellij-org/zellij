@@ -129,9 +129,9 @@ impl PaneBoundariesFrame {
         let middle_truncated_sign_long = "[...]";
         let full_text = format!(" {} ", &self.title);
         if max_length <= 6 {
-            return None;
+            None
         } else if full_text.chars().count() <= max_length {
-            return Some(full_text);
+            Some(full_text)
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.chars().count()) / 2;
             let first_part: String = full_text.chars().take(length_of_each_half).collect();
@@ -152,7 +152,7 @@ impl PaneBoundariesFrame {
             } else {
                 format!("{}{}{}", first_part, middle_truncated_sign, second_part)
             };
-            return Some(title_left_side);
+            Some(title_left_side)
         }
     }
     fn render_title(&self, vte_output: &mut String) {

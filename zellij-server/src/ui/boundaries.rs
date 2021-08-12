@@ -568,8 +568,7 @@ impl Boundaries {
         }
     }
     fn rect_right_boundary_row_end(&self, rect: &dyn Pane) -> usize {
-        let rect_bottom_row = rect.y() + rect.rows();
-        rect_bottom_row
+        rect.y() + rect.rows()
     }
     fn rect_bottom_boundary_col_start(&self, rect: &dyn Pane) -> usize {
         if rect.x() == 0 {
@@ -579,8 +578,7 @@ impl Boundaries {
         }
     }
     fn rect_bottom_boundary_col_end(&self, rect: &dyn Pane) -> usize {
-        let rect_right_col = rect.x() + rect.columns();
-        rect_right_col
+        rect.x() + rect.columns()
     }
     fn is_fully_inside_screen(&self, rect: &dyn Pane) -> bool {
         rect.x() >= self.position_and_size.x

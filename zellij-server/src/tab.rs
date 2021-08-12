@@ -363,15 +363,14 @@ impl Tab {
             // which we use for other stuff in the main loop below (eg. which type of frames the
             // panes should have)
             if layout.borderless {
-                self.offset_viewport(&position_and_size);
+                self.offset_viewport(position_and_size);
             }
         }
 
         let mut positions_and_size = positions_in_layout.iter();
         let total_borderless_panes = layout.total_borderless_panes();
         let total_panes_with_border = positions_in_layout
-            .iter()
-            .count()
+            .len()
             .saturating_sub(total_borderless_panes);
         for (pane_kind, terminal_pane) in self.panes.iter_mut() {
             // for now the layout only supports terminal panes
@@ -441,7 +440,7 @@ impl Tab {
                     new_terminal.show_boundaries_frame(pane_title_only);
                 } else {
                     let (pane_columns_offset, pane_rows_offset) =
-                        pane_content_offset(&position_and_size, &self.viewport);
+                        pane_content_offset(position_and_size, &self.viewport);
                     new_terminal.offset_content_columns(pane_columns_offset);
                     new_terminal.offset_content_rows(pane_rows_offset);
                 }
@@ -970,10 +969,15 @@ impl Tab {
         self.synchronize_is_active = !self.synchronize_is_active;
     }
     pub fn mark_active_pane_for_rerender(&mut self) {
-        &self
+        if let Some(active_terminal) = self
             .active_terminal
             .and_then(|active_terminal_id| self.panes.get_mut(&active_terminal_id))
-            .map(|active_terminal| active_terminal.set_should_render(true));
+        {
+            active_terminal.set_should_render(true)
+        }
+        //             .and_then(|active_terminal_id| self.panes.get_mut(&active_terminal_id)) {
+        //                 active_terminal.set_should_render(true)
+        //             }
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
@@ -986,30 +990,23 @@ impl Tab {
                 pane.offset_content_rows(0);
                 pane.offset_content_columns(0);
                 pane.show_boundaries_frame(should_render_only_title);
-                if let PaneId::Terminal(pid) = pane_id {
-                    self.os_api.set_terminal_size_using_fd(
-                        *pid,
-                        pane.get_content_columns() as u16,
-                        pane.get_content_rows() as u16,
-                    );
-                }
             } else {
                 let position_and_size = pane
                     .position_and_size_override()
-                    .unwrap_or(pane.position_and_size());
+                    .unwrap_or_else(|| pane.position_and_size());
                 pane.remove_boundaries_frame();
 
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.offset_content_columns(pane_columns_offset);
                 pane.offset_content_rows(pane_rows_offset);
-                if let PaneId::Terminal(pid) = pane_id {
-                    self.os_api.set_terminal_size_using_fd(
-                        *pid,
-                        pane.get_content_columns() as u16,
-                        pane.get_content_rows() as u16,
-                    );
-                }
+            }
+            if let PaneId::Terminal(pid) = pane_id {
+                self.os_api.set_terminal_size_using_fd(
+                    *pid,
+                    pane.get_content_columns() as u16,
+                    pane.get_content_rows() as u16,
+                );
             }
         }
     }
@@ -1135,9 +1132,9 @@ impl Tab {
         let mut all_terminals = self.get_selectable_panes();
         all_terminals.next().is_some()
     }
-    fn next_active_pane(&self, panes: &Vec<PaneId>) -> Option<PaneId> {
+    fn next_active_pane(&self, panes: &[PaneId]) -> Option<PaneId> {
         panes
-            .into_iter()
+            .iter()
             .rev()
             .find(|pid| self.panes.get(pid).unwrap().selectable())
             .copied()

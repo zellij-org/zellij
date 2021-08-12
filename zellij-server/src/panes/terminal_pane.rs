@@ -515,7 +515,7 @@ impl TerminalPane {
     fn redistribute_space(&mut self) {
         let position_and_size = self
             .position_and_size_override
-            .unwrap_or(self.position_and_size());
+            .unwrap_or_else(|| self.position_and_size());
         match &mut self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundaries_frame) => {
                 boundaries_frame.change_pos_and_size(position_and_size);
