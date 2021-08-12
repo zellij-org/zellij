@@ -1,8 +1,10 @@
 ---
-source: src/tests/integration/e2e.rs
+source: src/tests/e2e/cases.rs
 expression: last_snapshot
 
 ---
+ Zellij  Tab #1                                                                                                       
+─ Pane #2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 $ █                                                                                                                     
                                                                                                                         
                                                                                                                         
@@ -23,7 +25,5 @@ $ █
                                                                                                                         
                                                                                                                         
                                                                                                                         
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <r> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
+ Tip: Alt + n => open new pane. Alt + [] or hjkl => navigate between panes.                                             

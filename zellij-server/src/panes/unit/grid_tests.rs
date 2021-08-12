@@ -608,9 +608,9 @@ fn copy_selected_text_from_lines_below() {
 
     grid.move_viewport_up(40);
 
-    grid.start_selection(&Position::new(63, 6));
+    grid.start_selection(&Position::new(35, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(65, 35)));
+    grid.end_selection(Some(&Position::new(37, 35)));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),

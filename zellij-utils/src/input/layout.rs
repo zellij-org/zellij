@@ -50,6 +50,8 @@ pub struct Layout {
     pub parts: Vec<Layout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
+    #[serde(default)]
+    pub borderless: bool,
 }
 
 type LayoutResult = Result<Layout, ConfigError>;
@@ -141,6 +143,14 @@ impl Layout {
         total_panes
     }
 
+    pub fn total_borderless_panes(&self) -> usize {
+        let mut total_borderless_panes = 0;
+        total_borderless_panes += self.parts.iter().filter(|p| p.borderless).count();
+        for part in self.parts.iter() {
+            total_borderless_panes += part.total_borderless_panes();
+        }
+        total_borderless_panes
+    }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
         if self.parts.is_empty() {
@@ -168,7 +178,7 @@ fn split_space_to_parts_vertically(
     let mut split_parts = Vec::new();
     let mut current_x_position = space_to_split.x;
     let mut current_width = 0;
-    let max_width = space_to_split.cols - (sizes.len() - 1); // minus space for gaps
+    let max_width = space_to_split.cols;
 
     let mut parts_to_grow = Vec::new();
 
@@ -192,7 +202,7 @@ fn split_space_to_parts_vertically(
             ..Default::default()
         });
         current_width += columns;
-        current_x_position += columns + 1; // 1 for gap
+        current_x_position += columns;
     }
 
     if current_width > max_width {
@@ -210,7 +220,7 @@ fn split_space_to_parts_vertically(
                 last_flexible_index = idx;
             }
             current_width += part.cols;
-            current_x_position += part.cols + 1; // 1 for gap
+            current_x_position += part.cols;
         }
     }
 
@@ -233,7 +243,7 @@ fn split_space_to_parts_horizontally(
     let mut split_parts = Vec::new();
     let mut current_y_position = space_to_split.y;
     let mut current_height = 0;
-    let max_height = space_to_split.rows - (sizes.len() - 1); // minus space for gaps
+    let max_height = space_to_split.rows;
 
     let mut parts_to_grow = Vec::new();
 
@@ -256,7 +266,7 @@ fn split_space_to_parts_horizontally(
             ..Default::default()
         });
         current_height += rows;
-        current_y_position += rows + 1; // 1 for gap
+        current_y_position += rows;
     }
 
     if current_height > max_height {
@@ -275,7 +285,7 @@ fn split_space_to_parts_horizontally(
                 last_flexible_index = idx;
             }
             current_height += part.rows;
-            current_y_position += part.rows + 1; // 1 for gap
+            current_y_position += part.rows;
         }
     }
 

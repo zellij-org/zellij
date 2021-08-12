@@ -82,7 +82,14 @@ fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
-    Screen::new(bus, &client_attributes, max_panes, mode_info, session_state)
+    Screen::new(
+        bus,
+        &client_attributes,
+        max_panes,
+        mode_info,
+        session_state,
+        false, // draw_pane_frames
+    )
 }
 
 #[test]

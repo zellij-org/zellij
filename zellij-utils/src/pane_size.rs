@@ -5,7 +5,7 @@ use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PositionAndSize {
     pub x: usize,
     pub y: usize,
@@ -33,5 +33,17 @@ impl PositionAndSize {
         let col = point.column.0 as usize;
         let row = point.line.0 as usize;
         self.x <= col && col < self.x + self.cols && self.y <= row && row < self.y + self.rows
+    }
+    pub fn reduce_outer_frame(mut self, frame_width: usize) -> Self {
+        self.x += frame_width;
+        self.rows -= frame_width * 2;
+        self.y += frame_width;
+        self.cols -= frame_width * 2;
+        self
+    }
+    pub fn reduce_top_line(mut self) -> Self {
+        self.y += 1;
+        self.rows -= 1;
+        self
     }
 }
