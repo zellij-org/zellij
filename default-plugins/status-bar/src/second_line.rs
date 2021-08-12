@@ -375,3 +375,11 @@ pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
     }
     best_effort_shortcut_list(help, max_width)
 }
+
+pub fn text_copied_hint() -> LinePart {
+    let hint = " Text copied to clipboard";
+    LinePart {
+        part: hint.into(),
+        len: hint.len(),
+    }
+}

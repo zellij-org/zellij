@@ -74,32 +74,36 @@ impl InputHandler {
             let stdin_buffer = self.os_input.read_from_stdin();
             for key_result in stdin_buffer.events_and_raw() {
                 match key_result {
-                    Ok((event, raw_bytes)) => match event {
-                        termion::event::Event::Key(key) => {
-                            let key = cast_termion_key(key);
-                            self.handle_key(&key, raw_bytes);
-                        }
-                        termion::event::Event::Mouse(me) => {
-                            let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
-                            self.handle_mouse_event(&mouse_event);
-                        }
-                        termion::event::Event::Unsupported(unsupported_key) => {
-                            // we have to do this because of a bug in termion
-                            // this should be a key event and not an unsupported event
-                            if unsupported_key == alt_left_bracket {
-                                let key = Key::Alt('[');
+                    Ok((event, raw_bytes)) => {
+                        self.os_input
+                            .send_to_server(ClientToServerMsg::InputReceived);
+                        match event {
+                            termion::event::Event::Key(key) => {
+                                let key = cast_termion_key(key);
                                 self.handle_key(&key, raw_bytes);
-                            } else if unsupported_key == bracketed_paste_start {
-                                self.pasting = true;
-                            } else if unsupported_key == bracketed_paste_end {
-                                self.pasting = false;
-                            } else {
-                                // this is a hack because termion doesn't recognize certain keys
-                                // in this case we just forward it to the terminal
-                                self.handle_unknown_key(raw_bytes);
                             }
-                        }
-                    },
+                            termion::event::Event::Mouse(me) => {
+                                let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+                                self.handle_mouse_event(&mouse_event);
+                            }
+                            termion::event::Event::Unsupported(unsupported_key) => {
+                                // we have to do this because of a bug in termion
+                                // this should be a key event and not an unsupported event
+                                if unsupported_key == alt_left_bracket {
+                                    let key = Key::Alt('[');
+                                    self.handle_key(&key, raw_bytes);
+                                } else if unsupported_key == bracketed_paste_start {
+                                    self.pasting = true;
+                                } else if unsupported_key == bracketed_paste_end {
+                                    self.pasting = false;
+                                } else {
+                                    // this is a hack because termion doesn't recognize certain keys
+                                    // in this case we just forward it to the terminal
+                                    self.handle_unknown_key(raw_bytes);
+                                }
+                            }
+                        };
+                    }
                     Err(err) => panic!("Encountered read error: {:?}", err),
                 }
             }

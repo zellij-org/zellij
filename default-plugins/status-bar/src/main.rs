@@ -8,7 +8,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
-use second_line::keybinds;
+use second_line::{keybinds, text_copied_hint};
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
@@ -17,6 +17,7 @@ static MORE_MSG: &str = " ... ";
 #[derive(Default)]
 struct State {
     mode_info: ModeInfo,
+    diplay_text_copied_hint: bool,
 }
 
 register_plugin!(State);
@@ -136,12 +137,26 @@ impl ZellijPlugin for State {
         set_selectable(false);
         set_invisible_borders(true);
         set_fixed_height(2);
-        subscribe(&[EventType::ModeUpdate]);
+        subscribe(&[
+            EventType::ModeUpdate,
+            EventType::CopyToClipboard,
+            EventType::InputReceived,
+        ]);
     }
 
     fn update(&mut self, event: Event) {
-        if let Event::ModeUpdate(mode_info) = event {
-            self.mode_info = mode_info;
+        dbg!("got event {:?}", &event);
+        match event {
+            Event::ModeUpdate(mode_info) => {
+                self.mode_info = mode_info;
+            }
+            Event::CopyToClipboard => {
+                self.diplay_text_copied_hint = true;
+            }
+            Event::InputReceived => {
+                self.diplay_text_copied_hint = false;
+            }
+            _ => {}
         }
     }
 
@@ -157,7 +172,11 @@ impl ZellijPlugin for State {
         let ctrl_keys = ctrl_keys(&self.mode_info, cols - superkey.len, separator);
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = keybinds(&self.mode_info, cols);
+        let second_line = if self.diplay_text_copied_hint {
+            text_copied_hint()
+        } else {
+            keybinds(&self.mode_info, cols)
+        };
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line

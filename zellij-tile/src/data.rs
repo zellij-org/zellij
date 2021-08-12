@@ -33,6 +33,8 @@ pub enum Event {
     TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
     Timer(f64),
+    CopyToClipboard,
+    InputReceived,
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
