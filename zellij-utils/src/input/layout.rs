@@ -8,7 +8,11 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
-use crate::{input::config::ConfigError, pane_size::PositionAndSize, setup};
+use crate::{
+    input::{command::RunCommand, config::ConfigError},
+    pane_size::PositionAndSize,
+    setup,
+};
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
@@ -31,12 +35,21 @@ pub enum SplitSize {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(crate = "self::serde")]
+pub enum Run {
+    #[serde(rename = "plugin")]
+    Plugin(Option<PathBuf>),
+    #[serde(rename = "command")]
+    Command(RunCommand),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(crate = "self::serde")]
 pub struct Layout {
     pub direction: Direction,
     #[serde(default)]
     pub parts: Vec<Layout>,
     pub split_size: Option<SplitSize>,
-    pub plugin: Option<PathBuf>,
+    pub run: Option<Run>,
     #[serde(default)]
     pub borderless: bool,
 }
@@ -69,8 +82,8 @@ impl Layout {
         layout: Option<&PathBuf>,
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Option<Layout> {
-        let layout_result = layout
+    ) -> Option<Result<Layout, ConfigError>> {
+        layout
             .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
             .or_else(|| layout_path.map(|p| Layout::new(p)))
             .or_else(|| {
@@ -78,16 +91,7 @@ impl Layout {
                     &std::path::PathBuf::from("default"),
                     layout_dir.as_ref(),
                 ))
-            });
-
-        match layout_result {
-            None => None,
-            Some(Ok(layout)) => Some(layout),
-            Some(Err(e)) => {
-                eprintln!("There was an error in the layout file:\n{}", e);
-                std::process::exit(1);
-            }
-        }
+            })
     }
 
     // Currently still needed but on nightly
@@ -129,8 +133,11 @@ impl Layout {
         let mut total_panes = 0;
         total_panes += self.parts.len();
         for part in self.parts.iter() {
-            if part.plugin.is_none() {
-                total_panes += part.total_terminal_panes();
+            match part.run {
+                Some(Run::Command(_)) | None => {
+                    total_panes += part.total_terminal_panes();
+                }
+                Some(Run::Plugin(_)) => {}
             }
         }
         total_panes
@@ -143,6 +150,17 @@ impl Layout {
             total_borderless_panes += part.total_borderless_panes();
         }
         total_borderless_panes
+    }
+    pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
+        let mut run_instructions = vec![];
+        if self.parts.is_empty() {
+            run_instructions.push(self.run.clone());
+        }
+        for part in self.parts.iter() {
+            let mut current_runnables = part.extract_run_instructions();
+            run_instructions.append(&mut current_runnables);
+        }
+        run_instructions
     }
 
     pub fn position_panes_in_space(

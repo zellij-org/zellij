@@ -64,6 +64,7 @@ impl ZellijPlugin for State {
             all_tabs.push(tab);
         }
         let tab_line = tab_line(
+            self.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
             cols,

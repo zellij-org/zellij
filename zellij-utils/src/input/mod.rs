@@ -12,53 +12,49 @@ pub mod theme;
 use termion::input::TermRead;
 use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 
-/// Creates a [`Help`] struct indicating the current [`InputMode`] and its keybinds
+/// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
-// TODO this should probably be automatically generated in some way
 pub fn get_mode_info(
     mode: InputMode,
     palette: Palette,
     capabilities: PluginCapabilities,
 ) -> ModeInfo {
-    let mut keybinds: Vec<(String, String)> = vec![];
-    match mode {
-        InputMode::Normal | InputMode::Locked => {}
-        InputMode::Resize => {
-            keybinds.push(("←↓↑→".to_string(), "Resize".to_string()));
-        }
-        InputMode::Pane => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("p".to_string(), "Next".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("d".to_string(), "Down split".to_string()));
-            keybinds.push(("r".to_string(), "Right split".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("f".to_string(), "Fullscreen".to_string()));
-            keybinds.push(("z".to_string(), "Frames".to_string()));
-        }
-        InputMode::Tab => {
-            keybinds.push(("←↓↑→".to_string(), "Move focus".to_string()));
-            keybinds.push(("n".to_string(), "New".to_string()));
-            keybinds.push(("x".to_string(), "Close".to_string()));
-            keybinds.push(("r".to_string(), "Rename".to_string()));
-            keybinds.push(("s".to_string(), "Sync".to_string()));
-        }
-        InputMode::Scroll => {
-            keybinds.push(("↓↑".to_string(), "Scroll".to_string()));
-            keybinds.push(("PgUp/PgDn".to_string(), "Scroll Page".to_string()));
-        }
-        InputMode::RenameTab => {
-            keybinds.push(("Enter".to_string(), "when done".to_string()));
-        }
-        InputMode::Session => {
-            keybinds.push(("d".to_string(), "Detach".to_string()));
-        }
-    }
+    let keybinds = match mode {
+        InputMode::Normal | InputMode::Locked => Vec::new(),
+        InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],
+        InputMode::Pane => vec![
+            ("←↓↑→".to_string(), "Move focus".to_string()),
+            ("p".to_string(), "Next".to_string()),
+            ("n".to_string(), "New".to_string()),
+            ("d".to_string(), "Down split".to_string()),
+            ("r".to_string(), "Right split".to_string()),
+            ("x".to_string(), "Close".to_string()),
+            ("f".to_string(), "Fullscreen".to_string()),
+            ("z".to_string(), "Frames".to_string()),
+        ],
+        InputMode::Tab => vec![
+            ("←↓↑→".to_string(), "Move focus".to_string()),
+            ("n".to_string(), "New".to_string()),
+            ("x".to_string(), "Close".to_string()),
+            ("r".to_string(), "Rename".to_string()),
+            ("s".to_string(), "Sync".to_string()),
+        ],
+        InputMode::Scroll => vec![
+            ("↓↑".to_string(), "Scroll".to_string()),
+            ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
+        ],
+        InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
+        InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
+    };
+
+    let session_name = std::env::var("ZELLIJ_SESSION_NAME").ok();
+
     ModeInfo {
         mode,
         keybinds,
         palette,
         capabilities,
+        session_name,
     }
 }
 

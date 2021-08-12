@@ -2,8 +2,9 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    borderless: true
     split_size:
       Fixed: 1
-    plugin: tab-bar
-    borderless: true
+    run:
+      plugin: tab-bar
   - direction: Vertical

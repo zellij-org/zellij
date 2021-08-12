@@ -11,6 +11,7 @@ pub enum TerminalAction {
 
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommand {
+    #[serde(alias = "cmd")]
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
@@ -19,6 +20,7 @@ pub struct RunCommand {
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommandAction {
+    #[serde(rename = "cmd")]
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,

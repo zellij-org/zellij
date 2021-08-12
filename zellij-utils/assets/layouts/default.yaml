@@ -2,13 +2,15 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    borderless: true
     split_size:
       Fixed: 1
-    plugin: tab-bar
+    run:
+      plugin: tab-bar
+  - direction: Vertical
+  - direction: Vertical
     borderless: true
-  - direction: Vertical
-  - direction: Vertical
     split_size:
       Fixed: 2
-    plugin: status-bar
-    borderless: true
+    run:
+      plugin: status-bar

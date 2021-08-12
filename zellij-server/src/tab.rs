@@ -26,7 +26,10 @@ use std::{
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
-    input::{layout::Layout, parse_keys},
+    input::{
+        layout::{Layout, Run},
+        parse_keys,
+    },
     pane_size::PositionAndSize,
 };
 
@@ -105,7 +108,6 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
-    pub input_mode: InputMode,
     pub colors: Palette,
     draw_pane_frames: bool,
 }
@@ -118,7 +120,6 @@ pub(crate) struct TabData {
     pub name: String,
     pub active: bool,
     pub mode_info: ModeInfo,
-    pub input_mode: InputMode,
     pub colors: Palette,
 }
 
@@ -295,7 +296,6 @@ impl Tab {
         max_panes: Option<usize>,
         pane_id: Option<PaneId>,
         mode_info: ModeInfo,
-        input_mode: InputMode,
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
         draw_pane_frames: bool,
@@ -340,14 +340,13 @@ impl Tab {
             senders,
             should_clear_display_before_rendering: false,
             mode_info,
-            input_mode,
             colors,
             session_state,
             draw_pane_frames,
         }
     }
 
-    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>) {
+    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
         // TODO: this should be an attribute on Screen instead of viewport
         let free_space = PositionAndSize {
             x: 0,
@@ -399,10 +398,10 @@ impl Tab {
 
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
-            if let Some(plugin) = &layout.plugin {
+            if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone()))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone(), tab_index))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let draw_pane_frames = self.draw_pane_frames && !layout.borderless;
@@ -960,6 +959,7 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
+            pane.set_should_render_boundaries(true);
             pane.render_full_viewport();
         }
     }
@@ -2770,6 +2770,16 @@ impl Tab {
             // prevent overflow when row == 0
             let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_down(scroll_columns);
+            self.render();
+        }
+    }
+    pub fn scroll_active_terminal_to_bottom(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            active_terminal.clear_scroll();
             self.render();
         }
     }

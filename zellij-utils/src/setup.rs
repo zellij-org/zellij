@@ -1,18 +1,24 @@
-use crate::cli::CliArgs;
 use crate::consts::{
     FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION, ZELLIJ_PROJ_DIR,
 };
 use crate::input::options::Options;
+use crate::{
+    cli::{CliArgs, Command},
+    input::{
+        config::{Config, ConfigError},
+        layout::Layout,
+    },
+};
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::Path, path::PathBuf};
+use std::{convert::TryFrom, io::Write, path::Path, path::PathBuf, process};
 use structopt::StructOpt;
 
 const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.yaml";
 static ARROW_SEPARATOR: &str = "";
 
-#[cfg(not(any(feature = "test", test)))]
+#[cfg(not(test))]
 /// Goes through a predefined list and checks for an already
 /// existing config directory, returns the first match
 pub fn find_default_config_dir() -> Option<PathBuf> {
@@ -23,7 +29,7 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
         .flatten()
 }
 
-#[cfg(any(feature = "test", test))]
+#[cfg(test)]
 pub fn find_default_config_dir() -> Option<PathBuf> {
     None
 }
@@ -96,11 +102,23 @@ pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/default.yaml"
+    "assets/layouts/disable-status-bar.yaml"
 ));
 
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
+}
+
+pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
+    match layout {
+        "strider" => dump_asset(STRIDER_LAYOUT),
+        "default" => dump_asset(DEFAULT_LAYOUT),
+        "disable-status" => dump_asset(NO_STATUS_LAYOUT),
+        not_found => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Layout: {} not found", not_found),
+        )),
+    }
 }
 
 #[derive(Debug, Default, Clone, StructOpt, Serialize, Deserialize)]
@@ -117,6 +135,9 @@ pub struct Setup {
     #[structopt(long)]
     pub check: bool,
 
+    /// Dump the specified layout file to stdout
+    #[structopt(long)]
+    pub dump_layout: Option<String>,
     /// Generates completion for the specified shell
     #[structopt(long)]
     pub generate_completion: Option<String>,
@@ -124,6 +145,63 @@ pub struct Setup {
 
 impl Setup {
     /// Entrypoint from main
+    /// Merges options from the config file and the command line options
+    /// into `[Options]`, the command line options superceding the config
+    /// file options:
+    /// 1. command line options (`zellij options`)
+    /// 2. config options (`config.yaml`)
+    pub fn from_options(opts: &CliArgs) -> Result<(Config, Option<Layout>, Options), ConfigError> {
+        let clean = match &opts.command {
+            Some(Command::Setup(ref setup)) => setup.clean,
+            _ => false,
+        };
+
+        let config = if !clean {
+            match Config::try_from(opts) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("There was an error in the config file:");
+                    return Err(e);
+                }
+            }
+        } else {
+            Config::default()
+        };
+
+        let config_options = Options::from_cli(&config.options, opts.command.clone());
+
+        let layout_dir = config_options
+            .layout_dir
+            .clone()
+            .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
+        let layout_result = crate::input::layout::Layout::from_path_or_default(
+            opts.layout.as_ref(),
+            opts.layout_path.as_ref(),
+            layout_dir,
+        );
+        let layout = match layout_result {
+            None => None,
+            Some(Ok(layout)) => Some(layout),
+            Some(Err(e)) => {
+                eprintln!("There was an error in the layout file:");
+                return Err(e);
+            }
+        };
+
+        if let Some(Command::Setup(ref setup)) = &opts.command {
+            setup.from_cli(opts, &config_options).map_or_else(
+                |e| {
+                    eprintln!("{:?}", e);
+                    process::exit(1);
+                },
+                |_| {},
+            );
+        };
+
+        Ok((config, layout, config_options))
+    }
+
+    /// General setup helpers
     pub fn from_cli(&self, opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
         if self.clean {
             return Ok(());
@@ -141,6 +219,11 @@ impl Setup {
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell.into());
+            std::process::exit(0);
+        }
+
+        if let Some(layout) = &self.dump_layout {
+            dump_specified_layout(layout)?;
             std::process::exit(0);
         }
 
@@ -181,7 +264,6 @@ impl Setup {
             }
         }
         if let Some(config_file) = config_file {
-            use crate::input::config::Config;
             message.push_str(&format!("[CONFIG FILE]: {:?}\n", config_file));
             match Config::new(&config_file) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),

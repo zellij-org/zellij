@@ -2,6 +2,7 @@ pub mod os_input_output;
 pub mod panes;
 pub mod tab;
 
+mod logging_pipe;
 mod pty;
 mod route;
 mod screen;
@@ -9,6 +10,7 @@ mod thread_bus;
 mod ui;
 mod wasm_vm;
 
+use log::info;
 use zellij_utils::zellij_tile;
 
 use std::path::PathBuf;
@@ -114,7 +116,7 @@ pub(crate) enum SessionState {
 }
 
 pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
-    #[cfg(not(any(feature = "test", test)))]
+    info!("Starting Zellij server!");
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)
@@ -130,7 +132,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::Uninitialized));
 
-    #[cfg(not(any(feature = "test", test)))]
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let to_server = to_server.clone();
@@ -141,21 +142,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
     let thread_handles = Arc::new(Mutex::new(Vec::new()));
 
-    #[cfg(any(feature = "test", test))]
-    thread_handles.lock().unwrap().push(
-        thread::Builder::new()
-            .name("server_router".to_string())
-            .spawn({
-                let session_data = session_data.clone();
-                let os_input = os_input.clone();
-                let to_server = to_server.clone();
-                let session_state = session_state.clone();
-
-                move || route_thread_main(session_data, session_state, os_input, to_server)
-            })
-            .unwrap(),
-    );
-    #[cfg(not(any(feature = "test", test)))]
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
@@ -306,7 +292,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .unwrap()
         .drain(..)
         .for_each(|h| drop(h.join()));
-    #[cfg(not(any(feature = "test", test)))]
     drop(std::fs::remove_file(&socket_path));
 }
 
