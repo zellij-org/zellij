@@ -18,31 +18,11 @@ use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 
 use crate::panes::terminal_character::{
-    CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter,
-    EMPTY_TERMINAL_CHARACTER,
+    CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter, AnsiCode, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::panes::alacritty_functions::{parse_number, xparse_color};
 
 use super::selection::Selection;
-
-// this was copied verbatim from alacritty
-fn parse_number(input: &[u8]) -> Option<u8> {
-    if input.is_empty() {
-        return None;
-    }
-    let mut num: u8 = 0;
-    for c in input {
-        let c = *c as char;
-        if let Some(digit) = c.to_digit(10) {
-            num = match num.checked_mul(10).and_then(|v| v.checked_add(digit as u8)) {
-                Some(v) => v,
-                None => return None,
-            }
-        } else {
-            return None;
-        }
-    }
-    Some(num)
-}
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -310,6 +290,7 @@ pub struct Grid {
     colors: Palette,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
+    pub changed_colors: [Option<AnsiCode>; 256],
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
@@ -363,6 +344,7 @@ impl Grid {
             selection: Default::default(),
             title_stack: vec![],
             title: None,
+            changed_colors: [None; 256],
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -506,8 +488,6 @@ impl Grid {
                 Some(self.width),
             );
 
-            //             let line_to_insert_at_viewport_top = self.lines_above.pop_back().unwrap();
-            //             self.viewport.insert(0, line_to_insert_at_viewport_top);
             self.selection.move_down(1);
         }
         self.output_buffer.update_all_lines();
@@ -1189,6 +1169,7 @@ impl Grid {
         self.disable_linewrap = false;
         self.cursor.change_shape(CursorShape::Block);
         self.output_buffer.update_all_lines();
+        self.changed_colors = [None; 256];
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -1316,12 +1297,20 @@ impl Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
+
+        // we add the changed_colors here instead of changing the actual colors on the
+        // TerminalCharacter in real time because these changed colors also affect the area around
+        // the character (eg. empty space after it)
+        // on the other hand, we must do it here and not at render-time because then it would be
+        // wiped out when one scrolls
+        let styles = self.cursor.pending_styles.changed_colors(self.changed_colors);
+
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
         let terminal_character = TerminalCharacter {
             character: c,
             width: c.width().unwrap_or(0),
-            styles: self.cursor.pending_styles,
+            styles,
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -1387,18 +1376,20 @@ impl Perform for Grid {
                         .join(";")
                         .trim()
                         .to_owned();
-                    // TBD: do something with title?
                     self.set_title(title);
                 }
             }
 
             // Set color index.
             b"4" => {
-                // TBD: set color index - currently unsupported
-                //
-                // this changes a terminal color index to something else
-                // meaning anything set to that index will be changed
-                // during rendering
+                for chunk in params[1..].chunks(2) {
+                    let index = parse_number(chunk[0]);
+                    let color = xparse_color(chunk[1]);
+                    if let (Some(i), Some(c)) = (index, color) {
+                        self.changed_colors[i as usize] = Some(c);
+                        return;
+                    }
+                }
             }
 
             // Get/set Foreground, Background, Cursor colors.
@@ -1472,6 +1463,27 @@ impl Perform for Grid {
 
             // Reset color index.
             b"104" => {
+
+                // Reset all color indexes when no parameters are given.
+                if params.len() == 1 {
+                    for i in 0..256 {
+                        self.changed_colors[i] = None;
+                    }
+                    return;
+                }
+
+                // Reset color indexes given as parameters.
+                for param in &params[1..] {
+                    match parse_number(param) {
+                        Some(index) => {
+                            self.changed_colors[index as usize] = None
+                        }
+                        None => {}
+                    }
+                }
+
+
+
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
                     // TBD - reset all color changes - currently unsupported
