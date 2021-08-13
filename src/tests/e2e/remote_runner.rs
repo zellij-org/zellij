@@ -144,8 +144,6 @@ impl<'a> RemoteTerminal<'a> {
     }
     pub fn status_bar_appears(&self) -> bool {
         self.current_snapshot.contains("Ctrl +")
-        // self.current_snapshot.contains("Ctrl +") && !self.current_snapshot.contains("─────")
-        // this is a bug that happens because the app draws borders around the status bar momentarily on first render
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.current_snapshot.contains(text)

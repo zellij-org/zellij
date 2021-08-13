@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Simplify deserialization slightly (https://github.com/zellij-org/zellij/pull/633)
 * Fix update plugin attributes on inactive tab (https://github.com/zellij-org/zellij/pull/634)
 * New pane UI: draw pane frames - can be disabled with ctrl-p + z, or through configuration (https://github.com/zellij-org/zellij/pull/643)
+* Terminal compatibility: support changing index colors through OSC 4 and similar (https://github.com/zellij-org/zellij/pull/646)
 
 ## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
