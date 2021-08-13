@@ -498,18 +498,11 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    match self
-                        .changed_colors
-                        .and_then(|changed_colors| changed_colors[color_index as usize])
-                    {
-                        Some(changed_color_index) => {
-                            if let AnsiCode::RgbCode((r, g, b)) = changed_color_index {
-                                write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
-                            } else {
-                                write!(f, "\u{1b}[38;5;{}m", color_index)?;
-                            }
+                    match self.changed_colors.and_then(|changed_colors| changed_colors[color_index as usize]) {
+                        Some(AnsiCode::RgbCode((r, g, b))) => {
+                            write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                         }
-                        None => {
+                        _ => {
                             write!(f, "\u{1b}[38;5;{}m", color_index)?;
                         }
                     }
@@ -529,18 +522,11 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    match self
-                        .changed_colors
-                        .and_then(|changed_colors| changed_colors[color_index as usize])
-                    {
-                        Some(changed_color_index) => {
-                            if let AnsiCode::RgbCode((r, g, b)) = changed_color_index {
-                                write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
-                            } else {
-                                write!(f, "\u{1b}[48;5;{}m", color_index)?;
-                            }
+                    match self.changed_colors.and_then(|changed_colors| changed_colors[color_index as usize]) {
+                        Some(AnsiCode::RgbCode((r, g, b))) => {
+                            write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                         }
-                        None => {
+                        _ => {
                             write!(f, "\u{1b}[48;5;{}m", color_index)?;
                         }
                     }

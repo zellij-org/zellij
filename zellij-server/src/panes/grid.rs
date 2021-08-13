@@ -17,11 +17,10 @@ use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
 
-use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::terminal_character::{
-    AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
-    TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset, TerminalCharacter, AnsiCode, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::panes::alacritty_functions::{parse_number, xparse_color};
 
 use super::selection::Selection;
 
@@ -1304,10 +1303,7 @@ impl Perform for Grid {
         // the character (eg. empty space after it)
         // on the other hand, we must do it here and not at render-time because then it would be
         // wiped out when one scrolls
-        let styles = self
-            .cursor
-            .pending_styles
-            .changed_colors(self.changed_colors);
+        let styles = self.cursor.pending_styles.changed_colors(self.changed_colors);
 
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
@@ -1467,6 +1463,7 @@ impl Perform for Grid {
 
             // Reset color index.
             b"104" => {
+
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
                     for i in 0..256 {
@@ -1477,11 +1474,12 @@ impl Perform for Grid {
 
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
-                    match parse_number(param) {
-                        Some(index) => self.changed_colors[index as usize] = None,
-                        None => {}
+                    if let Some(index) = parse_number(param) {
+                        self.changed_colors[index as usize] = None
                     }
                 }
+
+
 
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
