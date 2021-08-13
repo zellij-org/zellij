@@ -498,7 +498,10 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    match self.changed_colors.and_then(|changed_colors| changed_colors[color_index as usize]) {
+                    match self
+                        .changed_colors
+                        .and_then(|changed_colors| changed_colors[color_index as usize])
+                    {
                         Some(AnsiCode::RgbCode((r, g, b))) => {
                             write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                         }
@@ -522,7 +525,10 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    match self.changed_colors.and_then(|changed_colors| changed_colors[color_index as usize]) {
+                    match self
+                        .changed_colors
+                        .and_then(|changed_colors| changed_colors[color_index as usize])
+                    {
                         Some(AnsiCode::RgbCode((r, g, b))) => {
                             write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                         }
