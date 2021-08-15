@@ -1,5 +1,6 @@
 use std::env;
 use std::os::unix::io::RawFd;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
@@ -102,10 +103,19 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
                 let pid_secondary = match fork_pty_res.fork_result {
                     ForkResult::Parent { child } => child,
                     ForkResult::Child => {
-                        let child = Command::new(cmd.command)
-                            .args(&cmd.args)
-                            .spawn()
-                            .expect("failed to spawn");
+                        let child = unsafe {
+                            Command::new(cmd.command)
+                                .args(&cmd.args)
+                                .pre_exec(|| -> std::io::Result<()> {
+                                    unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0))
+                                        .expect("failed to create a new process group");
+                                    Ok(())
+                                })
+                                .spawn()
+                                .expect("failed to spawn")
+                        };
+                        unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
+                            .expect("faled to set child's forceground process group");
                         handle_command_exit(child);
                         ::std::process::exit(0);
                     }
