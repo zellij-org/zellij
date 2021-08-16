@@ -107,6 +107,8 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
                             Command::new(cmd.command)
                                 .args(&cmd.args)
                                 .pre_exec(|| -> std::io::Result<()> {
+                                    // this is the "unsafe" part, for more details please see:
+                                    // https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#notes-and-safety
                                     unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0))
                                         .expect("failed to create a new process group");
                                     Ok(())
