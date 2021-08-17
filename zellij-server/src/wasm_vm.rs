@@ -133,15 +133,19 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             }
             PluginInstruction::Render(buf_tx, pid, rows, cols) => {
-                let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+                if rows == 0 || cols == 0 {
+                    buf_tx.send(String::new()).unwrap();
+                } else {
+                    let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
 
-                let render = instance.exports.get_function("render").unwrap();
+                    let render = instance.exports.get_function("render").unwrap();
 
-                render
-                    .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                    .unwrap();
+                    render
+                        .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+                        .unwrap();
 
-                buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
+                    buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
+                }
             }
             PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
             PluginInstruction::Exit => break,

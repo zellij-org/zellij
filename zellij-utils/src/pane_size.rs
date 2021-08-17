@@ -11,6 +11,15 @@ pub struct PaneGeom {
     pub rows: Dimension,
     pub cols: Dimension,
 }
+/*
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PositionAndSize {
+    pub x: usize,
+    pub y: usize,
+    pub rows: usize,
+    pub cols: usize,
+}
+*/
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Size {
@@ -90,5 +99,19 @@ impl PaneGeom {
             && col < self.x + self.cols.as_usize()
             && self.y <= row
             && row < self.y + self.rows.as_usize()
+    }
+}
+impl PositionAndSize {
+    pub fn reduce_outer_frame(mut self, frame_width: usize) -> Self {
+        self.x += frame_width;
+        self.rows -= frame_width * 2;
+        self.y += frame_width;
+        self.cols -= frame_width * 2;
+        self
+    }
+    pub fn reduce_top_line(mut self) -> Self {
+        self.y += 1;
+        self.rows -= 1;
+        self
     }
 }

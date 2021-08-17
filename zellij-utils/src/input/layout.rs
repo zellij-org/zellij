@@ -53,6 +53,8 @@ pub struct Layout {
     pub parts: Vec<Layout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
+    #[serde(default)]
+    pub borderless: bool,
 }
 
 type LayoutResult = Result<Layout, ConfigError>;
@@ -144,6 +146,14 @@ impl Layout {
         total_panes
     }
 
+    pub fn total_borderless_panes(&self) -> usize {
+        let mut total_borderless_panes = 0;
+        total_borderless_panes += self.parts.iter().filter(|p| p.borderless).count();
+        for part in self.parts.iter() {
+            total_borderless_panes += part.total_borderless_panes();
+        }
+        total_borderless_panes
+    }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
         if self.parts.is_empty() {

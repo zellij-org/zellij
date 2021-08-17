@@ -47,10 +47,10 @@ impl FsEntry {
             FsEntry::Dir(_, s) => s.to_string(),
             FsEntry::File(_, s) => pb::convert(*s as f64),
         };
-        let space = width - info.len();
+        let space = width.saturating_sub(info.len());
         let name = self.name();
-        if space - 1 < name.len() {
-            [&name[..space - 2], &info].join("~ ")
+        if space.saturating_sub(1) < name.len() {
+            [&name[..space.saturating_sub(2)], &info].join("~ ")
         } else {
             let padding = " ".repeat(space - name.len());
             [name, padding, info].concat()

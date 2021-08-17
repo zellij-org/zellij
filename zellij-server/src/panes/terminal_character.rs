@@ -1,8 +1,10 @@
-use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+
 use zellij_utils::logging::debug_log_to_file;
 use zellij_utils::vte::ParamsIter;
+
+use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -19,6 +21,7 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
         bold: Some(AnsiCode::Reset),
         dim: Some(AnsiCode::Reset),
         italic: Some(AnsiCode::Reset),
+        changed_colors: None,
     },
 };
 
@@ -107,6 +110,7 @@ pub struct CharacterStyles {
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
+    pub changed_colors: Option<[Option<AnsiCode>; 256]>,
 }
 
 impl Default for CharacterStyles {
@@ -123,6 +127,7 @@ impl Default for CharacterStyles {
             bold: None,
             dim: None,
             italic: None,
+            changed_colors: None,
         }
     }
 }
@@ -173,6 +178,10 @@ impl CharacterStyles {
     }
     pub fn strike(mut self, strike_code: Option<AnsiCode>) -> Self {
         self.strike = strike_code;
+        self
+    }
+    pub fn changed_colors(mut self, changed_colors: [Option<AnsiCode>; 256]) -> Self {
+        self.changed_colors = Some(changed_colors);
         self
     }
     pub fn clear(&mut self) {
@@ -317,6 +326,16 @@ impl CharacterStyles {
             } else {
                 diff = Some(CharacterStyles::new().italic(new_styles.italic));
                 self.italic = new_styles.italic;
+            }
+        }
+
+        if let Some(changed_colors) = new_styles.changed_colors {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.changed_colors(changed_colors));
+                self.changed_colors = new_styles.changed_colors;
+            } else {
+                diff = Some(CharacterStyles::new().changed_colors(changed_colors));
+                self.changed_colors = new_styles.changed_colors;
             }
         }
         diff
@@ -479,7 +498,17 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    write!(f, "\u{1b}[38;5;{}m", color_index)?;
+                    match self
+                        .changed_colors
+                        .and_then(|changed_colors| changed_colors[color_index as usize])
+                    {
+                        Some(AnsiCode::RgbCode((r, g, b))) => {
+                            write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
+                        }
+                        _ => {
+                            write!(f, "\u{1b}[38;5;{}m", color_index)?;
+                        }
+                    }
                 }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[39m")?;
@@ -496,7 +525,17 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
                 }
                 AnsiCode::ColorIndex(color_index) => {
-                    write!(f, "\u{1b}[48;5;{}m", color_index)?;
+                    match self
+                        .changed_colors
+                        .and_then(|changed_colors| changed_colors[color_index as usize])
+                    {
+                        Some(AnsiCode::RgbCode((r, g, b))) => {
+                            write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
+                        }
+                        _ => {
+                            write!(f, "\u{1b}[48;5;{}m", color_index)?;
+                        }
+                    }
                 }
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[49m")?;
@@ -755,17 +794,5 @@ pub struct TerminalCharacter {
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.character)
-    }
-}
-
-fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
-    match params.next() {
-        Some(2) => Some(AnsiCode::RgbCode((
-            u8::try_from(params.next()?).ok()?,
-            u8::try_from(params.next()?).ok()?,
-            u8::try_from(params.next()?).ok()?,
-        ))),
-        Some(5) => Some(AnsiCode::ColorIndex(u8::try_from(params.next()?).ok()?)),
-        _ => None,
     }
 }

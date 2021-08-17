@@ -58,6 +58,9 @@ pub struct Options {
     #[serde(default)]
     /// Disable handling of mouse events
     pub disable_mouse_mode: bool,
+    #[structopt(long)]
+    #[serde(default)]
+    pub no_pane_frames: bool,
     /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
     pub on_force_close: Option<OnForceClose>,
@@ -80,6 +83,7 @@ impl Options {
 
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let disable_mouse_mode = merge_bool(other.disable_mouse_mode, self.disable_mouse_mode);
+        let no_pane_frames = merge_bool(other.no_pane_frames, self.no_pane_frames);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -94,6 +98,7 @@ impl Options {
             default_shell,
             layout_dir,
             disable_mouse_mode,
+            no_pane_frames,
             on_force_close,
         }
     }

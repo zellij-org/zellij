@@ -18,7 +18,7 @@ pub fn set_permissions(path: &Path) -> io::Result<()> {
     fs::set_permissions(path, permissions)
 }
 
-fn ansi_len(s: &str) -> usize {
+pub fn ansi_len(s: &str) -> usize {
     from_utf8(&strip(s.as_bytes()).unwrap())
         .unwrap()
         .chars()
