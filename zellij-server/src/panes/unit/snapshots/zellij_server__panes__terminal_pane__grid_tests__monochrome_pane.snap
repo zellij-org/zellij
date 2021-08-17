@@ -1,0 +1,6 @@
+---
+source: zellij-server/src/panes/./unit/terminal_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.render().unwrap())"
+
+---
+"\u{1b}[1;1H\u{1b}[m\u{1b}[1mHi Zellij\u{1b}[29m\u{1b}[28m\u{1b}[27m\u{1b}[25m\u{1b}[25m\u{1b}[22m\u{1b}[24m\u{1b}[24m\u{1b}[22m\u{1b}[23m "
