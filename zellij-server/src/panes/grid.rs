@@ -2165,6 +2165,9 @@ impl Row {
         if !parts.is_empty() && self.is_canonical {
             parts.get_mut(0).unwrap().is_canonical = true;
         }
+        if parts.is_empty() {
+            parts.push(self.clone());
+        }
         parts
     }
 }
