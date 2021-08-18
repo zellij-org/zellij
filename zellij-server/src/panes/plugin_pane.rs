@@ -7,13 +7,12 @@ use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::PaneBoundariesFrame;
 use crate::wasm_vm::PluginInstruction;
-use zellij_utils::{
-    channels::SenderWithContext,
-    pane_size::{Constraint, Dimension, PaneGeom},
-};
 use zellij_utils::shared::ansi_len;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::channels::SenderWithContext;
+use zellij_utils::{
+    channels::SenderWithContext,
+    pane_size::{Constraint, Dimension, PaneGeom, PositionAndSize},
+};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -22,7 +21,7 @@ pub(crate) struct PluginPane {
     pub invisible_borders: bool,
     pub position_and_size: PaneGeom,
     pub position_and_size_override: Option<PaneGeom>,
-    pub content_position_and_size: PaneGeom,
+    pub content_position_and_size: PositionAndSize,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
     pub pane_title: String,
@@ -46,7 +45,7 @@ impl PluginPane {
             send_plugin_instructions,
             active_at: Instant::now(),
             pane_decoration: PaneDecoration::ContentOffset((0, 0)),
-            content_position_and_size: position_and_size,
+            content_position_and_size: position_and_size.into(),
             pane_title: title,
         }
     }
@@ -75,14 +74,14 @@ impl PluginPane {
             .unwrap_or_else(|| self.position_and_size());
         match &mut self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundaries_frame) => {
-                boundaries_frame.change_pos_and_size(position_and_size);
+                boundaries_frame.change_pos_and_size(position_and_size.into());
                 self.content_position_and_size = boundaries_frame.content_position_and_size();
             }
             PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
-                self.content_position_and_size = position_and_size;
+                self.content_position_and_size = position_and_size.into();
                 self.content_position_and_size.cols =
-                    position_and_size.cols - *content_columns_offset;
-                self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
+                    position_and_size.cols.as_usize() - *content_columns_offset;
+                self.content_position_and_size.rows = position_and_size.rows.as_usize() - *content_rows_offset;
             }
         };
         self.set_should_render(true);
@@ -372,7 +371,7 @@ impl Pane for PluginPane {
             self.content_position_and_size = boundaries_frame.content_position_and_size();
         } else {
             let mut boundaries_frame =
-                PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+                PaneBoundariesFrame::new(position_and_size.into(), self.pane_title.clone());
             boundaries_frame.render_only_title(should_render_only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
             self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);

@@ -1,11 +1,3 @@
-use zellij_utils::position::Position;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::{vte, zellij_tile};
-use std::fmt::Debug;
-use std::os::unix::io::RawFd;
-use std::time::{self, Instant};
-use zellij_tile::data::Palette;
-use zellij_utils::pane_size::PositionAndSize;
 use crate::panes::AnsiCode;
 use crate::panes::{
     grid::Grid,
@@ -19,6 +11,7 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Constraint;
+use zellij_utils::pane_size::PositionAndSize;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
@@ -418,7 +411,7 @@ impl Pane for TerminalPane {
             self.content_position_and_size = boundaries_frame.content_position_and_size();
         } else {
             let mut boundaries_frame =
-                PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
+                PaneBoundariesFrame::new(position_and_size.into(), self.pane_title.clone());
             boundaries_frame.render_only_title(only_title);
             self.content_position_and_size = boundaries_frame.content_position_and_size();
             self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);
@@ -446,7 +439,8 @@ impl TerminalPane {
         );
         TerminalPane {
             pane_decoration: PaneDecoration::ContentOffset((0, 0)),
-            content_position_and_size: position_and_size,
+            // FIXME: Calculate this on the fly, don't just use this into
+            content_position_and_size: position_and_size.into(),
             pid,
             grid,
             selectable: true,
@@ -521,14 +515,14 @@ impl TerminalPane {
             .unwrap_or_else(|| self.position_and_size());
         match &mut self.pane_decoration {
             PaneDecoration::BoundariesFrame(boundaries_frame) => {
-                boundaries_frame.change_pos_and_size(position_and_size);
+                boundaries_frame.change_pos_and_size(position_and_size.into());
                 self.content_position_and_size = boundaries_frame.content_position_and_size();
             }
             PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
-                self.content_position_and_size = position_and_size;
+                self.content_position_and_size = position_and_size.into();
                 self.content_position_and_size.cols =
-                    position_and_size.cols - *content_columns_offset;
-                self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
+                    position_and_size.cols.as_usize() - *content_columns_offset;
+                self.content_position_and_size.rows = position_and_size.rows.as_usize() - *content_rows_offset;
             }
         };
         self.reflow_lines();

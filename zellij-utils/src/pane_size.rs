@@ -11,7 +11,7 @@ pub struct PaneGeom {
     pub rows: Dimension,
     pub cols: Dimension,
 }
-/*
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PositionAndSize {
     pub x: usize,
@@ -19,7 +19,6 @@ pub struct PositionAndSize {
     pub rows: usize,
     pub cols: usize,
 }
-*/
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Size {
@@ -80,6 +79,7 @@ pub enum Constraint {
     Percent(f64),
 }
 
+// FIXME: These From implementations are nonsense
 impl From<Size> for PaneGeom {
     fn from(size: Size) -> PaneGeom {
         PaneGeom {
@@ -87,6 +87,45 @@ impl From<Size> for PaneGeom {
             y: 0,
             cols: Dimension::fixed(size.cols),
             rows: Dimension::fixed(size.rows),
+        }
+    }
+}
+impl From<PositionAndSize> for PaneGeom {
+    fn from(pos_and_size: PositionAndSize) -> PaneGeom {
+        PaneGeom {
+            x: pos_and_size.x,
+            y: pos_and_size.y,
+            cols: Dimension::fixed(pos_and_size.cols),
+            rows: Dimension::fixed(pos_and_size.rows),
+        }
+    }
+}
+// FIXME: These are okay?
+impl From<PositionAndSize> for Size {
+    fn from(pos_and_size: PositionAndSize) -> Self {
+        Self {
+            rows: pos_and_size.rows,
+            cols: pos_and_size.cols,
+        }
+    }
+}
+ impl From<PaneGeom> for PositionAndSize {
+    fn from(pane: PaneGeom) -> Self {
+        Self {
+            x: pane.x,
+            y: pane.y,
+            rows: pane.rows.as_usize(),
+            cols: pane.cols.as_usize(),
+        }
+    }
+}
+impl From<Size> for PositionAndSize {
+    fn from(size: Size) -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            rows: size.rows,
+            cols: size.cols,
         }
     }
 }
@@ -111,7 +150,7 @@ impl PositionAndSize {
     }
     pub fn reduce_top_line(mut self) -> Self {
         self.y += 1;
-        self.rows -= 1;
+        self.rows.saturating_sub(1);
         self
     }
 }
