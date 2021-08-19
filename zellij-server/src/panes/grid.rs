@@ -42,7 +42,7 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     }
 }
 
-fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
+fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -58,9 +58,9 @@ fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     }
 }
 
-fn get_bottom_canonical_row_and_wraps2(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
-    for (i, row) in rows.iter().enumerate().rev() {
+    for (i, row) in viewport.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
         if row.is_canonical {
             break;
@@ -68,7 +68,7 @@ fn get_bottom_canonical_row_and_wraps2(rows: &mut Vec<Row>) -> Vec<Row> {
     }
     match index_of_last_non_canonical_row {
         Some(index_of_last_non_canonical_row) => {
-            rows.drain(index_of_last_non_canonical_row..).collect()
+            viewport.drain(index_of_last_non_canonical_row..).collect()
         }
         None => vec![],
     }
@@ -140,19 +140,19 @@ fn transfer_rows_from_lines_above_to_viewport(
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
-    source: &mut Vec<Row>,
-    destination: &mut VecDeque<Row>,
+    viewport: &mut Vec<Row>,
+    lines_above: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
 ) {
     let mut next_lines: Vec<Row> = vec![];
     for _ in 0..count {
         if next_lines.is_empty() {
-            if !source.is_empty() {
-                let next_line = source.remove(0);
+            if !viewport.is_empty() {
+                let next_line = viewport.remove(0);
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
-                        get_bottom_canonical_row_and_wraps(destination);
+                        get_lines_above_bottom_canonical_row_and_wraps(lines_above);
                     next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
                 }
                 next_lines.push(next_line);
@@ -161,13 +161,13 @@ fn transfer_rows_from_viewport_to_lines_above(
                 break; // no more rows
             }
         }
-        bounded_push(destination, next_lines.remove(0));
+        bounded_push(lines_above, next_lines.remove(0));
     }
     if !next_lines.is_empty() {
         let excess_rows = Row::from_rows(next_lines, max_viewport_width)
             .split_to_rows_of_length(max_viewport_width);
         for row in excess_rows {
-            source.insert(0, row);
+            viewport.insert(0, row);
         }
     }
 }
@@ -186,7 +186,7 @@ fn transfer_rows_from_lines_below_to_viewport(
                 let mut top_non_canonical_rows_in_lines_below =
                     get_top_non_canonical_rows(lines_below);
                 if !top_non_canonical_rows_in_lines_below.is_empty() {
-                    let mut canonical_line = get_bottom_canonical_row_and_wraps2(viewport);
+                    let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
                     lines_pulled_from_viewport += canonical_line.len();
                     canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
                     next_lines = Row::from_rows(canonical_line, max_viewport_width)
