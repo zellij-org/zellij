@@ -608,9 +608,9 @@ fn copy_selected_text_from_lines_below() {
 
     grid.move_viewport_up(40);
 
-    grid.start_selection(&Position::new(35, 6));
+    grid.start_selection(&Position::new(63, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(37, 35)));
+    grid.end_selection(Some(&Position::new(65, 35)));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -904,6 +904,98 @@ pub fn exa_plus_omf_theme() {
     let content = read_fixture(fixture_name);
     for byte in content {
         vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    grid.scroll_down_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_with_line_wraps() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_down_with_line_wraps() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    grid.scroll_down_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_decrease_width_and_scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    for _ in 0..10 {
+        grid.scroll_up_one_line();
+    }
+    grid.change_size(10, 25);
+    for _ in 0..10 {
+        grid.scroll_down_one_line();
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_increase_width_and_scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    for _ in 0..10 {
+        grid.scroll_up_one_line();
+    }
+    grid.change_size(10, 50);
+    for _ in 0..10 {
+        grid.scroll_down_one_line();
     }
     assert_snapshot!(format!("{:?}", grid));
 }
