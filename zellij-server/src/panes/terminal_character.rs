@@ -329,7 +329,7 @@ impl CharacterStyles {
                     if let Some(changed_color) = changed_colors[color_index as usize] {
                         diff.as_mut().unwrap().foreground = Some(changed_color);
                     }
-                },
+                }
                 _ => {}
             }
             match diff.and_then(|diff| diff.background) {
@@ -337,7 +337,7 @@ impl CharacterStyles {
                     if let Some(changed_color) = changed_colors[color_index as usize] {
                         diff.as_mut().unwrap().background = Some(changed_color);
                     }
-                },
+                }
                 _ => {}
             }
         }

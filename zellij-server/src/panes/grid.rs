@@ -1361,7 +1361,7 @@ impl Perform for Grid {
         let terminal_character = TerminalCharacter {
             character: c,
             width: c.width().unwrap_or(0),
-            styles: self.cursor.pending_styles, 
+            styles: self.cursor.pending_styles,
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);

@@ -236,8 +236,8 @@ impl Pane for TerminalPane {
                         break;
                     }
 
-                    if let Some(new_styles) =
-                        character_styles.update_and_return_diff(&t_character.styles, self.grid.changed_colors)
+                    if let Some(new_styles) = character_styles
+                        .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
                     {
                         vte_output.push_str(&new_styles.to_string());
                     }
