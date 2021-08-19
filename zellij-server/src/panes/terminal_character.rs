@@ -324,21 +324,15 @@ impl CharacterStyles {
         }
 
         if let Some(changed_colors) = changed_colors {
-            match diff.and_then(|diff| diff.foreground) {
-                Some(AnsiCode::ColorIndex(color_index)) => {
-                    if let Some(changed_color) = changed_colors[color_index as usize] {
-                        diff.as_mut().unwrap().foreground = Some(changed_color);
-                    }
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.foreground) {
+                if let Some(changed_color) = changed_colors[color_index as usize] {
+                    diff.as_mut().unwrap().foreground = Some(changed_color);
                 }
-                _ => {}
             }
-            match diff.and_then(|diff| diff.background) {
-                Some(AnsiCode::ColorIndex(color_index)) => {
-                    if let Some(changed_color) = changed_colors[color_index as usize] {
-                        diff.as_mut().unwrap().background = Some(changed_color);
-                    }
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.background) {
+                if let Some(changed_color) = changed_colors[color_index as usize] {
+                    diff.as_mut().unwrap().background = Some(changed_color);
                 }
-                _ => {}
             }
         }
         diff
