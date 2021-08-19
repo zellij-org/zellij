@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * New pane UI: draw pane frames - can be disabled with ctrl-p + z, or through configuration (https://github.com/zellij-org/zellij/pull/643)
 * Terminal compatibility: support changing index colors through OSC 4 and similar (https://github.com/zellij-org/zellij/pull/646)
 * Fix various shells (eg. nushell) unexpectedly exiting when the user presses ctrl-c (https://github.com/zellij-org/zellij/pull/648)
+* Fix line wrapping while scrolling (https://github.com/zellij-org/zellij/pull/650)
 
 ## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
