@@ -348,7 +348,7 @@ pub struct Grid {
     colors: Palette,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
-    pub changed_colors: [Option<AnsiCode>; 256],
+    pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
@@ -402,7 +402,7 @@ impl Grid {
             selection: Default::default(),
             title_stack: vec![],
             title: None,
-            changed_colors: [None; 256],
+            changed_colors: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1227,7 +1227,7 @@ impl Grid {
         self.disable_linewrap = false;
         self.cursor.change_shape(CursorShape::Block);
         self.output_buffer.update_all_lines();
-        self.changed_colors = [None; 256];
+        self.changed_colors = None;
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -1356,22 +1356,12 @@ impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
 
-        // we add the changed_colors here instead of changing the actual colors on the
-        // TerminalCharacter in real time because these changed colors also affect the area around
-        // the character (eg. empty space after it)
-        // on the other hand, we must do it here and not at render-time because then it would be
-        // wiped out when one scrolls
-        let styles = self
-            .cursor
-            .pending_styles
-            .changed_colors(self.changed_colors);
-
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
         let terminal_character = TerminalCharacter {
             character: c,
             width: c.width().unwrap_or(0),
-            styles,
+            styles: self.cursor.pending_styles, 
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -1447,7 +1437,10 @@ impl Perform for Grid {
                     let index = parse_number(chunk[0]);
                     let color = xparse_color(chunk[1]);
                     if let (Some(i), Some(c)) = (index, color) {
-                        self.changed_colors[i as usize] = Some(c);
+                        if self.changed_colors.is_none() {
+                            self.changed_colors = Some([None; 256]);
+                        }
+                        self.changed_colors.as_mut().unwrap()[i as usize] = Some(c);
                         return;
                     }
                 }
@@ -1526,16 +1519,16 @@ impl Perform for Grid {
             b"104" => {
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
-                    for i in 0..256 {
-                        self.changed_colors[i] = None;
-                    }
+                    self.changed_colors = None;
                     return;
                 }
 
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
                     if let Some(index) = parse_number(param) {
-                        self.changed_colors[index as usize] = None
+                        if self.changed_colors.is_some() {
+                            self.changed_colors.as_mut().unwrap()[index as usize] = None
+                        }
                     }
                 }
 
