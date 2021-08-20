@@ -193,8 +193,8 @@ impl Pane for TerminalPane {
             let mut character_styles = CharacterStyles::new();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
-                    let x = self.get_x();
-                    let y = self.get_y();
+                    let x = self.get_content_x();
+                    let y = self.get_content_y();
                     vte_output.push_str(&format!(
                         "\u{1b}[{};{}H\u{1b}[m",
                         y + line_index + 1,
