@@ -65,6 +65,8 @@ pub(crate) struct Pty {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
+use std::convert::TryFrom;
+
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
@@ -104,7 +106,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                 });
 
                 let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
-                pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
+                let layout: Layout =
+                    Layout::try_from(merged_layout).unwrap_or_else(|err| panic!("{}", err));
+
+                pty.spawn_terminals_for_layout(layout, terminal_action.clone());
 
                 if let Some(tab_name) = tab_name {
                     // clear current name at first

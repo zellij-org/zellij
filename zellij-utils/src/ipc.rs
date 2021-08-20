@@ -3,7 +3,7 @@
 use crate::{
     cli::CliArgs,
     errors::{get_current_ctx, ErrorContext},
-    input::{actions::Action, layout::LayoutFromYaml, options::Options},
+    input::{actions::Action, layout::LayoutFromYaml, options::Options, plugins::Plugins},
     pane_size::Size,
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -58,7 +58,13 @@ pub enum ClientToServerMsg {
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
     TerminalResize(Size),
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
+    NewClient(
+        ClientAttributes,
+        Box<CliArgs>,
+        Box<Options>,
+        LayoutFromYaml,
+        Option<Plugins>,
+    ),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),
     ClientExited,

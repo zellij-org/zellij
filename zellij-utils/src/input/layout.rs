@@ -18,14 +18,18 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
+use super::plugins::{Plugin, PluginTag, PluginsError};
 use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
 use std::{
     cmp::max,
+    fmt, fs,
     ops::Not,
     path::{Path, PathBuf},
 };
 use std::{fs::File, io::prelude::*};
+use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "self::serde")]
@@ -56,17 +60,77 @@ pub enum SplitSize {
 #[serde(crate = "self::serde")]
 pub enum Run {
     #[serde(rename = "plugin")]
-    Plugin(Option<RunPlugin>),
+    Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
-pub struct RunPlugin {
-    pub path: PathBuf,
+pub enum RunFromYaml {
+    #[serde(rename = "plugin")]
+    Plugin(RunPluginFromYaml),
+    #[serde(rename = "command")]
+    Command(RunCommand),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct RunPluginFromYaml {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
+    pub location: Url,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct RunPlugin {
+    #[serde(default)]
+    pub _allow_exec_host_cmd: bool,
+    pub location: RunPluginLocation,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub enum RunPluginLocation {
+    File(PathBuf),
+    Zellij(PluginTag),
+}
+
+impl From<&Plugin> for RunPlugin {
+    fn from(plugin: &Plugin) -> Self {
+        RunPlugin {
+            _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+            location: RunPluginLocation::Zellij(plugin.tag.clone()),
+        }
+    }
+}
+
+impl From<&RunPluginLocation> for Url {
+    fn from(location: &RunPluginLocation) -> Self {
+        let url = match location {
+            RunPluginLocation::File(path) => format!(
+                "file:{}",
+                path.clone().into_os_string().into_string().unwrap()
+            ),
+            RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
+        };
+        Self::parse(&url).unwrap()
+    }
+}
+
+impl fmt::Display for RunPluginLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::File(path) => write!(
+                f,
+                "file:{}",
+                path.clone().into_os_string().into_string().unwrap()
+            ),
+
+            Self::Zellij(tag) => write!(f, "zellij:{}", tag),
+        }
+    }
 }
 
 // The layout struct ultimately used to build the layouts.
@@ -193,7 +257,7 @@ pub struct LayoutTemplate {
     #[serde(default)]
     pub body: bool,
     pub split_size: Option<SplitSize>,
-    pub run: Option<Run>,
+    pub run: Option<RunFromYaml>,
 }
 
 impl LayoutTemplate {
@@ -235,9 +299,9 @@ pub struct TabLayout {
     #[serde(default)]
     pub parts: Vec<TabLayout>,
     pub split_size: Option<SplitSize>,
-    pub run: Option<Run>,
     #[serde(default)]
     pub name: String,
+    pub run: Option<RunFromYaml>,
 }
 
 impl TabLayout {
@@ -291,25 +355,23 @@ impl Layout {
         split_space(space, self)
     }
 
-    pub fn merge_tab_layout(&mut self, tab: TabLayout) {
-        self.parts.push(tab.into());
-    }
-
     pub fn merge_layout_parts(&mut self, mut parts: Vec<Layout>) {
         self.parts.append(&mut parts);
     }
 
-    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
+    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Result<Vec<Self>, ConfigError> {
         tab_layout
             .iter()
-            .map(|tab_layout| Layout::from(tab_layout.to_owned()))
+            .map(|tab_layout| Layout::try_from(tab_layout.to_owned()))
             .collect()
     }
 
-    fn from_vec_template_layout(layout_template: Vec<LayoutTemplate>) -> Vec<Self> {
+    fn from_vec_template_layout(
+        layout_template: Vec<LayoutTemplate>,
+    ) -> Result<Vec<Self>, ConfigError> {
         layout_template
             .iter()
-            .map(|layout_template| Layout::from(layout_template.to_owned()))
+            .map(|layout_template| Layout::try_from(layout_template.to_owned()))
             .collect()
     }
 }
@@ -408,15 +470,60 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
     pane_positions
 }
 
-impl From<TabLayout> for Layout {
-    fn from(tab: TabLayout) -> Self {
-        Layout {
+impl TryFrom<Url> for RunPluginLocation {
+    type Error = PluginsError;
+
+    fn try_from(url: Url) -> Result<Self, Self::Error> {
+        match url.scheme() {
+            "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
+            "file" => {
+                let path = PathBuf::from(url.path());
+                let canonicalize = |p: &Path| {
+                    fs::canonicalize(p)
+                        .map_err(|_| PluginsError::InvalidPluginLocation(p.to_owned()))
+                };
+                canonicalize(&path)
+                    .or_else(|_| match path.strip_prefix("/") {
+                        Ok(path) => canonicalize(path),
+                        Err(_) => Err(PluginsError::InvalidPluginLocation(path.to_owned())),
+                    })
+                    .map(Self::File)
+            }
+            _ => Err(PluginsError::InvalidUrl(url)),
+        }
+    }
+}
+
+impl TryFrom<RunFromYaml> for Run {
+    type Error = PluginsError;
+
+    fn try_from(run: RunFromYaml) -> Result<Self, Self::Error> {
+        match run {
+            RunFromYaml::Command(command) => Ok(Run::Command(command)),
+            RunFromYaml::Plugin(plugin) => Ok(Run::Plugin(RunPlugin {
+                _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+                location: plugin.location.try_into()?,
+            })),
+        }
+    }
+}
+
+impl TryFrom<TabLayout> for Layout {
+    type Error = ConfigError;
+
+    fn try_from(tab: TabLayout) -> Result<Self, Self::Error> {
+        Ok(Layout {
             direction: tab.direction,
             borderless: tab.borderless,
-            parts: Self::from_vec_tab_layout(tab.parts),
+            parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
-            run: tab.run,
-        }
+            run: tab
+                .run
+                .map(Run::try_from)
+                // FIXME: This is just Result::transpose but that method is unstable, when it
+                // stabalizes we should swap this out.
+                .map_or(Ok(None), |r| r.map(Some))?,
+        })
     }
 }
 
@@ -433,15 +540,22 @@ impl From<TabLayout> for LayoutTemplate {
     }
 }
 
-impl From<LayoutTemplate> for Layout {
-    fn from(template: LayoutTemplate) -> Self {
-        Layout {
+impl TryFrom<LayoutTemplate> for Layout {
+    type Error = ConfigError;
+
+    fn try_from(template: LayoutTemplate) -> Result<Self, Self::Error> {
+        Ok(Layout {
             direction: template.direction,
             borderless: template.borderless,
-            parts: Self::from_vec_template_layout(template.parts),
+            parts: Self::from_vec_template_layout(template.parts)?,
             split_size: template.split_size,
-            run: template.run,
-        }
+            run: template
+                .run
+                .map(Run::try_from)
+                // FIXME: This is just Result::transpose but that method is unstable, when it
+                // stabalizes we should swap this out.
+                .map_or(Ok(None), |r| r.map(Some))?,
+        })
     }
 }
 

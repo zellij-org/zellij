@@ -7,6 +7,7 @@ pub mod keybinds;
 pub mod layout;
 pub mod mouse;
 pub mod options;
+pub mod plugins;
 pub mod theme;
 
 use termion::input::TermRead;

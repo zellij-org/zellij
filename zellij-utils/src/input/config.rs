@@ -5,14 +5,15 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
+
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
+use super::plugins::{Plugins, PluginsError, PluginsFromYaml};
 use super::theme::ThemesFromYaml;
 use crate::cli::{CliArgs, Command};
 use crate::setup;
-
-use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
@@ -25,6 +26,8 @@ pub struct ConfigFromYaml {
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
     pub themes: Option<ThemesFromYaml>,
+    #[serde(default)]
+    pub plugins: PluginsFromYaml,
 }
 
 /// Main configuration.
@@ -33,6 +36,7 @@ pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
+    pub plugins: Plugins,
 }
 
 #[derive(Debug)]
@@ -47,6 +51,8 @@ pub enum ConfigError {
     FromUtf8(std::string::FromUtf8Error),
     // Naming a part in a tab is unsupported
     LayoutNameInTab(LayoutNameInTabError),
+    // Plugins have a semantic error, usually trying to parse two of the same tag
+    PluginsError(PluginsError),
 }
 
 impl Default for Config {
@@ -54,11 +60,13 @@ impl Default for Config {
         let keybinds = Keybinds::default();
         let options = Options::default();
         let themes = None;
+        let plugins = Plugins::default();
 
         Config {
             keybinds,
             options,
             themes,
+            plugins,
         }
     }
 }
@@ -106,9 +114,11 @@ impl Config {
                 let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
                 let options = Options::from_yaml(config.options);
                 let themes = config.themes;
+                let plugins = Plugins::get_plugins_with_default(config.plugins.try_into()?);
                 Ok(Config {
                     keybinds,
                     options,
+                    plugins,
                     themes,
                 })
             }
@@ -132,7 +142,8 @@ impl Config {
     // TODO Deserialize the Configuration from bytes &[u8],
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
-        Self::from_yaml(String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?.as_str())
+        let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
+        Self::from_yaml(cfg.as_str())
     }
 }
 
@@ -179,6 +190,7 @@ impl Display for ConfigError {
             ConfigError::LayoutNameInTab(ref err) => {
                 write!(formatter, "There was an error in the layout file, {}", err)
             }
+            ConfigError::PluginsError(ref err) => write!(formatter, "PluginsError: {}", err),
         }
     }
 }
@@ -191,6 +203,7 @@ impl std::error::Error for ConfigError {
             ConfigError::Serde(ref err) => Some(err),
             ConfigError::FromUtf8(ref err) => Some(err),
             ConfigError::LayoutNameInTab(ref err) => Some(err),
+            ConfigError::PluginsError(ref err) => Some(err),
         }
     }
 }
@@ -216,6 +229,12 @@ impl From<std::string::FromUtf8Error> for ConfigError {
 impl From<LayoutNameInTabError> for ConfigError {
     fn from(err: LayoutNameInTabError) -> ConfigError {
         ConfigError::LayoutNameInTab(err)
+    }
+}
+
+impl From<PluginsError> for ConfigError {
+    fn from(err: PluginsError) -> ConfigError {
+        ConfigError::PluginsError(err)
     }
 }
 

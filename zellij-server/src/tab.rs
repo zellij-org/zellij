@@ -322,23 +322,18 @@ impl Tab {
 
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
-            if let Some(Run::Plugin(Some(plugin))) = &layout.run {
+            if let Some(Run::Plugin(run)) = layout.run.clone() {
                 let (pid_tx, pid_rx) = channel();
+                let pane_title = run.location.to_string();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(
-                        pid_tx,
-                        plugin.path.clone(),
-                        tab_index,
-                        plugin._allow_exec_host_cmd,
-                    ))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let title = String::from(plugin.path.as_path().as_os_str().to_string_lossy());
                 let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
-                    title,
+                    pane_title,
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));

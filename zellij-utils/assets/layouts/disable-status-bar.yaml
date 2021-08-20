@@ -8,6 +8,6 @@ template:
         Fixed: 1
       run:
         plugin:
-          path: tab-bar
+          location: "zellij:tab-bar"
     - direction: Vertical
       body: true

@@ -188,7 +188,6 @@ impl Setup {
                 return Err(e);
             }
         };
-        //.map(|layout| layout.template);
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup.from_cli(opts, &config_options).map_or_else(

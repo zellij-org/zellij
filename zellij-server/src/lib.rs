@@ -38,6 +38,7 @@ use zellij_utils::{
         get_mode_info,
         layout::LayoutFromYaml,
         options::Options,
+        plugins::Plugins,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
@@ -46,7 +47,13 @@ use zellij_utils::{
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
+    NewClient(
+        ClientAttributes,
+        Box<CliArgs>,
+        Box<Options>,
+        LayoutFromYaml,
+        Option<Plugins>,
+    ),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -58,8 +65,8 @@ pub(crate) enum ServerInstruction {
 impl From<ClientToServerMsg> for ServerInstruction {
     fn from(instruction: ClientToServerMsg) -> Self {
         match instruction {
-            ClientToServerMsg::NewClient(attrs, opts, options, layout) => {
-                ServerInstruction::NewClient(attrs, opts, options, layout)
+            ClientToServerMsg::NewClient(attrs, opts, options, layout, plugins) => {
+                ServerInstruction::NewClient(attrs, opts, options, layout, plugins)
             }
             ClientToServerMsg::AttachClient(attrs, force, options) => {
                 ServerInstruction::AttachClient(attrs, force, options)
@@ -193,15 +200,24 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(client_attributes, opts, config_options, layout) => {
+            ServerInstruction::NewClient(
+                client_attributes,
+                opts,
+                config_options,
+                layout,
+                plugins,
+            ) => {
                 let session = init_session(
                     os_input.clone(),
-                    opts,
-                    config_options.clone(),
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
-                    layout.clone(),
+                    SessionOptions {
+                        opts,
+                        layout: layout.clone(),
+                        plugins,
+                        config_options: config_options.clone(),
+                    },
                 );
                 *session_data.write().unwrap() = Some(session);
                 *session_state.write().unwrap() = SessionState::Attached;
@@ -302,15 +318,26 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     drop(std::fs::remove_file(&socket_path));
 }
 
+pub struct SessionOptions {
+    pub opts: Box<CliArgs>,
+    pub config_options: Box<Options>,
+    pub layout: LayoutFromYaml,
+    pub plugins: Option<Plugins>,
+}
+
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
-    opts: Box<CliArgs>,
-    config_options: Box<Options>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: LayoutFromYaml,
+    options: SessionOptions,
 ) -> SessionMetaData {
+    let SessionOptions {
+        opts,
+        config_options,
+        layout,
+        plugins,
+    } = options;
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
@@ -394,7 +421,7 @@ fn init_session(
             );
             let store = Store::default();
 
-            move || wasm_thread_main(plugin_bus, store, data_dir)
+            move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
         })
         .unwrap();
     SessionMetaData {

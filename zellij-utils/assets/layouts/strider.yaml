@@ -8,7 +8,7 @@ template:
         Fixed: 1
       run:
         plugin:
-          path: tab-bar
+          location: "zellij:tab-bar"
     - direction: Vertical
       body: true
     - direction: Vertical
@@ -17,7 +17,7 @@ template:
         Fixed: 2
       run:
         plugin:
-          path: status-bar
+          location: "zellij:status-bar"
 tabs:
   - direction: Vertical
     parts:
@@ -26,5 +26,5 @@ tabs:
           Percent: 20
         run:
           plugin:
-            path: strider
+            location: "zellij:strider"
       - direction: Horizontal
