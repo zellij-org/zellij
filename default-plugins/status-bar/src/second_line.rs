@@ -376,10 +376,14 @@ pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
     best_effort_shortcut_list(help, max_width)
 }
 
-pub fn text_copied_hint() -> LinePart {
+pub fn text_copied_hint(palette: &Palette) -> LinePart {
     let hint = " Text copied to clipboard";
+    let green_color = match palette.green {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
     LinePart {
-        part: hint.into(),
+        part: format!("{}", Style::new().fg(green_color).bold().paint(hint)),
         len: hint.len(),
     }
 }

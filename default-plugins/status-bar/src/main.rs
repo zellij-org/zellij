@@ -173,7 +173,7 @@ impl ZellijPlugin for State {
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
         let second_line = if self.diplay_text_copied_hint {
-            text_copied_hint()
+            text_copied_hint(&self.mode_info.palette)
         } else {
             keybinds(&self.mode_info, cols)
         };
