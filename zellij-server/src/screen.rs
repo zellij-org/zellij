@@ -56,6 +56,7 @@ pub(crate) enum ScreenInstruction {
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveTerminalFullscreen,
+    TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     SetFixedHeight(PaneId, usize, usize),
     SetFixedWidth(PaneId, usize, usize),
@@ -112,6 +113,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             }
+            ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
             ScreenInstruction::SetFixedHeight(..) => ScreenContext::SetFixedHeight,
@@ -153,6 +155,7 @@ pub(crate) struct Screen {
     mode_info: ModeInfo,
     colors: Palette,
     session_state: Arc<RwLock<SessionState>>,
+    draw_pane_frames: bool,
 }
 
 impl Screen {
@@ -163,6 +166,7 @@ impl Screen {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         session_state: Arc<RwLock<SessionState>>,
+        draw_pane_frames: bool,
     ) -> Self {
         Screen {
             bus,
@@ -173,6 +177,7 @@ impl Screen {
             tabs: BTreeMap::new(),
             mode_info,
             session_state,
+            draw_pane_frames,
         }
     }
 
@@ -193,6 +198,7 @@ impl Screen {
             self.mode_info.clone(),
             self.colors,
             self.session_state.clone(),
+            self.draw_pane_frames,
         );
         self.active_tab_index = Some(tab_index);
         self.tabs.insert(tab_index, tab);
@@ -359,6 +365,7 @@ impl Screen {
             self.mode_info.clone(),
             self.colors,
             self.session_state.clone(),
+            self.draw_pane_frames,
         );
         tab.apply_layout(layout, new_pids, tab_index);
         self.active_tab_index = Some(tab_index);
@@ -405,6 +412,7 @@ impl Screen {
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();
+            tab.mark_active_pane_for_rerender();
         }
     }
     pub fn move_focus_left_or_previous_tab(&mut self) {
@@ -430,6 +438,7 @@ pub(crate) fn screen_thread_main(
     session_state: Arc<RwLock<SessionState>>,
 ) {
     let capabilities = config_options.simplified_ui;
+    let draw_pane_frames = !config_options.no_pane_frames;
 
     let mut screen = Screen::new(
         bus,
@@ -443,6 +452,7 @@ pub(crate) fn screen_thread_main(
             },
         ),
         session_state,
+        draw_pane_frames,
     );
     loop {
         let (event, mut err_ctx) = screen
@@ -662,6 +672,13 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .toggle_active_pane_fullscreen();
+            }
+            ScreenInstruction::TogglePaneFrames => {
+                screen.draw_pane_frames = !screen.draw_pane_frames;
+                for (_, tab) in screen.tabs.iter_mut() {
+                    tab.set_pane_frames(screen.draw_pane_frames);
+                }
+                screen.render();
             }
             ScreenInstruction::NewTab(pane_id) => {
                 screen.new_tab(pane_id);

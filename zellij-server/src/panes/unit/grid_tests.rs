@@ -907,3 +907,95 @@ pub fn exa_plus_omf_theme() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+pub fn scroll_up() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    grid.scroll_down_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_with_line_wraps() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_down_with_line_wraps() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    grid.scroll_down_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_decrease_width_and_scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 50, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    for _ in 0..10 {
+        grid.scroll_up_one_line();
+    }
+    grid.change_size(10, 25);
+    for _ in 0..10 {
+        grid.scroll_down_one_line();
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_increase_width_and_scroll_down() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(10, 25, Palette::default());
+    let fixture_name = "scrolling";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    for _ in 0..10 {
+        grid.scroll_up_one_line();
+    }
+    grid.change_size(10, 50);
+    for _ in 0..10 {
+        grid.scroll_down_one_line();
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

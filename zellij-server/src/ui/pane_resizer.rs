@@ -112,7 +112,7 @@ impl<'a> PaneResizer<'a> {
                 (pane.x(), pane.y(), pane.columns(), pane.rows())
             };
             let panes_to_pull = self.panes.values_mut().filter(|p| {
-                p.x() > pane_x + pane_columns
+                p.x() >= pane_x + pane_columns
                     && (p.y() <= pane_y && p.y() + p.rows() >= pane_y
                         || p.y() >= pane_y && p.y() + p.rows() <= pane_y + pane_rows)
             });
@@ -137,7 +137,7 @@ impl<'a> PaneResizer<'a> {
                 (pane.x(), pane.y(), pane.columns(), pane.rows())
             };
             let panes_to_pull = self.panes.values_mut().filter(|p| {
-                p.y() > pane_y + pane_rows
+                p.y() >= pane_y + pane_rows
                     && (p.x() <= pane_x && p.x() + p.columns() >= pane_x
                         || p.x() >= pane_x && p.x() + p.columns() <= pane_x + pane_columns)
             });
@@ -162,7 +162,7 @@ impl<'a> PaneResizer<'a> {
                 (pane.x(), pane.y(), pane.columns(), pane.rows())
             };
             let panes_to_push = self.panes.values_mut().filter(|p| {
-                p.y() > pane_y + pane_rows
+                p.y() >= pane_y + pane_rows
                     && (p.x() <= pane_x && p.x() + p.columns() >= pane_x
                         || p.x() >= pane_x && p.x() + p.columns() <= pane_x + pane_columns)
             });
@@ -187,7 +187,7 @@ impl<'a> PaneResizer<'a> {
                 (pane.x(), pane.y(), pane.columns(), pane.rows())
             };
             let panes_to_push = self.panes.values_mut().filter(|p| {
-                p.x() > pane_x + pane_columns
+                p.x() >= pane_x + pane_columns
                     && (p.y() <= pane_y && p.y() + p.rows() >= pane_y
                         || p.y() >= pane_y && p.y() + p.rows() <= pane_y + pane_rows)
             });
@@ -204,32 +204,44 @@ impl<'a> PaneResizer<'a> {
         let pane = self.panes.get_mut(id).unwrap();
         pane.reduce_height_up(count);
         if let PaneId::Terminal(pid) = id {
-            self.os_api
-                .set_terminal_size_using_fd(*pid, pane.columns() as u16, pane.rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                *pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn increase_pane_height_down(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.increase_height_down(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn increase_pane_width_right(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.increase_width_right(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
     fn reduce_pane_width_left(&mut self, id: &PaneId, count: usize) {
         let pane = self.panes.get_mut(id).unwrap();
         pane.reduce_width_left(count);
         if let PaneId::Terminal(pid) = pane.pid() {
-            self.os_api
-                .set_terminal_size_using_fd(pid, pane.columns() as u16, pane.rows() as u16);
+            self.os_api.set_terminal_size_using_fd(
+                pid,
+                pane.get_content_columns() as u16,
+                pane.get_content_rows() as u16,
+            );
         }
     }
 }
@@ -240,9 +252,7 @@ fn find_next_increasable_horizontal_pane(
     increase_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| {
-            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
-        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+        |p| p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of), // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates =
         next_pane_candidates.filter(|p| p.can_increase_height_by(increase_by));
@@ -265,7 +275,7 @@ fn find_next_increasable_vertical_pane(
     increase_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+        |p| p.y() == below.y() + below.rows() && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
     );
     let resizable_candidates =
         next_pane_candidates.filter(|p| p.can_increase_width_by(increase_by));
@@ -288,7 +298,7 @@ fn find_next_reducible_vertical_pane(
     reduce_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| p.y() == below.y() + below.rows() + 1 && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
+        |p| p.y() == below.y() + below.rows() && p.vertically_overlaps_with(below), // TODO: the name here is wrong, it should be horizontally_overlaps_with
     );
     let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_width_by(reduce_by));
     resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
@@ -310,9 +320,7 @@ fn find_next_reducible_horizontal_pane(
     reduce_by: usize,
 ) -> Option<PaneId> {
     let next_pane_candidates = panes.values().filter(
-        |p| {
-            p.x() == right_of.x() + right_of.columns() + 1 && p.horizontally_overlaps_with(right_of)
-        }, // TODO: the name here is wrong, it should be vertically_overlaps_with
+        |p| p.x() == right_of.x() + right_of.columns() && p.horizontally_overlaps_with(right_of), // TODO: the name here is wrong, it should be vertically_overlaps_with
     );
     let resizable_candidates = next_pane_candidates.filter(|p| p.can_reduce_height_by(reduce_by));
     resizable_candidates.fold(None, |next_pane_id, p| match next_pane_id {
@@ -346,7 +354,7 @@ fn find_increasable_horizontal_chain(
         {
             Some(leftmost_pane) => {
                 if !leftmost_pane.can_increase_height_by(increase_by) {
-                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows();
                     continue;
                 }
                 let mut panes_to_resize = vec![];
@@ -365,7 +373,7 @@ fn find_increasable_horizontal_chain(
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
                         None => {
-                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows();
                             break;
                         }
                     };
@@ -396,7 +404,7 @@ fn find_increasable_vertical_chain(
         {
             Some(topmost_pane) => {
                 if !topmost_pane.can_increase_width_by(increase_by) {
-                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns();
                     continue;
                 }
                 let mut panes_to_resize = vec![];
@@ -415,7 +423,7 @@ fn find_increasable_vertical_chain(
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
                         None => {
-                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns();
                             break;
                         }
                     };
@@ -446,7 +454,7 @@ fn find_reducible_horizontal_chain(
         {
             Some(leftmost_pane) => {
                 if !leftmost_pane.can_reduce_height_by(reduce_by) {
-                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                    horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows();
                     continue;
                 }
                 let mut panes_to_resize = vec![];
@@ -465,7 +473,7 @@ fn find_reducible_horizontal_chain(
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
                         None => {
-                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows() + 1;
+                            horizontal_coordinate = leftmost_pane.y() + leftmost_pane.rows();
                             break;
                         }
                     };
@@ -496,7 +504,7 @@ fn find_reducible_vertical_chain(
         {
             Some(topmost_pane) => {
                 if !topmost_pane.can_reduce_width_by(increase_by) {
-                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                    vertical_coordinate = topmost_pane.x() + topmost_pane.columns();
                     continue;
                 }
                 let mut panes_to_resize = vec![];
@@ -515,7 +523,7 @@ fn find_reducible_vertical_chain(
                             current_pane = panes.get(&next_pane_id).unwrap();
                         }
                         None => {
-                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns() + 1;
+                            vertical_coordinate = topmost_pane.x() + topmost_pane.columns();
                             break;
                         }
                     };

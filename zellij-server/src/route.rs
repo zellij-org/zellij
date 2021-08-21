@@ -155,6 +155,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen)
                 .unwrap();
         }
+        Action::TogglePaneFrames => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::TogglePaneFrames)
+                .unwrap();
+        }
         Action::NewPane(direction) => {
             let shell = session.default_shell.clone();
             let pty_instr = match direction {

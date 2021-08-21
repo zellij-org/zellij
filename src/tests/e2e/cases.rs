@@ -221,26 +221,26 @@ pub fn scrolling_inside_a_pane() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
-                    remote_terminal.send_key(&format!("{:0<57}", "line1 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line2 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line3 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line4 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line5 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line6 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line7 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line8 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line9 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line10 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line11 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line12 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line13 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line14 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line15 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line16 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line17 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line18 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<59}", "line19 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line20 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<56}", "line1 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line2 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line3 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line4 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line5 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line6 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line7 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line8 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line9 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line10 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line11 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line12 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line13 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line14 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line15 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line16 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line17 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line18 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<58}", "line19 ").as_bytes());
+                    remote_terminal.send_key(&format!("{:0<57}", "line20 ").as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -250,7 +250,7 @@ pub fn scrolling_inside_a_pane() {
             name: "Scroll up inside pane",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(119, 20) {
+                if remote_terminal.cursor_position_is(118, 20) {
                     // all lines have been written to the pane
                     remote_terminal.send_key(&SCROLL_MODE);
                     remote_terminal.send_key(&SCROLL_UP_IN_SCROLL_MODE);
@@ -263,7 +263,7 @@ pub fn scrolling_inside_a_pane() {
             name: "Wait for scroll to finish",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(119, 20)
+                if remote_terminal.cursor_position_is(118, 20)
                     && remote_terminal.snapshot_contains("line1 ")
                 {
                     // scrolled up one line
@@ -321,7 +321,7 @@ pub fn toggle_pane_fullscreen() {
             name: "Wait for pane to become fullscreen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 0) {
+                if remote_terminal.cursor_position_is(2, 2) {
                     // cursor is in full screen pane now
                     step_is_complete = true;
                 }
@@ -785,9 +785,9 @@ pub fn accepts_basic_layout() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 0)
-                    && remote_terminal.snapshot_contains("$ █                    │$")
-                    && remote_terminal.snapshot_contains("$                                                                                                                       ") {
+                if remote_terminal.cursor_position_is(3, 1)
+                    && remote_terminal.snapshot_contains("$ █                   ││$")
+                    && remote_terminal.snapshot_contains("$                                                                                                                     ") {
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -839,7 +839,7 @@ fn focus_pane_with_mouse() {
             name: "Wait for left pane to be focused",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -884,26 +884,26 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
-                        remote_terminal.send_key(&format!("{:0<57}", "line1 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line2 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line3 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line4 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line5 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line6 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line7 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line8 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line9 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line10 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line11 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line12 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line13 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line14 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line15 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line16 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line17 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line18 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<59}", "line19 ").as_bytes());
-                        remote_terminal.send_key(&format!("{:0<58}", "line20 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<56}", "line1 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line2 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line3 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line4 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line5 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line6 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line7 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line8 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line9 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line10 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line11 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line12 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line13 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line14 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line15 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line16 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line17 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line18 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<58}", "line19 ").as_bytes());
+                        remote_terminal.send_key(&format!("{:0<57}", "line20 ").as_bytes());
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -913,7 +913,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 name: "Scroll up inside pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(119, 20) {
+                    if remote_terminal.cursor_position_is(118, 20) {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&normal_mouse_report(Position::new(2, 64), 64));
                         step_is_complete = true;
@@ -925,7 +925,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 name: "Wait for scroll to finish",
                 instruction: |remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(119, 20)
+                    if remote_terminal.cursor_position_is(118, 20)
                         && remote_terminal.snapshot_contains("line1 ")
                     {
                         // scrolled up one line
@@ -935,5 +935,47 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 },
             })
             .run_all_steps();
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn start_without_pane_frames() {
+    let fake_win_size = PositionAndSize {
+        cols: 120,
+        rows: 24,
+        x: 0,
+        y: 0,
+        ..Default::default()
+    };
+
+    let last_snapshot = RemoteRunner::new_without_frames("no_pane_frames", fake_win_size, None)
+        .add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 1)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                    // back to normal mode after split
+                    remote_terminal.send_key(&ENTER);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .add_step(Step {
+            name: "Wait for new pane to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(62, 1) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .run_all_steps();
     assert_snapshot!(last_snapshot);
 }

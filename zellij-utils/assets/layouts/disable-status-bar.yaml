@@ -2,6 +2,7 @@
 direction: Horizontal
 parts:
   - direction: Vertical
+    borderless: true
     split_size:
       Fixed: 1
     run:

@@ -191,7 +191,7 @@ pub fn tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
         &mut tabs_to_render,
-        cols - prefix.len,
+        cols.saturating_sub(prefix.len),
     );
 
     let mut tab_line: Vec<LinePart> = vec![];
@@ -200,7 +200,7 @@ pub fn tab_line(
             &mut tabs_before_active,
             &mut tabs_to_render,
             &mut tab_line,
-            cols - prefix.len,
+            cols.saturating_sub(prefix.len),
             palette,
             tab_separator(capabilities),
         );
@@ -210,7 +210,7 @@ pub fn tab_line(
         add_next_tabs_msg(
             &mut tabs_after_active,
             &mut tab_line,
-            cols - prefix.len,
+            cols.saturating_sub(prefix.len),
             palette,
             tab_separator(capabilities),
         );

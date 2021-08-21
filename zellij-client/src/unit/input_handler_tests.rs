@@ -259,7 +259,9 @@ pub fn bracketed_paste() {
         default_mode,
     ));
     let expected_actions_sent_to_server = vec![
+        Action::Write(commands::BRACKETED_PASTE_START.to_vec()),
         Action::Write(commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec()), // keys were directly written to server and not interpreted
+        Action::Write(commands::BRACKETED_PASTE_END.to_vec()),
         Action::Quit,
     ];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);

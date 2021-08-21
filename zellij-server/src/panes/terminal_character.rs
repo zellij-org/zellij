@@ -1,8 +1,10 @@
-use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+
 use zellij_utils::logging::debug_log_to_file;
 use zellij_utils::vte::ParamsIter;
+
+use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -191,6 +193,7 @@ impl CharacterStyles {
     pub fn update_and_return_diff(
         &mut self,
         new_styles: &CharacterStyles,
+        changed_colors: Option<[Option<AnsiCode>; 256]>,
     ) -> Option<CharacterStyles> {
         let mut diff: Option<CharacterStyles> = None;
 
@@ -317,6 +320,19 @@ impl CharacterStyles {
             } else {
                 diff = Some(CharacterStyles::new().italic(new_styles.italic));
                 self.italic = new_styles.italic;
+            }
+        }
+
+        if let Some(changed_colors) = changed_colors {
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.foreground) {
+                if let Some(changed_color) = changed_colors[color_index as usize] {
+                    diff.as_mut().unwrap().foreground = Some(changed_color);
+                }
+            }
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.background) {
+                if let Some(changed_color) = changed_colors[color_index as usize] {
+                    diff.as_mut().unwrap().background = Some(changed_color);
+                }
             }
         }
         diff
@@ -755,17 +771,5 @@ pub struct TerminalCharacter {
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.character)
-    }
-}
-
-fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
-    match params.next() {
-        Some(2) => Some(AnsiCode::RgbCode((
-            u8::try_from(params.next()?).ok()?,
-            u8::try_from(params.next()?).ok()?,
-            u8::try_from(params.next()?).ok()?,
-        ))),
-        Some(5) => Some(AnsiCode::ColorIndex(u8::try_from(params.next()?).ok()?)),
-        _ => None,
     }
 }
