@@ -145,7 +145,6 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
-        dbg!("got event {:?}", &event);
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = mode_info;
