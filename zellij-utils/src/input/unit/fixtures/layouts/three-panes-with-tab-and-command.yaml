@@ -1,32 +1,35 @@
 ---
-direction: Horizontal
-parts:
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      split_size:
+        Fixed: 1
+      run:
+        plugin: tab-bar
+    - direction: Horizontal
+      body: true
+    - direction: Vertical
+      split_size:
+        Fixed: 2
+      run:
+        plugin: status-bar
+
+tabs:
   - direction: Vertical
-    split_size:
-      Fixed: 1
-    run:
-      plugin: tab-bar
-  - direction: Horizontal
-    tabs:
-      - direction: Vertical
+    parts:
+      - direction: Horizontal
+        split_size:
+          Percent: 50
+      - direction: Horizontal
         parts:
-          - direction: Horizontal
+          - direction: Vertical
             split_size:
               Percent: 50
-          - direction: Horizontal
-            parts:
-              - direction: Vertical
-                split_size:
-                  Percent: 50
-                run:
-                  command: {cmd: htop}
-              - direction: Vertical
-                split_size:
-                  Percent: 50
-                run:
-                  command: {cmd: htop, args: ["-C"]}
-  - direction: Vertical
-    split_size:
-      Fixed: 2
-    run:
-      plugin: status-bar
+            run:
+              command: {cmd: htop}
+          - direction: Vertical
+            split_size:
+              Percent: 50
+            run:
+              command: {cmd: htop, args: ["-C"]}

@@ -3,7 +3,7 @@
 use crate::{
     cli::CliArgs,
     errors::{get_current_ctx, ErrorContext},
-    input::{actions::Action, layout::MainLayout, options::Options},
+    input::{actions::Action, layout::LayoutTemplate, options::Options},
     pane_size::PositionAndSize,
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -62,7 +62,7 @@ pub enum ClientToServerMsg {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Option<MainLayout>,
+        Option<LayoutTemplate>,
     ),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),

@@ -1,11 +1,11 @@
 ---
-direction: Horizontal
-parts:
-  - direction: Vertical
-    split_size:
-      Fixed: 1
-    run:
-      plugin: tab-bar
-  - direction: Vertical
-    tabs:
-      - direction: Vertical
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      split_size:
+        Fixed: 1
+      run:
+        plugin: tab-bar
+    - direction: Vertical
+      body: true

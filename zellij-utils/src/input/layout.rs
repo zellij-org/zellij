@@ -58,6 +58,159 @@ pub struct Layout {
     pub run: Option<Run>,
 }
 
+// The struct that is used to deserialize the layout from
+// a yaml configuration file
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct LayoutFromYaml {
+    //#[serde(default)]
+    pub template: LayoutTemplateFromYaml,
+    #[serde(default)]
+    pub tabs: Vec<TabLayout>,
+}
+
+type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
+
+impl LayoutFromYaml {
+    pub fn new(layout_path: &Path) -> LayoutFromYamlResult {
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut layout = String::new();
+        layout_file.read_to_string(&mut layout)?;
+        let layout: LayoutFromYaml = serde_yaml::from_str(&layout)?;
+        Ok(layout)
+    }
+
+    // It wants to use Path here, but that doesn't compile.
+    #[allow(clippy::ptr_arg)]
+    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlResult {
+        match layout_dir {
+            Some(dir) => Self::new(&dir.join(layout))
+                .or_else(|_| Self::from_default_assets(layout.as_path())),
+            None => Self::from_default_assets(layout.as_path()),
+        }
+    }
+
+    pub fn from_path_or_default(
+        layout: Option<&PathBuf>,
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Option<LayoutFromYamlResult> {
+        layout
+            .map(|p| LayoutFromYaml::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| LayoutFromYaml::new(p)))
+            .or_else(|| {
+                Some(LayoutFromYaml::from_dir(
+                    &std::path::PathBuf::from("default"),
+                    layout_dir.as_ref(),
+                ))
+            })
+    }
+
+    pub fn construct_layout_template(&self) -> LayoutTemplate {
+        let (pre_tab, post_tab) = self.template.split_template().unwrap();
+        LayoutTemplate {
+            pre_tab: pre_tab.into(),
+            post_tab: Layout::from_vec_template_layout(post_tab),
+            tabs: self.tabs.clone(),
+        }
+    }
+
+    // Currently still needed but on nightly
+    // this is already possible:
+    // HashMap<&'static str, Vec<u8>>
+    pub fn from_default_assets(path: &Path) -> LayoutFromYamlResult {
+        match path.to_str() {
+            Some("default") => Self::default_from_assets(),
+            Some("strider") => Self::strider_from_assets(),
+            Some("disable-status-bar") => Self::disable_status_from_assets(),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+
+    // TODO Deserialize the assets from bytes &[u8],
+    // once serde-yaml supports zero-copy
+    pub fn default_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn strider_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn disable_status_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+}
+
+// The struct that carries the information template that is used to
+// construct the layout
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct LayoutTemplateFromYaml {
+    pub direction: Direction,
+    #[serde(default)]
+    pub parts: Vec<LayoutTemplateFromYaml>,
+    #[serde(default)]
+    pub body: bool,
+    pub split_size: Option<SplitSize>,
+    pub run: Option<Run>,
+}
+
+impl LayoutTemplateFromYaml {
+    // Split the layout into parts that can be reassebled per tab
+    // returns the layout pre tab and the parts post tab
+    pub fn split_template(
+        &self,
+    ) -> Result<(LayoutTemplateFromYaml, Vec<LayoutTemplateFromYaml>), LayoutPartAndTabError> {
+        let mut main_layout = self.clone();
+        let mut pre_tab_layout = self.clone();
+        let mut post_tab_layout = vec![];
+        let mut post_tab = false;
+
+        pre_tab_layout.parts.clear();
+
+        if main_layout.body {
+            post_tab = true;
+        }
+
+        for part in main_layout.parts.drain(..) {
+            let (curr_pre_layout, mut curr_post_layout) = part.split_template()?;
+
+            // Leaf
+            if !post_tab && !part.body {
+                pre_tab_layout.parts.push(curr_pre_layout);
+            }
+
+            // Node
+            if part.body {
+                post_tab = true;
+            // Leaf
+            } else if post_tab {
+                if curr_post_layout.is_empty() {
+                    let mut part_no_tab = part.clone();
+                    part_no_tab.parts.clear();
+                    post_tab_layout.push(part_no_tab);
+                } else {
+                    post_tab_layout.append(&mut curr_post_layout);
+                }
+            }
+        }
+        Ok((pre_tab_layout, post_tab_layout))
+    }
+}
+
 // The tab-layout struct used to specify each individual tab.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
@@ -69,17 +222,17 @@ pub struct TabLayout {
     pub run: Option<Run>,
 }
 
-// Main layout struct, that carries information based on position of tabs
-// in relation to the whole layout.
+// Main template layout struct, that carries information based on position of
+// tabs in relation to the whole layout.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
-pub struct MainLayout {
+pub struct LayoutTemplate {
     pub pre_tab: Layout,
     pub post_tab: Vec<Layout>,
     pub tabs: Vec<TabLayout>,
 }
 
-impl MainLayout {
+impl LayoutTemplate {
     pub fn construct_tab_layout(&self, tab_layout: Option<TabLayout>) -> Layout {
         if let Some(tab_layout) = tab_layout {
             let mut pre_tab_layout = self.pre_tab.clone();
@@ -98,81 +251,7 @@ impl MainLayout {
     }
 }
 
-type LayoutResult = Result<Layout, ConfigError>;
-
 impl Layout {
-    pub fn new(layout_path: &Path) -> LayoutResult {
-        let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
-            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
-
-        let mut layout = String::new();
-        layout_file.read_to_string(&mut layout)?;
-        let layout: Layout = serde_yaml::from_str(&layout)?;
-        Ok(layout)
-    }
-
-    // It wants to use Path here, but that doesn't compile.
-    #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutResult {
-        match layout_dir {
-            Some(dir) => Self::new(&dir.join(layout))
-                .or_else(|_| Self::from_default_assets(layout.as_path())),
-            None => Self::from_default_assets(layout.as_path()),
-        }
-    }
-
-    pub fn from_path_or_default(
-        layout: Option<&PathBuf>,
-        layout_path: Option<&PathBuf>,
-        layout_dir: Option<PathBuf>,
-    ) -> Option<Result<Layout, ConfigError>> {
-        layout
-            .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| Layout::new(p)))
-            .or_else(|| {
-                Some(Layout::from_dir(
-                    &std::path::PathBuf::from("default"),
-                    layout_dir.as_ref(),
-                ))
-            })
-    }
-
-    // Currently still needed but on nightly
-    // this is already possible:
-    // HashMap<&'static str, Vec<u8>>
-    pub fn from_default_assets(path: &Path) -> LayoutResult {
-        match path.to_str() {
-            Some("default") => Self::default_from_assets(),
-            Some("strider") => Self::strider_from_assets(),
-            Some("disable-status-bar") => Self::disable_status_from_assets(),
-            None | Some(_) => Err(ConfigError::IoPath(
-                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
-                path.into(),
-            )),
-        }
-    }
-
-    // TODO Deserialize the assets from bytes &[u8],
-    // once serde-yaml supports zero-copy
-    pub fn default_from_assets() -> LayoutResult {
-        let layout: Layout =
-            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
-        Ok(layout)
-    }
-
-    pub fn strider_from_assets() -> LayoutResult {
-        let layout: Layout =
-            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
-        Ok(layout)
-    }
-
-    pub fn disable_status_from_assets() -> LayoutResult {
-        let layout: Layout =
-            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
-        Ok(layout)
-    }
-
     pub fn total_terminal_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
@@ -273,28 +352,14 @@ impl Layout {
         self.parts.append(&mut parts);
     }
 
-    pub fn construct_full_layout(&self, tab_layout: Option<TabLayout>) -> Self {
-        // The `split_main_and_tab_layout()` error should have returned
-        // already from deserialisation, so we can assume it is `Ok()`.
-        let (mut pre_tab_layout, post_tab_layout, _) = self.split_main_and_tab_layout().unwrap();
-        if let Some(tab_layout) = tab_layout {
-            pre_tab_layout.merge_tab_layout(tab_layout);
-        } else {
-            let default_tab_layout = TabLayout::default();
-            pre_tab_layout.merge_tab_layout(default_tab_layout);
-        }
-        pre_tab_layout.merge_layout_parts(post_tab_layout);
-        pre_tab_layout
-    }
-
-    pub fn construct_main_layout(&self) -> Result<MainLayout, ConfigError> {
+    pub fn construct_layout_template(&self) -> Result<LayoutTemplate, ConfigError> {
         let (pre_tab, post_tab, tabs) = self.split_main_and_tab_layout()?;
 
         if tabs.is_empty() {
             return Err(ConfigError::Layout(LayoutMissingTabSectionError));
         }
 
-        Ok(MainLayout {
+        Ok(LayoutTemplate {
             pre_tab,
             post_tab,
             tabs,
@@ -305,6 +370,13 @@ impl Layout {
         tab_layout
             .iter()
             .map(|tab_layout| Layout::from(tab_layout.to_owned()))
+            .collect()
+    }
+
+    fn from_vec_template_layout(layout_template: Vec<LayoutTemplateFromYaml>) -> Vec<Self> {
+        layout_template
+            .iter()
+            .map(|layout_template| Layout::from(layout_template.to_owned()))
             .collect()
     }
 }
@@ -470,6 +542,18 @@ impl From<TabLayout> for Layout {
             tabs: vec![],
             split_size: tab.split_size,
             run: tab.run,
+        }
+    }
+}
+
+impl From<LayoutTemplateFromYaml> for Layout {
+    fn from(template: LayoutTemplateFromYaml) -> Self {
+        Layout {
+            direction: template.direction,
+            parts: Layout::from_vec_template_layout(template.parts),
+            tabs: vec![],
+            split_size: template.split_size,
+            run: template.run,
         }
     }
 }

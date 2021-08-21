@@ -6,7 +6,7 @@ use crate::{
     },
     input::{
         config::{Config, ConfigError},
-        layout::{Layout, MainLayout},
+        layout::{LayoutFromYaml, LayoutTemplate},
         options::Options,
     },
 };
@@ -153,7 +153,7 @@ impl Setup {
     /// 2. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
-    ) -> Result<(Config, Option<MainLayout>, Options), ConfigError> {
+    ) -> Result<(Config, Option<LayoutTemplate>, Options), ConfigError> {
         let clean = match &opts.command {
             Some(Command::Setup(ref setup)) => setup.clean,
             _ => false,
@@ -176,7 +176,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = Layout::from_path_or_default(
+        let layout_result = LayoutFromYaml::from_path_or_default(
             opts.layout.as_ref(),
             opts.layout_path.as_ref(),
             layout_dir,
@@ -188,15 +188,7 @@ impl Setup {
                 return Err(e);
             }
         }
-        .map(|layout| layout.construct_main_layout());
-
-        let layout = match layout {
-            None => None,
-            Some(Ok(layout)) => Some(layout),
-            Some(Err(e)) => {
-                return Err(e);
-            }
-        };
+        .map(|layout| layout.construct_layout_template());
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup.from_cli(opts, &config_options).map_or_else(

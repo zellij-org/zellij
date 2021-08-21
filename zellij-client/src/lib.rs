@@ -19,7 +19,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, layout::MainLayout, options::Options},
+    input::{actions::Action, config::Config, layout::LayoutTemplate, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
 
@@ -87,7 +87,7 @@ pub fn start_client(
     opts: CliArgs,
     config: Config,
     info: ClientInfo,
-    layout: Option<MainLayout>,
+    layout: Option<LayoutTemplate>,
 ) {
     info!("Starting Zellij client!");
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";

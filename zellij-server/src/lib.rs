@@ -36,7 +36,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::MainLayout,
+        layout::LayoutTemplate,
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -50,7 +50,7 @@ pub(crate) enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Option<MainLayout>,
+        Option<LayoutTemplate>,
     ),
     Render(Option<String>),
     UnblockInputThread,
@@ -329,7 +329,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: Option<MainLayout>,
+    layout: Option<LayoutTemplate>,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

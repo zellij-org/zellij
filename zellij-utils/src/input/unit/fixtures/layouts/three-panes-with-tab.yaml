@@ -1,18 +1,21 @@
 ---
-direction: Horizontal
-parts:
-  - direction: Horizontal
-    tabs:
-      - direction: Vertical
+template:
+  direction: Horizontal
+  parts:
+    - direction: Horizontal
+      body: true
+
+tabs:
+  - direction: Vertical
+    parts:
+      - direction: Horizontal
+        split_size:
+          Percent: 50
+      - direction: Horizontal
         parts:
-          - direction: Horizontal
+          - direction: Vertical
             split_size:
               Percent: 50
-          - direction: Horizontal
-            parts:
-              - direction: Vertical
-                split_size:
-                  Percent: 50
-              - direction: Vertical
-                split_size:
-                  Percent: 50
+          - direction: Vertical
+            split_size:
+              Percent: 50

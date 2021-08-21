@@ -20,7 +20,7 @@ use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, MainLayout, Run, TabLayout},
+        layout::{Layout, LayoutTemplate, Run, TabLayout},
     },
     logging::debug_to_file,
 };
@@ -60,7 +60,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<MainLayout>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutTemplate>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
