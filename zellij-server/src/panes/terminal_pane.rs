@@ -177,8 +177,8 @@ impl Pane for TerminalPane {
             let mut character_styles = CharacterStyles::new();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
-                    let x = self.get_x();
-                    let y = self.get_y();
+                    let x = self.get_content_x();
+                    let y = self.get_content_y();
                     vte_output.push_str(&format!(
                         "\u{1b}[{};{}H\u{1b}[m",
                         y + line_index + 1,
@@ -220,8 +220,8 @@ impl Pane for TerminalPane {
                         break;
                     }
 
-                    if let Some(new_styles) =
-                        character_styles.update_and_return_diff(&t_character.styles)
+                    if let Some(new_styles) = character_styles
+                        .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
                     {
                         vte_output.push_str(&new_styles.to_string());
                     }

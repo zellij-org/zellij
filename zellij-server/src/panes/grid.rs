@@ -42,7 +42,7 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     }
 }
 
-fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
+fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -58,100 +58,157 @@ fn get_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     }
 }
 
-fn transfer_rows_down(
-    source: &mut VecDeque<Row>,
-    destination: &mut Vec<Row>,
+fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<Row> {
+    let mut index_of_last_non_canonical_row = None;
+    for (i, row) in viewport.iter().enumerate().rev() {
+        index_of_last_non_canonical_row = Some(i);
+        if row.is_canonical {
+            break;
+        }
+    }
+    match index_of_last_non_canonical_row {
+        Some(index_of_last_non_canonical_row) => {
+            viewport.drain(index_of_last_non_canonical_row..).collect()
+        }
+        None => vec![],
+    }
+}
+
+fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+    let mut index_of_first_non_canonical_row = None;
+    let mut end_index_of_first_canonical_line = None;
+    for (i, row) in rows.iter().enumerate() {
+        if row.is_canonical && end_index_of_first_canonical_line.is_none() {
+            index_of_first_non_canonical_row = Some(i);
+            end_index_of_first_canonical_line = Some(i);
+            continue;
+        }
+        if row.is_canonical && end_index_of_first_canonical_line.is_some() {
+            break;
+        }
+        if index_of_first_non_canonical_row.is_some() {
+            end_index_of_first_canonical_line = Some(i);
+            continue;
+        }
+    }
+    match (
+        index_of_first_non_canonical_row,
+        end_index_of_first_canonical_line,
+    ) {
+        (Some(first_index), Some(last_index)) => rows.drain(first_index..=last_index).collect(),
+        (Some(first_index), None) => rows.drain(first_index..).collect(),
+        _ => vec![],
+    }
+}
+
+fn transfer_rows_from_lines_above_to_viewport(
+    lines_above: &mut VecDeque<Row>,
+    viewport: &mut Vec<Row>,
     count: usize,
-    max_src_width: Option<usize>,
-    max_dst_width: Option<usize>,
+    max_viewport_width: usize,
 ) {
     let mut next_lines: Vec<Row> = vec![];
-    let mut lines_added_to_destination: isize = 0;
+    let mut lines_added_to_viewport: isize = 0;
     loop {
-        if lines_added_to_destination as usize == count {
+        if lines_added_to_viewport as usize == count {
             break;
         }
         if next_lines.is_empty() {
-            match source.pop_back() {
+            match lines_above.pop_back() {
                 Some(next_line) => {
-                    let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(destination);
-                    lines_added_to_destination -= top_non_canonical_rows_in_dst.len() as isize;
+                    let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(viewport);
+                    lines_added_to_viewport -= top_non_canonical_rows_in_dst.len() as isize;
                     next_lines.push(next_line);
                     next_lines.append(&mut top_non_canonical_rows_in_dst);
-                    next_lines = match max_dst_width {
-                        Some(max_row_width) => Row::from_rows(next_lines, max_row_width)
-                            .split_to_rows_of_length(max_row_width),
-                        None => vec![Row::from_rows(next_lines, 0)],
-                    };
+                    next_lines = Row::from_rows(next_lines, max_viewport_width)
+                        .split_to_rows_of_length(max_viewport_width);
                     if next_lines.is_empty() {
-                        // no more lines at source, the line we popped was probably empty
+                        // no more lines at lines_above, the line we popped was probably empty
                         break;
                     }
                 }
                 None => break, // no more rows
             }
         }
-        destination.insert(0, next_lines.pop().unwrap());
-        lines_added_to_destination += 1;
+        viewport.insert(0, next_lines.pop().unwrap());
+        lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
-        match max_src_width {
-            Some(max_row_width) => {
-                let excess_rows = Row::from_rows(next_lines, max_row_width)
-                    .split_to_rows_of_length(max_row_width);
-                source.extend(excess_rows);
-            }
-            None => {
-                let excess_row = Row::from_rows(next_lines, 0);
-                bounded_push(source, excess_row);
-            }
-        }
+        let excess_row = Row::from_rows(next_lines, 0);
+        bounded_push(lines_above, excess_row);
     }
 }
 
-fn transfer_rows_up(
-    source: &mut Vec<Row>,
-    destination: &mut VecDeque<Row>,
+fn transfer_rows_from_viewport_to_lines_above(
+    viewport: &mut Vec<Row>,
+    lines_above: &mut VecDeque<Row>,
     count: usize,
-    max_src_width: Option<usize>,
-    max_dst_width: Option<usize>,
+    max_viewport_width: usize,
 ) {
     let mut next_lines: Vec<Row> = vec![];
     for _ in 0..count {
         if next_lines.is_empty() {
-            if !source.is_empty() {
-                let next_line = source.remove(0);
+            if !viewport.is_empty() {
+                let next_line = viewport.remove(0);
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
-                        get_bottom_canonical_row_and_wraps(destination);
+                        get_lines_above_bottom_canonical_row_and_wraps(lines_above);
                     next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
                 }
                 next_lines.push(next_line);
-                next_lines = match max_dst_width {
-                    Some(max_row_width) => Row::from_rows(next_lines, max_row_width)
-                        .split_to_rows_of_length(max_row_width),
-                    None => vec![Row::from_rows(next_lines, 0)],
-                };
+                next_lines = vec![Row::from_rows(next_lines, 0)];
             } else {
                 break; // no more rows
             }
         }
-        bounded_push(destination, next_lines.remove(0));
+        bounded_push(lines_above, next_lines.remove(0));
     }
     if !next_lines.is_empty() {
-        match max_src_width {
-            Some(max_row_width) => {
-                let excess_rows = Row::from_rows(next_lines, max_row_width)
-                    .split_to_rows_of_length(max_row_width);
-                for row in excess_rows {
-                    source.insert(0, row);
+        let excess_rows = Row::from_rows(next_lines, max_viewport_width)
+            .split_to_rows_of_length(max_viewport_width);
+        for row in excess_rows {
+            viewport.insert(0, row);
+        }
+    }
+}
+
+fn transfer_rows_from_lines_below_to_viewport(
+    lines_below: &mut Vec<Row>,
+    viewport: &mut Vec<Row>,
+    count: usize,
+    max_viewport_width: usize,
+) {
+    let mut next_lines: Vec<Row> = vec![];
+    for _ in 0..count {
+        let mut lines_pulled_from_viewport = 0;
+        if next_lines.is_empty() {
+            if !lines_below.is_empty() {
+                let mut top_non_canonical_rows_in_lines_below =
+                    get_top_non_canonical_rows(lines_below);
+                if !top_non_canonical_rows_in_lines_below.is_empty() {
+                    let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
+                    lines_pulled_from_viewport += canonical_line.len();
+                    canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
+                    next_lines = Row::from_rows(canonical_line, max_viewport_width)
+                        .split_to_rows_of_length(max_viewport_width);
+                } else {
+                    let canonical_row = get_top_canonical_row_and_wraps(lines_below);
+                    next_lines = Row::from_rows(canonical_row, max_viewport_width)
+                        .split_to_rows_of_length(max_viewport_width);
                 }
-            }
-            None => {
-                let excess_row = Row::from_rows(next_lines, 0);
-                source.insert(0, excess_row);
+            } else {
+                break; // no more rows
             }
         }
+        for _ in 0..(lines_pulled_from_viewport + 1) {
+            if !next_lines.is_empty() {
+                viewport.push(next_lines.remove(0));
+            }
+        }
+    }
+    if !next_lines.is_empty() {
+        let excess_row = Row::from_rows(next_lines, 0);
+        lines_below.insert(0, excess_row);
     }
 }
 
@@ -291,7 +348,7 @@ pub struct Grid {
     colors: Palette,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
-    pub changed_colors: [Option<AnsiCode>; 256],
+    pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub erasure_mode: bool,    // ERM
@@ -345,7 +402,7 @@ impl Grid {
             selection: Default::default(),
             title_stack: vec![],
             title: None,
-            changed_colors: [None; 256],
+            changed_colors: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -481,12 +538,11 @@ impl Grid {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
-            transfer_rows_down(
+            transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
                 1,
-                None,
-                Some(self.width),
+                self.width,
             );
 
             self.selection.move_down(1);
@@ -503,8 +559,14 @@ impl Grid {
                 last_line_above.append(&mut line_to_push_up.columns);
                 bounded_push(&mut self.lines_above, last_line_above);
             }
-            let line_to_insert_at_viewport_bottom = self.lines_below.remove(0);
-            self.viewport.push(line_to_insert_at_viewport_bottom);
+
+            transfer_rows_from_lines_below_to_viewport(
+                &mut self.lines_below,
+                &mut self.viewport,
+                1,
+                self.width,
+            );
+
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         }
@@ -602,12 +664,12 @@ impl Grid {
             match current_viewport_row_count.cmp(&self.height) {
                 Ordering::Less => {
                     let row_count_to_transfer = self.height - current_viewport_row_count;
-                    transfer_rows_down(
+
+                    transfer_rows_from_lines_above_to_viewport(
                         &mut self.lines_above,
                         &mut self.viewport,
                         row_count_to_transfer,
-                        None,
-                        Some(new_columns),
+                        new_columns,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
@@ -619,12 +681,11 @@ impl Grid {
                     } else {
                         new_cursor_y -= row_count_to_transfer;
                     }
-                    transfer_rows_up(
+                    transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
                         &mut self.lines_above,
                         row_count_to_transfer,
-                        Some(new_columns),
-                        None,
+                        new_columns,
                     );
                 }
                 Ordering::Equal => {}
@@ -637,12 +698,11 @@ impl Grid {
             match current_viewport_row_count.cmp(&new_rows) {
                 Ordering::Less => {
                     let row_count_to_transfer = new_rows - current_viewport_row_count;
-                    transfer_rows_down(
+                    transfer_rows_from_lines_above_to_viewport(
                         &mut self.lines_above,
                         &mut self.viewport,
                         row_count_to_transfer,
-                        None,
-                        Some(new_columns),
+                        new_columns,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
@@ -654,12 +714,11 @@ impl Grid {
                     } else {
                         self.cursor.y -= row_count_to_transfer;
                     }
-                    transfer_rows_up(
+                    transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
                         &mut self.lines_above,
                         row_count_to_transfer,
-                        Some(new_columns),
-                        None,
+                        new_columns,
                     );
                 }
                 Ordering::Equal => {}
@@ -803,12 +862,11 @@ impl Grid {
         }
         if self.cursor.y == self.height - 1 {
             let row_count_to_transfer = 1;
-            transfer_rows_up(
+            transfer_rows_from_viewport_to_lines_above(
                 &mut self.viewport,
                 &mut self.lines_above,
                 row_count_to_transfer,
-                Some(self.width),
-                None,
+                self.width,
             );
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
@@ -878,12 +936,11 @@ impl Grid {
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
                 let row_count_to_transfer = 1;
-                transfer_rows_up(
+                transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
-                    Some(self.width),
-                    None,
+                    self.width,
                 );
                 let wrapped_row = Row::new(self.width);
                 self.viewport.push(wrapped_row);
@@ -1178,7 +1235,7 @@ impl Grid {
         self.disable_linewrap = false;
         self.cursor.change_shape(CursorShape::Block);
         self.output_buffer.update_all_lines();
-        self.changed_colors = [None; 256];
+        self.changed_colors = None;
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -1307,22 +1364,12 @@ impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
 
-        // we add the changed_colors here instead of changing the actual colors on the
-        // TerminalCharacter in real time because these changed colors also affect the area around
-        // the character (eg. empty space after it)
-        // on the other hand, we must do it here and not at render-time because then it would be
-        // wiped out when one scrolls
-        let styles = self
-            .cursor
-            .pending_styles
-            .changed_colors(self.changed_colors);
-
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
         let terminal_character = TerminalCharacter {
             character: c,
             width: c.width().unwrap_or(0),
-            styles,
+            styles: self.cursor.pending_styles,
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -1398,7 +1445,10 @@ impl Perform for Grid {
                     let index = parse_number(chunk[0]);
                     let color = xparse_color(chunk[1]);
                     if let (Some(i), Some(c)) = (index, color) {
-                        self.changed_colors[i as usize] = Some(c);
+                        if self.changed_colors.is_none() {
+                            self.changed_colors = Some([None; 256]);
+                        }
+                        self.changed_colors.as_mut().unwrap()[i as usize] = Some(c);
                         return;
                     }
                 }
@@ -1477,16 +1527,16 @@ impl Perform for Grid {
             b"104" => {
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
-                    for i in 0..256 {
-                        self.changed_colors[i] = None;
-                    }
+                    self.changed_colors = None;
                     return;
                 }
 
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
                     if let Some(index) = parse_number(param) {
-                        self.changed_colors[index as usize] = None
+                        if self.changed_colors.is_some() {
+                            self.changed_colors.as_mut().unwrap()[index as usize] = None
+                        }
                     }
                 }
 
@@ -2172,6 +2222,9 @@ impl Row {
         };
         if !parts.is_empty() && self.is_canonical {
             parts.get_mut(0).unwrap().is_canonical = true;
+        }
+        if parts.is_empty() {
+            parts.push(self.clone());
         }
         parts
     }
