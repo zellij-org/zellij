@@ -2,16 +2,17 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::{PaneDecoration, PaneId};
+use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ui::pane_boundaries_frame::PaneBoundariesFrame;
+use crate::ui::pane_boundaries_frame::PaneFrame;
 use crate::wasm_vm::PluginInstruction;
+use zellij_utils::pane_size::Offset;
 use zellij_utils::shared::ansi_len;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
 use zellij_utils::{
     channels::SenderWithContext,
-    pane_size::{Constraint, Dimension, PaneGeom, PositionAndSize},
+    pane_size::{Constraint, Dimension, PaneGeom},
 };
 
 pub(crate) struct PluginPane {
@@ -19,13 +20,14 @@ pub(crate) struct PluginPane {
     pub should_render: bool,
     pub selectable: bool,
     pub invisible_borders: bool,
-    pub position_and_size: PaneGeom,
-    pub position_and_size_override: Option<PaneGeom>,
-    pub content_position_and_size: PositionAndSize,
+    pub geom: PaneGeom,
+    pub geom_override: Option<PaneGeom>,
+    pub content_offset: Offset,
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
     pub pane_title: String,
-    pane_decoration: PaneDecoration,
+    frame: bool,
+    frame_color: Option<PaletteColor>,
 }
 
 impl PluginPane {
@@ -40,51 +42,15 @@ impl PluginPane {
             should_render: true,
             selectable: true,
             invisible_borders: false,
-            position_and_size,
-            position_and_size_override: None,
+            geom: position_and_size,
+            geom_override: None,
             send_plugin_instructions,
             active_at: Instant::now(),
-            pane_decoration: PaneDecoration::ContentOffset((0, 0)),
-            content_position_and_size: position_and_size.into(),
+            frame: false,
+            frame_color: None,
+            content_offset: Offset::default(),
             pane_title: title,
         }
-    }
-    pub fn get_content_x(&self) -> usize {
-        self.get_content_posision_and_size().x
-    }
-    pub fn get_content_y(&self) -> usize {
-        self.get_content_posision_and_size().y
-    }
-    pub fn get_content_columns(&self) -> usize {
-        // content columns might differ from the pane's columns if the pane has a frame
-        // in that case they would be 2 less
-        self.get_content_posision_and_size().cols
-    }
-    pub fn get_content_rows(&self) -> usize {
-        // content rows might differ from the pane's rows if the pane has a frame
-        // in that case they would be 2 less
-        self.get_content_posision_and_size().rows
-    }
-    pub fn get_content_posision_and_size(&self) -> PositionAndSize {
-        self.content_position_and_size
-    }
-    fn redistribute_space(&mut self) {
-        let position_and_size = self
-            .position_and_size_override
-            .unwrap_or_else(|| self.position_and_size());
-        match &mut self.pane_decoration {
-            PaneDecoration::BoundariesFrame(boundaries_frame) => {
-                boundaries_frame.change_pos_and_size(position_and_size.into());
-                self.content_position_and_size = boundaries_frame.content_position_and_size();
-            }
-            PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
-                self.content_position_and_size = position_and_size.into();
-                self.content_position_and_size.cols =
-                    position_and_size.cols.as_usize() - *content_columns_offset;
-                self.content_position_and_size.rows = position_and_size.rows.as_usize() - *content_rows_offset;
-            }
-        };
-        self.set_should_render(true);
     }
 }
 
@@ -93,47 +59,45 @@ impl Pane for PluginPane {
     // with something like a get_pos_and_sz() method underpinning all of them. Alternatively and
     // preferably, just use an enum and not a trait object
     fn x(&self) -> usize {
-        self.position_and_size_override
-            .unwrap_or(self.position_and_size)
-            .x
+        self.geom_override.unwrap_or(self.geom).x
     }
     fn y(&self) -> usize {
-        self.position_and_size_override
-            .unwrap_or(self.position_and_size)
-            .y
+        self.geom_override.unwrap_or(self.geom).y
     }
     fn rows(&self) -> usize {
-        self.position_and_size_override
-            .unwrap_or(self.position_and_size)
-            .rows
-            .as_usize()
+        self.geom_override.unwrap_or(self.geom).rows.as_usize()
     }
     fn cols(&self) -> usize {
-        self.position_and_size_override
-            .unwrap_or(self.position_and_size)
-            .cols
-            .as_usize()
+        self.geom_override.unwrap_or(self.geom).cols.as_usize()
+    }
+    fn get_content_x(&self) -> usize {
+        self.x() + self.content_offset.left
+    }
+    fn get_content_y(&self) -> usize {
+        self.y() + self.content_offset.top
     }
     fn get_content_columns(&self) -> usize {
-        self.get_content_columns()
+        // content columns might differ from the pane's columns if the pane has a frame
+        // in that case they would be 2 less
+        self.cols() - (self.content_offset.left + self.content_offset.right)
     }
     fn get_content_rows(&self) -> usize {
-        self.get_content_rows()
+        // content rows might differ from the pane's rows if the pane has a frame
+        // in that case they would be 2 less
+        self.rows() - (self.content_offset.top + self.content_offset.bottom)
     }
     fn reset_size_and_position_override(&mut self) {
-        self.position_and_size_override = None;
-        self.redistribute_space();
+        self.geom_override = None;
         self.should_render = true;
     }
     fn change_pos_and_size(&mut self, position_and_size: &PaneGeom) {
-        self.position_and_size = *position_and_size;
-        self.redistribute_space();
+        self.geom = *position_and_size;
+        self.should_render = true;
     }
     // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
     fn override_size_and_position(&mut self, pane_geom: PaneGeom) {
-        self.position_and_size_override = Some(pane_geom);
+        self.geom_override = Some(pane_geom);
         self.should_render = true;
-        self.redistribute_space();
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {
         unimplemented!()
@@ -145,21 +109,16 @@ impl Pane for PluginPane {
         unimplemented!() // FIXME: Shouldn't need this implmented?
     }
     fn position_and_size(&self) -> PaneGeom {
-        self.position_and_size
+        self.geom
     }
     fn position_and_size_override(&self) -> Option<PaneGeom> {
-        self.position_and_size_override
+        self.geom_override
     }
     fn should_render(&self) -> bool {
         self.should_render
     }
     fn set_should_render(&mut self, should_render: bool) {
         self.should_render = should_render;
-    }
-    fn set_should_render_boundaries(&mut self, should_render: bool) {
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            boundaries_frame.set_should_render(should_render);
-        }
     }
     fn selectable(&self) -> bool {
         self.selectable
@@ -191,10 +150,12 @@ impl Pane for PluginPane {
 
             self.should_render = false;
             let contents = buf_rx.recv().unwrap();
-            if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-                if let Some(boundaries_frame_vte) = boundaries_frame.render() {
-                    vte_output.push_str(&boundaries_frame_vte);
-                }
+            if self.frame {
+                let frame = PaneFrame {
+                    geom: self.geom.into(),
+                    ..Default::default()
+                };
+                vte_output.push_str(&frame.render());
             }
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
@@ -251,18 +212,16 @@ impl Pane for PluginPane {
     // FIXME: I might be able to make do without the up, down, left, and right stuff
     // FIXME: Also rename the `count` to something like `percent`
     fn reduce_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
-            self.position_and_size.rows = Dimension::percent(p - count);
+        if let Constraint::Percent(p) = self.geom.rows.constraint {
+            self.geom.rows = Dimension::percent(p - count);
             self.should_render = true;
         }
-        self.redistribute_space();
     }
     fn increase_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.position_and_size.rows.constraint {
-            self.position_and_size.rows = Dimension::percent(p + count);
+        if let Constraint::Percent(p) = self.geom.rows.constraint {
+            self.geom.rows = Dimension::percent(p + count);
             self.should_render = true;
         }
-        self.redistribute_space();
     }
     fn increase_height_up(&mut self, count: f64) {
         self.increase_height_down(count);
@@ -271,43 +230,37 @@ impl Pane for PluginPane {
         self.reduce_height_down(count);
     }
     fn reduce_width_right(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
-            self.position_and_size.cols = Dimension::percent(p - count);
+        if let Constraint::Percent(p) = self.geom.cols.constraint {
+            self.geom.cols = Dimension::percent(p - count);
             self.should_render = true;
         }
-        self.redistribute_space();
     }
     fn reduce_width_left(&mut self, count: f64) {
         self.reduce_width_right(count);
     }
     fn increase_width_left(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.position_and_size.cols.constraint {
-            self.position_and_size.cols = Dimension::percent(p + count);
+        if let Constraint::Percent(p) = self.geom.cols.constraint {
+            self.geom.cols = Dimension::percent(p + count);
             self.should_render = true;
         }
-        self.redistribute_space();
     }
     fn increase_width_right(&mut self, count: f64) {
         self.increase_width_left(count);
     }
     fn push_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.redistribute_space();
+        self.geom.y += count;
         self.should_render = true;
     }
     fn push_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.redistribute_space();
+        self.geom.x += count;
         self.should_render = true;
     }
     fn pull_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.redistribute_space();
+        self.geom.x -= count;
         self.should_render = true;
     }
     fn pull_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.redistribute_space();
+        self.geom.y -= count;
         self.should_render = true;
     }
     fn scroll_up(&mut self, _count: usize) {
@@ -330,61 +283,14 @@ impl Pane for PluginPane {
     fn set_active_at(&mut self, time: Instant) {
         self.active_at = time;
     }
+    fn set_frame(&mut self, frame: bool) {
+        self.frame = frame;
+    }
+    fn set_content_offset(&mut self, offset: Offset) {
+        self.content_offset = offset;
+    }
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            boundaries_frame.set_color(color);
-        }
-    }
-    fn offset_content_columns(&mut self, by: usize) {
-        if !self.selectable {
-            return;
-        }
-        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
-            content_offset.0 = by;
-        } else {
-            self.pane_decoration = PaneDecoration::ContentOffset((by, 0));
-        }
-        self.redistribute_space();
-        self.set_should_render(true);
-    }
-    fn offset_content_rows(&mut self, by: usize) {
-        if !self.selectable {
-            return;
-        }
-        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
-            content_offset.1 = by;
-        } else {
-            self.pane_decoration = PaneDecoration::ContentOffset((0, by));
-        }
-        self.redistribute_space();
-        self.set_should_render(true);
-    }
-    fn show_boundaries_frame(&mut self, should_render_only_title: bool) {
-        if !self.selectable {
-            return;
-        }
-        let position_and_size = self
-            .position_and_size_override
-            .unwrap_or(self.position_and_size);
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            boundaries_frame.render_only_title(should_render_only_title);
-            self.content_position_and_size = boundaries_frame.content_position_and_size();
-        } else {
-            let mut boundaries_frame =
-                PaneBoundariesFrame::new(position_and_size.into(), self.pane_title.clone());
-            boundaries_frame.render_only_title(should_render_only_title);
-            self.content_position_and_size = boundaries_frame.content_position_and_size();
-            self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);
-        }
-        self.redistribute_space();
-        self.set_should_render(true);
-    }
-    fn remove_boundaries_frame(&mut self) {
-        if !self.selectable {
-            return;
-        }
-        self.pane_decoration = PaneDecoration::ContentOffset((0, 0));
-        self.redistribute_space();
+        self.frame_color = color;
         self.set_should_render(true);
     }
 }

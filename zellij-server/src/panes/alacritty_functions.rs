@@ -1,24 +1,6 @@
-use zellij_utils::position::Position;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::{vte, zellij_tile};
-
 use std::convert::TryFrom;
-use std::fmt::Debug;
-use std::os::unix::io::RawFd;
-use std::time::{self, Instant};
-use zellij_tile::data::Palette;
-
-use zellij_utils::pane_size::PositionAndSize;
 
 use crate::panes::AnsiCode;
-use crate::panes::{
-    grid::Grid,
-    terminal_character::{
-        CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
-    },
-};
-use crate::pty::VteBytes;
-use crate::tab::Pane;
 
 pub fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
     match params.next() {

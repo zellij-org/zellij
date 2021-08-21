@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::pane_size::PositionAndSize;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
 pub struct Position {
     pub line: Line,
@@ -16,10 +14,10 @@ impl Position {
         }
     }
 
-    pub fn relative_to(&self, position_and_size: &PositionAndSize) -> Self {
+    pub fn relative_to(&self, line: usize, column: usize) -> Self {
         Self {
-            line: Line(self.line.0 - position_and_size.y as isize),
-            column: Column(self.column.0.saturating_sub(position_and_size.x)),
+            line: Line(self.line.0 - line as isize),
+            column: Column(self.column.0.saturating_sub(column)),
         }
     }
 }

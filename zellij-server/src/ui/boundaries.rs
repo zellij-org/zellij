@@ -1,5 +1,4 @@
-use zellij_utils::pane_size::PositionAndSize;
-use zellij_utils::zellij_tile;
+use zellij_utils::{pane_size::Viewport, zellij_tile};
 
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
@@ -407,14 +406,14 @@ impl Coordinates {
 }
 
 pub struct Boundaries {
-    position_and_size: PositionAndSize,
+    viewport: Viewport,
     boundary_characters: HashMap<Coordinates, BoundarySymbol>,
 }
 
 impl Boundaries {
-    pub fn new(position_and_size: &PositionAndSize) -> Self {
+    pub fn new(viewport: Viewport) -> Self {
         Boundaries {
-            position_and_size: *position_and_size,
+            viewport,
             boundary_characters: HashMap::new(),
         }
     }
@@ -429,7 +428,7 @@ impl Boundaries {
             },
             false => None,
         };
-        if rect.x() > self.position_and_size.x {
+        if rect.x() > self.viewport.x {
             // left boundary
             let boundary_x_coords = rect.x() - 1;
             let first_row_coordinates = self.rect_right_boundary_row_start(rect);
@@ -437,10 +436,10 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let mut symbol_to_add =
-                    if row == first_row_coordinates && row != self.position_and_size.y {
+                    if row == first_row_coordinates && row != self.viewport.y {
                         BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
                     } else if row == last_row_coordinates - 1
-                        && row != self.position_and_size.y + self.position_and_size.rows - 1
+                        && row != self.viewport.y + self.viewport.rows - 1
                     {
                         BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
                     } else {
@@ -457,7 +456,7 @@ impl Boundaries {
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
         }
-        if rect.y() > self.position_and_size.y {
+        if rect.y() > self.viewport.y {
             // top boundary
             let boundary_y_coords = rect.y() - 1;
             let first_col_coordinates = self.rect_bottom_boundary_col_start(rect);
@@ -465,10 +464,10 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let mut symbol_to_add = if col == first_col_coordinates
-                    && col != self.position_and_size.x
+                    && col != self.viewport.x
                 {
                     BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1
+                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1
                 {
                     BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else {
@@ -493,10 +492,10 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let mut symbol_to_add =
-                    if row == first_row_coordinates && row != self.position_and_size.y {
+                    if row == first_row_coordinates && row != self.viewport.y {
                         BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                     } else if row == last_row_coordinates - 1
-                        && row != self.position_and_size.y + self.position_and_size.rows - 1
+                        && row != self.viewport.y + self.viewport.rows - 1
                     {
                         BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                     } else {
@@ -521,10 +520,10 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let mut symbol_to_add = if col == first_col_coordinates
-                    && col != self.position_and_size.x
+                    && col != self.viewport.x
                 {
                     BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.position_and_size.cols - 1
+                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1
                 {
                     BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
@@ -555,16 +554,16 @@ impl Boundaries {
         vte_output
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
-        rect.x() + rect.cols() < self.position_and_size.cols
+        rect.x() + rect.cols() < self.viewport.cols
     }
     fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
-        rect.y() + rect.rows() < self.position_and_size.y + self.position_and_size.rows
+        rect.y() + rect.rows() < self.viewport.y + self.viewport.rows
     }
     fn rect_right_boundary_row_start(&self, rect: &dyn Pane) -> usize {
-        if rect.y() > self.position_and_size.y {
+        if rect.y() > self.viewport.y {
             rect.y() - 1
         } else {
-            self.position_and_size.y
+            self.viewport.y
         }
     }
     fn rect_right_boundary_row_end(&self, rect: &dyn Pane) -> usize {
@@ -581,9 +580,9 @@ impl Boundaries {
         rect.x() + rect.cols()
     }
     fn is_fully_inside_screen(&self, rect: &dyn Pane) -> bool {
-        rect.x() >= self.position_and_size.x
-            && rect.x() + rect.cols() <= self.position_and_size.x + self.position_and_size.cols
-            && rect.y() >= self.position_and_size.y
-            && rect.y() + rect.rows() <= self.position_and_size.y + self.position_and_size.rows
+        rect.x() >= self.viewport.x
+            && rect.x() + rect.cols() <= self.viewport.x + self.viewport.cols
+            && rect.y() >= self.viewport.y
+            && rect.y() + rect.rows() <= self.viewport.y + self.viewport.rows
     }
 }

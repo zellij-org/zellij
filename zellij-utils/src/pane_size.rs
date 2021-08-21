@@ -4,7 +4,7 @@ use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PaneGeom {
     pub x: usize,
     pub y: usize,
@@ -13,11 +13,19 @@ pub struct PaneGeom {
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PositionAndSize {
+pub struct Viewport {
     pub x: usize,
     pub y: usize,
     pub rows: usize,
     pub cols: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Offset {
+    pub top: usize,
+    pub bottom: usize,
+    pub right: usize,
+    pub left: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -31,6 +39,15 @@ pub struct Dimension {
     // FIXME: Think about if `pub` is the right choice here
     pub constraint: Constraint,
     inner: usize,
+}
+
+impl Default for Dimension {
+    fn default() -> Self {
+        Self {
+            constraint: Constraint::Percent(100.0),
+            inner: 0,
+        }
+    }
 }
 
 impl Dimension {
@@ -79,57 +96,6 @@ pub enum Constraint {
     Percent(f64),
 }
 
-// FIXME: These From implementations are nonsense
-impl From<Size> for PaneGeom {
-    fn from(size: Size) -> PaneGeom {
-        PaneGeom {
-            x: 0,
-            y: 0,
-            cols: Dimension::fixed(size.cols),
-            rows: Dimension::fixed(size.rows),
-        }
-    }
-}
-impl From<PositionAndSize> for PaneGeom {
-    fn from(pos_and_size: PositionAndSize) -> PaneGeom {
-        PaneGeom {
-            x: pos_and_size.x,
-            y: pos_and_size.y,
-            cols: Dimension::fixed(pos_and_size.cols),
-            rows: Dimension::fixed(pos_and_size.rows),
-        }
-    }
-}
-// FIXME: These are okay?
-impl From<PositionAndSize> for Size {
-    fn from(pos_and_size: PositionAndSize) -> Self {
-        Self {
-            rows: pos_and_size.rows,
-            cols: pos_and_size.cols,
-        }
-    }
-}
- impl From<PaneGeom> for PositionAndSize {
-    fn from(pane: PaneGeom) -> Self {
-        Self {
-            x: pane.x,
-            y: pane.y,
-            rows: pane.rows.as_usize(),
-            cols: pane.cols.as_usize(),
-        }
-    }
-}
-impl From<Size> for PositionAndSize {
-    fn from(size: Size) -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            rows: size.rows,
-            cols: size.cols,
-        }
-    }
-}
-
 impl PaneGeom {
     pub fn contains(&self, point: &Position) -> bool {
         let col = point.column.0 as usize;
@@ -140,17 +106,52 @@ impl PaneGeom {
             && row < self.y + self.rows.as_usize()
     }
 }
-impl PositionAndSize {
-    pub fn reduce_outer_frame(mut self, frame_width: usize) -> Self {
-        self.x += frame_width;
-        self.rows -= frame_width * 2;
-        self.y += frame_width;
-        self.cols -= frame_width * 2;
-        self
+
+impl Offset {
+    pub fn frame(size: usize) -> Self {
+        Self {
+            top: size,
+            bottom: size,
+            right: size,
+            left: size,
+        }
     }
-    pub fn reduce_top_line(mut self) -> Self {
-        self.y += 1;
-        self.rows.saturating_sub(1);
-        self
+
+    pub fn shift(top: usize, left: usize) -> Self {
+        Self {
+            top,
+            left,
+            ..Default::default()
+        }
+    }
+}
+
+impl From<PaneGeom> for Viewport {
+    fn from(pane: PaneGeom) -> Self {
+        Self {
+            x: pane.x,
+            y: pane.y,
+            rows: pane.rows.as_usize(),
+            cols: pane.cols.as_usize(),
+        }
+    }
+}
+
+impl From<Viewport> for Size {
+    fn from(viewport: Viewport) -> Self {
+        Self {
+            rows: viewport.rows,
+            cols: viewport.cols,
+        }
+    }
+}
+
+impl From<Size> for Viewport {
+    fn from(size: Size) -> Self {
+        Self {
+            rows: size.rows,
+            cols: size.cols,
+            ..Default::default()
+        }
     }
 }
