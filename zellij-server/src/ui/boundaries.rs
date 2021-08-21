@@ -435,16 +435,15 @@ impl Boundaries {
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
-                let mut symbol_to_add =
-                    if row == first_row_coordinates && row != self.viewport.y {
-                        BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
-                    } else if row == last_row_coordinates - 1
-                        && row != self.viewport.y + self.viewport.rows - 1
-                    {
-                        BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
-                    } else {
-                        BoundarySymbol::new(boundary_type::VERTICAL).color(color)
-                    };
+                let mut symbol_to_add = if row == first_row_coordinates && row != self.viewport.y {
+                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                } else if row == last_row_coordinates - 1
+                    && row != self.viewport.y + self.viewport.rows - 1
+                {
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
+                } else {
+                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
@@ -463,12 +462,9 @@ impl Boundaries {
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
-                let mut symbol_to_add = if col == first_col_coordinates
-                    && col != self.viewport.x
-                {
+                let mut symbol_to_add = if col == first_col_coordinates && col != self.viewport.x {
                     BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1
-                {
+                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
                     BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else {
                     BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
@@ -491,16 +487,15 @@ impl Boundaries {
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
-                let mut symbol_to_add =
-                    if row == first_row_coordinates && row != self.viewport.y {
-                        BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
-                    } else if row == last_row_coordinates - 1
-                        && row != self.viewport.y + self.viewport.rows - 1
-                    {
-                        BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
-                    } else {
-                        BoundarySymbol::new(boundary_type::VERTICAL).color(color)
-                    };
+                let mut symbol_to_add = if row == first_row_coordinates && row != self.viewport.y {
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
+                } else if row == last_row_coordinates - 1
+                    && row != self.viewport.y + self.viewport.rows - 1
+                {
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
+                } else {
+                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                };
                 if rect.invisible_borders() {
                     symbol_to_add = symbol_to_add.invisible();
                 }
@@ -519,12 +514,9 @@ impl Boundaries {
             let last_col_coordinates = self.rect_bottom_boundary_col_end(rect);
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
-                let mut symbol_to_add = if col == first_col_coordinates
-                    && col != self.viewport.x
-                {
+                let mut symbol_to_add = if col == first_col_coordinates && col != self.viewport.x {
                     BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
-                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1
-                {
+                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
                     BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
                     BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)

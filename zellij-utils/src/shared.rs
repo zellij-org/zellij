@@ -2,11 +2,11 @@
 
 use std::{iter, str::from_utf8};
 
-use strip_ansi_escapes::strip;
 use colors_transform::{Color, Rgb};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
+use strip_ansi_escapes::strip;
 use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 
 const UNIX_PERMISSIONS: u32 = 0o700;
