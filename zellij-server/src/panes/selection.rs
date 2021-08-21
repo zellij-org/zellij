@@ -129,3 +129,7 @@ impl Selection {
         start..end
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/selection_tests.rs"]
+mod selection_tests;

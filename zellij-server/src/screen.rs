@@ -744,3 +744,7 @@ pub(crate) fn screen_thread_main(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/screen_tests.rs"]
+mod screen_tests;

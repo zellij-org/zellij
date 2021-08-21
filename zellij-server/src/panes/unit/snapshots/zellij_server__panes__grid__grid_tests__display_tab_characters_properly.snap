@@ -1,0 +1,21 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C):                                                                                                                     
+01 (C):  OS: 5.9.13-arch1-1 GNU/Linux
+02 (C):  Uptime: 10 hours, 42 minutes
+03 (C):  Hostname: kingdom
+04 (C):  Disk usage:
+05 (C): 
+06 (C): df: /run/user/1000/doc: Operation not permitted
+07 (C):         /       321G / 514G  66%
+08 (C):         /efi     27M /  96M  28%
+09 (C): 
+10 (C):  Network:
+11 (C): 
+12 (C):         wlp2s0  192.168.0.3
+13 (C): 
+14 (C): [I] [20:07] kingdom:mosaic (main) |                                                                                 
+
