@@ -60,7 +60,6 @@ pub enum ClientToServerMsg {
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),
     ClientExited,
-    InputReceived,
 }
 
 // Types of messages sent from the server to the client

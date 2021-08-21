@@ -75,8 +75,6 @@ impl InputHandler {
             for key_result in stdin_buffer.events_and_raw() {
                 match key_result {
                     Ok((event, raw_bytes)) => {
-                        self.os_input
-                            .send_to_server(ClientToServerMsg::InputReceived);
                         match event {
                             termion::event::Event::Key(key) => {
                                 let key = cast_termion_key(key);
