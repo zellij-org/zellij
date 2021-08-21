@@ -91,8 +91,10 @@ impl InputHandler {
                                 self.handle_key(&key, raw_bytes);
                             } else if unsupported_key == bracketed_paste_start {
                                 self.pasting = true;
+                                self.handle_unknown_key(raw_bytes);
                             } else if unsupported_key == bracketed_paste_end {
                                 self.pasting = false;
+                                self.handle_unknown_key(raw_bytes);
                             } else {
                                 // this is a hack because termion doesn't recognize certain keys
                                 // in this case we just forward it to the terminal
