@@ -10,8 +10,6 @@ use std::{
 };
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom, Size};
 
-const GAP_SIZE: usize = 1; // Panes are separated by this number of rows / columns
-
 pub struct PaneResizer<'a> {
     panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
     vars: BTreeMap<PaneId, (Variable, Variable)>,
@@ -75,7 +73,6 @@ impl<'a> PaneResizer<'a> {
         // let spans = self.solve_direction(Direction::Horizontal, new_size.cols.as_usize())?;
         // self.apply_spans(&spans);
         self.layout_direction(Direction::Horizontal, new_size.cols);
-        /*
         log::info!("Finished the Horizontal resize:");
         for (id, pane) in self.panes.iter() {
             let PaneGeom { x, y, rows, cols } = pane.position_and_size();
@@ -88,7 +85,6 @@ impl<'a> PaneResizer<'a> {
                 cols
             );
         }
-        */
         self.solver.reset();
         self.layout_direction(Direction::Vertical, new_size.rows);
         //let spans = self.solve_direction(Direction::Vertical, new_size.rows.as_usize())?;
@@ -138,12 +134,8 @@ impl<'a> PaneResizer<'a> {
         }
         let mut finalised = Vec::new();
         for spans in &mut grid {
-            let mut rounded_size = 0;
-            for span in spans.iter_mut() {
-                rounded_size += rounded_sizes[&span.size_var] + GAP_SIZE as isize;
-            }
-            rounded_size -= GAP_SIZE as isize;
-            let mut error = space as isize - rounded_size as isize;
+            let rounded_size: isize = spans.iter().map(|s| rounded_sizes[&s.size_var]).sum();
+            let mut error = space as isize - rounded_size;
             let mut flex_spans: Vec<&mut Span> = spans
                 .iter_mut()
                 .filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid))
@@ -167,14 +159,13 @@ impl<'a> PaneResizer<'a> {
             for span in spans.iter_mut() {
                 span.pos = offset;
                 let sz = rounded_sizes[&span.size_var];
-                // FIXME: This could be 1, but the pane render seems to choke on that?
                 if sz < 1 {
                     return None;
                 }
                 span.size.set_inner(sz as usize);
-                offset += span.size.as_usize() + GAP_SIZE;
+                offset += span.size.as_usize();
             }
-            if offset - GAP_SIZE != space {
+            if offset != space {
                 log::error!("\n\n\nThe spans don't add up properly!\n\n\n");
             }
         }
@@ -285,8 +276,7 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     constraints.insert(spans[0].pos_var | EQ(REQUIRED) | 0.0);
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
-    let gap_space = GAP_SIZE * (spans.len() - 1);
-    let new_flex_space = spans.iter().fold(space.saturating_sub(gap_space), |a, s| {
+    let new_flex_space = spans.iter().fold(space, |a, s| {
         if let Constraint::Fixed(sz) = s.size.constraint {
             a.saturating_sub(sz)
         } else {
@@ -298,7 +288,7 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     for pair in spans.windows(2) {
         let (ls, rs) = (pair[0], pair[1]);
         constraints
-            .insert((ls.pos_var + ls.size_var + GAP_SIZE as f64) | EQ(REQUIRED) | rs.pos_var);
+            .insert((ls.pos_var + ls.size_var) | EQ(REQUIRED) | rs.pos_var);
     }
 
     // Try to maintain ratios and lock non-flexible sizes

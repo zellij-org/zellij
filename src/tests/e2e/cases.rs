@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use ::insta::assert_snapshot;
-use zellij_utils::{pane_size::PositionAndSize, position::Position};
+use zellij_utils::{pane_size::Size, position::Position};
 
 use rand::Rng;
 
@@ -71,12 +71,9 @@ pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
 #[test]
 #[ignore]
 pub fn starts_with_one_terminal() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("starts_with_one_terminal", fake_win_size, None)
         .add_step(Step {
@@ -97,12 +94,9 @@ pub fn starts_with_one_terminal() {
 #[test]
 #[ignore]
 pub fn split_terminals_vertically() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
 
     let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size, None)
@@ -139,12 +133,9 @@ pub fn split_terminals_vertically() {
 #[test]
 #[ignore]
 pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 8,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new(
         "cannot_split_terminals_vertically_when_active_terminal_is_too_small",
@@ -192,12 +183,9 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
 #[test]
 #[ignore]
 pub fn scrolling_inside_a_pane() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("scrolling_inside_a_pane", fake_win_size, None)
         .add_step(Step {
@@ -279,12 +267,9 @@ pub fn scrolling_inside_a_pane() {
 #[test]
 #[ignore]
 pub fn toggle_pane_fullscreen() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("toggle_pane_fullscreen", fake_win_size, None)
         .add_step(Step {
@@ -335,12 +320,9 @@ pub fn toggle_pane_fullscreen() {
 #[test]
 #[ignore]
 pub fn open_new_tab() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("open_new_tab", fake_win_size, None)
         .add_step(Step {
@@ -395,12 +377,9 @@ pub fn open_new_tab() {
 #[test]
 #[ignore]
 pub fn close_pane() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("close_pane", fake_win_size, None)
         .add_step(Step {
@@ -451,12 +430,9 @@ pub fn close_pane() {
 #[test]
 #[ignore]
 pub fn exit_zellij() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("exit_zellij", fake_win_size, None)
         .add_step(Step {
@@ -490,12 +466,9 @@ pub fn exit_zellij() {
 #[test]
 #[ignore]
 pub fn closing_last_pane_exits_zellij() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("closing_last_pane_exits_zellij", fake_win_size, None)
         .add_step(Step {
@@ -528,12 +501,9 @@ pub fn closing_last_pane_exits_zellij() {
 #[test]
 #[ignore]
 pub fn resize_pane() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("resize_pane", fake_win_size, None)
         .add_step(Step {
@@ -584,12 +554,9 @@ pub fn resize_pane() {
 #[test]
 #[ignore]
 pub fn lock_mode() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("lock_mode", fake_win_size, None)
         .add_step(Step {
@@ -636,12 +603,9 @@ pub fn lock_mode() {
 #[ignore]
 pub fn resize_terminal_window() {
     // this checks the resizing of the whole terminal window (reaction to SIGWINCH) and not just one pane
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot = RemoteRunner::new("resize_terminal_window", fake_win_size, None)
         .add_step(Step {
@@ -689,12 +653,9 @@ pub fn resize_terminal_window() {
 #[test]
 #[ignore]
 pub fn detach_and_attach_session() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let session_id = rand::thread_rng().gen_range(0..10000);
     let session_name = format!("session_{}", session_id);
@@ -772,12 +733,9 @@ pub fn detach_and_attach_session() {
 #[test]
 #[ignore]
 pub fn accepts_basic_layout() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let layout_file_name = "three-panes-with-nesting.yaml";
     let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_file_name, None)
@@ -800,12 +758,9 @@ pub fn accepts_basic_layout() {
 #[test]
 #[ignore]
 fn focus_pane_with_mouse() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
 
     let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size, None)
@@ -853,12 +808,9 @@ fn focus_pane_with_mouse() {
 #[test]
 #[ignore]
 pub fn scrolling_inside_a_pane_with_mouse() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let last_snapshot =
         RemoteRunner::new("scrolling_inside_a_pane_with_mouse", fake_win_size, None)
@@ -941,12 +893,9 @@ pub fn scrolling_inside_a_pane_with_mouse() {
 #[test]
 #[ignore]
 pub fn start_without_pane_frames() {
-    let fake_win_size = PositionAndSize {
+    let fake_win_size = Size {
         cols: 120,
         rows: 24,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
 
     let last_snapshot = RemoteRunner::new_without_frames("no_pane_frames", fake_win_size, None)

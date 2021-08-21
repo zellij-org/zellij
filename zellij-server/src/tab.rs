@@ -860,9 +860,6 @@ impl Tab {
     fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
     }
-    fn get_selectable_pane_count(&self) -> usize {
-        self.get_selectable_panes().count()
-    }
     fn get_next_selectable_pane_position(&self) -> usize {
         self.panes
             .iter()
@@ -872,15 +869,6 @@ impl Tab {
             })
             .count()
             + 1
-    }
-    fn is_the_only_selectable_pane(&self, pane_id: &PaneId) -> bool {
-        let selectable_panes = self.get_selectable_panes();
-        if selectable_panes.count() == 1 {
-            let pane = self.panes.get(pane_id);
-            pane.map(|pane| pane.selectable()).unwrap_or(false)
-        } else {
-            false
-        }
     }
     fn has_panes(&self) -> bool {
         let mut all_terminals = self.get_panes();
@@ -1710,6 +1698,7 @@ impl Tab {
         }
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
+        log::info!("Here is the size of the new screen! {:?}", new_screen_size);
         log::info!("Here are the panes:");
         for (id, pane) in &self.panes {
             let PaneGeom { x, y, rows, cols } = pane.position_and_size();

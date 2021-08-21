@@ -28,7 +28,7 @@ pub struct Offset {
     pub left: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Size {
     pub rows: usize,
     pub cols: usize,
@@ -43,10 +43,7 @@ pub struct Dimension {
 
 impl Default for Dimension {
     fn default() -> Self {
-        Self {
-            constraint: Constraint::Percent(100.0),
-            inner: 0,
-        }
+        Self::percent(100.0)
     }
 }
 

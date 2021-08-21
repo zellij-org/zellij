@@ -1,7 +1,7 @@
 use zellij_tile::data::Palette;
-use zellij_utils::pane_size::PositionAndSize;
 
 use zellij_server::panes::TerminalPane;
+use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::{vte, zellij_tile};
 
 use ssh2::Session;
@@ -27,7 +27,7 @@ fn ssh_connect() -> ssh2::Session {
     sess
 }
 
-fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: PositionAndSize) {
+fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: Size) {
     let (columns, rows) = (win_size.cols as u32, win_size.rows as u32);
     channel
         .request_pty("xterm", None, Some((columns, rows, 0, 0)))
@@ -202,7 +202,7 @@ pub struct RemoteRunner {
     test_name: &'static str,
     currently_running_step: Option<String>,
     retries_left: usize,
-    win_size: PositionAndSize,
+    win_size: Size,
     layout_file_name: Option<&'static str>,
     without_frames: bool,
 }
@@ -210,13 +210,13 @@ pub struct RemoteRunner {
 impl RemoteRunner {
     pub fn new(
         test_name: &'static str,
-        win_size: PositionAndSize,
+        win_size: Size,
         session_name: Option<String>,
     ) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, PaneGeom::default(), Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel, session_name.as_ref());
         RemoteRunner {
@@ -236,13 +236,13 @@ impl RemoteRunner {
     }
     pub fn new_without_frames(
         test_name: &'static str,
-        win_size: PositionAndSize,
+        win_size: Size,
         session_name: Option<String>,
     ) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, PaneGeom::default(), Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
         RemoteRunner {
@@ -262,7 +262,7 @@ impl RemoteRunner {
     }
     pub fn new_with_layout(
         test_name: &'static str,
-        win_size: PositionAndSize,
+        win_size: Size,
         layout_file_name: &'static str,
         session_name: Option<String>,
     ) -> Self {
@@ -270,7 +270,7 @@ impl RemoteRunner {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
-        let terminal_output = TerminalPane::new(0, win_size, Palette::default(), 0); // 0 is the pane index
+        let terminal_output = TerminalPane::new(0, PaneGeom::default(), Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_layout(
             &mut channel,

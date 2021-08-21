@@ -229,6 +229,15 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
+            if self.frame {
+                let frame = PaneFrame {
+                    geom: self.geom.into(),
+                    title: self.grid.title.clone().unwrap_or_default(),
+                    scroll_position: self.grid.scrollback_position_and_length(),
+                    color: self.frame_color,
+                };
+                vte_output.push_str(&frame.render());
+            }
             /* FIXME: Don't let this stick around...
             if let Some(boundaries_frame) = &mut self.frame {
                 boundaries_frame.update_scroll(self.grid.scrollback_position_and_length());

@@ -6,7 +6,8 @@ use crate::{
     SessionState,
 };
 use std::sync::{Arc, RwLock};
-use zellij_utils::{input::command::TerminalAction, pane_size::PositionAndSize};
+use zellij_utils::input::command::TerminalAction;
+use zellij_utils::pane_size::Size;
 
 use std::os::unix::io::RawFd;
 
@@ -73,12 +74,12 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
+fn create_new_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput {};
     bus.os_input = Some(Box::new(fake_os_input));
     let mut client_attributes = ClientAttributes::default();
-    client_attributes.position_and_size = position_and_size;
+    client_attributes.size = size;
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
@@ -94,14 +95,11 @@ fn create_new_screen(position_and_size: PositionAndSize) -> Screen {
 
 #[test]
 fn open_new_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -116,14 +114,11 @@ fn open_new_tab() {
 
 #[test]
 pub fn switch_to_prev_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -138,14 +133,11 @@ pub fn switch_to_prev_tab() {
 
 #[test]
 pub fn switch_to_next_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -161,14 +153,11 @@ pub fn switch_to_next_tab() {
 
 #[test]
 pub fn close_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -184,14 +173,11 @@ pub fn close_tab() {
 
 #[test]
 pub fn close_the_middle_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -209,14 +195,11 @@ pub fn close_the_middle_tab() {
 
 #[test]
 fn move_focus_left_at_left_screen_edge_changes_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
@@ -233,14 +216,11 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
 
 #[test]
 fn move_focus_right_at_right_screen_edge_changes_tab() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(size);
 
     screen.new_tab(1);
     screen.new_tab(2);
