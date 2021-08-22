@@ -1,6 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
-use crate::ui::pane_resizer::PaneResizer;
+use crate::ui::pane_resizer::{Direction, PaneResizer};
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
@@ -484,6 +484,7 @@ impl Tab {
                         );
                         terminal_to_split.change_pos_and_size(&top_winsize);
                         self.panes.insert(pid, Box::new(new_terminal));
+                        self.relayout_tab(Direction::Vertical);
                     }
                 }
             } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
@@ -497,12 +498,12 @@ impl Tab {
                         );
                         terminal_to_split.change_pos_and_size(&left_winsize);
                         self.panes.insert(pid, Box::new(new_terminal));
+                        self.relayout_tab(Direction::Horizontal);
                     }
                 }
             }
             self.active_terminal = Some(pid);
             self.set_pane_frames(self.draw_pane_frames);
-            self.resize_whole_tab(self.display_area);
             self.render();
         }
     }
@@ -547,7 +548,7 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
                 self.set_pane_frames(self.draw_pane_frames);
-                self.resize_whole_tab(self.display_area);
+                self.relayout_tab(Direction::Vertical);
                 self.render();
             }
         }
@@ -593,7 +594,7 @@ impl Tab {
             }
             self.active_terminal = Some(pid);
             self.set_pane_frames(self.draw_pane_frames);
-            self.resize_whole_tab(self.display_area);
+            self.relayout_tab(Direction::Horizontal);
             self.render();
         }
     }
@@ -1697,6 +1698,13 @@ impl Tab {
             false
         }
     }
+    pub fn relayout_tab(&mut self, direction: Direction) {
+        let mut resizer = PaneResizer::new(&mut self.panes, &mut self.os_api);
+        match direction {
+            Direction::Horizontal => resizer.resize(direction, self.display_area.cols),
+            Direction::Vertical => resizer.resize(direction, self.display_area.rows),
+        };
+    }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         log::info!("Here is the size of the new screen! {:?}", new_screen_size);
         log::info!("Here are the panes:");
@@ -1713,22 +1721,27 @@ impl Tab {
         }
         // FIXME: This is a temporary solution (and a massive mess)
         let Size { rows, cols } = new_screen_size;
-        if let Some((cols, rows)) =
-            PaneResizer::new(&mut self.panes, &mut self.os_api).resize(Size { rows, cols })
-        {
+        let mut resizer = PaneResizer::new(&mut self.panes, &mut self.os_api);
+        if let Some(cols) = resizer.resize(Direction::Horizontal, cols) {
             self.should_clear_display_before_rendering = true;
             let column_difference = cols as isize - self.display_area.cols as isize;
-            let row_difference = rows as isize - self.display_area.rows as isize;
             // FIXME: Should the viewport be an Offset?
             self.viewport.cols = (self.viewport.cols as isize + column_difference) as usize;
-            self.viewport.rows = (self.viewport.rows as isize + row_difference) as usize;
             self.display_area.cols = cols;
-            self.display_area.rows = rows;
-            // FIXME: Make sure this is the only place this method is called!
-            self.set_pane_frames(self.draw_pane_frames);
         } else {
-            log::error!("Failed to resize the tab!!!");
+            log::error!("Failed to horizontally resize the tab!!!");
         }
+        if let Some(rows) = resizer.resize(Direction::Vertical, rows) {
+            self.should_clear_display_before_rendering = true;
+            let row_difference = rows as isize - self.display_area.rows as isize;
+            // FIXME: Should the viewport be an Offset?
+            self.viewport.rows = (self.viewport.rows as isize + row_difference) as usize;
+            self.display_area.rows = rows;
+        } else {
+            log::error!("Failed to vertically resize the tab!!!");
+        }
+        // FIXME: Make sure this is the only place this method is called!
+        self.set_pane_frames(self.draw_pane_frames);
         log::info!("Finished resizing (maybe) the panes!");
         for (id, pane) in &self.panes {
             let PaneGeom { x, y, rows, cols } = pane.position_and_size();
@@ -1751,6 +1764,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
             }
         }
+        // FIXME: Replace all `resize_whole_tab(self.display_area)` with `relayout_tab()`
         self.resize_whole_tab(self.display_area);
         self.render();
     }

@@ -208,11 +208,7 @@ pub struct RemoteRunner {
 }
 
 impl RemoteRunner {
-    pub fn new(
-        test_name: &'static str,
-        win_size: Size,
-        session_name: Option<String>,
-    ) -> Self {
+    pub fn new(test_name: &'static str, win_size: Size, session_name: Option<String>) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();

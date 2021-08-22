@@ -51,14 +51,14 @@ impl Dimension {
     pub fn fixed(size: usize) -> Dimension {
         Self {
             constraint: Constraint::Fixed(size),
-            inner: 0,
+            inner: 1,
         }
     }
 
     pub fn percent(percent: f64) -> Dimension {
         Self {
             constraint: Constraint::Percent(percent),
-            inner: 0,
+            inner: 1,
         }
     }
 

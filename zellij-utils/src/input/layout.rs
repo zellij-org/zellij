@@ -235,8 +235,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         .iter()
                         .map(|p| layout_size(Direction::Horizontal, p))
                         .max()
-                        .unwrap()
-                        - 1,
+                        .unwrap(),
                 );
                 split_parts.push(PaneGeom {
                     x: current_x_position,
@@ -303,8 +302,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         .iter()
                         .map(|p| layout_size(Direction::Vertical, p))
                         .max()
-                        .unwrap()
-                        - 1,
+                        .unwrap(),
                 );
                 split_parts.push(PaneGeom {
                     x: space_to_split.x,
@@ -313,6 +311,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     cols,
                     rows,
                 });
+                /*
                 log::info!("Self: {:#?}", part);
                 log::info!("Siblings: {:#?}", layout.parts);
                 log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
@@ -324,6 +323,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         .map(|p| layout_size(Direction::Horizontal, p))
                         .collect::<Vec<_>>()
                 );
+                */
                 current_y_position += layout_size(Direction::Horizontal, part);
             }
 

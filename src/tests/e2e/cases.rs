@@ -133,10 +133,7 @@ pub fn split_terminals_vertically() {
 #[test]
 #[ignore]
 pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
-    let fake_win_size = Size {
-        cols: 8,
-        rows: 20,
-    };
+    let fake_win_size = Size { cols: 8, rows: 20 };
     let last_snapshot = RemoteRunner::new(
         "cannot_split_terminals_vertically_when_active_terminal_is_too_small",
         fake_win_size,
