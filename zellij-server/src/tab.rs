@@ -80,6 +80,7 @@ fn split_horizontally(rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
     }
 }
 
+// FIXME: This should really offset from the top and the left, not bottom and right
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
     // (columns_offset, rows_offset)
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
@@ -773,6 +774,21 @@ impl Tab {
             if !pane.selectable() {
                 pane.set_content_offset(Offset::default());
             }
+            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
+            log::info!(
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}\n\tContent X: {:?}\n\tContent Y: {:?}\n\tContent Rows: {:?}\n\tContent Cols: {:?}",
+                pane_id,
+                x,
+                y,
+                rows,
+                cols,
+                pane.get_content_x(),
+                pane.get_content_y(),
+                pane.get_content_rows(),
+                pane.get_content_columns(),
+            );
+            // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
+            // `TerminalPane::reflow_lines`
             if let PaneId::Terminal(pid) = pane_id {
                 self.os_api.set_terminal_size_using_fd(
                     *pid,

@@ -390,6 +390,7 @@ impl Pane for TerminalPane {
 
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
+        self.reflow_lines();
     }
 
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
