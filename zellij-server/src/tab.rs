@@ -2069,19 +2069,23 @@ impl Tab {
             let upper_close_border = terminal.y();
             let lower_close_border = terminal.y() + terminal.rows() + 1;
 
-            if let Some(mut terminals_to_the_left) = self.pane_ids_directly_left_of(&id) {
-                let terminal_borders_to_the_left = self.horizontal_borders(&terminals_to_the_left);
+            if let Some(terminals_to_the_left) = self.pane_ids_directly_left_of(&id) {
+                let mut selectable_panes: Vec<_> = terminals_to_the_left
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_to_the_left = self.horizontal_borders(&selectable_panes);
                 if terminal_borders_to_the_left.contains(&upper_close_border)
                     && terminal_borders_to_the_left.contains(&lower_close_border)
                 {
-                    terminals_to_the_left.retain(|t| {
+                    selectable_panes.retain(|t| {
                         self.pane_is_between_horizontal_borders(
                             t,
                             upper_close_border,
                             lower_close_border,
                         )
                     });
-                    return Some(terminals_to_the_left);
+                    return Some(selectable_panes);
                 }
             }
         }
@@ -2092,20 +2096,23 @@ impl Tab {
             let upper_close_border = terminal.y();
             let lower_close_border = terminal.y() + terminal.rows() + 1;
 
-            if let Some(mut terminals_to_the_right) = self.pane_ids_directly_right_of(&id) {
-                let terminal_borders_to_the_right =
-                    self.horizontal_borders(&terminals_to_the_right);
+            if let Some(terminals_to_the_right) = self.pane_ids_directly_right_of(&id) {
+                let mut selectable_panes: Vec<_> = terminals_to_the_right
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_to_the_right = self.horizontal_borders(&selectable_panes);
                 if terminal_borders_to_the_right.contains(&upper_close_border)
                     && terminal_borders_to_the_right.contains(&lower_close_border)
                 {
-                    terminals_to_the_right.retain(|t| {
+                    selectable_panes.retain(|t| {
                         self.pane_is_between_horizontal_borders(
                             t,
                             upper_close_border,
                             lower_close_border,
                         )
                     });
-                    return Some(terminals_to_the_right);
+                    return Some(selectable_panes);
                 }
             }
         }
@@ -2116,19 +2123,23 @@ impl Tab {
             let left_close_border = terminal.x();
             let right_close_border = terminal.x() + terminal.cols() + 1;
 
-            if let Some(mut terminals_above) = self.pane_ids_directly_above(&id) {
-                let terminal_borders_above = self.vertical_borders(&terminals_above);
+            if let Some(terminals_above) = self.pane_ids_directly_above(&id) {
+                let mut selectable_panes: Vec<_> = terminals_above
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_above = self.vertical_borders(&selectable_panes);
                 if terminal_borders_above.contains(&left_close_border)
                     && terminal_borders_above.contains(&right_close_border)
                 {
-                    terminals_above.retain(|t| {
+                    selectable_panes.retain(|t| {
                         self.pane_is_between_vertical_borders(
                             t,
                             left_close_border,
                             right_close_border,
                         )
                     });
-                    return Some(terminals_above);
+                    return Some(selectable_panes);
                 }
             }
         }
@@ -2139,19 +2150,23 @@ impl Tab {
             let left_close_border = terminal.x();
             let right_close_border = terminal.x() + terminal.cols() + 1;
 
-            if let Some(mut terminals_below) = self.pane_ids_directly_below(&id) {
-                let terminal_borders_below = self.vertical_borders(&terminals_below);
+            if let Some(terminals_below) = self.pane_ids_directly_below(&id) {
+                let mut selectable_panes: Vec<_> = terminals_below
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_below = self.vertical_borders(&selectable_panes);
                 if terminal_borders_below.contains(&left_close_border)
                     && terminal_borders_below.contains(&right_close_border)
                 {
-                    terminals_below.retain(|t| {
+                    selectable_panes.retain(|t| {
                         self.pane_is_between_vertical_borders(
                             t,
                             left_close_border,
                             right_close_border,
                         )
                     });
-                    return Some(terminals_below);
+                    return Some(selectable_panes);
                 }
             }
         }
@@ -2194,7 +2209,7 @@ impl Tab {
         }
         if let Some(pane_to_close) = self.panes.get(&id) {
             let freed_space = pane_to_close.position_and_size();
-            // FIXME: This is pretty rank (two) line(s) of code...
+            // FIXME: This is pretty rank (two) line(s) of code... Use .as_percent here
             if let (Constraint::Percent(freed_width), Constraint::Percent(freed_height)) =
                 (freed_space.cols.constraint, freed_space.rows.constraint)
             {
@@ -2207,6 +2222,7 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
+                    self.resize_whole_tab(self.display_area);
                     return;
                 }
                 if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
@@ -2218,9 +2234,11 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
+                    self.resize_whole_tab(self.display_area);
                     return;
                 }
                 if let Some(panes) = self.panes_above_between_aligning_borders(id) {
+                    log::info!("This is looking suspect...");
                     for pane_id in panes.iter() {
                         self.increase_pane_height_down(pane_id, freed_height);
                     }
@@ -2229,6 +2247,7 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
+                    self.resize_whole_tab(self.display_area);
                     return;
                 }
                 if let Some(panes) = self.panes_below_between_aligning_borders(id) {
@@ -2240,6 +2259,7 @@ impl Tab {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
+                    self.resize_whole_tab(self.display_area);
                     return;
                 }
             }
