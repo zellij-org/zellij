@@ -748,6 +748,7 @@ impl Tab {
         for (pane_id, pane) in self.panes.iter_mut() {
             pane.set_frame(draw_pane_frames);
             if draw_pane_frames {
+                pane.set_content_offset(Offset::frame(1));
             } else {
                 // FIXME: This should be what the `position_and_size` method
                 // returns after the Pane refactor and `.geom` is directly
@@ -759,6 +760,10 @@ impl Tab {
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
+            }
+            // FIXME: The selectable thing is a massive Hack! Decouple borders from selectability
+            if !pane.selectable() {
+                pane.set_content_offset(Offset::default());
             }
             if let PaneId::Terminal(pid) = pane_id {
                 self.os_api.set_terminal_size_using_fd(
@@ -1699,6 +1704,8 @@ impl Tab {
         }
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
+        // FIXME: Make sure this is the only place this method is called!
+        self.set_pane_frames(self.draw_pane_frames);
         let mut resizer = PaneResizer::new(&mut self.panes, &mut self.os_api);
         match direction {
             Direction::Horizontal => resizer.resize(direction, self.display_area.cols),
@@ -1746,12 +1753,14 @@ impl Tab {
         for (id, pane) in &self.panes {
             let PaneGeom { x, y, rows, cols } = pane.position_and_size();
             log::info!(
-                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
+                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}\n\tContent Rows: {:?}\n\tContent Cols: {:?}",
                 id,
                 x,
                 y,
                 rows,
-                cols
+                cols,
+                pane.get_content_rows(),
+                pane.get_content_columns(),
             );
         }
     }
@@ -2169,6 +2178,10 @@ impl Tab {
                 self.active_terminal = self.next_active_pane(&self.get_pane_ids())
             }
         }
+        // FIXME: This is a super, super nasty hack while borderless-ness is still tied to
+        // selectability. Delete this once those are decoupled
+        self.set_pane_frames(self.draw_pane_frames);
+        self.render();
     }
     pub fn set_pane_invisible_borders(&mut self, id: PaneId, invisible_borders: bool) {
         if let Some(pane) = self.panes.get_mut(&id) {

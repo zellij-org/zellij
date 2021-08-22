@@ -71,12 +71,14 @@ impl Pane for TerminalPane {
     fn get_content_columns(&self) -> usize {
         // content columns might differ from the pane's columns if the pane has a frame
         // in that case they would be 2 less
-        self.get_columns() - (self.content_offset.left + self.content_offset.right)
+        self.get_columns()
+            .saturating_sub(self.content_offset.left + self.content_offset.right)
     }
     fn get_content_rows(&self) -> usize {
         // content rows might differ from the pane's rows if the pane has a frame
         // in that case they would be 2 less
-        self.get_rows() - (self.content_offset.top + self.content_offset.bottom)
+        self.get_rows()
+            .saturating_sub(self.content_offset.top + self.content_offset.bottom)
     }
     fn reset_size_and_position_override(&mut self) {
         self.geom_override = None;

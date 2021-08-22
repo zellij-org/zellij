@@ -79,12 +79,14 @@ impl Pane for PluginPane {
     fn get_content_columns(&self) -> usize {
         // content columns might differ from the pane's columns if the pane has a frame
         // in that case they would be 2 less
-        self.cols() - (self.content_offset.left + self.content_offset.right)
+        self.cols()
+            .saturating_sub(self.content_offset.left + self.content_offset.right)
     }
     fn get_content_rows(&self) -> usize {
         // content rows might differ from the pane's rows if the pane has a frame
         // in that case they would be 2 less
-        self.rows() - (self.content_offset.top + self.content_offset.bottom)
+        self.rows()
+            .saturating_sub(self.content_offset.top + self.content_offset.bottom)
     }
     fn reset_size_and_position_override(&mut self) {
         self.geom_override = None;
@@ -94,7 +96,6 @@ impl Pane for PluginPane {
         self.geom = *position_and_size;
         self.should_render = true;
     }
-    // FIXME: This is obviously a bit outdated and needs the x and y moved into `size`
     fn override_size_and_position(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.should_render = true;
