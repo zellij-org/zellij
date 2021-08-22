@@ -327,16 +327,6 @@ impl Tab {
         self.panes_to_hide.clear();
         let positions_in_layout = layout.position_panes_in_space(&free_space);
 
-        for &(ref layout, position_and_size) in &positions_in_layout {
-            // we need to do this first because it decides the size of the screen
-            // which we use for other stuff in the main loop below (eg. which type of frames the
-            // panes should have)
-            if layout.borderless {
-                // FIXME: Yeah, this is probably important
-                self.offset_viewport(&position_and_size.into());
-            }
-        }
-
         let mut positions_and_size = positions_in_layout.iter();
         for (pane_kind, terminal_pane) in self.panes.iter_mut() {
             // for now the layout only supports terminal panes
@@ -411,10 +401,28 @@ impl Tab {
                 .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                 .unwrap();
         }
+        // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
+        // non-fixed panes that are part of the viewport, get rid of this!
+        self.resize_whole_tab(self.display_area);
+        let boundary_geom: Vec<_> = self
+            .panes
+            .values()
+            .filter_map(|p| {
+                let geom = p.position_and_size();
+                if geom.cols.is_fixed() || geom.rows.is_fixed() {
+                    log::info!("Pane?: {:?}", geom);
+                    Some(geom.into())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for geom in boundary_geom {
+            self.offset_viewport(&geom)
+        }
+        // This is the end of the nasty viewport hack...
         // FIXME: Active / new / current terminal, should be pane
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
-        self.set_pane_frames(self.draw_pane_frames);
-        self.resize_whole_tab(self.display_area);
         self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
@@ -2438,6 +2446,11 @@ impl Tab {
                 <= self.viewport.y + self.viewport.rows
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
+        log::info!(
+            "OFFFFFFFFFFFFFFFFFSSSSSSETTTTTTTTTTTTTING!!!\nPAS {:?}\nVP {:?}",
+            position_and_size,
+            self.viewport
+        );
         if position_and_size.x == self.viewport.x
             && position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols
         {
@@ -2462,5 +2475,10 @@ impl Tab {
                 self.viewport.cols -= position_and_size.cols;
             }
         }
+        log::info!(
+            "DONE!!!\nPAS {:?}\nVP {:?}",
+            position_and_size,
+            self.viewport
+        );
     }
 }
