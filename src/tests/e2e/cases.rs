@@ -80,7 +80,7 @@ pub fn starts_with_one_terminal() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     step_is_complete = true;
                 }
@@ -104,7 +104,7 @@ pub fn split_terminals_vertically() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
