@@ -38,6 +38,7 @@ pub fn get_mode_info(
             ("x".to_string(), "Close".to_string()),
             ("r".to_string(), "Rename".to_string()),
             ("s".to_string(), "Sync".to_string()),
+            ("Tab".to_string(), "Toggle".to_string()),
         ],
         InputMode::Scroll => vec![
             ("↓↑".to_string(), "Scroll".to_string()),

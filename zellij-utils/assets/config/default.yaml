@@ -168,6 +168,8 @@ keybinds:
           key: [ Char: '8',]
         - action: [GoToTab: 9,]
           key: [ Char: '9',]
+        - action: [ToggleTab]
+          key: [ Char: "\t" ]
     scroll:
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 'r', Ctrl: 's', Char: ' ',

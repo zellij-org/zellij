@@ -228,6 +228,7 @@ pub enum ScreenContext {
     MouseRelease,
     MouseHold,
     Copy,
+    ToggleTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
