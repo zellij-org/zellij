@@ -1,6 +1,8 @@
 mod line;
 mod tab;
 
+use std::convert::TryInto;
+
 use zellij_tile::prelude::*;
 
 use crate::line::tab_line;
@@ -36,11 +38,11 @@ impl ZellijPlugin for State {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
             Event::Mouse(me) => match me {
-                Mouse::LeftClick(line, col) => {
+                Mouse::LeftClick(_, col) => {
                     self.mouse_click_pos = col;
                     self.should_render = true;
-                }
-                _ => {}
+                },
+                _ => { dbg!(me); }
             },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
@@ -81,14 +83,19 @@ impl ZellijPlugin for State {
         );
         let mut s = String::new();
         let mut len_cnt = 0;
-        for bar_part in tab_line {
-            s = format!("{}{}", s, bar_part.part);
+        for (idx, bar_part) in tab_line.iter().enumerate() {
+            s = format!("{}{}", s, &bar_part.part);
+            
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
             {
+                if idx > 0
+                {
+                    switch_tab_to(idx.try_into().unwrap());
+                }
                 dbg!("Mouse clicked here");
-                dbg!(bar_part.part);
+                dbg!(&bar_part.part);
             }
             len_cnt += bar_part.len;
         }
