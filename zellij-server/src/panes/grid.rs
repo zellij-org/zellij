@@ -1068,26 +1068,14 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
-    pub fn move_cursor_down(&mut self, count: usize, pad_character: TerminalCharacter) {
+    pub fn move_cursor_down_until_edge_of_screen(&mut self, count: usize, pad_character: TerminalCharacter) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
                 self.cursor.y = std::cmp::min(self.cursor.y + count, scroll_region_bottom);
                 return;
             }
         }
-        let lines_to_add = if self.cursor.y + count > self.height - 1 {
-            (self.cursor.y + count) - (self.height - 1)
-        } else {
-            0
-        };
-        self.cursor.y = if self.cursor.y + count > self.height - 1 {
-            self.height - 1
-        } else {
-            self.cursor.y + count
-        };
-        for _ in 0..lines_to_add {
-            self.add_canonical_line();
-        }
+        self.cursor.y = std::cmp::min(self.cursor.y + count, self.height - 1);
         self.pad_lines_until(self.cursor.y, pad_character);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
@@ -1626,7 +1614,7 @@ impl Perform for Grid {
             // move cursor down until edge of screen
             let move_down_count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_down(move_down_count as usize, pad_character);
+            self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
             let move_back_count = next_param_or(1);
             self.move_cursor_back(move_back_count);
@@ -1806,7 +1794,7 @@ impl Perform for Grid {
         } else if c == 'E' {
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_down(count, pad_character);
+            self.move_cursor_down_until_edge_of_screen(count, pad_character);
         } else if c == 'F' {
             let count = next_param_or(1);
             self.move_cursor_up(count);
