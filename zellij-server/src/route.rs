@@ -23,6 +23,10 @@ fn route_action(
     to_server: &SenderWithContext<ServerInstruction>,
 ) -> bool {
     let mut should_break = false;
+    session
+        .senders
+        .send_to_plugin(PluginInstruction::Update(None, Event::InputReceived))
+        .unwrap();
     match action {
         Action::Write(val) => {
             session
