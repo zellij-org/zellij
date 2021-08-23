@@ -1,7 +1,7 @@
 use zellij_tile::data::Palette;
 
 use zellij_server::panes::TerminalPane;
-use zellij_utils::pane_size::{PaneGeom, Dimension, Size};
+use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
 use zellij_utils::{vte, zellij_tile};
 
 use ssh2::Session;

@@ -234,7 +234,11 @@ impl Pane for TerminalPane {
             if self.frame {
                 let frame = PaneFrame {
                     geom: self.geom.into(),
-                    title: self.grid.title.clone().unwrap_or_else(|| self.pane_title.clone()),
+                    title: self
+                        .grid
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| self.pane_title.clone()),
                     scroll_position: self.grid.scrollback_position_and_length(),
                     color: self.frame_color,
                 };
