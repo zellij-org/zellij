@@ -1068,7 +1068,11 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
-    pub fn move_cursor_down_until_edge_of_screen(&mut self, count: usize, pad_character: TerminalCharacter) {
+    pub fn move_cursor_down_until_edge_of_screen(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
                 self.cursor.y = std::cmp::min(self.cursor.y + count, scroll_region_bottom);
