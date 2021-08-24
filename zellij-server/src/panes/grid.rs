@@ -351,7 +351,8 @@ pub struct Grid {
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
-    pub erasure_mode: bool,    // ERM
+    pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
+    pub erasure_mode: bool,         // ERM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub clear_viewport_before_rendering: bool,
@@ -390,6 +391,7 @@ impl Grid {
             height: rows,
             should_render: true,
             cursor_key_mode: false,
+            bracketed_paste_mode: false,
             erasure_mode: false,
             insert_mode: false,
             disable_linewrap: false,
@@ -1630,6 +1632,9 @@ impl Perform for Grid {
             };
             if first_intermediate_is_questionmark {
                 match params_iter.next().map(|param| param[0]) {
+                    Some(2004) => {
+                        self.bracketed_paste_mode = false;
+                    }
                     Some(1049) => {
                         if let Some((
                             alternative_lines_above,
@@ -1682,6 +1687,9 @@ impl Perform for Grid {
                     Some(25) => {
                         self.show_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(2004) => {
+                        self.bracketed_paste_mode = true;
                     }
                     Some(1049) => {
                         let current_lines_above = std::mem::replace(
