@@ -5,9 +5,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
-    current_title
-        .iter()
-        .fold(0, |acc, title_part| acc + title_part.len)
+    current_title.iter().map(|p| p.len).sum()
 }
 
 fn populate_tabs_in_tab_line(
@@ -144,20 +142,29 @@ fn add_next_tabs_msg(
     title_bar.push(right_more_message);
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Palette) -> LinePart {
-    let mut prefix_text = " Zellij ".to_string();
-    if let Some(name) = session_name {
-        prefix_text.push_str(&format!("({}) ", name));
-    }
+fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) -> Vec<LinePart> {
+    let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
     let prefix_styled_text = style!(palette.white, palette.cyan)
         .bold()
         .paint(prefix_text);
-    LinePart {
+    let mut parts = vec![LinePart {
         part: format!("{}", prefix_styled_text),
         len: prefix_text_len,
+    }];
+    if let Some(name) = session_name {
+        let name_part = format!("({}) ", name);
+        let name_part_len = name_part.chars().count();
+        let name_part_styled_text = style!(palette.white, palette.cyan).bold().paint(name_part);
+        if cols - prefix_text_len >= name_part_len {
+            parts.push(LinePart {
+                part: format!("{}", name_part_styled_text),
+                len: name_part_len,
+            })
+        }
     }
+    parts
 }
 
 pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
@@ -176,7 +183,7 @@ pub fn tab_line(
     palette: Palette,
     capabilities: PluginCapabilities,
 ) -> Vec<LinePart> {
-    let mut tabs_to_render: Vec<LinePart> = vec![];
+    let mut tabs_to_render = tab_line_prefix(session_name, palette, cols);
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {
@@ -184,14 +191,15 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    tabs_to_render.push(active_tab);
+    if get_current_title_len(&tabs_to_render) + active_tab.len <= cols {
+        tabs_to_render.push(active_tab);
+    }
 
-    let prefix = tab_line_prefix(session_name, palette);
     populate_tabs_in_tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
         &mut tabs_to_render,
-        cols.saturating_sub(prefix.len),
+        cols,
     );
 
     let mut tab_line: Vec<LinePart> = vec![];
@@ -200,7 +208,7 @@ pub fn tab_line(
             &mut tabs_before_active,
             &mut tabs_to_render,
             &mut tab_line,
-            cols.saturating_sub(prefix.len),
+            cols,
             palette,
             tab_separator(capabilities),
         );
@@ -210,11 +218,10 @@ pub fn tab_line(
         add_next_tabs_msg(
             &mut tabs_after_active,
             &mut tab_line,
-            cols.saturating_sub(prefix.len),
+            cols,
             palette,
             tab_separator(capabilities),
         );
     }
-    tab_line.insert(0, prefix);
     tab_line
 }

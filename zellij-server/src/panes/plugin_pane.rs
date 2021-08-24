@@ -148,7 +148,7 @@ impl Pane for PluginPane {
             let contents = buf_rx.recv().unwrap();
             // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
             // will eventually need fixing!
-            if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()){
+            if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
                 let frame = PaneFrame {
                     geom: self.geom.into(),
                     ..Default::default()
