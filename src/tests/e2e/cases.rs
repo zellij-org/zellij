@@ -75,7 +75,7 @@ pub fn starts_with_one_terminal() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("starts_with_one_terminal", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("starts_with_one_terminal", fake_win_size)
         .add_step(Step {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
@@ -99,7 +99,7 @@ pub fn split_terminals_vertically() {
         rows: 24,
     };
 
-    let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -137,7 +137,6 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
     let last_snapshot = RemoteRunner::new(
         "cannot_split_terminals_vertically_when_active_terminal_is_too_small",
         fake_win_size,
-        None,
     )
     .add_step(Step {
         name: "Split pane to the right",
@@ -184,7 +183,7 @@ pub fn scrolling_inside_a_pane() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("scrolling_inside_a_pane", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("scrolling_inside_a_pane", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -268,7 +267,7 @@ pub fn toggle_pane_fullscreen() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("toggle_pane_fullscreen", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("toggle_pane_fullscreen", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -321,7 +320,7 @@ pub fn open_new_tab() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("open_new_tab", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("open_new_tab", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -378,12 +377,12 @@ pub fn close_pane() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("close_pane", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("close_pane", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -413,7 +412,7 @@ pub fn close_pane() {
             name: "Wait for pane to close",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                     // cursor is in the original pane
                     step_is_complete = true;
                 }
@@ -431,7 +430,7 @@ pub fn exit_zellij() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("exit_zellij", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("exit_zellij", fake_win_size)
         .add_step(Step {
             name: "Wait for app to load",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -467,12 +466,12 @@ pub fn closing_last_pane_exits_zellij() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("closing_last_pane_exits_zellij", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("closing_last_pane_exits_zellij", fake_win_size)
         .add_step(Step {
             name: "Close pane",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&CLOSE_PANE_IN_PANE_MODE);
@@ -502,7 +501,7 @@ pub fn resize_pane() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("resize_pane", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("resize_pane", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -555,7 +554,7 @@ pub fn lock_mode() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("lock_mode", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("lock_mode", fake_win_size)
         .add_step(Step {
             name: "Enter lock mode",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -604,7 +603,7 @@ pub fn resize_terminal_window() {
         cols: 120,
         rows: 24,
     };
-    let last_snapshot = RemoteRunner::new("resize_terminal_window", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("resize_terminal_window", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -654,12 +653,9 @@ pub fn detach_and_attach_session() {
         cols: 120,
         rows: 24,
     };
-    let session_id = rand::thread_rng().gen_range(0..10000);
-    let session_name = format!("session_{}", session_id);
     let last_snapshot = RemoteRunner::new(
         "detach_and_attach_session",
         fake_win_size,
-        Some(session_name),
     )
     .add_step(Step {
         name: "Split pane to the right",
@@ -735,7 +731,7 @@ pub fn accepts_basic_layout() {
         rows: 24,
     };
     let layout_file_name = "three-panes-with-nesting.yaml";
-    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_file_name, None)
+    let last_snapshot = RemoteRunner::new_with_layout("accepts_basic_layout", fake_win_size, layout_file_name)
         .add_step(Step {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
@@ -760,7 +756,7 @@ fn focus_pane_with_mouse() {
         rows: 24,
     };
 
-    let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new("split_terminals_vertically", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -810,7 +806,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
         rows: 24,
     };
     let last_snapshot =
-        RemoteRunner::new("scrolling_inside_a_pane_with_mouse", fake_win_size, None)
+        RemoteRunner::new("scrolling_inside_a_pane_with_mouse", fake_win_size)
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -895,7 +891,7 @@ pub fn start_without_pane_frames() {
         rows: 24,
     };
 
-    let last_snapshot = RemoteRunner::new_without_frames("no_pane_frames", fake_win_size, None)
+    let last_snapshot = RemoteRunner::new_without_frames("no_pane_frames", fake_win_size)
         .add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {

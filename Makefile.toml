@@ -70,7 +70,7 @@ args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 # Release building and installing Zellij
 [tasks.install]
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "build-release", "manpage"]
+dependencies = ["wasm-opt-plugins", "build-release", "manpage"]
 script_runner = "@duckscript"
 script = '''
 if is_dir ${CARGO_MAKE_TASK_ARGS}
@@ -89,6 +89,7 @@ env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", 
 run_task = { name = "build", fork = true }
 
 [tasks.wasm-opt-plugins]
+dependencies = ["build-plugins-release"]
 script_runner = "@duckscript"
 script = '''
 plugins = glob_array ${CARGO_TARGET_DIR}/wasm32-wasi/release/*.wasm
@@ -127,7 +128,7 @@ args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"
 # Build e2e asset
 [tasks.build-e2e]
 workspace = false
-dependencies = ["build-plugins"]
+dependencies = ["wasm-opt-plugins"]
 command = "cargo"
 args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
 

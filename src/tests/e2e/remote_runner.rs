@@ -15,6 +15,7 @@ const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
+const SESSION_NAME: &str = "e2e-test";
 
 fn ssh_connect() -> ssh2::Session {
     let tcp = TcpStream::connect(CONNECTION_STRING).unwrap();
@@ -39,60 +40,45 @@ fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: Size) {
     channel.flush().unwrap();
 }
 
-fn start_zellij(channel: &mut ssh2::Channel, session_name: Option<&String>) {
-    match session_name.as_ref() {
-        Some(name) => {
-            channel
-                .write_all(
-                    format!("{} --session {}\n", ZELLIJ_EXECUTABLE_LOCATION, name).as_bytes(),
-                )
-                .unwrap();
-        }
-        None => {
-            channel
-                .write_all(format!("{}\n", ZELLIJ_EXECUTABLE_LOCATION).as_bytes())
-                .unwrap();
-        }
-    };
+fn stop_zellij(channel: &mut ssh2::Channel) {
+    channel
+        .write_all("killall -KILL zellij\n".as_bytes())
+        .unwrap();
+}
+
+fn start_zellij(channel: &mut ssh2::Channel) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
+            )
+            .as_bytes(),
+        )
+        .unwrap();
     channel.flush().unwrap();
 }
 
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
+    stop_zellij(channel);
     channel
         .write_all(format!("{} options --no-pane-frames\n", ZELLIJ_EXECUTABLE_LOCATION).as_bytes())
         .unwrap();
     channel.flush().unwrap();
 }
 
-fn start_zellij_with_layout(
-    channel: &mut ssh2::Channel,
-    layout_path: &str,
-    session_name: Option<&String>,
-) {
-    match session_name.as_ref() {
-        Some(name) => {
-            channel
-                .write_all(
-                    format!(
-                        "{} --layout-path {} --session {}\n",
-                        ZELLIJ_EXECUTABLE_LOCATION, layout_path, name
-                    )
-                    .as_bytes(),
-                )
-                .unwrap();
-        }
-        None => {
-            channel
-                .write_all(
-                    format!(
-                        "{} --layout-path {}\n",
-                        ZELLIJ_EXECUTABLE_LOCATION, layout_path
-                    )
-                    .as_bytes(),
-                )
-                .unwrap();
-        }
-    };
+fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} --layout-path {} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME
+            )
+            .as_bytes(),
+        )
+        .unwrap();
     channel.flush().unwrap();
 }
 
@@ -119,7 +105,6 @@ pub fn take_snapshot(terminal_output: &mut TerminalPane) -> String {
 
 pub struct RemoteTerminal<'a> {
     channel: &'a mut ssh2::Channel,
-    session_name: Option<&'a String>,
     pub cursor_x: usize,
     pub cursor_y: usize,
     pub current_snapshot: String,
@@ -174,12 +159,7 @@ impl<'a> RemoteTerminal<'a> {
     pub fn attach_to_original_session(&mut self) {
         self.channel
             .write_all(
-                format!(
-                    "{} attach {}\n",
-                    ZELLIJ_EXECUTABLE_LOCATION,
-                    self.session_name.unwrap()
-                )
-                .as_bytes(),
+                format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
             )
             .unwrap();
         self.channel.flush().unwrap();
@@ -198,7 +178,6 @@ pub struct RemoteRunner {
     vte_parser: vte::Parser,
     terminal_output: TerminalPane,
     channel: ssh2::Channel,
-    session_name: Option<String>,
     test_name: &'static str,
     currently_running_step: Option<String>,
     retries_left: usize,
@@ -208,7 +187,7 @@ pub struct RemoteRunner {
 }
 
 impl RemoteRunner {
-    pub fn new(test_name: &'static str, win_size: Size, session_name: Option<String>) -> Self {
+    pub fn new(test_name: &'static str, win_size: Size) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
@@ -224,27 +203,22 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        start_zellij(&mut channel, session_name.as_ref());
+        start_zellij(&mut channel);
         RemoteRunner {
             steps: vec![],
             channel,
             terminal_output,
             vte_parser,
-            session_name,
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 0,
+            retries_left: 1,
             win_size,
             layout_file_name: None,
             without_frames: false,
         }
     }
-    pub fn new_without_frames(
-        test_name: &'static str,
-        win_size: Size,
-        session_name: Option<String>,
-    ) -> Self {
+    pub fn new_without_frames(test_name: &'static str, win_size: Size) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let vte_parser = vte::Parser::new();
@@ -266,7 +240,6 @@ impl RemoteRunner {
             channel,
             terminal_output,
             vte_parser,
-            session_name,
             test_name,
             currently_running_step: None,
             current_step_index: 0,
@@ -280,7 +253,6 @@ impl RemoteRunner {
         test_name: &'static str,
         win_size: Size,
         layout_file_name: &'static str,
-        session_name: Option<String>,
     ) -> Self {
         let remote_path = Path::new(ZELLIJ_LAYOUT_PATH).join(layout_file_name);
         let sess = ssh_connect();
@@ -298,17 +270,12 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_with_layout(
-            &mut channel,
-            &remote_path.to_string_lossy(),
-            session_name.as_ref(),
-        );
+        start_zellij_with_layout(&mut channel, &remote_path.to_string_lossy());
         RemoteRunner {
             steps: vec![],
             channel,
             terminal_output,
             vte_parser,
-            session_name,
             test_name,
             currently_running_step: None,
             current_step_index: 0,
@@ -333,7 +300,6 @@ impl RemoteRunner {
             cursor_y,
             current_snapshot,
             channel: &mut self.channel,
-            session_name: self.session_name.as_ref(),
         }
     }
     pub fn run_next_step(&mut self) {
@@ -345,7 +311,6 @@ impl RemoteRunner {
                 cursor_y,
                 current_snapshot,
                 channel: &mut self.channel,
-                session_name: self.session_name.as_ref(),
             };
             let instruction = next_step.instruction;
             self.currently_running_step = Some(String::from(next_step.name));
@@ -358,32 +323,22 @@ impl RemoteRunner {
         self.steps.get(self.current_step_index).is_some()
     }
     fn restart_test(&mut self) -> String {
-        let session_name = self.session_name.as_ref().map(|name| {
-            // this is so that we don't try to connect to the previous session if it's still stuck
-            // inside the container
-            format!("{}_{}", name, self.retries_left)
-        });
         if let Some(layout_file_name) = self.layout_file_name.as_ref() {
             // let mut new_runner = RemoteRunner::new_with_layout(self.test_name, self.win_size, Path::new(&local_layout_path), session_name);
-            let mut new_runner = RemoteRunner::new_with_layout(
-                self.test_name,
-                self.win_size,
-                layout_file_name,
-                session_name,
-            );
+            let mut new_runner =
+                RemoteRunner::new_with_layout(self.test_name, self.win_size, layout_file_name);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
             self.run_all_steps()
         } else if self.without_frames {
-            let mut new_runner =
-                RemoteRunner::new_without_frames(self.test_name, self.win_size, session_name);
+            let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
             self.run_all_steps()
         } else {
-            let mut new_runner = RemoteRunner::new(self.test_name, self.win_size, session_name);
+            let mut new_runner = RemoteRunner::new(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
