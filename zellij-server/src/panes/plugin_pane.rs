@@ -110,6 +110,9 @@ impl Pane for PluginPane {
     fn position_and_size(&self) -> PaneGeom {
         self.geom
     }
+    fn current_geom(&self) -> PaneGeom {
+        self.geom_override.unwrap_or(self.geom)
+    }
     fn position_and_size_override(&self) -> Option<PaneGeom> {
         self.geom_override
     }

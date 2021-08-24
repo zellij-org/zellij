@@ -148,6 +148,7 @@ pub trait Pane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
     fn position_and_size(&self) -> PaneGeom;
+    fn current_geom(&self) -> PaneGeom;
     fn position_and_size_override(&self) -> Option<PaneGeom>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
@@ -688,6 +689,15 @@ impl Tab {
                     pane.set_should_render(true);
                     pane.set_should_render_boundaries(true);
                 }
+                let viewport_pane_ids: Vec<_> = self
+                    .get_pane_ids()
+                    .into_iter()
+                    .filter(|id| !self.is_inside_viewport(id))
+                    .collect();
+                for pid in viewport_pane_ids {
+                    let viewport_pane = self.panes.get_mut(&pid).unwrap();
+                    viewport_pane.reset_size_and_position_override();
+                }
                 self.panes_to_hide.clear();
                 let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
                 active_terminal.reset_size_and_position_override();
@@ -705,6 +715,18 @@ impl Tab {
                     // nothing to do, pane is already as fullscreen as it can be, let's bail
                     return;
                 } else {
+                    // For all of the panes outside of the viewport staying on the fullscreen
+                    // screen, switch them to using override positions as well so that the resize
+                    // system doesn't get confused by viewport and old panes that no longer line up
+                    let viewport_pane_ids: Vec<_> = self
+                        .get_pane_ids()
+                        .into_iter()
+                        .filter(|id| !self.is_inside_viewport(id))
+                        .collect();
+                    for pid in viewport_pane_ids {
+                        let viewport_pane = self.panes.get_mut(&pid).unwrap();
+                        viewport_pane.override_size_and_position(viewport_pane.position_and_size());
+                    }
                     let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
                     let full_screen_geom = PaneGeom {
                         x: self.viewport.x,
@@ -715,7 +737,6 @@ impl Tab {
                 }
             }
             self.set_force_render();
-            self.set_pane_frames(self.draw_pane_frames);
             self.resize_whole_tab(self.display_area);
             self.render();
             self.toggle_fullscreen_is_active();
@@ -1726,7 +1747,7 @@ impl Tab {
     pub fn relayout_tab(&mut self, direction: Direction) {
         // FIXME: Make sure this is the only place this method is called!
         self.set_pane_frames(self.draw_pane_frames);
-        let mut resizer = PaneResizer::new(&mut self.panes, &mut self.os_api);
+        let mut resizer = PaneResizer::new(&mut self.panes.iter_mut(), &mut self.os_api);
         match direction {
             Direction::Horizontal => resizer.resize(direction, self.display_area.cols),
             Direction::Vertical => resizer.resize(direction, self.display_area.rows),
@@ -1747,8 +1768,16 @@ impl Tab {
             );
         }
         // FIXME: This is a temporary solution (and a massive mess)
+        // FIXME: I *think* that Rust 2021 will let me just write this:
+        // let panes = self.panes.iter_mut().filter(|(pid, _)| !self.panes_to_hide.contains(pid));
+        // In the meantime, let's appease our borrow-checker overlords:
+        let temp_panes_to_hide = &self.panes_to_hide;
+        let panes = self
+            .panes
+            .iter_mut()
+            .filter(|(pid, _)| !temp_panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
-        let mut resizer = PaneResizer::new(&mut self.panes, &mut self.os_api);
+        let mut resizer = PaneResizer::new(panes, &mut self.os_api);
         if let Some(cols) = resizer.resize(Direction::Horizontal, cols) {
             self.should_clear_display_before_rendering = true;
             let column_difference = cols as isize - self.display_area.cols as isize;
@@ -2453,7 +2482,7 @@ impl Tab {
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
-        let pane_position_and_size = self.panes.get(pane_id).unwrap().position_and_size();
+        let pane_position_and_size = self.panes.get(pane_id).unwrap().current_geom();
         pane_position_and_size.y >= self.viewport.y
             && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
                 <= self.viewport.y + self.viewport.rows

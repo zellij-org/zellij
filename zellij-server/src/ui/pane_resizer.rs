@@ -11,7 +11,7 @@ use std::{
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom};
 
 pub struct PaneResizer<'a> {
-    panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
+    panes: BTreeMap<&'a PaneId, &'a mut Box<dyn Pane>>,
     vars: BTreeMap<PaneId, (Variable, Variable)>,
     solver: Solver,
     os_api: &'a mut Box<dyn ServerOsApi>,
@@ -56,13 +56,24 @@ impl<'a> PaneResizer<'a> {
     // borrow-checker and need to use something like Rc<RefCell> to have
     // multiple owners that can mutate it?
     pub fn new(
-        panes: &'a mut BTreeMap<PaneId, Box<dyn Pane>>,
+        panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
         os_api: &'a mut Box<dyn ServerOsApi>,
     ) -> Self {
+        let panes: BTreeMap<_, _> = panes.collect();
         let mut vars = BTreeMap::new();
-        for &k in panes.keys() {
+        for &&k in panes.keys() {
             vars.insert(k, (Variable::new(), Variable::new()));
         }
+        log::info!("{}", "\n".repeat(5));
+        for (pid, pane) in &panes {
+            log::info!(
+                "\n{:?}:\n\t{:?}\n\t{:?}",
+                pid,
+                pane.position_and_size(),
+                pane.position_and_size_override()
+            );
+        }
+        log::info!("{}", "\n".repeat(5));
         PaneResizer {
             panes,
             vars,
@@ -208,7 +219,7 @@ impl<'a> PaneResizer<'a> {
     }
 
     fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
-        let pas = pane.position_and_size();
+        let pas = pane.current_geom();
         let (pos_var, size_var) = self.vars[&pane.pid()];
         match direction {
             Direction::Horizontal => Span {
@@ -234,17 +245,26 @@ impl<'a> PaneResizer<'a> {
         for span in spans {
             log::info!("Applying span: {:#?}", span);
             let pane = self.panes.get_mut(&span.pid).unwrap();
-            match span.direction {
-                Direction::Horizontal => pane.change_pos_and_size(&PaneGeom {
+            let new_geom = match span.direction {
+                Direction::Horizontal => PaneGeom {
                     x: span.pos,
                     cols: span.size,
-                    ..pane.position_and_size()
-                }),
-                Direction::Vertical => pane.change_pos_and_size(&PaneGeom {
+                    ..pane.current_geom()
+                },
+                Direction::Vertical => PaneGeom {
                     y: span.pos,
                     rows: span.size,
-                    ..pane.position_and_size()
-                }),
+                    ..pane.current_geom()
+                },
+            };
+            if pane.position_and_size_override().is_some() {
+                // FIXME: This should really be called "set_geom_override"
+                pane.override_size_and_position(new_geom);
+            } else {
+                // FIXME: This naming is really inconsistent... No "override", no "change", just
+                // make it "set" at some point. This also takes a reference while the "override"
+                // one takes ownership? Crazy inconsistent here.
+                pane.change_pos_and_size(&new_geom);
             }
             if let PaneId::Terminal(pid) = pane.pid() {
                 log::info!("Starting to set {:?} terminal size", pid);

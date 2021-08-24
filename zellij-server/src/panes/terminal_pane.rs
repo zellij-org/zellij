@@ -159,6 +159,9 @@ impl Pane for TerminalPane {
     fn position_and_size(&self) -> PaneGeom {
         self.geom
     }
+    fn current_geom(&self) -> PaneGeom {
+        self.geom_override.unwrap_or(self.geom)
+    }
     fn position_and_size_override(&self) -> Option<PaneGeom> {
         self.geom_override
     }
@@ -239,7 +242,7 @@ impl Pane for TerminalPane {
             }
             if self.frame {
                 let frame = PaneFrame {
-                    geom: self.geom.into(),
+                    geom: self.current_geom().into(),
                     title: self
                         .grid
                         .title
@@ -440,13 +443,13 @@ impl TerminalPane {
         }
     }
     pub fn get_x(&self) -> usize {
-        match self.geom_override.as_ref() {
+        match self.geom_override {
             Some(position_and_size_override) => position_and_size_override.x,
             None => self.geom.x,
         }
     }
     pub fn get_y(&self) -> usize {
-        match self.geom_override.as_ref() {
+        match self.geom_override {
             Some(position_and_size_override) => position_and_size_override.y,
             None => self.geom.y,
         }
