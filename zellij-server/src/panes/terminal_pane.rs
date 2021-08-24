@@ -143,6 +143,15 @@ impl Pane for TerminalPane {
                     return "OB".as_bytes().to_vec();
                 }
             }
+            [27, 91, 50, 48, 48, 126] | [27, 91, 50, 48, 49, 126] => {
+                if !self.grid.bracketed_paste_mode {
+                    // Zellij itself operates in bracketed paste mode, so the terminal sends these
+                    // instructions (bracketed paste start and bracketed paste end respectively)
+                    // when pasting input. We only need to make sure not to send them to terminal
+                    // panes who do not work in this mode
+                    return vec![];
+                }
+            }
             _ => {}
         };
         input_bytes

@@ -351,7 +351,8 @@ pub struct Grid {
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
-    pub erasure_mode: bool,    // ERM
+    pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
+    pub erasure_mode: bool,         // ERM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub clear_viewport_before_rendering: bool,
@@ -390,6 +391,7 @@ impl Grid {
             height: rows,
             should_render: true,
             cursor_key_mode: false,
+            bracketed_paste_mode: false,
             erasure_mode: false,
             insert_mode: false,
             disable_linewrap: false,
@@ -1076,26 +1078,18 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
-    pub fn move_cursor_down(&mut self, count: usize, pad_character: TerminalCharacter) {
+    pub fn move_cursor_down_until_edge_of_screen(
+        &mut self,
+        count: usize,
+        pad_character: TerminalCharacter,
+    ) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
                 self.cursor.y = std::cmp::min(self.cursor.y + count, scroll_region_bottom);
                 return;
             }
         }
-        let lines_to_add = if self.cursor.y + count > self.height - 1 {
-            (self.cursor.y + count) - (self.height - 1)
-        } else {
-            0
-        };
-        self.cursor.y = if self.cursor.y + count > self.height - 1 {
-            self.height - 1
-        } else {
-            self.cursor.y + count
-        };
-        for _ in 0..lines_to_add {
-            self.add_canonical_line();
-        }
+        self.cursor.y = std::cmp::min(self.cursor.y + count, self.height - 1);
         self.pad_lines_until(self.cursor.y, pad_character);
     }
     pub fn move_cursor_back(&mut self, count: usize) {
@@ -1634,7 +1628,7 @@ impl Perform for Grid {
             // move cursor down until edge of screen
             let move_down_count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_down(move_down_count as usize, pad_character);
+            self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
             let move_back_count = next_param_or(1);
             self.move_cursor_back(move_back_count);
@@ -1646,6 +1640,9 @@ impl Perform for Grid {
             };
             if first_intermediate_is_questionmark {
                 match params_iter.next().map(|param| param[0]) {
+                    Some(2004) => {
+                        self.bracketed_paste_mode = false;
+                    }
                     Some(1049) => {
                         if let Some((
                             alternative_lines_above,
@@ -1698,6 +1695,9 @@ impl Perform for Grid {
                     Some(25) => {
                         self.show_cursor();
                         self.mark_for_rerender();
+                    }
+                    Some(2004) => {
+                        self.bracketed_paste_mode = true;
                     }
                     Some(1049) => {
                         let current_lines_above = std::mem::replace(
@@ -1814,7 +1814,7 @@ impl Perform for Grid {
         } else if c == 'E' {
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_down(count, pad_character);
+            self.move_cursor_down_until_edge_of_screen(count, pad_character);
         } else if c == 'F' {
             let count = next_param_or(1);
             self.move_cursor_up(count);

@@ -1,6 +1,5 @@
-use std::convert::TryFrom;
-
 use crate::panes::AnsiCode;
+use std::convert::TryFrom;
 
 pub fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiCode> {
     match params.next() {

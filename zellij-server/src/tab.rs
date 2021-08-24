@@ -2446,6 +2446,9 @@ impl Tab {
         let selected_text = self.get_active_pane().and_then(|p| p.get_selected_text());
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(None, Event::CopyToClipboard))
+                .unwrap();
         }
     }
 
@@ -2453,6 +2456,9 @@ impl Tab {
         let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection));
         self.senders
             .send_to_server(ServerInstruction::Render(Some(output)))
+            .unwrap();
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(None, Event::CopyToClipboard))
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
