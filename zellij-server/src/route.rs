@@ -28,6 +28,12 @@ fn route_action(
         .send_to_plugin(PluginInstruction::Update(None, Event::InputReceived))
         .unwrap();
     match action {
+        Action::ToggleTab => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ToggleTab)
+                .unwrap();
+        }
         Action::Write(val) => {
             session
                 .senders

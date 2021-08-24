@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix line wrapping while scrolling (https://github.com/zellij-org/zellij/pull/650)
 * Indicate to the user when text is copied to the clipboard with the mouse (https://github.com/zellij-org/zellij/pull/642)
 * Terminal compatibility: properly paste multilines (https://github.com/zellij-org/zellij/pull/653 + https://github.com/zellij-org/zellij/pull/658)
+* Terminal compatibility: fix progress bar line overflow (http://github.com/zellij-org/zellij/pull/656)
+* Add action to toggle between tabs `ToggleTab`, bound by default to [TAB] in tab mode (https://github.com/zellij-org/zellij/pull/622)
+
 
 ## [0.15.0] - 2021-07-19
 * Kill children properly (https://github.com/zellij-org/zellij/pull/601)
