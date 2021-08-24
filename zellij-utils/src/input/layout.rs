@@ -68,6 +68,8 @@ pub struct LayoutFromYaml {
     //#[serde(default)]
     pub template: LayoutTemplateFromYaml,
     #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
     pub tabs: Vec<TabLayout>,
 }
 
@@ -163,6 +165,8 @@ impl LayoutFromYaml {
 pub struct LayoutTemplateFromYaml {
     pub direction: Direction,
     #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
     pub parts: Vec<LayoutTemplateFromYaml>,
     #[serde(default)]
     pub body: bool,
@@ -218,6 +222,8 @@ impl LayoutTemplateFromYaml {
 #[serde(crate = "self::serde")]
 pub struct TabLayout {
     pub direction: Direction,
+    #[serde(default)]
+    pub borderless: bool,
     #[serde(default)]
     pub parts: Vec<TabLayout>,
     pub split_size: Option<SplitSize>,
@@ -548,6 +554,7 @@ impl From<TabLayout> for Layout {
     fn from(tab: TabLayout) -> Self {
         Layout {
             direction: tab.direction,
+            borderless: tab.borderless,
             parts: Layout::from_vec_tab_layout(tab.parts),
             tabs: vec![],
             split_size: tab.split_size,
@@ -560,6 +567,7 @@ impl From<LayoutTemplateFromYaml> for Layout {
     fn from(template: LayoutTemplateFromYaml) -> Self {
         Layout {
             direction: template.direction,
+            borderless: template.borderless,
             parts: Layout::from_vec_template_layout(template.parts),
             tabs: vec![],
             split_size: template.split_size,
@@ -572,6 +580,7 @@ impl Default for TabLayout {
     fn default() -> Self {
         Self {
             direction: Direction::Horizontal,
+            borderless: false,
             parts: vec![],
             split_size: None,
             run: None,

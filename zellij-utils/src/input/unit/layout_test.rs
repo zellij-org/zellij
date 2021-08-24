@@ -54,9 +54,11 @@ fn default_layout_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
@@ -64,6 +66,7 @@ fn default_layout_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
@@ -71,6 +74,7 @@ fn default_layout_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
@@ -95,9 +99,11 @@ fn default_layout_new_tab_correct() {
     let tab_layout = layout_template.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
@@ -105,6 +111,7 @@ fn default_layout_new_tab_correct() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
@@ -112,6 +119,7 @@ fn default_layout_new_tab_correct() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
@@ -208,11 +216,14 @@ fn three_panes_with_tab_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![Layout {
             direction: Direction::Vertical,
+            borderless: false,
             parts: vec![
                 Layout {
                     direction: Direction::Horizontal,
+                    borderless: false,
                     parts: vec![],
                     tabs: vec![],
                     split_size: Some(SplitSize::Percent(50)),
@@ -220,9 +231,11 @@ fn three_panes_with_tab_merged_correctly() {
                 },
                 Layout {
                     direction: Direction::Horizontal,
+                    borderless: false,
                     parts: vec![
                         Layout {
                             direction: Direction::Vertical,
+                            borderless: false,
                             parts: vec![],
                             tabs: vec![],
                             split_size: Some(SplitSize::Percent(50)),
@@ -230,6 +243,7 @@ fn three_panes_with_tab_merged_correctly() {
                         },
                         Layout {
                             direction: Direction::Vertical,
+                            borderless: false,
                             parts: vec![],
                             tabs: vec![],
                             split_size: Some(SplitSize::Percent(50)),
@@ -260,8 +274,10 @@ fn three_panes_with_tab_new_tab_is_correct() {
     let tab_layout = layout_template.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![Layout {
             direction: Direction::Horizontal,
+            borderless: false,
             parts: vec![],
             tabs: vec![],
             split_size: None,
@@ -313,9 +329,11 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
@@ -323,9 +341,11 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: Some(SplitSize::Percent(50)),
@@ -333,9 +353,11 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                     },
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![
                             Layout {
                                 direction: Direction::Vertical,
+                                borderless: false,
                                 parts: vec![],
                                 tabs: vec![],
                                 split_size: Some(SplitSize::Percent(50)),
@@ -343,6 +365,7 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                             },
                             Layout {
                                 direction: Direction::Vertical,
+                                borderless: false,
                                 parts: vec![],
                                 tabs: vec![],
                                 split_size: Some(SplitSize::Percent(50)),
@@ -360,6 +383,7 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
@@ -381,9 +405,11 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
     let tab_layout = layout_template.construct_tab_layout(None);
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
@@ -391,6 +417,7 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
@@ -398,6 +425,7 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
@@ -450,12 +478,15 @@ fn deeply_nested_tab_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Horizontal,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: Some(SplitSize::Percent(21)),
@@ -463,9 +494,11 @@ fn deeply_nested_tab_merged_correctly() {
                     },
                     Layout {
                         direction: Direction::Vertical,
+                        borderless: false,
                         parts: vec![
                             Layout {
                                 direction: Direction::Horizontal,
+                                borderless: false,
                                 parts: vec![],
                                 tabs: vec![],
                                 split_size: Some(SplitSize::Percent(22)),
@@ -473,8 +506,10 @@ fn deeply_nested_tab_merged_correctly() {
                             },
                             Layout {
                                 direction: Direction::Horizontal,
+                                borderless: false,
                                 parts: vec![Layout {
                                     direction: Direction::Horizontal,
+                                    borderless: false,
                                     parts: vec![],
                                     tabs: vec![],
                                     split_size: Some(SplitSize::Percent(23)),
@@ -496,6 +531,7 @@ fn deeply_nested_tab_merged_correctly() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Percent(24)),
@@ -503,6 +539,7 @@ fn deeply_nested_tab_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Percent(15)),
@@ -510,6 +547,7 @@ fn deeply_nested_tab_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Percent(15)),
@@ -517,6 +555,7 @@ fn deeply_nested_tab_merged_correctly() {
             },
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Percent(15)),
@@ -564,9 +603,11 @@ fn three_tabs_tab_one_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[0].clone()));
     let merged_layout = Layout {
         direction: Direction::Vertical,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: Some(SplitSize::Percent(50)),
@@ -574,6 +615,7 @@ fn three_tabs_tab_one_merged_correctly() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
@@ -599,12 +641,15 @@ fn three_tabs_tab_two_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[1].clone()));
     let merged_layout = Layout {
         direction: Direction::Vertical,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: Some(SplitSize::Percent(50)),
@@ -612,6 +657,7 @@ fn three_tabs_tab_two_merged_correctly() {
                     },
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: None,
@@ -624,6 +670,7 @@ fn three_tabs_tab_two_merged_correctly() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
@@ -646,12 +693,15 @@ fn three_tabs_tab_three_merged_correctly() {
     let tab_layout = layout_template.construct_tab_layout(Some(layout_template.tabs[2].clone()));
     let merged_layout = Layout {
         direction: Direction::Vertical,
+        borderless: false,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
+                borderless: false,
                 parts: vec![
                     Layout {
                         direction: Direction::Vertical,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: Some(SplitSize::Percent(50)),
@@ -659,6 +709,7 @@ fn three_tabs_tab_three_merged_correctly() {
                     },
                     Layout {
                         direction: Direction::Horizontal,
+                        borderless: false,
                         parts: vec![],
                         tabs: vec![],
                         split_size: None,
@@ -671,6 +722,7 @@ fn three_tabs_tab_three_merged_correctly() {
             },
             Layout {
                 direction: Direction::Horizontal,
+                borderless: false,
                 parts: vec![],
                 tabs: vec![],
                 split_size: None,
