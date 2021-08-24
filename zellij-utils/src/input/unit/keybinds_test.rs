@@ -150,7 +150,7 @@ fn no_unbind_unbinds_none() {
 
 #[test]
 fn last_keybind_is_taken() {
-    let actions_1 = vec![Action::NoOp, Action::NewTab];
+    let actions_1 = vec![Action::NoOp, Action::NewTab(None)];
     let keyaction_1 = KeyActionFromYaml {
         action: actions_1.clone(),
         key: vec![Key::F(1), Key::Backspace, Key::Char('t')],
@@ -171,7 +171,7 @@ fn last_keybind_is_taken() {
 
 #[test]
 fn last_keybind_overwrites() {
-    let actions_1 = vec![Action::NoOp, Action::NewTab];
+    let actions_1 = vec![Action::NoOp, Action::NewTab(None)];
     let keyaction_1 = KeyActionFromYaml {
         action: actions_1.clone(),
         key: vec![Key::F(1), Key::Backspace, Key::Char('t')],
@@ -764,7 +764,7 @@ fn unbind_single_toplevel_multiple_keys_multiple_modes() {
 fn uppercase_and_lowercase_are_distinct() {
     let key_action_n = KeyActionFromYaml {
         key: vec![Key::Char('n')],
-        action: vec![Action::NewTab],
+        action: vec![Action::NewTab(None)],
     };
     let key_action_large_n = KeyActionFromYaml {
         key: vec![Key::Char('N')],

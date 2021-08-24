@@ -136,7 +136,7 @@ keybinds:
           key: [ Char: 'h', Left, Up, Char: 'k',]
         - action: [GoToNextTab,]
           key: [ Char: 'l', Right,Down, Char: 'j']
-        - action: [NewTab,]
+        - action: [NewTab: ,]
           key: [ Char: 'n',]
         - action: [CloseTab,]
           key: [ Char: 'x',]

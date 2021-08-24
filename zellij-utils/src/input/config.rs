@@ -45,6 +45,9 @@ pub enum ConfigError {
     IoPath(io::Error, PathBuf),
     // Internal Deserialization Error
     FromUtf8(std::string::FromUtf8Error),
+    // Missing the tab section in the layout.
+    Layout(LayoutMissingTabSectionError),
+    LayoutPartAndTab(LayoutPartAndTabError),
 }
 
 impl Default for Config {
@@ -129,6 +132,75 @@ impl Config {
     }
 }
 
+// TODO: Split errors up into separate modules
+#[derive(Debug, Clone)]
+pub struct LayoutMissingTabSectionError;
+#[derive(Debug, Clone)]
+pub struct LayoutPartAndTabError;
+
+impl fmt::Display for LayoutMissingTabSectionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "MissingTabSectionError:
+There needs to be exactly one `tabs` section specified in the layout file, for example:
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+  - direction: Vertical
+    tabs:
+      - direction: Vertical
+      - direction: Vertical
+  - direction: Vertical
+"
+        )
+    }
+}
+
+impl std::error::Error for LayoutMissingTabSectionError {
+    fn description(&self) -> &str {
+        "One tab must be specified per Layout."
+    }
+}
+
+impl fmt::Display for LayoutPartAndTabError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "LayoutPartAndTabError:
+The `tabs` and `parts` section should not be specified on the same level in the layout file, for example:
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+  - direction: Vertical
+tabs:
+  - direction: Vertical
+  - direction: Vertical
+  - direction: Vertical
+
+should rather be specified as:
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+  - direction: Vertical
+    tabs:
+      - direction: Vertical
+      - direction: Vertical
+      - direction: Vertical
+"
+        )
+    }
+}
+
+impl std::error::Error for LayoutPartAndTabError {
+    fn description(&self) -> &str {
+        "The `tabs` and parts section should not be specified on the same level."
+    }
+}
+
 impl Display for ConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -138,6 +210,12 @@ impl Display for ConfigError {
             }
             ConfigError::Serde(ref err) => write!(formatter, "Deserialization error: {}", err),
             ConfigError::FromUtf8(ref err) => write!(formatter, "FromUtf8Error: {}", err),
+            ConfigError::Layout(ref err) => {
+                write!(formatter, "There was an error in the layout file, {}", err)
+            }
+            ConfigError::LayoutPartAndTab(ref err) => {
+                write!(formatter, "There was an error in the layout file, {}", err)
+            }
         }
     }
 }
@@ -149,6 +227,8 @@ impl std::error::Error for ConfigError {
             ConfigError::IoPath(ref err, _) => Some(err),
             ConfigError::Serde(ref err) => Some(err),
             ConfigError::FromUtf8(ref err) => Some(err),
+            ConfigError::Layout(ref err) => Some(err),
+            ConfigError::LayoutPartAndTab(ref err) => Some(err),
         }
     }
 }
@@ -168,6 +248,18 @@ impl From<serde_yaml::Error> for ConfigError {
 impl From<std::string::FromUtf8Error> for ConfigError {
     fn from(err: std::string::FromUtf8Error) -> ConfigError {
         ConfigError::FromUtf8(err)
+    }
+}
+
+impl From<LayoutMissingTabSectionError> for ConfigError {
+    fn from(err: LayoutMissingTabSectionError) -> ConfigError {
+        ConfigError::Layout(err)
+    }
+}
+
+impl From<LayoutPartAndTabError> for ConfigError {
+    fn from(err: LayoutPartAndTabError) -> ConfigError {
+        ConfigError::LayoutPartAndTab(err)
     }
 }
 

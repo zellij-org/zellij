@@ -1,18 +1,20 @@
 //! IPC stuff for starting to split things into a client and server model.
 
-use crate::cli::CliArgs;
-use crate::pane_size::PositionAndSize;
 use crate::{
+    cli::CliArgs,
     errors::{get_current_ctx, ErrorContext},
-    input::{actions::Action, layout::Layout, options::Options},
+    input::{actions::Action, layout::LayoutTemplate, options::Options},
+    pane_size::PositionAndSize,
 };
 use interprocess::local_socket::LocalSocketStream;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
-use std::io::{self, Write};
-use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::{
+    fmt::{Display, Error, Formatter},
+    io::{self, Write},
+    marker::PhantomData,
+    os::unix::io::{AsRawFd, FromRawFd},
+};
 
 use zellij_tile::data::Palette;
 
@@ -56,7 +58,12 @@ pub enum ClientToServerMsg {
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
     TerminalResize(PositionAndSize),
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, Option<Layout>),
+    NewClient(
+        ClientAttributes,
+        Box<CliArgs>,
+        Box<Options>,
+        Option<LayoutTemplate>,
+    ),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),
     ClientExited,

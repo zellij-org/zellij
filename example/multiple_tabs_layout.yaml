@@ -1,0 +1,82 @@
+---
+direction: Horizontal
+parts:
+  - direction: Vertical
+    split_size:
+      Fixed: 1
+    run:
+      plugin: tab-bar
+  - direction: Vertical
+    tabs:
+    - direction: Vertical
+      parts:
+      - direction: Vertical
+        split_size:
+          Percent: 50
+      - direction: Vertical
+        split_size:
+          Percent: 50
+    - direction: Vertical
+    - direction: Vertical
+      parts:
+        - direction: Vertical
+          split_size:
+            Percent: 50
+        - direction: Vertical
+          split_size:
+            Percent: 50
+    - direction: Vertical
+      parts:
+      - direction: Vertical
+        split_size:
+          Percent: 50
+      - direction: Horizontal
+        split_size:
+          Percent: 50
+        parts:
+          - direction: Vertical
+            split_size:
+              Percent: 50
+          - direction: Vertical
+            split_size:
+              Percent: 50
+    - direction: Vertical
+    - direction: Vertical
+    - direction: Vertical
+    - direction: Vertical
+      parts:
+      - direction: Vertical
+        split_size:
+          Percent: 20
+        run:
+          plugin: strider
+      - direction: Horizontal
+        split_size:
+          Percent: 80
+        parts:
+          - direction: Vertical
+            split_size:
+              Percent: 50
+          - direction: Vertical
+            split_size:
+              Percent: 50
+    - direction: Vertical
+      parts:
+      - direction: Vertical
+        split_size:
+          Percent: 40
+      - direction: Horizontal
+        split_size:
+          Percent: 60
+        parts:
+          - direction: Vertical
+            split_size:
+              Percent: 50
+          - direction: Vertical
+            split_size:
+              Percent: 50
+  - direction: Vertical
+    split_size:
+      Fixed: 2
+    run:
+      plugin: status-bar

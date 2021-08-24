@@ -9,6 +9,8 @@
           - direction: Horizontal
             split_size:
               Percent: 50
+            tabs:
+              - direction: Horizontal
         split_size:
           Percent: 80
       - direction: Vertical
