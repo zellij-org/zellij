@@ -135,7 +135,6 @@ fn color_elements(palette: Palette) -> ColoredElements {
 impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
-        set_invisible_borders(true);
         subscribe(&[
             EventType::ModeUpdate,
             EventType::CopyToClipboard,

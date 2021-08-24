@@ -58,7 +58,6 @@ pub(crate) enum ScreenInstruction {
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
-    SetInvisibleBorders(PaneId, bool, usize),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
     NewTab(RawFd),
@@ -114,7 +113,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
-            ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
@@ -655,19 +653,6 @@ pub(crate) fn screen_thread_main(
                     },
                     |tab| tab.set_pane_selectable(id, selectable),
                 );
-            }
-            ScreenInstruction::SetInvisibleBorders(id, invisible_borders, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            r#"Tab index #{} not found, could not set invisible borders for plugin #{:?}."#,
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_invisible_borders(id, invisible_borders),
-                );
-                screen.render();
             }
             ScreenInstruction::ClosePane(id) => {
                 screen.get_active_tab_mut().unwrap().close_pane(id);

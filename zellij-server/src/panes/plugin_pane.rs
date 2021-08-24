@@ -19,7 +19,6 @@ pub(crate) struct PluginPane {
     pub pid: u32,
     pub should_render: bool,
     pub selectable: bool,
-    pub invisible_borders: bool,
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
     pub content_offset: Offset,
@@ -41,7 +40,6 @@ impl PluginPane {
             pid,
             should_render: true,
             selectable: true,
-            invisible_borders: false,
             geom: position_and_size,
             geom_override: None,
             send_plugin_instructions,
@@ -127,9 +125,6 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_invisible_borders(&mut self, invisible_borders: bool) {
-        self.invisible_borders = invisible_borders;
-    }
     fn render(&mut self) -> Option<String> {
         // if self.should_render {
         if true {
@@ -151,7 +146,9 @@ impl Pane for PluginPane {
 
             self.should_render = false;
             let contents = buf_rx.recv().unwrap();
-            if self.frame {
+            // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
+            // will eventually need fixing!
+            if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()){
                 let frame = PaneFrame {
                     geom: self.geom.into(),
                     ..Default::default()
@@ -272,9 +269,6 @@ impl Pane for PluginPane {
     }
     fn clear_scroll(&mut self) {
         //unimplemented!()
-    }
-    fn invisible_borders(&self) -> bool {
-        self.invisible_borders
     }
 
     fn active_at(&self) -> Instant {

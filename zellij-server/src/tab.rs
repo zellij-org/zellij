@@ -154,7 +154,6 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn set_invisible_borders(&mut self, invisible_borders: bool);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height_down(&mut self, count: f64);
@@ -244,9 +243,6 @@ pub trait Pane {
     }
     fn min_height(&self) -> usize {
         MIN_TERMINAL_HEIGHT
-    }
-    fn invisible_borders(&self) -> bool {
-        false
     }
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         // TODO: this is only relevant to terminal panes
@@ -839,7 +835,7 @@ impl Tab {
                     }
                     false => {
                         pane.set_boundary_color(None);
-                        if !pane.invisible_borders() && !self.draw_pane_frames {
+                        if !self.draw_pane_frames {
                             boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
                         }
                     }
@@ -2221,11 +2217,6 @@ impl Tab {
         // selectability. Delete this once those are decoupled
         self.set_pane_frames(self.draw_pane_frames);
         self.render();
-    }
-    pub fn set_pane_invisible_borders(&mut self, id: PaneId, invisible_borders: bool) {
-        if let Some(pane) = self.panes.get_mut(&id) {
-            pane.set_invisible_borders(invisible_borders);
-        }
     }
     pub fn close_pane(&mut self, id: PaneId) {
         if self.fullscreen_is_active {

@@ -25,7 +25,6 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
-        set_invisible_borders(true);
         subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
     }
 

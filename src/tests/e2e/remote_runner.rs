@@ -234,7 +234,7 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 0,
             win_size,
             layout_file_name: None,
             without_frames: false,

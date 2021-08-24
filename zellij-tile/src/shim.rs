@@ -21,10 +21,6 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(if selectable { 1 } else { 0 }) };
 }
 
-pub fn set_invisible_borders(invisible_borders: bool) {
-    unsafe { host_set_invisible_borders(if invisible_borders { 1 } else { 0 }) };
-}
-
 // Query Functions
 pub fn get_plugin_ids() -> PluginIds {
     unsafe { host_get_plugin_ids() };
@@ -61,7 +57,6 @@ extern "C" {
     fn host_subscribe();
     fn host_unsubscribe();
     fn host_set_selectable(selectable: i32);
-    fn host_set_invisible_borders(invisible_borders: i32);
     fn host_get_plugin_ids();
     fn host_open_file();
     fn host_set_timeout(secs: f64);

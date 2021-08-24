@@ -179,9 +179,6 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_invisible_borders(&mut self, _invisible_borders: bool) {
-        unimplemented!();
-    }
     fn render(&mut self) -> Option<String> {
         if self.should_render() {
             let mut vte_output = String::new();

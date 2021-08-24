@@ -170,7 +170,6 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
     zellij_export! {
         host_subscribe,
         host_unsubscribe,
-        host_set_invisible_borders,
         host_set_selectable,
         host_get_plugin_ids,
         host_open_file,
@@ -197,19 +196,6 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         .send_to_screen(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
-            plugin_env.tab_index,
-        ))
-        .unwrap()
-}
-
-// FIXME: This should be deleted, like the `set_fixed` functions have been
-fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
-    let invisible_borders = invisible_borders != 0;
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::SetInvisibleBorders(
-            PaneId::Plugin(plugin_env.plugin_id),
-            invisible_borders,
             plugin_env.tab_index,
         ))
         .unwrap()

@@ -237,12 +237,9 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
 
 #[test]
 pub fn toggle_to_previous_tab_simple() {
-    let position_and_size = PositionAndSize {
+    let position_and_size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let mut screen = create_new_screen(position_and_size);
 
@@ -268,12 +265,9 @@ pub fn toggle_to_previous_tab_simple() {
 
 #[test]
 pub fn toggle_to_previous_tab_create_tabs_only() {
-    let position_and_size = PositionAndSize {
+    let position_and_size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let mut screen = create_new_screen(position_and_size);
 
@@ -321,12 +315,9 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
 
 #[test]
 pub fn toggle_to_previous_tab_delete() {
-    let position_and_size = PositionAndSize {
+    let position_and_size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
     let mut screen = create_new_screen(position_and_size);
 
