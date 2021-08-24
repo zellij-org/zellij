@@ -344,7 +344,8 @@ impl Pane for TerminalPane {
     }
     fn cursor_shape_csi(&self) -> String {
         match self.grid.cursor_shape() {
-            CursorShape::Block => "\u{1b}[0 q".to_string(),
+            CursorShape::Initial => "\u{1b}[0 q".to_string(),
+            CursorShape::Block => "\u{1b}[2 q".to_string(),
             CursorShape::BlinkingBlock => "\u{1b}[1 q".to_string(),
             CursorShape::Underline => "\u{1b}[4 q".to_string(),
             CursorShape::BlinkingUnderline => "\u{1b}[3 q".to_string(),
