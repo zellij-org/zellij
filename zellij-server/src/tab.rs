@@ -132,14 +132,14 @@ pub trait Pane {
     fn get_content_columns(&self) -> usize;
     fn get_content_rows(&self) -> usize;
     fn reset_size_and_position_override(&mut self);
-    fn change_pos_and_size(&mut self, position_and_size: &PaneGeom);
-    fn override_size_and_position(&mut self, pane_geom: PaneGeom);
+    fn set_geom(&mut self, position_and_size: PaneGeom);
+    fn get_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
     fn position_and_size(&self) -> PaneGeom;
     fn current_geom(&self) -> PaneGeom;
-    fn position_and_size_override(&self) -> Option<PaneGeom>;
+    fn geom_override(&self) -> Option<PaneGeom>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
@@ -170,7 +170,7 @@ pub trait Pane {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
     fn contains(&self, position: &Position) -> bool {
-        match self.position_and_size_override() {
+        match self.geom_override() {
             Some(position_and_size) => position_and_size.contains(position),
             None => self.position_and_size().contains(position),
         }
@@ -320,9 +320,9 @@ impl Tab {
             // for now the layout only supports terminal panes
             if let PaneId::Terminal(pid) = pane_kind {
                 match positions_and_size.next() {
-                    Some((_, position_and_size)) => {
+                    Some(&(_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
-                        terminal_pane.change_pos_and_size(position_and_size);
+                        terminal_pane.set_geom(position_and_size);
                     }
                     None => {
                         // we filled the entire layout, no room for this pane
@@ -470,7 +470,7 @@ impl Tab {
                             self.colors,
                             next_selectable_pane_position,
                         );
-                        terminal_to_split.change_pos_and_size(&top_winsize);
+                        terminal_to_split.set_geom(top_winsize);
                         self.panes.insert(pid, Box::new(new_terminal));
                         self.relayout_tab(Direction::Vertical);
                     }
@@ -486,7 +486,7 @@ impl Tab {
                             self.colors,
                             next_selectable_pane_position,
                         );
-                        terminal_to_split.change_pos_and_size(&left_winsize);
+                        terminal_to_split.set_geom(left_winsize);
                         self.panes.insert(pid, Box::new(new_terminal));
                         self.relayout_tab(Direction::Horizontal);
                     }
@@ -535,7 +535,7 @@ impl Tab {
                     self.colors,
                     next_selectable_pane_position,
                 );
-                active_pane.change_pos_and_size(&top_winsize);
+                active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
                 self.set_pane_frames(self.draw_pane_frames);
@@ -580,7 +580,7 @@ impl Tab {
                     self.colors,
                     next_selectable_pane_position,
                 );
-                active_pane.change_pos_and_size(&left_winsize);
+                active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
             self.active_terminal = Some(pid);
@@ -707,7 +707,7 @@ impl Tab {
                         .collect();
                     for pid in viewport_pane_ids {
                         let viewport_pane = self.panes.get_mut(&pid).unwrap();
-                        viewport_pane.override_size_and_position(viewport_pane.position_and_size());
+                        viewport_pane.get_geom_override(viewport_pane.position_and_size());
                     }
                     let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
                     let full_screen_geom = PaneGeom {
@@ -715,7 +715,7 @@ impl Tab {
                         y: self.viewport.y,
                         ..Default::default()
                     };
-                    active_terminal.override_size_and_position(full_screen_geom);
+                    active_terminal.get_geom_override(full_screen_geom);
                 }
             }
             self.set_force_render();
@@ -1707,8 +1707,8 @@ impl Tab {
     pub fn relayout_tab(&mut self, direction: Direction) {
         let mut resizer = PaneResizer::new(&mut self.panes.iter_mut(), &mut self.os_api);
         let result = match direction {
-            Direction::Horizontal => resizer.resize(direction, self.display_area.cols),
-            Direction::Vertical => resizer.resize(direction, self.display_area.rows),
+            Direction::Horizontal => resizer.layout(direction, self.display_area.cols),
+            Direction::Vertical => resizer.layout(direction, self.display_area.rows),
         };
         if let Err(e) = &result {
             log::error!("{:?} relayout of the tab failed: {}", direction, e);
@@ -1726,7 +1726,7 @@ impl Tab {
             .filter(|(pid, _)| !temp_panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
         let mut resizer = PaneResizer::new(panes, &mut self.os_api);
-        if resizer.resize(Direction::Horizontal, cols).is_ok() {
+        if resizer.layout(Direction::Horizontal, cols).is_ok() {
             self.should_clear_display_before_rendering = true;
             let column_difference = cols as isize - self.display_area.cols as isize;
             // FIXME: Should the viewport be an Offset?
@@ -1735,7 +1735,7 @@ impl Tab {
         } else {
             log::error!("Failed to horizontally resize the tab!!!");
         }
-        if resizer.resize(Direction::Vertical, rows).is_ok() {
+        if resizer.layout(Direction::Vertical, rows).is_ok() {
             self.should_clear_display_before_rendering = true;
             let row_difference = rows as isize - self.display_area.rows as isize;
             // FIXME: Should the viewport be an Offset?

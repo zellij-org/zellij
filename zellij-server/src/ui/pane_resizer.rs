@@ -2,7 +2,7 @@ use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
     Expression, Solver, Variable,
-    WeightedRelation::*,
+    WeightedRelation::EQ,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -12,9 +12,9 @@ use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom};
 
 pub struct PaneResizer<'a> {
     panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
+    os_api: &'a mut Box<dyn ServerOsApi>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
-    os_api: &'a mut Box<dyn ServerOsApi>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,10 +46,6 @@ struct Span {
 }
 
 impl<'a> PaneResizer<'a> {
-    // FIXME: Maybe find a way to just construct this once and use
-    // solver.reset() before each call to resize. I'll likely fight the
-    // borrow-checker and need to use something like Rc<RefCell> to have
-    // multiple owners that can mutate it?
     pub fn new(
         panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
         os_api: &'a mut Box<dyn ServerOsApi>,
@@ -61,19 +57,17 @@ impl<'a> PaneResizer<'a> {
         }
         PaneResizer {
             panes,
+            os_api,
             vars,
             solver: Solver::new(),
-            os_api,
         }
     }
 
     // FIXME: Is this even a resize function even more? Should I call it
     // something like `(re)layout`?
-    pub fn resize(&mut self, direction: Direction, size: usize) -> Result<(), String> {
+    pub fn layout(&mut self, direction: Direction, size: usize) -> Result<(), String> {
         self.solver.reset();
         self.layout_direction(direction, size)?;
-        // FIXME: Dumb return type, we just need a boolean to indicate success
-        // or failure?
         Ok(())
     }
 
@@ -96,19 +90,14 @@ impl<'a> PaneResizer<'a> {
             .flat_map(|s| constrain_spans(space, s))
             .collect();
 
-        // FIXME: This line needs to be restored before merging!
         self.solver
             .add_constraints(&constraints)
             .map_err(|e| format!("{:?}", e))?;
-        //self.solver.add_constraints(&constraints).unwrap();
         // FIXME: This chunk needs to be broken up into smaller functions!
         let mut rounded_sizes = HashMap::new();
-        // FIXME: This should loop over something flattened, not be a nested loop
-        for spans in &mut grid {
-            for span in spans.iter_mut() {
-                let size = self.solver.get_value(span.size_var);
-                rounded_sizes.insert(span.size_var, size as isize);
-            }
+        for span in grid.iter_mut().flatten() {
+            let size = self.solver.get_value(span.size_var);
+            rounded_sizes.insert(span.size_var, size as isize);
         }
         let mut finalised = Vec::new();
         for spans in &mut grid {
@@ -118,7 +107,6 @@ impl<'a> PaneResizer<'a> {
                 .iter_mut()
                 .filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid))
                 .collect();
-            // FIXME: Reverse the order when shrinking panes (to shrink the largest)
             flex_spans.sort_by_key(|s| rounded_sizes[&s.size_var]);
             if error < 0 {
                 flex_spans.reverse();
@@ -135,7 +123,7 @@ impl<'a> PaneResizer<'a> {
                 span.pos = offset;
                 let sz = rounded_sizes[&span.size_var];
                 if sz < 1 {
-                    return Err("Ran out of room on screen to fit spans".into());
+                    return Err("Ran out of room for spans".into());
                 }
                 span.size.set_inner(sz as usize);
                 offset += span.size.as_usize();
@@ -174,7 +162,6 @@ impl<'a> PaneResizer<'a> {
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
                 let span_bounds = (s.pos, s.pos + s.size.as_usize());
-                // FIXME: This needs some cleaning up! These conditions are ridiculous!
                 bwn(span_bounds.0, boundary)
                     || (bwn(boundary.0, span_bounds)
                         && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
@@ -221,14 +208,10 @@ impl<'a> PaneResizer<'a> {
                     ..pane.current_geom()
                 },
             };
-            if pane.position_and_size_override().is_some() {
-                // FIXME: This should really be called "set_geom_override"
-                pane.override_size_and_position(new_geom);
+            if pane.geom_override().is_some() {
+                pane.get_geom_override(new_geom);
             } else {
-                // FIXME: This naming is really inconsistent... No "override", no "change", just
-                // make it "set" at some point. This also takes a reference while the "override"
-                // one takes ownership? Crazy inconsistent here.
-                pane.change_pos_and_size(&new_geom);
+                pane.set_geom(new_geom);
             }
             if let PaneId::Terminal(pid) = pane.pid() {
                 self.os_api.set_terminal_size_using_fd(

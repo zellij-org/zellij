@@ -84,11 +84,11 @@ impl Pane for TerminalPane {
         self.geom_override = None;
         self.reflow_lines();
     }
-    fn change_pos_and_size(&mut self, position_and_size: &PaneGeom) {
-        self.geom = *position_and_size;
+    fn set_geom(&mut self, position_and_size: PaneGeom) {
+        self.geom = position_and_size;
         self.reflow_lines();
     }
-    fn override_size_and_position(&mut self, pane_geom: PaneGeom) {
+    fn get_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.reflow_lines();
     }
@@ -162,7 +162,7 @@ impl Pane for TerminalPane {
     fn current_geom(&self) -> PaneGeom {
         self.geom_override.unwrap_or(self.geom)
     }
-    fn position_and_size_override(&self) -> Option<PaneGeom> {
+    fn geom_override(&self) -> Option<PaneGeom> {
         self.geom_override
     }
     fn should_render(&self) -> bool {
