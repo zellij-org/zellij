@@ -468,8 +468,8 @@ impl TerminalPane {
     }
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
-        let columns = self.get_content_columns();
-        self.grid.change_size(rows, columns);
+        let cols = self.get_content_columns();
+        self.grid.change_size(rows, cols);
         self.set_should_render(true);
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {

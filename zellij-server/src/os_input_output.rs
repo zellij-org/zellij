@@ -251,7 +251,9 @@ pub trait ServerOsApi: Send + Sync {
 
 impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
-        set_terminal_size_using_fd(fd, cols, rows);
+        if cols > 0 && rows > 0 {
+            set_terminal_size_using_fd(fd, cols, rows);
+        }
     }
     fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
         let orig_termios = self.orig_termios.lock().unwrap();

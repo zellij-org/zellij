@@ -273,18 +273,11 @@ impl<'a> PaneResizer<'a> {
                     pane.get_content_columns() as u16,
                     pane.get_content_rows() as u16,
                 );
-                // FIXME: This is a touch hacky, as it's just avoiding setting the size if it
-                // "seems like one dimension is still unresized". The better solution is to put
-                // this into a different resize function where it's only run after both the
-                // horizontal and vertical directions are sized. This belongs in tab.rs probably
-                if cols > 0 && rows > 0 {
-                    self.os_api.set_terminal_size_using_fd(
-                        pid,
-                        pane.get_content_columns() as u16,
-                        pane.get_content_rows() as u16,
-                    );
-                    log::info!("Finished setting terminal size!");
-                }
+                self.os_api.set_terminal_size_using_fd(
+                    pid,
+                    pane.get_content_columns() as u16,
+                    pane.get_content_rows() as u16,
+                );
             }
         }
     }
