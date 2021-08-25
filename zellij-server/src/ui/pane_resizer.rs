@@ -45,6 +45,8 @@ struct Span {
     size_var: Variable,
 }
 
+type Grid = Vec<Vec<Span>>;
+
 impl<'a> PaneResizer<'a> {
     pub fn new(
         panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
@@ -63,29 +65,22 @@ impl<'a> PaneResizer<'a> {
         }
     }
 
-    // FIXME: Is this even a resize function even more? Should I call it
-    // something like `(re)layout`?
-    pub fn layout(&mut self, direction: Direction, size: usize) -> Result<(), String> {
+    pub fn layout(&mut self, direction: Direction, space: usize) -> Result<(), String> {
         self.solver.reset();
-        self.layout_direction(direction, size)?;
+        let grid = self.solve(direction, space)?;
+        let spans = self.discretize_spans(grid, space)?;
+        self.apply_spans(spans);
         Ok(())
     }
 
-    fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Result<(), String> {
-        let spans = self.solve_direction(direction, new_size)?;
-        self.apply_spans(&spans);
-        // FIXME: This is beyond stupid. I need to break this code up so this useless return isn't
-        // needed... Maybe up in `resize`: solve -> discretize_spans -> apply_spans
-        Ok(())
-    }
+    fn solve(&mut self, direction: Direction, space: usize) -> Result<Grid, String> {
+        let grid: Grid = self
+            .grid_boundaries(direction)
+            .into_iter()
+            .map(|b| self.spans_in_boundary(direction, b))
+            .collect();
 
-    fn solve_direction(&mut self, direction: Direction, space: usize) -> Result<Vec<Span>, String> {
-        let mut grid = Vec::new();
-        for boundary in self.grid_boundaries(direction) {
-            grid.push(self.spans_in_boundary(direction, boundary));
-        }
-
-        let constraints: Vec<_> = grid
+        let constraints: HashSet<_> = grid
             .iter()
             .flat_map(|s| constrain_spans(space, s))
             .collect();
@@ -93,17 +88,23 @@ impl<'a> PaneResizer<'a> {
         self.solver
             .add_constraints(&constraints)
             .map_err(|e| format!("{:?}", e))?;
-        // FIXME: This chunk needs to be broken up into smaller functions!
-        let mut rounded_sizes = HashMap::new();
-        for span in grid.iter_mut().flatten() {
-            let size = self.solver.get_value(span.size_var);
-            rounded_sizes.insert(span.size_var, size as isize);
-        }
+
+        Ok(grid)
+    }
+
+    fn discretize_spans(&mut self, mut grid: Grid, space: usize) -> Result<Vec<Span>, String> {
+        let mut rounded_sizes: HashMap<_, _> = grid
+            .iter()
+            .flatten()
+            .map(|s| (s.size_var, self.solver.get_value(s.size_var) as isize))
+            .collect();
+
+        // Round f64 pane sizes to usize without gaps or overlap
         let mut finalised = Vec::new();
-        for spans in &mut grid {
+        for spans in grid.iter_mut() {
             let rounded_size: isize = spans.iter().map(|s| rounded_sizes[&s.size_var]).sum();
             let mut error = space as isize - rounded_size;
-            let mut flex_spans: Vec<&mut Span> = spans
+            let mut flex_spans: Vec<_> = spans
                 .iter_mut()
                 .filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid))
                 .collect();
@@ -112,12 +113,16 @@ impl<'a> PaneResizer<'a> {
                 flex_spans.reverse();
             }
             for span in flex_spans {
-                *rounded_sizes.get_mut(&span.size_var).unwrap() += error.signum();
+                rounded_sizes
+                    .entry(span.size_var)
+                    .and_modify(|s| *s += error.signum());
                 error -= error.signum();
             }
             finalised.extend(spans.iter().map(|s| s.pid));
         }
-        for spans in &mut grid {
+
+        // Update span positions based on their rounded sizes
+        for spans in grid.iter_mut() {
             let mut offset = 0;
             for span in spans.iter_mut() {
                 span.pos = offset;
@@ -129,7 +134,38 @@ impl<'a> PaneResizer<'a> {
                 offset += span.size.as_usize();
             }
         }
+
         Ok(grid.into_iter().flatten().collect())
+    }
+
+    fn apply_spans(&mut self, spans: Vec<Span>) {
+        for span in spans {
+            let pane = self.panes.get_mut(&span.pid).unwrap();
+            let new_geom = match span.direction {
+                Direction::Horizontal => PaneGeom {
+                    x: span.pos,
+                    cols: span.size,
+                    ..pane.current_geom()
+                },
+                Direction::Vertical => PaneGeom {
+                    y: span.pos,
+                    rows: span.size,
+                    ..pane.current_geom()
+                },
+            };
+            if pane.geom_override().is_some() {
+                pane.get_geom_override(new_geom);
+            } else {
+                pane.set_geom(new_geom);
+            }
+            if let PaneId::Terminal(pid) = pane.pid() {
+                self.os_api.set_terminal_size_using_fd(
+                    pid,
+                    pane.get_content_columns() as u16,
+                    pane.get_content_rows() as u16,
+                );
+            }
+        }
     }
 
     // FIXME: Functions like this should have unit tests!
@@ -190,36 +226,6 @@ impl<'a> PaneResizer<'a> {
                 size: pas.rows,
                 size_var,
             },
-        }
-    }
-
-    fn apply_spans(&mut self, spans: &[Span]) {
-        for span in spans {
-            let pane = self.panes.get_mut(&span.pid).unwrap();
-            let new_geom = match span.direction {
-                Direction::Horizontal => PaneGeom {
-                    x: span.pos,
-                    cols: span.size,
-                    ..pane.current_geom()
-                },
-                Direction::Vertical => PaneGeom {
-                    y: span.pos,
-                    rows: span.size,
-                    ..pane.current_geom()
-                },
-            };
-            if pane.geom_override().is_some() {
-                pane.get_geom_override(new_geom);
-            } else {
-                pane.set_geom(new_geom);
-            }
-            if let PaneId::Terminal(pid) = pane.pid() {
-                self.os_api.set_terminal_size_using_fd(
-                    pid,
-                    pane.get_content_columns() as u16,
-                    pane.get_content_rows() as u16,
-                );
-            }
         }
     }
 }

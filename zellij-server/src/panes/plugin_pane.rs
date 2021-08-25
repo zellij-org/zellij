@@ -105,7 +105,7 @@ impl Pane for PluginPane {
         None
     }
     fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
-        unimplemented!() // FIXME: Shouldn't need this implmented?
+        unimplemented!()
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom

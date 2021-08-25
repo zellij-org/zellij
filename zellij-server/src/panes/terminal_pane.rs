@@ -33,6 +33,8 @@ pub enum PaneDecoration {
     ContentOffset((usize, usize)), // (columns, rows)
 }
 
+// FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
+// their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 pub struct TerminalPane {
     pub grid: Grid,
     pub pid: RawFd,
@@ -403,7 +405,6 @@ impl TerminalPane {
         TerminalPane {
             frame: false,
             frame_color: None,
-            // FIXME: Calculate this on the fly, don't just use this into
             content_offset: Offset::default(),
             pid,
             grid,

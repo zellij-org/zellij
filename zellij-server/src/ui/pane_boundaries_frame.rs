@@ -78,7 +78,7 @@ impl PaneFrame {
         }
     }
     fn render_title(&self, vte_output: &mut String) {
-        let total_title_length = self.geom.cols - 2; // 2 for the left and right corners
+        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let left_boundary = boundary_type::TOP_LEFT;
         let right_boundary = boundary_type::TOP_RIGHT;
         let left_side = self.render_title_left_side(total_title_length);

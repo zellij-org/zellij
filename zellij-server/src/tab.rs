@@ -1729,7 +1729,6 @@ impl Tab {
                 self.reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
             }
         }
-        // FIXME: Replace all `resize_whole_tab(self.display_area)` with `relayout_tab()`
         self.relayout_tab(Direction::Horizontal);
         self.render();
     }
