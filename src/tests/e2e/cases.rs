@@ -188,7 +188,7 @@ pub fn scrolling_inside_a_pane() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -272,7 +272,7 @@ pub fn toggle_pane_fullscreen() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -302,7 +302,7 @@ pub fn toggle_pane_fullscreen() {
             name: "Wait for pane to become fullscreen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 2) {
+                if remote_terminal.cursor_position_is(3, 2) {
                     // cursor is in full screen pane now
                     step_is_complete = true;
                 }
@@ -325,7 +325,7 @@ pub fn open_new_tab() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -355,7 +355,7 @@ pub fn open_new_tab() {
             name: "Wait for new tab to open",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
@@ -435,7 +435,7 @@ pub fn exit_zellij() {
             name: "Wait for app to load",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&QUIT);
                     step_is_complete = true;
@@ -506,7 +506,7 @@ pub fn resize_pane() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -536,7 +536,7 @@ pub fn resize_pane() {
             name: "Wait for pane to be resized",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(53, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(59, 2) && remote_terminal.tip_appears() {
                     // pane has been resized
                     step_is_complete = true;
                 }
@@ -559,7 +559,7 @@ pub fn lock_mode() {
             name: "Enter lock mode",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&LOCK_MODE);
                     step_is_complete = true;
@@ -584,7 +584,7 @@ pub fn lock_mode() {
             name: "Wait for terminal to render sent keys",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(6, 2) {
+                if remote_terminal.cursor_position_is(7, 2) {
                     // text has been entered into the only terminal pane
                     step_is_complete = true;
                 }
@@ -608,7 +608,7 @@ pub fn resize_terminal_window() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -635,7 +635,7 @@ pub fn resize_terminal_window() {
             name: "wait for terminal to be resized and app to be re-rendered",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(43, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(53, 2) && remote_terminal.tip_appears() {
                     // size has been changed
                     step_is_complete = true;
                 }
@@ -658,7 +658,7 @@ pub fn detach_and_attach_session() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -759,7 +759,7 @@ fn focus_pane_with_mouse() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -808,7 +808,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);

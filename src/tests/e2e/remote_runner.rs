@@ -63,7 +63,13 @@ fn start_zellij(channel: &mut ssh2::Channel) {
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     stop_zellij(channel);
     channel
-        .write_all(format!("{} options --no-pane-frames\n", ZELLIJ_EXECUTABLE_LOCATION).as_bytes())
+        .write_all(
+            format!(
+                "{} --session {} options --no-pane-frames\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
+            )
+            .as_bytes(),
+        )
         .unwrap();
     channel.flush().unwrap();
 }
@@ -212,7 +218,7 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 1,
+            retries_left: 3,
             win_size,
             layout_file_name: None,
             without_frames: false,

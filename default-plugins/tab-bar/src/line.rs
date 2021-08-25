@@ -183,7 +183,7 @@ pub fn tab_line(
     palette: Palette,
     capabilities: PluginCapabilities,
 ) -> Vec<LinePart> {
-    let mut tabs_to_render = tab_line_prefix(session_name, palette, cols);
+    let mut tabs_to_render = Vec::new();
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {
@@ -191,7 +191,9 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    if get_current_title_len(&tabs_to_render) + active_tab.len <= cols {
+    let mut prefix = tab_line_prefix(session_name, palette, cols);
+    let prefix_len = get_current_title_len(&prefix);
+    if prefix_len + active_tab.len <= cols {
         tabs_to_render.push(active_tab);
     }
 
@@ -199,7 +201,7 @@ pub fn tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
         &mut tabs_to_render,
-        cols,
+        cols.saturating_sub(prefix_len),
     );
 
     let mut tab_line: Vec<LinePart> = vec![];
@@ -208,7 +210,7 @@ pub fn tab_line(
             &mut tabs_before_active,
             &mut tabs_to_render,
             &mut tab_line,
-            cols,
+            cols.saturating_sub(prefix_len),
             palette,
             tab_separator(capabilities),
         );
@@ -218,10 +220,11 @@ pub fn tab_line(
         add_next_tabs_msg(
             &mut tabs_after_active,
             &mut tab_line,
-            cols,
+            cols.saturating_sub(prefix_len),
             palette,
             tab_separator(capabilities),
         );
     }
-    tab_line
+    prefix.append(&mut tab_line);
+    prefix
 }
