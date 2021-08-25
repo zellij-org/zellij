@@ -212,43 +212,29 @@ impl Pane for PluginPane {
     fn pid(&self) -> PaneId {
         PaneId::Plugin(self.pid)
     }
-    // FIXME: I might be able to make do without the up, down, left, and right stuff
-    // FIXME: Also rename the `count` to something like `percent`
-    fn reduce_height_down(&mut self, count: f64) {
+    fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p - count);
+            self.geom.rows = Dimension::percent(p - percent);
             self.should_render = true;
         }
     }
-    fn increase_height_down(&mut self, count: f64) {
+    fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p + count);
+            self.geom.rows = Dimension::percent(p + percent);
             self.should_render = true;
         }
     }
-    fn increase_height_up(&mut self, count: f64) {
-        self.increase_height_down(count);
-    }
-    fn reduce_height_up(&mut self, count: f64) {
-        self.reduce_height_down(count);
-    }
-    fn reduce_width_right(&mut self, count: f64) {
+    fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p - count);
+            self.geom.cols = Dimension::percent(p - percent);
             self.should_render = true;
         }
     }
-    fn reduce_width_left(&mut self, count: f64) {
-        self.reduce_width_right(count);
-    }
-    fn increase_width_left(&mut self, count: f64) {
+    fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p + count);
+            self.geom.cols = Dimension::percent(p + percent);
             self.should_render = true;
         }
-    }
-    fn increase_width_right(&mut self, count: f64) {
-        self.increase_width_left(count);
     }
     fn push_down(&mut self, count: usize) {
         self.geom.y += count;

@@ -253,14 +253,6 @@ impl Pane for TerminalPane {
                 };
                 vte_output.push_str(&frame.render());
             }
-            /* FIXME: Don't let this stick around...
-            if let Some(boundaries_frame) = &mut self.frame {
-                boundaries_frame.update_scroll(self.grid.scrollback_position_and_length());
-                boundaries_frame.update_title(self.grid.title.as_ref());
-                if let Some(boundaries_frame_vte) = boundaries_frame.render() {
-                    vte_output.push_str(&boundaries_frame_vte);
-                }
-            }*/
             self.set_should_render(false);
             Some(vte_output)
         } else {
@@ -270,47 +262,29 @@ impl Pane for TerminalPane {
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
     }
-    // FIXME: I might be able to make do without the up, down, left, and right stuff
-    // FIXME: Also rename the `count` to something like `percent`
-    fn reduce_height_down(&mut self, count: f64) {
+    fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p - count);
-            self.reflow_lines();
+            self.geom.rows = Dimension::percent(p - percent);
+            self.set_should_render(true);
         }
-        self.reflow_lines();
     }
-    fn increase_height_down(&mut self, count: f64) {
+    fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p + count);
-            self.reflow_lines();
+            self.geom.rows = Dimension::percent(p + percent);
+            self.set_should_render(true);
         }
-        self.reflow_lines();
     }
-    fn increase_height_up(&mut self, count: f64) {
-        self.increase_height_down(count);
-    }
-    fn reduce_height_up(&mut self, count: f64) {
-        self.reduce_height_down(count);
-    }
-    fn reduce_width_right(&mut self, count: f64) {
+    fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p - count);
-            self.reflow_lines();
+            self.geom.cols = Dimension::percent(p - percent);
+            self.set_should_render(true);
         }
-        self.reflow_lines();
     }
-    fn reduce_width_left(&mut self, count: f64) {
-        self.reduce_width_right(count);
-    }
-    fn increase_width_left(&mut self, count: f64) {
+    fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p + count);
-            self.reflow_lines();
+            self.geom.cols = Dimension::percent(p + percent);
+            self.set_should_render(true);
         }
-        self.reflow_lines();
-    }
-    fn increase_width_right(&mut self, count: f64) {
-        self.increase_width_left(count);
     }
     fn push_down(&mut self, count: usize) {
         self.geom.y += count;

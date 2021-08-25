@@ -147,14 +147,10 @@ pub trait Pane {
     fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self) -> Option<String>;
     fn pid(&self) -> PaneId;
-    fn reduce_height_down(&mut self, count: f64);
-    fn increase_height_down(&mut self, count: f64);
-    fn increase_height_up(&mut self, count: f64);
-    fn reduce_height_up(&mut self, count: f64);
-    fn increase_width_right(&mut self, count: f64);
-    fn reduce_width_right(&mut self, count: f64);
-    fn reduce_width_left(&mut self, count: f64);
-    fn increase_width_left(&mut self, count: f64);
+    fn reduce_height(&mut self, percent: f64);
+    fn increase_height(&mut self, percent: f64);
+    fn reduce_width(&mut self, percent: f64);
+    fn increase_width(&mut self, percent: f64);
     fn push_down(&mut self, count: usize);
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
@@ -597,7 +593,6 @@ impl Tab {
         self.active_terminal
     }
     fn get_active_terminal_id(&self) -> Option<RawFd> {
-        // FIXME: Is there a better way to do this?
         if let Some(PaneId::Terminal(pid)) = self.active_terminal {
             Some(pid)
         } else {
@@ -863,7 +858,6 @@ impl Tab {
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }
-    // FIXME: This is some shameful duplication...
     fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
     }
@@ -1318,37 +1312,21 @@ impl Tab {
         let terminal_ids: Vec<PaneId> = terminals.iter().map(|t| t.pid()).collect();
         (right_resize_border, terminal_ids)
     }
-    fn reduce_pane_height_down(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_height(&mut self, id: &PaneId, percent: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
-        terminal.reduce_height_down(count);
+        terminal.reduce_height(percent);
     }
-    fn reduce_pane_height_up(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_height(&mut self, id: &PaneId, percent: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
-        terminal.reduce_height_up(count);
+        terminal.increase_height(percent);
     }
-    fn increase_pane_height_down(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_width(&mut self, id: &PaneId, percent: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_height_down(count);
+        terminal.increase_width(percent);
     }
-    fn increase_pane_height_up(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_width(&mut self, id: &PaneId, percent: f64) {
         let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_height_up(count);
-    }
-    fn increase_pane_width_right(&mut self, id: &PaneId, count: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_width_right(count);
-    }
-    fn increase_pane_width_left(&mut self, id: &PaneId, count: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_width_left(count);
-    }
-    fn reduce_pane_width_right(&mut self, id: &PaneId, count: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.reduce_width_right(count);
-    }
-    fn reduce_pane_width_left(&mut self, id: &PaneId, count: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.reduce_width_left(count);
+        terminal.reduce_width(percent);
     }
     fn pane_is_between_vertical_borders(
         &self,
@@ -1401,15 +1379,15 @@ impl Tab {
             }
         }
 
-        self.reduce_pane_height_up(id, count);
+        self.reduce_pane_height(id, count);
         for terminal_id in terminals_below {
-            self.increase_pane_height_up(&terminal_id, count);
+            self.increase_pane_height(&terminal_id, count);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height_up(terminal_id, count);
+            self.reduce_pane_height(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
@@ -1439,15 +1417,15 @@ impl Tab {
             }
         }
 
-        self.reduce_pane_height_down(id, count);
+        self.reduce_pane_height(id, count);
         for terminal_id in terminals_above {
-            self.increase_pane_height_down(&terminal_id, count);
+            self.increase_pane_height(&terminal_id, count);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height_down(terminal_id, count);
+            self.reduce_pane_height(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
@@ -1474,12 +1452,12 @@ impl Tab {
             }
         }
 
-        self.reduce_pane_width_right(id, count);
+        self.reduce_pane_width(id, count);
         for terminal_id in terminals_to_the_left {
-            self.increase_pane_width_right(&terminal_id, count);
+            self.increase_pane_width(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width_right(terminal_id, count);
+            self.reduce_pane_width(terminal_id, count);
         }
     }
     fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
@@ -1506,12 +1484,12 @@ impl Tab {
             }
         }
 
-        self.reduce_pane_width_left(id, count);
+        self.reduce_pane_width(id, count);
         for terminal_id in terminals_to_the_right {
-            self.increase_pane_width_left(&terminal_id, count);
+            self.increase_pane_width(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width_left(terminal_id, count);
+            self.reduce_pane_width(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, count: f64) {
@@ -1529,15 +1507,15 @@ impl Tab {
         terminals_above.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height_up(id, count);
+        self.increase_pane_height(id, count);
         for terminal_id in terminals_above {
-            self.reduce_pane_height_up(&terminal_id, count);
+            self.reduce_pane_height(&terminal_id, count);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height_up(terminal_id, count);
+            self.increase_pane_height(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
@@ -1555,15 +1533,15 @@ impl Tab {
         terminals_below.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height_down(id, count);
+        self.increase_pane_height(id, count);
         for terminal_id in terminals_below {
-            self.reduce_pane_height_down(&terminal_id, count);
+            self.reduce_pane_height(&terminal_id, count);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height_down(terminal_id, count);
+            self.increase_pane_height(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
@@ -1583,12 +1561,12 @@ impl Tab {
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width_right(id, count);
+        self.increase_pane_width(id, count);
         for terminal_id in terminals_to_the_right {
-            self.reduce_pane_width_right(&terminal_id, count);
+            self.reduce_pane_width(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width_right(terminal_id, count);
+            self.increase_pane_width(terminal_id, count);
         }
     }
     fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
@@ -1606,12 +1584,12 @@ impl Tab {
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width_left(id, count);
+        self.increase_pane_width(id, count);
         for terminal_id in terminals_to_the_left {
-            self.reduce_pane_width_left(&terminal_id, count);
+            self.reduce_pane_width(&terminal_id, count);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width_left(terminal_id, count);
+            self.increase_pane_width(terminal_id, count);
         }
     }
     // FIXME: The if-let nesting and explicit `false`s are... suboptimal.
@@ -1715,7 +1693,6 @@ impl Tab {
         }
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
-        // FIXME: This is a temporary solution (and a massive mess)
         // FIXME: I *think* that Rust 2021 will let me just write this:
         // let panes = self.panes.iter_mut().filter(|(pid, _)| !self.panes_to_hide.contains(pid));
         // In the meantime, let's appease our borrow-checker overlords:
@@ -1727,7 +1704,6 @@ impl Tab {
         let Size { rows, cols } = new_screen_size;
         let mut resizer = PaneResizer::new(panes, &mut self.os_api);
         if resizer.layout(Direction::Horizontal, cols).is_ok() {
-            self.should_clear_display_before_rendering = true;
             let column_difference = cols as isize - self.display_area.cols as isize;
             // FIXME: Should the viewport be an Offset?
             self.viewport.cols = (self.viewport.cols as isize + column_difference) as usize;
@@ -1736,14 +1712,13 @@ impl Tab {
             log::error!("Failed to horizontally resize the tab!!!");
         }
         if resizer.layout(Direction::Vertical, rows).is_ok() {
-            self.should_clear_display_before_rendering = true;
             let row_difference = rows as isize - self.display_area.rows as isize;
-            // FIXME: Should the viewport be an Offset?
             self.viewport.rows = (self.viewport.rows as isize + row_difference) as usize;
             self.display_area.rows = rows;
         } else {
             log::error!("Failed to vertically resize the tab!!!");
         }
+        self.should_clear_display_before_rendering = true;
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1755,7 +1730,7 @@ impl Tab {
             }
         }
         // FIXME: Replace all `resize_whole_tab(self.display_area)` with `relayout_tab()`
-        self.resize_whole_tab(self.display_area);
+        self.relayout_tab(Direction::Horizontal);
         self.render();
     }
     pub fn resize_right(&mut self) {
@@ -1767,7 +1742,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
             }
         }
-        self.resize_whole_tab(self.display_area);
+        self.relayout_tab(Direction::Horizontal);
         self.render();
     }
     pub fn resize_down(&mut self) {
@@ -1779,7 +1754,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
             }
         }
-        self.resize_whole_tab(self.display_area);
+        self.relayout_tab(Direction::Vertical);
         self.render();
     }
     pub fn resize_up(&mut self) {
@@ -1791,7 +1766,7 @@ impl Tab {
                 self.reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
             }
         }
-        self.resize_whole_tab(self.display_area);
+        self.relayout_tab(Direction::Vertical);
         self.render();
     }
     pub fn move_focus(&mut self) {
@@ -2190,50 +2165,50 @@ impl Tab {
             {
                 if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_right(pane_id, freed_width);
+                        self.increase_pane_width(pane_id, freed_width);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
-                    self.resize_whole_tab(self.display_area);
+                    self.relayout_tab(Direction::Horizontal);
                     return;
                 }
                 if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_width_left(pane_id, freed_width);
+                        self.increase_pane_width(pane_id, freed_width);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
-                    self.resize_whole_tab(self.display_area);
+                    self.relayout_tab(Direction::Horizontal);
                     return;
                 }
                 if let Some(panes) = self.panes_above_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_down(pane_id, freed_height);
+                        self.increase_pane_height(pane_id, freed_height);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
-                    self.resize_whole_tab(self.display_area);
+                    self.relayout_tab(Direction::Vertical);
                     return;
                 }
                 if let Some(panes) = self.panes_below_between_aligning_borders(id) {
                     for pane_id in panes.iter() {
-                        self.increase_pane_height_up(pane_id, freed_height);
+                        self.increase_pane_height(pane_id, freed_height);
                     }
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
                         self.active_terminal = next_active_pane;
                     }
-                    self.resize_whole_tab(self.display_area);
+                    self.relayout_tab(Direction::Vertical);
                     return;
                 }
             }
