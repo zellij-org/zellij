@@ -286,7 +286,6 @@ impl Screen {
         if self.tabs.is_empty() {
             self.active_tab_index = None;
             if *self.session_state.read().unwrap() == SessionState::Attached {
-                log::info!("Recounting what went wrong...");
                 self.bus
                     .senders
                     .send_to_server(ServerInstruction::Render(None))
@@ -305,7 +304,6 @@ impl Screen {
 
     pub fn resize_to_screen(&mut self, new_screen_size: Size) {
         self.position_and_size = new_screen_size;
-        log::info!("New Size: {:?}", new_screen_size);
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
@@ -322,7 +320,6 @@ impl Screen {
             if active_tab.get_active_pane().is_some() {
                 active_tab.render();
             } else {
-                log::info!("Looks like you were missing an active pane...");
                 self.close_tab();
             }
         };

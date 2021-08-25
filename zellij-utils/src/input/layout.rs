@@ -245,22 +245,6 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     // FIXME: Set the inner layout usize using layout_size for fib.yaml
                     rows,
                 });
-                log::info!(
-                    "space_to_split.rows = {:?}; rows = {:?}",
-                    space_to_split.rows,
-                    rows
-                );
-                log::info!("Self: {:#?}", part);
-                log::info!("Siblings: {:#?}", layout.parts);
-                log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
-                log::info!(
-                    "Sibling Sizes: {:?}",
-                    layout
-                        .parts
-                        .iter()
-                        .map(|p| layout_size(Direction::Horizontal, p))
-                        .collect::<Vec<_>>()
-                );
                 current_x_position += layout_size(Direction::Vertical, part);
             }
 
@@ -311,19 +295,6 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     cols,
                     rows,
                 });
-                /*
-                log::info!("Self: {:#?}", part);
-                log::info!("Siblings: {:#?}", layout.parts);
-                log::info!("Self Size: {:?}", layout_size(Direction::Horizontal, part));
-                log::info!(
-                    "Sibling Sizes: {:?}",
-                    layout
-                        .parts
-                        .iter()
-                        .map(|p| layout_size(Direction::Horizontal, p))
-                        .collect::<Vec<_>>()
-                );
-                */
                 current_y_position += layout_size(Direction::Horizontal, part);
             }
 

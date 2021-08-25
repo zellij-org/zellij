@@ -423,7 +423,6 @@ impl Grid {
                 self.cursor.x = *tabstop;
             }
             None => {
-                log::info!("Whoops!!! No more tab stops!");
                 self.cursor.x = self.width.saturating_sub(1);
             }
         }

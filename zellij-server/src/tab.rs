@@ -398,7 +398,6 @@ impl Tab {
             .filter_map(|p| {
                 let geom = p.position_and_size();
                 if geom.cols.is_fixed() || geom.rows.is_fixed() {
-                    log::info!("Pane?: {:?}", geom);
                     Some(geom.into())
                 } else {
                     None
@@ -781,19 +780,6 @@ impl Tab {
             if !pane.selectable() {
                 pane.set_content_offset(Offset::default());
             }
-            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
-            log::info!(
-                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}\n\tContent X: {:?}\n\tContent Y: {:?}\n\tContent Rows: {:?}\n\tContent Cols: {:?}",
-                pane_id,
-                x,
-                y,
-                rows,
-                cols,
-                pane.get_content_x(),
-                pane.get_content_y(),
-                pane.get_content_rows(),
-                pane.get_content_columns(),
-            );
             // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
             // `TerminalPane::reflow_lines`
             if let PaneId::Terminal(pid) = pane_id {
@@ -1744,19 +1730,6 @@ impl Tab {
         };
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
-        log::info!("Here is the size of the new screen! {:?}", new_screen_size);
-        log::info!("Here are the panes:");
-        for (id, pane) in &self.panes {
-            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
-            log::info!(
-                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}",
-                id,
-                x,
-                y,
-                rows,
-                cols
-            );
-        }
         // FIXME: This is a temporary solution (and a massive mess)
         // FIXME: I *think* that Rust 2021 will let me just write this:
         // let panes = self.panes.iter_mut().filter(|(pid, _)| !self.panes_to_hide.contains(pid));
@@ -1788,20 +1761,6 @@ impl Tab {
         }
         // FIXME: Make sure this is the only place this method is called!
         self.set_pane_frames(self.draw_pane_frames);
-        log::info!("Finished resizing (maybe) the panes!");
-        for (id, pane) in &self.panes {
-            let PaneGeom { x, y, rows, cols } = pane.position_and_size();
-            log::info!(
-                "\n\tID: {:?}\n\tX: {:?}\n\tY: {:?}\n\tRows: {:?}\n\tCols: {:?}\n\tContent Rows: {:?}\n\tContent Cols: {:?}",
-                id,
-                x,
-                y,
-                rows,
-                cols,
-                pane.get_content_rows(),
-                pane.get_content_columns(),
-            );
-        }
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -2272,7 +2231,6 @@ impl Tab {
                     return;
                 }
                 if let Some(panes) = self.panes_above_between_aligning_borders(id) {
-                    log::info!("This is looking suspect...");
                     for pane_id in panes.iter() {
                         self.increase_pane_height_down(pane_id, freed_height);
                     }
@@ -2478,11 +2436,6 @@ impl Tab {
                 <= self.viewport.y + self.viewport.rows
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
-        log::info!(
-            "OFFFFFFFFFFFFFFFFFSSSSSSETTTTTTTTTTTTTING!!!\nPAS {:?}\nVP {:?}",
-            position_and_size,
-            self.viewport
-        );
         if position_and_size.x == self.viewport.x
             && position_and_size.x + position_and_size.cols == self.viewport.x + self.viewport.cols
         {
@@ -2507,10 +2460,5 @@ impl Tab {
                 self.viewport.cols -= position_and_size.cols;
             }
         }
-        log::info!(
-            "DONE!!!\nPAS {:?}\nVP {:?}",
-            position_and_size,
-            self.viewport
-        );
     }
 }

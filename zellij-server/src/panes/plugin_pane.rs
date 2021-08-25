@@ -153,7 +153,9 @@ impl Pane for PluginPane {
             // will eventually need fixing!
             if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
                 let frame = PaneFrame {
-                    geom: self.geom.into(),
+                    geom: self.current_geom().into(),
+                    title: self.pane_title.clone(),
+                    color: self.frame_color,
                     ..Default::default()
                 };
                 vte_output.push_str(&frame.render());

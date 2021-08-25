@@ -274,7 +274,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     if let Some(op) = output {
                         os_input.send_to_client(ServerToClientMsg::Render(op));
                     } else {
-                        log::info!("This is where men cry...");
                         os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
                         break;
                     }
