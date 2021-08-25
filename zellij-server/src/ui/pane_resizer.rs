@@ -1,18 +1,18 @@
 use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
-    Solver, Variable,
+    Expression, Solver, Variable,
     WeightedRelation::*,
 };
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     ops::Not,
 };
 use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom};
 
 pub struct PaneResizer<'a> {
-    panes: BTreeMap<&'a PaneId, &'a mut Box<dyn Pane>>,
-    vars: BTreeMap<PaneId, (Variable, Variable)>,
+    panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
+    vars: HashMap<PaneId, Variable>,
     solver: Solver,
     os_api: &'a mut Box<dyn ServerOsApi>,
 }
@@ -42,8 +42,6 @@ struct Span {
     direction: Direction,
     pos: usize,
     size: Dimension,
-    // FIXME: The solver shouldn't need to touch positions!
-    pos_var: Variable,
     size_var: Variable,
 }
 
@@ -56,10 +54,10 @@ impl<'a> PaneResizer<'a> {
         panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
         os_api: &'a mut Box<dyn ServerOsApi>,
     ) -> Self {
-        let panes: BTreeMap<_, _> = panes.collect();
-        let mut vars = BTreeMap::new();
+        let panes: HashMap<_, _> = panes.collect();
+        let mut vars = HashMap::new();
         for &&k in panes.keys() {
-            vars.insert(k, (Variable::new(), Variable::new()));
+            vars.insert(k, Variable::new());
         }
         PaneResizer {
             panes,
@@ -71,26 +69,23 @@ impl<'a> PaneResizer<'a> {
 
     // FIXME: Is this even a resize function even more? Should I call it
     // something like `(re)layout`?
-    pub fn resize(&mut self, direction: Direction, size: usize) -> Option<usize> {
-        // FIXME: This function shouldn't need a mutable reference? Honestly, it should just be a
-        // function that creates the PaneResizer on-the-fly. Caller should just need
-        // PaneResizer::resize(...)
+    pub fn resize(&mut self, direction: Direction, size: usize) -> Result<(), String> {
         self.solver.reset();
         self.layout_direction(direction, size)?;
         // FIXME: Dumb return type, we just need a boolean to indicate success
         // or failure?
-        Some(size)
+        Ok(())
     }
 
-    fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Option<()> {
+    fn layout_direction(&mut self, direction: Direction, new_size: usize) -> Result<(), String> {
         let spans = self.solve_direction(direction, new_size)?;
         self.apply_spans(&spans);
         // FIXME: This is beyond stupid. I need to break this code up so this useless return isn't
         // needed... Maybe up in `resize`: solve -> discretize_spans -> apply_spans
-        Some(())
+        Ok(())
     }
 
-    fn solve_direction(&mut self, direction: Direction, space: usize) -> Option<Vec<Span>> {
+    fn solve_direction(&mut self, direction: Direction, space: usize) -> Result<Vec<Span>, String> {
         let mut grid = Vec::new();
         for boundary in self.grid_boundaries(direction) {
             grid.push(self.spans_in_boundary(direction, boundary));
@@ -102,7 +97,9 @@ impl<'a> PaneResizer<'a> {
             .collect();
 
         // FIXME: This line needs to be restored before merging!
-        self.solver.add_constraints(&constraints).ok()?;
+        self.solver
+            .add_constraints(&constraints)
+            .map_err(|e| format!("{:?}", e))?;
         //self.solver.add_constraints(&constraints).unwrap();
         // FIXME: This chunk needs to be broken up into smaller functions!
         let mut rounded_sizes = HashMap::new();
@@ -127,7 +124,6 @@ impl<'a> PaneResizer<'a> {
                 flex_spans.reverse();
             }
             for span in flex_spans {
-                // FIXME: If this causes errors, `i % flex_spans.len()`
                 *rounded_sizes.get_mut(&span.size_var).unwrap() += error.signum();
                 error -= error.signum();
             }
@@ -139,13 +135,13 @@ impl<'a> PaneResizer<'a> {
                 span.pos = offset;
                 let sz = rounded_sizes[&span.size_var];
                 if sz < 1 {
-                    return None;
+                    return Err("Ran out of room on screen to fit spans".into());
                 }
                 span.size.set_inner(sz as usize);
                 offset += span.size.as_usize();
             }
         }
-        Some(grid.into_iter().flatten().collect())
+        Ok(grid.into_iter().flatten().collect())
     }
 
     // FIXME: Functions like this should have unit tests!
@@ -191,14 +187,13 @@ impl<'a> PaneResizer<'a> {
 
     fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
         let pas = pane.current_geom();
-        let (pos_var, size_var) = self.vars[&pane.pid()];
+        let size_var = self.vars[&pane.pid()];
         match direction {
             Direction::Horizontal => Span {
                 pid: pane.pid(),
                 direction,
                 pos: pas.x,
                 size: pas.cols,
-                pos_var,
                 size_var,
             },
             Direction::Vertical => Span {
@@ -206,7 +201,6 @@ impl<'a> PaneResizer<'a> {
                 direction,
                 pos: pas.y,
                 size: pas.rows,
-                pos_var,
                 size_var,
             },
         }
@@ -250,9 +244,6 @@ impl<'a> PaneResizer<'a> {
 fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constraint> {
     let mut constraints = HashSet::new();
 
-    // The first span needs to start at 0
-    constraints.insert(spans[0].pos_var | EQ(REQUIRED) | 0.0);
-
     // Calculating "flexible" space (space not consumed by fixed-size spans)
     let new_flex_space = spans.iter().fold(space, |a, s| {
         if let Constraint::Fixed(sz) = s.size.constraint {
@@ -262,11 +253,11 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
         }
     });
 
-    // Keep spans stuck together
-    for pair in spans.windows(2) {
-        let (ls, rs) = (pair[0], pair[1]);
-        constraints.insert((ls.pos_var + ls.size_var) | EQ(REQUIRED) | rs.pos_var);
-    }
+    // Spans must use all of the available space
+    let full_size = spans
+        .iter()
+        .fold(Expression::from_constant(0.0), |acc, s| acc + s.size_var);
+    constraints.insert(full_size | EQ(REQUIRED) | space as f64);
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
@@ -276,10 +267,6 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
                 .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
         };
     }
-
-    // The last pane needs to end at the end of the space
-    let last = spans.last().unwrap();
-    constraints.insert((last.pos_var + last.size_var) | EQ(REQUIRED) | space as f64);
 
     constraints
 }

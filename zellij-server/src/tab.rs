@@ -379,6 +379,7 @@ impl Tab {
                 .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                 .unwrap();
         }
+        self.set_pane_frames(self.draw_pane_frames);
         // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
         // non-fixed panes that are part of the viewport, get rid of this!
         self.resize_whole_tab(self.display_area);
@@ -746,9 +747,6 @@ impl Tab {
         {
             active_terminal.set_should_render(true)
         }
-        //             .and_then(|active_terminal_id| self.panes.get_mut(&active_terminal_id)) {
-        //                 active_terminal.set_should_render(true)
-        //             }
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
@@ -757,13 +755,7 @@ impl Tab {
             if draw_pane_frames {
                 pane.set_content_offset(Offset::frame(1));
             } else {
-                // FIXME: This should be what the `position_and_size` method
-                // returns after the Pane refactor and `.geom` is directly
-                // accessible
-                let position_and_size = pane
-                    .position_and_size_override()
-                    .unwrap_or_else(|| pane.position_and_size());
-
+                let position_and_size = pane.current_geom();
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
@@ -1713,13 +1705,14 @@ impl Tab {
         }
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
-        // FIXME: Make sure this is the only place this method is called!
-        self.set_pane_frames(self.draw_pane_frames);
         let mut resizer = PaneResizer::new(&mut self.panes.iter_mut(), &mut self.os_api);
-        match direction {
+        let result = match direction {
             Direction::Horizontal => resizer.resize(direction, self.display_area.cols),
             Direction::Vertical => resizer.resize(direction, self.display_area.rows),
         };
+        if let Err(e) = &result {
+            log::error!("{:?} relayout of the tab failed: {}", direction, e);
+        }
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         // FIXME: This is a temporary solution (and a massive mess)
@@ -1733,7 +1726,7 @@ impl Tab {
             .filter(|(pid, _)| !temp_panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
         let mut resizer = PaneResizer::new(panes, &mut self.os_api);
-        if let Some(cols) = resizer.resize(Direction::Horizontal, cols) {
+        if resizer.resize(Direction::Horizontal, cols).is_ok() {
             self.should_clear_display_before_rendering = true;
             let column_difference = cols as isize - self.display_area.cols as isize;
             // FIXME: Should the viewport be an Offset?
@@ -1742,7 +1735,7 @@ impl Tab {
         } else {
             log::error!("Failed to horizontally resize the tab!!!");
         }
-        if let Some(rows) = resizer.resize(Direction::Vertical, rows) {
+        if resizer.resize(Direction::Vertical, rows).is_ok() {
             self.should_clear_display_before_rendering = true;
             let row_difference = rows as isize - self.display_area.rows as isize;
             // FIXME: Should the viewport be an Offset?
@@ -1751,8 +1744,6 @@ impl Tab {
         } else {
             log::error!("Failed to vertically resize the tab!!!");
         }
-        // FIXME: Make sure this is the only place this method is called!
-        self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
