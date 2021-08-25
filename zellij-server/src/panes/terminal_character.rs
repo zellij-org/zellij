@@ -724,6 +724,7 @@ impl IndexMut<CharsetIndex> for Charsets {
 
 #[derive(Clone, Copy, Debug)]
 pub enum CursorShape {
+    Initial,
     Block,
     BlinkingBlock,
     Underline,
@@ -750,7 +751,7 @@ impl Cursor {
             is_hidden: false,
             pending_styles: CharacterStyles::new(),
             charsets: Default::default(),
-            shape: CursorShape::Block,
+            shape: CursorShape::Initial,
         }
     }
     pub fn change_shape(&mut self, shape: CursorShape) {

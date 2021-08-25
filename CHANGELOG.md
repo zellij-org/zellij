@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: properly paste multilines (https://github.com/zellij-org/zellij/pull/653 + https://github.com/zellij-org/zellij/pull/658)
 * Terminal compatibility: fix progress bar line overflow (http://github.com/zellij-org/zellij/pull/656)
 * Add action to toggle between tabs `ToggleTab`, bound by default to [TAB] in tab mode (https://github.com/zellij-org/zellij/pull/622)
+* Terminal compatibility: properly handle cursor shape changes in eg. Neovim (https://github.com/zellij-org/zellij/pull/659)
 
 
 ## [0.15.0] - 2021-07-19
