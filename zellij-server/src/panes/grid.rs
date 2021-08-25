@@ -1228,7 +1228,7 @@ impl Grid {
         self.active_charset = Default::default();
         self.erasure_mode = false;
         self.disable_linewrap = false;
-        self.cursor.change_shape(CursorShape::Block);
+        self.cursor.change_shape(CursorShape::Initial);
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
     }
@@ -1830,7 +1830,8 @@ impl Perform for Grid {
                 // DECSCUSR (CSI Ps SP q) -- Set Cursor Style.
                 let cursor_style_id = next_param_or(0);
                 let shape = match cursor_style_id {
-                    0 | 2 => Some(CursorShape::Block),
+                    0 => Some(CursorShape::Initial),
+                    2 => Some(CursorShape::Block),
                     1 => Some(CursorShape::BlinkingBlock),
                     3 => Some(CursorShape::BlinkingUnderline),
                     4 => Some(CursorShape::Underline),
