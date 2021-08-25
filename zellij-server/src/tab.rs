@@ -333,11 +333,6 @@ impl Tab {
                     Some((_, position_and_size)) => {
                         terminal_pane.reset_size_and_position_override();
                         terminal_pane.change_pos_and_size(position_and_size);
-                        self.os_api.set_terminal_size_using_fd(
-                            *pid,
-                            position_and_size.cols.as_usize() as u16,
-                            position_and_size.rows.as_usize() as u16,
-                        );
                     }
                     None => {
                         // we filled the entire layout, no room for this pane
@@ -381,11 +376,6 @@ impl Tab {
                     *position_and_size,
                     self.colors,
                     next_selectable_pane_position,
-                );
-                self.os_api.set_terminal_size_using_fd(
-                    new_pane.pid,
-                    new_pane.get_content_columns() as u16,
-                    new_pane.get_content_rows() as u16,
                 );
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));

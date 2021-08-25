@@ -423,6 +423,7 @@ impl Grid {
                 self.cursor.x = *tabstop;
             }
             None => {
+                log::info!("Whoops!!! No more tab stops!");
                 self.cursor.x = self.width.saturating_sub(1);
             }
         }
@@ -598,6 +599,7 @@ impl Grid {
         }
         self.selection.reset();
         if new_columns != self.width {
+            self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
             let mut viewport_canonical_lines = vec![];
