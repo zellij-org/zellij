@@ -47,9 +47,6 @@ struct Span {
     size_var: Variable,
 }
 
-// TODO: currently there are some functions here duplicated with Tab
-// all resizing functions should move here
-
 impl<'a> PaneResizer<'a> {
     // FIXME: Maybe find a way to just construct this once and use
     // solver.reset() before each call to resize. I'll likely fight the

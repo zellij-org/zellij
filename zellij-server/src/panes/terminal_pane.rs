@@ -10,7 +10,7 @@ use crate::tab::Pane;
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
-use zellij_utils::pane_size::{Constraint, Offset};
+use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
@@ -273,14 +273,14 @@ impl Pane for TerminalPane {
     // FIXME: I might be able to make do without the up, down, left, and right stuff
     // FIXME: Also rename the `count` to something like `percent`
     fn reduce_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.rows.constraint {
+        if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p - count);
             self.reflow_lines();
         }
         self.reflow_lines();
     }
     fn increase_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.rows.constraint {
+        if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p + count);
             self.reflow_lines();
         }
@@ -293,7 +293,7 @@ impl Pane for TerminalPane {
         self.reduce_height_down(count);
     }
     fn reduce_width_right(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.cols.constraint {
+        if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p - count);
             self.reflow_lines();
         }
@@ -303,7 +303,7 @@ impl Pane for TerminalPane {
         self.reduce_width_right(count);
     }
     fn increase_width_left(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.cols.constraint {
+        if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p + count);
             self.reflow_lines();
         }

@@ -250,7 +250,6 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-// FIXME: Unwrap city
 pub fn wasi_read_string(wasi_env: &WasiEnv) -> String {
     let mut state = wasi_env.state();
     let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();

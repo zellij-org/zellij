@@ -10,7 +10,7 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     input::{command::RunCommand, config::ConfigError},
-    pane_size::{Constraint, Dimension, PaneGeom},
+    pane_size::{Dimension, PaneGeom},
     setup,
 };
 use crate::{serde, serde_yaml};
@@ -210,21 +210,20 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
                     Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
                     None => {
-                        let free_percent =
-                            if let Constraint::Percent(p) = space_to_split.cols.constraint {
-                                p - sizes
-                                    .iter()
-                                    .map(|&s| {
-                                        if let Some(SplitSize::Percent(ip)) = s {
-                                            ip
-                                        } else {
-                                            0.0
-                                        }
-                                    })
-                                    .sum::<f64>()
-                            } else {
-                                panic!("Implicit sizing within fixed-size panes is not supported");
-                            };
+                        let free_percent = if let Some(p) = space_to_split.cols.as_percent() {
+                            p - sizes
+                                .iter()
+                                .map(|&s| {
+                                    if let Some(SplitSize::Percent(ip)) = s {
+                                        ip
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .sum::<f64>()
+                        } else {
+                            panic!("Implicit sizing within fixed-size panes is not supported");
+                        };
                         Dimension::percent(free_percent / flex_parts as f64)
                     }
                 };
@@ -240,9 +239,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                 split_parts.push(PaneGeom {
                     x: current_x_position,
                     y: space_to_split.y,
-                    // FIXME: This is likely wrong and percent should be considered!
                     cols,
-                    // FIXME: Set the inner layout usize using layout_size for fib.yaml
                     rows,
                 });
                 current_x_position += layout_size(Direction::Vertical, part);
@@ -261,21 +258,20 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
                     Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
                     None => {
-                        let free_percent =
-                            if let Constraint::Percent(p) = space_to_split.rows.constraint {
-                                p - sizes
-                                    .iter()
-                                    .map(|&s| {
-                                        if let Some(SplitSize::Percent(ip)) = s {
-                                            ip
-                                        } else {
-                                            0.0
-                                        }
-                                    })
-                                    .sum::<f64>()
-                            } else {
-                                panic!("Implicit sizing within fixed-size panes is not supported");
-                            };
+                        let free_percent = if let Some(p) = space_to_split.rows.as_percent() {
+                            p - sizes
+                                .iter()
+                                .map(|&s| {
+                                    if let Some(SplitSize::Percent(ip)) = s {
+                                        ip
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .sum::<f64>()
+                        } else {
+                            panic!("Implicit sizing within fixed-size panes is not supported");
+                        };
                         Dimension::percent(free_percent / flex_parts as f64)
                     }
                 };
@@ -291,7 +287,6 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                 split_parts.push(PaneGeom {
                     x: space_to_split.x,
                     y: current_y_position,
-                    // FIXME: This is probably wrong
                     cols,
                     rows,
                 });

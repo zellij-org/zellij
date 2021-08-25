@@ -12,7 +12,7 @@ use zellij_utils::shared::ansi_len;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
 use zellij_utils::{
     channels::SenderWithContext,
-    pane_size::{Constraint, Dimension, PaneGeom},
+    pane_size::{Dimension, PaneGeom},
 };
 
 pub(crate) struct PluginPane {
@@ -215,13 +215,13 @@ impl Pane for PluginPane {
     // FIXME: I might be able to make do without the up, down, left, and right stuff
     // FIXME: Also rename the `count` to something like `percent`
     fn reduce_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.rows.constraint {
+        if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p - count);
             self.should_render = true;
         }
     }
     fn increase_height_down(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.rows.constraint {
+        if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p + count);
             self.should_render = true;
         }
@@ -233,7 +233,7 @@ impl Pane for PluginPane {
         self.reduce_height_down(count);
     }
     fn reduce_width_right(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.cols.constraint {
+        if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p - count);
             self.should_render = true;
         }
@@ -242,7 +242,7 @@ impl Pane for PluginPane {
         self.reduce_width_right(count);
     }
     fn increase_width_left(&mut self, count: f64) {
-        if let Constraint::Percent(p) = self.geom.cols.constraint {
+        if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p + count);
             self.should_render = true;
         }

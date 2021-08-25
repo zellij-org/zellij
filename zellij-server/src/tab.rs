@@ -19,7 +19,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
-use zellij_utils::pane_size::{Constraint, Offset, Size, Viewport};
+use zellij_utils::pane_size::{Offset, Size, Viewport};
 use zellij_utils::{
     input::{
         layout::{Layout, Run},
@@ -30,10 +30,8 @@ use zellij_utils::{
     serde, zellij_tile,
 };
 
-// FIXME: Can I destroy this yet?
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
-// FIXME: Can probably wreck this too?
 // MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
 // this is a dirty hack until we implement fixed panes
 const MIN_TERMINAL_HEIGHT: usize = 5;
@@ -43,44 +41,36 @@ const RESIZE_PERCENT: f64 = 3.5;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
-// FIXME: These functions need to be de-duplicated
-fn split_vertically(rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
-    match rect.cols.constraint {
-        Constraint::Fixed(_) => None,
-        Constraint::Percent(p) => {
-            let first_rect = PaneGeom {
+fn split(direction: Direction, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+    if let Some(p) = rect.cols.as_percent() {
+        let first_rect = match direction {
+            Direction::Vertical => PaneGeom {
                 cols: Dimension::percent(p / 2.0),
                 ..*rect
-            };
-            let second_rect = PaneGeom {
+            },
+            Direction::Horizontal => PaneGeom {
+                rows: Dimension::percent(p / 2.0),
+                ..*rect
+            },
+        };
+        let second_rect = match direction {
+            Direction::Vertical => PaneGeom {
                 x: first_rect.x + 1,
                 cols: first_rect.cols,
                 ..*rect
-            };
-            Some((first_rect, second_rect))
-        }
-    }
-}
-
-fn split_horizontally(rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
-    match rect.rows.constraint {
-        Constraint::Fixed(_) => None,
-        Constraint::Percent(p) => {
-            let first_rect = PaneGeom {
-                rows: Dimension::percent(p / 2.0),
-                ..*rect
-            };
-            let second_rect = PaneGeom {
+            },
+            Direction::Horizontal => PaneGeom {
                 y: first_rect.y + 1,
                 rows: first_rect.rows,
                 ..*rect
-            };
-            Some((first_rect, second_rect))
-        }
+            },
+        };
+        Some((first_rect, second_rect))
+    } else {
+        None
     }
 }
 
-// FIXME: This should really offset from the top and the left, not bottom and right
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
     // (columns_offset, rows_offset)
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
@@ -470,7 +460,9 @@ impl Tab {
                 && terminal_to_split.rows() > terminal_to_split.min_height() * 2
             {
                 if let PaneId::Terminal(term_pid) = pid {
-                    if let Some((top_winsize, bottom_winsize)) = split_horizontally(&terminal_ws) {
+                    if let Some((top_winsize, bottom_winsize)) =
+                        split(Direction::Horizontal, &terminal_ws)
+                    {
                         let new_terminal = TerminalPane::new(
                             term_pid,
                             bottom_winsize,
@@ -484,7 +476,9 @@ impl Tab {
                 }
             } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
                 if let PaneId::Terminal(term_pid) = pid {
-                    if let Some((left_winsize, right_winsize)) = split_vertically(&terminal_ws) {
+                    if let Some((left_winsize, right_winsize)) =
+                        split(Direction::Vertical, &terminal_ws)
+                    {
                         let new_terminal = TerminalPane::new(
                             term_pid,
                             right_winsize,
@@ -532,7 +526,8 @@ impl Tab {
                 return;
             }
             let terminal_ws = active_pane.position_and_size();
-            if let Some((top_winsize, bottom_winsize)) = split_horizontally(&terminal_ws) {
+            if let Some((top_winsize, bottom_winsize)) = split(Direction::Horizontal, &terminal_ws)
+            {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     bottom_winsize,
@@ -577,7 +572,7 @@ impl Tab {
                 return;
             }
             let terminal_ws = active_pane.position_and_size();
-            if let Some((left_winsize, right_winsize)) = split_vertically(&terminal_ws) {
+            if let Some((left_winsize, right_winsize)) = split(Direction::Vertical, &terminal_ws) {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     right_winsize,
@@ -594,11 +589,8 @@ impl Tab {
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
-        // FIXME: Could use Option::map() here
-        match self.get_active_pane_id() {
-            Some(active_pane) => self.panes.get(&active_pane).map(Box::as_ref),
-            None => None,
-        }
+        self.get_active_pane_id()
+            .and_then(|ap| self.panes.get(&ap).map(Box::as_ref))
     }
     fn get_active_pane_id(&self) -> Option<PaneId> {
         self.active_terminal
@@ -2202,9 +2194,8 @@ impl Tab {
         }
         if let Some(pane_to_close) = self.panes.get(&id) {
             let freed_space = pane_to_close.position_and_size();
-            // FIXME: This is pretty rank (two) line(s) of code... Use .as_percent here
-            if let (Constraint::Percent(freed_width), Constraint::Percent(freed_height)) =
-                (freed_space.cols.constraint, freed_space.rows.constraint)
+            if let (Some(freed_width), Some(freed_height)) =
+                (freed_space.cols.as_percent(), freed_space.rows.as_percent())
             {
                 if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
                     for pane_id in panes.iter() {

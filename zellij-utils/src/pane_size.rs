@@ -36,7 +36,6 @@ pub struct Size {
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Dimension {
-    // FIXME: Think about if `pub` is the right choice here
     pub constraint: Constraint,
     inner: usize,
 }
@@ -74,12 +73,10 @@ impl Dimension {
         }
     }
 
-    // FIXME: Not sold on the existence of this yet, either...
     pub fn set_inner(&mut self, inner: usize) {
         self.inner = inner;
     }
 
-    // FIXME: Is this really worth keeping around?
     pub fn is_fixed(&self) -> bool {
         matches!(self.constraint, Constraint::Fixed(_))
     }
