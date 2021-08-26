@@ -1356,7 +1356,7 @@ impl Tab {
             .expect("could not find terminal to check between borders");
         terminal.y() >= top_border_y && terminal.y() + terminal.rows() <= bottom_border_y
     }
-    fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_below = self
             .pane_ids_directly_below(id)
             .expect("can't reduce pane size up if there are no terminals below");
@@ -1372,30 +1372,30 @@ impl Tab {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
 
+        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
+        // above and below this one. This should be moved to a `can_resize` function eventually.
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
             let pane = self.panes.get(terminal_id).unwrap();
-            if (pane.rows() as isize) - (count as isize) < pane.min_height() as isize {
-                // FIXME: What is going on here?
-                // dirty, dirty hack - should be fixed by the resizing overhaul
+            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
             }
         }
 
-        self.reduce_pane_height(id, count);
+        self.reduce_pane_height(id, percent);
         for terminal_id in terminals_below {
-            self.increase_pane_height(&terminal_id, count);
+            self.increase_pane_height(&terminal_id, percent);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height(terminal_id, count);
+            self.reduce_pane_height(terminal_id, percent);
         }
     }
-    fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_above = self
             .pane_ids_directly_above(id)
             .expect("can't reduce pane size down if there are no terminals above");
@@ -1411,29 +1411,30 @@ impl Tab {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
 
+        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
+        // above and below this one. This should be moved to a `can_resize` function eventually.
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
             let pane = self.panes.get(terminal_id).unwrap();
-            if (pane.rows() as isize) - (count as isize) < pane.min_height() as isize {
-                // dirty, dirty hack - should be fixed by the resizing overhaul
+            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
             }
         }
 
-        self.reduce_pane_height(id, count);
+        self.reduce_pane_height(id, percent);
         for terminal_id in terminals_above {
-            self.increase_pane_height(&terminal_id, count);
+            self.increase_pane_height(&terminal_id, percent);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.reduce_pane_height(terminal_id, count);
+            self.reduce_pane_height(terminal_id, percent);
         }
     }
-    fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't reduce pane size right if there are no terminals to the left");
@@ -1449,23 +1450,24 @@ impl Tab {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
 
+        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
+        // above and below this one. This should be moved to a `can_resize` function eventually.
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
             let pane = self.panes.get(terminal_id).unwrap();
-            if (pane.cols() as isize) - (count as isize) < pane.min_width() as isize {
-                // dirty, dirty hack - should be fixed by the resizing overhaul
+            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
             }
         }
 
-        self.reduce_pane_width(id, count);
+        self.reduce_pane_width(id, percent);
         for terminal_id in terminals_to_the_left {
-            self.increase_pane_width(&terminal_id, count);
+            self.increase_pane_width(&terminal_id, percent);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width(terminal_id, count);
+            self.reduce_pane_width(terminal_id, percent);
         }
     }
-    fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
+    fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't reduce pane size left if there are no terminals to the right");
@@ -1481,23 +1483,24 @@ impl Tab {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
 
+        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
+        // above and below this one. This should be moved to a `can_resize` function eventually.
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
             let pane = self.panes.get(terminal_id).unwrap();
-            if (pane.cols() as isize) - (count as isize) < pane.min_width() as isize {
-                // dirty, dirty hack - should be fixed by the resizing overhaul
+            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
             }
         }
 
-        self.reduce_pane_width(id, count);
+        self.reduce_pane_width(id, percent);
         for terminal_id in terminals_to_the_right {
-            self.increase_pane_width(&terminal_id, count);
+            self.increase_pane_width(&terminal_id, percent);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.reduce_pane_width(terminal_id, count);
+            self.reduce_pane_width(terminal_id, percent);
         }
     }
-    fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_above = self
             .pane_ids_directly_above(id)
             .expect("can't increase pane size up if there are no terminals above");
@@ -1512,18 +1515,18 @@ impl Tab {
         terminals_above.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height(id, count);
+        self.increase_pane_height(id, percent);
         for terminal_id in terminals_above {
-            self.reduce_pane_height(&terminal_id, count);
+            self.reduce_pane_height(&terminal_id, percent);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height(terminal_id, count);
+            self.increase_pane_height(terminal_id, percent);
         }
     }
-    fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_below = self
             .pane_ids_directly_below(id)
             .expect("can't increase pane size down if there are no terminals below");
@@ -1538,18 +1541,18 @@ impl Tab {
         terminals_below.retain(|t| {
             self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
         });
-        self.increase_pane_height(id, count);
+        self.increase_pane_height(id, percent);
         for terminal_id in terminals_below {
-            self.reduce_pane_height(&terminal_id, count);
+            self.reduce_pane_height(&terminal_id, percent);
         }
         for terminal_id in terminals_to_the_left
             .iter()
             .chain(terminals_to_the_right.iter())
         {
-            self.increase_pane_height(terminal_id, count);
+            self.increase_pane_height(terminal_id, percent);
         }
     }
-    fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_to_the_right = self
             .pane_ids_directly_right_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
@@ -1566,15 +1569,15 @@ impl Tab {
         terminals_to_the_right.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width(id, count);
+        self.increase_pane_width(id, percent);
         for terminal_id in terminals_to_the_right {
-            self.reduce_pane_width(&terminal_id, count);
+            self.reduce_pane_width(&terminal_id, percent);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width(terminal_id, count);
+            self.increase_pane_width(terminal_id, percent);
         }
     }
-    fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, count: f64) {
+    fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, percent: f64) {
         let mut terminals_to_the_left = self
             .pane_ids_directly_left_of(id)
             .expect("can't increase pane size right if there are no terminals to the right");
@@ -1589,12 +1592,12 @@ impl Tab {
         terminals_to_the_left.retain(|t| {
             self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
         });
-        self.increase_pane_width(id, count);
+        self.increase_pane_width(id, percent);
         for terminal_id in terminals_to_the_left {
-            self.reduce_pane_width(&terminal_id, count);
+            self.reduce_pane_width(&terminal_id, percent);
         }
         for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
-            self.increase_pane_width(terminal_id, count);
+            self.increase_pane_width(terminal_id, percent);
         }
     }
     // FIXME: The if-let nesting and explicit `false`s are... suboptimal.
