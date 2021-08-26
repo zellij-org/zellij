@@ -133,15 +133,6 @@ impl From<PaneGeom> for Viewport {
     }
 }
 
-impl From<Viewport> for Size {
-    fn from(viewport: Viewport) -> Self {
-        Self {
-            rows: viewport.rows,
-            cols: viewport.cols,
-        }
-    }
-}
-
 impl From<Size> for Viewport {
     fn from(size: Size) -> Self {
         Self {

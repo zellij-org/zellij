@@ -145,7 +145,7 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
-    position_and_size: Size,
+    size: Size,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     tab_history: Vec<Option<usize>>,
@@ -168,7 +168,7 @@ impl Screen {
         Screen {
             bus,
             max_panes,
-            position_and_size: client_attributes.size,
+            size: client_attributes.size,
             colors: client_attributes.palette,
             active_tab_index: None,
             tabs: BTreeMap::new(),
@@ -188,7 +188,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            self.position_and_size.into(),
+            self.size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -303,7 +303,7 @@ impl Screen {
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: Size) {
-        self.position_and_size = new_screen_size;
+        self.size = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
@@ -371,7 +371,7 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            self.position_and_size.into(),
+            self.size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,

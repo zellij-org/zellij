@@ -254,7 +254,7 @@ impl Tab {
         index: usize,
         position: usize,
         name: String,
-        viewport: Viewport,
+        display_area: Size,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -295,8 +295,8 @@ impl Tab {
             max_panes,
             panes_to_hide: HashSet::new(),
             active_terminal: pane_id,
-            viewport,
-            display_area: viewport.into(),
+            viewport: display_area.into(),
+            display_area,
             fullscreen_is_active: false,
             synchronize_is_active: false,
             os_api,
@@ -502,21 +502,7 @@ impl Tab {
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
         }
-        if !self.has_panes() {
-            if let PaneId::Terminal(term_pid) = pid {
-                let next_selectable_pane_position = self.get_next_selectable_pane_position();
-                // FIXME: Code that is not only dead, but that has been
-                // copy-pasted around this file
-                let new_terminal = TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(),
-                    self.colors,
-                    next_selectable_pane_position,
-                );
-                self.panes.insert(pid, Box::new(new_terminal));
-                self.active_terminal = Some(pid);
-            }
-        } else if let PaneId::Terminal(term_pid) = pid {
+        if let PaneId::Terminal(term_pid) = pid {
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
@@ -549,19 +535,7 @@ impl Tab {
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
         }
-        if !self.has_panes() {
-            if let PaneId::Terminal(term_pid) = pid {
-                let next_selectable_pane_position = self.get_next_selectable_pane_position();
-                let new_terminal = TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(),
-                    self.colors,
-                    next_selectable_pane_position,
-                );
-                self.panes.insert(pid, Box::new(new_terminal));
-                self.active_terminal = Some(pid);
-            }
-        } else if let PaneId::Terminal(term_pid) = pid {
+        if let PaneId::Terminal(term_pid) = pid {
             // TODO: check minimum size of active terminal
             let next_selectable_pane_position = self.get_next_selectable_pane_position();
             let active_pane_id = &self.get_active_pane_id().unwrap();
@@ -2445,3 +2419,7 @@ impl Tab {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/tab_tests.rs"]
+mod tab_tests;
