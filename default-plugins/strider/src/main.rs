@@ -54,7 +54,7 @@ impl ZellijPlugin for State {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 }
                 Mouse::MouseRelease(Some((mut line, _))) => {
-                    line = line - 1; // decrement by 1 due to pane frame
+                    line -= 1; // decrement by 1 due to pane frame
                     if line < 0 {
                         return;
                     }
@@ -63,7 +63,7 @@ impl ZellijPlugin for State {
                     if let Some((Event::Mouse(Mouse::MouseRelease(Some((mut prev_line, _)))), t)) =
                         prev_event
                     {
-                        prev_line = prev_line - 1; // decrement by 1 due to pane frame
+                        prev_line -= 1; // decrement by 1 due to pane frame
                         if prev_line == line
                             && Instant::now().saturating_duration_since(t).as_millis() < 400
                         {
@@ -72,10 +72,8 @@ impl ZellijPlugin for State {
                             should_select = false;
                         }
                     }
-                    if should_select {
-                        if self.scroll() + (line as usize) < self.files.len() {
-                            *self.selected_mut() = self.scroll() + (line as usize);
-                        }
+                    if should_select && self.scroll() + (line as usize) < self.files.len() {
+                        *self.selected_mut() = self.scroll() + (line as usize);
                     }
                 }
                 _ => {}
