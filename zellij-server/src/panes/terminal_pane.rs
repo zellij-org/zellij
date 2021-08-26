@@ -459,3 +459,7 @@ impl TerminalPane {
         self.grid.cursor_coordinates()
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/terminal_pane_tests.rs"]
+mod grid_tests;

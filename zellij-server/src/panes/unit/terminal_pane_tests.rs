@@ -1,18 +1,15 @@
 use super::super::TerminalPane;
 use crate::tab::Pane;
 use ::insta::assert_snapshot;
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::zellij_tile::data::Palette;
 
 #[test]
 pub fn scrolling_inside_a_pane() {
-    let fake_win_size = PositionAndSize {
-        cols: 121,
-        rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+
     let pid = 1;
     let palette = Palette::default();
     let mut terminal_pane = TerminalPane::new(pid, fake_win_size, palette, 0); // 0 is the pane index
