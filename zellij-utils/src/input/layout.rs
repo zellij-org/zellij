@@ -17,23 +17,24 @@ use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::vec::Vec;
 use std::{fs::File, io::prelude::*};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
     Horizontal,
     Vertical,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum SplitSize {
     Percent(u8), // 1 to 100
     Fixed(u16),  // An absolute number of columns or rows
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum Run {
     #[serde(rename = "plugin")]
@@ -42,7 +43,8 @@ pub enum Run {
     Command(RunCommand),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+// The layout struct ultimately used to build the layouts.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub struct Layout {
     pub direction: Direction,
@@ -54,23 +56,38 @@ pub struct Layout {
     pub borderless: bool,
 }
 
-type LayoutResult = Result<Layout, ConfigError>;
+// The struct that is used to deserialize the layout from
+// a yaml configuration file
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+#[serde(default)]
+pub struct LayoutFromYaml {
+    #[serde(default)]
+    pub template: LayoutTemplate,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub tabs: Vec<TabLayout>,
+}
 
-impl Layout {
-    pub fn new(layout_path: &Path) -> LayoutResult {
+type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
+
+impl LayoutFromYaml {
+    pub fn new(layout_path: &Path) -> LayoutFromYamlResult {
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("yaml")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
 
         let mut layout = String::new();
         layout_file.read_to_string(&mut layout)?;
-        let layout: Layout = serde_yaml::from_str(&layout)?;
+        let layout: LayoutFromYaml = serde_yaml::from_str(&layout)?;
+
         Ok(layout)
     }
 
     // It wants to use Path here, but that doesn't compile.
     #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutResult {
+    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlResult {
         match layout_dir {
             Some(dir) => Self::new(&dir.join(layout))
                 .or_else(|_| Self::from_default_assets(layout.as_path())),
@@ -82,22 +99,21 @@ impl Layout {
         layout: Option<&PathBuf>,
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Option<Result<Layout, ConfigError>> {
+    ) -> Option<LayoutFromYamlResult> {
         layout
-            .map(|p| Layout::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| Layout::new(p)))
+            .map(|p| LayoutFromYaml::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| LayoutFromYaml::new(p)))
             .or_else(|| {
-                Some(Layout::from_dir(
+                Some(LayoutFromYaml::from_dir(
                     &std::path::PathBuf::from("default"),
                     layout_dir.as_ref(),
                 ))
             })
     }
-
     // Currently still needed but on nightly
     // this is already possible:
     // HashMap<&'static str, Vec<u8>>
-    pub fn from_default_assets(path: &Path) -> LayoutResult {
+    pub fn from_default_assets(path: &Path) -> LayoutFromYamlResult {
         match path.to_str() {
             Some("default") => Self::default_from_assets(),
             Some("strider") => Self::strider_from_assets(),
@@ -111,24 +127,83 @@ impl Layout {
 
     // TODO Deserialize the assets from bytes &[u8],
     // once serde-yaml supports zero-copy
-    pub fn default_from_assets() -> LayoutResult {
-        let layout: Layout =
+    pub fn default_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
             serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
         Ok(layout)
     }
 
-    pub fn strider_from_assets() -> LayoutResult {
-        let layout: Layout =
+    pub fn strider_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
             serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
         Ok(layout)
     }
 
-    pub fn disable_status_from_assets() -> LayoutResult {
-        let layout: Layout =
+    pub fn disable_status_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
             serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
         Ok(layout)
     }
+}
 
+// The struct that carries the information template that is used to
+// construct the layout
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct LayoutTemplate {
+    pub direction: Direction,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub parts: Vec<LayoutTemplate>,
+    #[serde(default)]
+    pub body: bool,
+    pub split_size: Option<SplitSize>,
+    pub run: Option<Run>,
+}
+
+impl LayoutTemplate {
+    // Insert an optional `[TabLayout]` at the correct postion
+    pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
+        if self.body {
+            return tab_layout.unwrap_or_default().into();
+        }
+        for (i, part) in self.parts.clone().iter().enumerate() {
+            if part.body {
+                self.parts.push(tab_layout.unwrap_or_default().into());
+                self.parts.swap_remove(i);
+                break;
+            }
+            // recurse
+            let new_part = part.clone().insert_tab_layout(tab_layout.clone());
+            self.parts.push(new_part);
+            self.parts.swap_remove(i);
+        }
+        self
+    }
+
+    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
+        tab_layout
+            .iter()
+            .map(|tab_layout| Self::from(tab_layout.to_owned()))
+            .collect()
+    }
+}
+
+// The tab-layout struct used to specify each individual tab.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct TabLayout {
+    pub direction: Direction,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub parts: Vec<TabLayout>,
+    pub split_size: Option<SplitSize>,
+    pub run: Option<Run>,
+}
+
+impl Layout {
     pub fn total_terminal_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
@@ -168,6 +243,28 @@ impl Layout {
         space: &PositionAndSize,
     ) -> Vec<(Layout, PositionAndSize)> {
         split_space(space, self)
+    }
+
+    pub fn merge_tab_layout(&mut self, tab: TabLayout) {
+        self.parts.push(tab.into());
+    }
+
+    pub fn merge_layout_parts(&mut self, mut parts: Vec<Layout>) {
+        self.parts.append(&mut parts);
+    }
+
+    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
+        tab_layout
+            .iter()
+            .map(|tab_layout| Layout::from(tab_layout.to_owned()))
+            .collect()
+    }
+
+    fn from_vec_template_layout(layout_template: Vec<LayoutTemplate>) -> Vec<Self> {
+        layout_template
+            .iter()
+            .map(|layout_template| Layout::from(layout_template.to_owned()))
+            .collect()
     }
 }
 
@@ -323,3 +420,87 @@ fn split_space(
     }
     pane_positions
 }
+
+impl From<TabLayout> for Layout {
+    fn from(tab: TabLayout) -> Self {
+        Layout {
+            direction: tab.direction,
+            borderless: tab.borderless,
+            parts: Self::from_vec_tab_layout(tab.parts),
+            split_size: tab.split_size,
+            run: tab.run,
+        }
+    }
+}
+
+impl From<TabLayout> for LayoutTemplate {
+    fn from(tab: TabLayout) -> Self {
+        Self {
+            direction: tab.direction,
+            borderless: tab.borderless,
+            parts: Self::from_vec_tab_layout(tab.parts),
+            body: false,
+            split_size: tab.split_size,
+            run: tab.run,
+        }
+    }
+}
+
+impl From<LayoutTemplate> for Layout {
+    fn from(template: LayoutTemplate) -> Self {
+        Layout {
+            direction: template.direction,
+            borderless: template.borderless,
+            parts: Self::from_vec_template_layout(template.parts),
+            split_size: template.split_size,
+            run: template.run,
+        }
+    }
+}
+
+impl Default for TabLayout {
+    fn default() -> Self {
+        Self {
+            direction: Direction::Horizontal,
+            borderless: false,
+            parts: vec![],
+            split_size: None,
+            run: None,
+        }
+    }
+}
+
+impl Default for LayoutTemplate {
+    fn default() -> Self {
+        Self {
+            direction: Direction::Horizontal,
+            body: false,
+            borderless: false,
+            parts: vec![LayoutTemplate {
+                direction: Direction::Horizontal,
+                body: true,
+                borderless: false,
+                split_size: None,
+                run: None,
+                parts: vec![],
+            }],
+            split_size: None,
+            run: None,
+        }
+    }
+}
+
+impl Default for LayoutFromYaml {
+    fn default() -> Self {
+        Self {
+            template: LayoutTemplate::default(),
+            borderless: false,
+            tabs: vec![],
+        }
+    }
+}
+
+// The unit test location.
+#[cfg(test)]
+#[path = "./unit/layout_test.rs"]
+mod layout_test;

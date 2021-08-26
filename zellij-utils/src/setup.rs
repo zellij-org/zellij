@@ -1,12 +1,13 @@
-use crate::consts::{
-    FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION, ZELLIJ_PROJ_DIR,
-};
-use crate::input::options::Options;
 use crate::{
     cli::{CliArgs, Command},
+    consts::{
+        FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
+        ZELLIJ_PROJ_DIR,
+    },
     input::{
         config::{Config, ConfigError},
-        layout::Layout,
+        layout::LayoutFromYaml,
+        options::Options,
     },
 };
 use directories_next::BaseDirs;
@@ -150,7 +151,9 @@ impl Setup {
     /// file options:
     /// 1. command line options (`zellij options`)
     /// 2. config options (`config.yaml`)
-    pub fn from_options(opts: &CliArgs) -> Result<(Config, Option<Layout>, Options), ConfigError> {
+    pub fn from_options(
+        opts: &CliArgs,
+    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
         let clean = match &opts.command {
             Some(Command::Setup(ref setup)) => setup.clean,
             _ => false,
@@ -160,7 +163,6 @@ impl Setup {
             match Config::try_from(opts) {
                 Ok(config) => config,
                 Err(e) => {
-                    eprintln!("There was an error in the config file:");
                     return Err(e);
                 }
             }
@@ -174,7 +176,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = crate::input::layout::Layout::from_path_or_default(
+        let layout_result = LayoutFromYaml::from_path_or_default(
             opts.layout.as_ref(),
             opts.layout_path.as_ref(),
             layout_dir,
@@ -183,10 +185,10 @@ impl Setup {
             None => None,
             Some(Ok(layout)) => Some(layout),
             Some(Err(e)) => {
-                eprintln!("There was an error in the layout file:");
                 return Err(e);
             }
         };
+        //.map(|layout| layout.template);
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup.from_cli(opts, &config_options).map_or_else(

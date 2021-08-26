@@ -24,14 +24,6 @@ pub fn main() {
         list_sessions();
     }
 
-    let (config, layout, config_options) = match Setup::from_options(&opts) {
-        Ok(results) => results,
-        Err(e) => {
-            eprintln!("{}", e);
-            process::exit(1);
-        }
-    };
-
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
     atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
     if let Some(path) = opts.server {
@@ -62,6 +54,14 @@ pub fn main() {
                 session_name = Some(get_active_session());
             }
 
+            let (config, _, config_options) = match Setup::from_options(&opts) {
+                Ok(results) => results,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            };
+
             start_client(
                 Box::new(os_input),
                 opts,
@@ -70,6 +70,14 @@ pub fn main() {
                 None,
             );
         } else {
+            let (config, layout, _) = match Setup::from_options(&opts) {
+                Ok(results) => results,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            };
+
             let session_name = opts
                 .session
                 .clone()

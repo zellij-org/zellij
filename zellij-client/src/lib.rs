@@ -14,14 +14,14 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi,
 };
-use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, layout::Layout, options::Options},
+    input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
+use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ pub fn start_client(
     opts: CliArgs,
     config: Config,
     info: ClientInfo,
-    layout: Option<Layout>,
+    layout: Option<LayoutFromYaml>,
 ) {
     info!("Starting Zellij client!");
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
