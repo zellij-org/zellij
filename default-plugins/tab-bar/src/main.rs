@@ -41,8 +41,10 @@ impl ZellijPlugin for State {
                 Mouse::LeftClick(_, col) => {
                     self.mouse_click_pos = col;
                     self.should_render = true;
-                },
-                _ => { dbg!(me); }
+                }
+                _ => {
+                    dbg!(me);
+                }
             },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
@@ -85,13 +87,12 @@ impl ZellijPlugin for State {
         let mut len_cnt = 0;
         for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
-            
+
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
             {
-                if idx > 0
-                {
+                if idx > 0 {
                     switch_tab_to(idx.try_into().unwrap());
                 }
                 dbg!("Mouse clicked here");

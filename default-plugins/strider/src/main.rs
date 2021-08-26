@@ -53,14 +53,18 @@ impl ZellijPlugin for State {
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 }
-                Mouse::MouseRelease(Some((line, _))) => {
+                Mouse::MouseRelease(Some((mut line, _))) => {
+                    line = line - 1; // decrement by 1 due to pane frame
+                    if line < 0 {
+                        return;
+                    }
                     let mut should_select = true;
                     dbg!(&prev_event);
-                    if let Some((Event::Mouse(Mouse::MouseRelease(Some((prev_line, _)))), t)) =
+                    if let Some((Event::Mouse(Mouse::MouseRelease(Some((mut prev_line, _)))), t)) =
                         prev_event
                     {
+                        prev_line = prev_line - 1; // decrement by 1 due to pane frame
                         if prev_line == line
-                            && (prev_line as usize) == self.selected()
                             && Instant::now().saturating_duration_since(t).as_millis() < 400
                         {
                             self.traverse_dir_or_open_file();

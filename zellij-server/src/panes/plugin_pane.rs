@@ -15,7 +15,13 @@ use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
 };
 use log::info;
-use zellij_utils::{channels::SenderWithContext, pane_size::PositionAndSize, position::Position, shared::ansi_len, zellij_tile::prelude::{Event, Mouse, PaletteColor}};
+use zellij_utils::{
+    channels::SenderWithContext,
+    pane_size::PositionAndSize,
+    position::Position,
+    shared::ansi_len,
+    zellij_tile::prelude::{Event, Mouse, PaletteColor},
+};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
