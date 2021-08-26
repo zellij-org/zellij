@@ -4,34 +4,17 @@ use cassowary::{
     Expression, Solver, Variable,
     WeightedRelation::EQ,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Not,
+use std::collections::{HashMap, HashSet};
+use zellij_utils::{
+    input::layout::Direction,
+    pane_size::{Constraint, Dimension, PaneGeom},
 };
-use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom};
 
 pub struct PaneResizer<'a> {
     panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
     os_api: &'a mut Box<dyn ServerOsApi>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    Horizontal,
-    Vertical,
-}
-
-impl Not for Direction {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        match self {
-            Direction::Horizontal => Direction::Vertical,
-            Direction::Vertical => Direction::Horizontal,
-        }
-    }
 }
 
 // FIXME: Just hold a mutable Pane reference instead of the PaneId, fixed, pos, and size?

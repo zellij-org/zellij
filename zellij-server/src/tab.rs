@@ -1,6 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
-use crate::ui::pane_resizer::{Direction, PaneResizer};
+use crate::ui::pane_resizer::PaneResizer;
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
@@ -19,6 +19,7 @@ use std::{
     collections::{BTreeMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
+use zellij_utils::input::layout::Direction;
 use zellij_utils::pane_size::{Offset, Size, Viewport};
 use zellij_utils::{
     input::{

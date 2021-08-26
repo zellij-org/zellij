@@ -536,7 +536,7 @@ pub fn resize_pane() {
             name: "Wait for pane to be resized",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(59, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(57, 2) && remote_terminal.tip_appears() {
                     // pane has been resized
                     step_is_complete = true;
                 }

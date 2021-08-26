@@ -18,6 +18,7 @@ use crate::{serde, serde_yaml};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::max,
+    ops::Not,
     path::{Path, PathBuf},
 };
 use std::{fs::File, io::prelude::*};
@@ -27,6 +28,17 @@ use std::{fs::File, io::prelude::*};
 pub enum Direction {
     Horizontal,
     Vertical,
+}
+
+impl Not for Direction {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Direction::Horizontal => Direction::Vertical,
+            Direction::Vertical => Direction::Horizontal,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -196,108 +208,65 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
-    // FIXME: Merge the two branches of this match statement and deduplicate
-    let split_parts = match layout.direction {
-        Direction::Vertical => {
-            let mut split_parts = Vec::new();
-            let mut current_x_position = space_to_split.x;
+    let mut split_geom = Vec::new();
+    let (mut current_position, split_dimension_space, mut inherited_dimension) =
+        match layout.direction {
+            Direction::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows),
+            Direction::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols),
+        };
 
-            let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
+    let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
-            // First fit in the parameterized sizes
-            for (&size, part) in sizes.iter().zip(&layout.parts) {
-                let cols = match size {
-                    Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
-                    Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
-                    None => {
-                        let free_percent = if let Some(p) = space_to_split.cols.as_percent() {
-                            p - sizes
-                                .iter()
-                                .map(|&s| {
-                                    if let Some(SplitSize::Percent(ip)) = s {
-                                        ip
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                                .sum::<f64>()
-                        } else {
-                            panic!("Implicit sizing within fixed-size panes is not supported");
-                        };
-                        Dimension::percent(free_percent / flex_parts as f64)
-                    }
-                };
-                let mut rows = space_to_split.rows;
-                rows.set_inner(
-                    layout
-                        .parts
+    for (&size, part) in sizes.iter().zip(&layout.parts) {
+        let split_dimension = match size {
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
+            Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
+            None => {
+                let free_percent = if let Some(p) = split_dimension_space.as_percent() {
+                    p - sizes
                         .iter()
-                        .map(|p| layout_size(Direction::Horizontal, p))
-                        .max()
-                        .unwrap(),
-                );
-                split_parts.push(PaneGeom {
-                    x: current_x_position,
-                    y: space_to_split.y,
-                    cols,
-                    rows,
-                });
-                current_x_position += layout_size(Direction::Vertical, part);
-            }
-
-            split_parts
-        }
-        Direction::Horizontal => {
-            let mut split_parts = Vec::new();
-            let mut current_y_position = space_to_split.y;
-
-            let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
-
-            for (&size, part) in sizes.iter().zip(&layout.parts) {
-                let rows = match size {
-                    Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
-                    Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
-                    None => {
-                        let free_percent = if let Some(p) = space_to_split.rows.as_percent() {
-                            p - sizes
-                                .iter()
-                                .map(|&s| {
-                                    if let Some(SplitSize::Percent(ip)) = s {
-                                        ip
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                                .sum::<f64>()
-                        } else {
-                            panic!("Implicit sizing within fixed-size panes is not supported");
-                        };
-                        Dimension::percent(free_percent / flex_parts as f64)
-                    }
+                        .map(|&s| {
+                            if let Some(SplitSize::Percent(ip)) = s {
+                                ip
+                            } else {
+                                0.0
+                            }
+                        })
+                        .sum::<f64>()
+                } else {
+                    panic!("Implicit sizing within fixed-size panes is not supported");
                 };
-                let mut cols = space_to_split.cols;
-                cols.set_inner(
-                    layout
-                        .parts
-                        .iter()
-                        .map(|p| layout_size(Direction::Vertical, p))
-                        .max()
-                        .unwrap(),
-                );
-                split_parts.push(PaneGeom {
-                    x: space_to_split.x,
-                    y: current_y_position,
-                    cols,
-                    rows,
-                });
-                current_y_position += layout_size(Direction::Horizontal, part);
+                Dimension::percent(free_percent / flex_parts as f64)
             }
+        };
+        inherited_dimension.set_inner(
+            layout
+                .parts
+                .iter()
+                .map(|p| layout_size(!layout.direction, p))
+                .max()
+                .unwrap(),
+        );
+        let geom = match layout.direction {
+            Direction::Vertical => PaneGeom {
+                x: current_position,
+                y: space_to_split.y,
+                cols: split_dimension,
+                rows: inherited_dimension,
+            },
+            Direction::Horizontal => PaneGeom {
+                x: space_to_split.x,
+                y: current_position,
+                cols: inherited_dimension,
+                rows: split_dimension,
+            },
+        };
+        split_geom.push(geom);
+        current_position += layout_size(layout.direction, part);
+    }
 
-            split_parts
-        }
-    };
     for (i, part) in layout.parts.iter().enumerate() {
-        let part_position_and_size = split_parts.get(i).unwrap();
+        let part_position_and_size = split_geom.get(i).unwrap();
         if !part.parts.is_empty() {
             let mut part_positions = split_space(part_position_and_size, part);
             pane_positions.append(&mut part_positions);
