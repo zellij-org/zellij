@@ -1,7 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-use log::info;
 use zellij_utils::{position::Position, serde, zellij_tile};
 
 use crate::ui::pane_resizer::PaneResizer;
@@ -2366,11 +2365,9 @@ impl Tab {
         }
     }
     pub fn handle_left_click(&mut self, position: &Position) {
-        info!("left click: {:?}", position);
         self.focus_pane_at(position);
 
         if let Some(pane) = self.get_pane_at(position, false) {
-            info!("pane: {:?}", pane.pid());
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
         };

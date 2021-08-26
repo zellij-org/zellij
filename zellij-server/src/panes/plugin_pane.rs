@@ -8,20 +8,14 @@ use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::PaneFrame;
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::pane_size::Offset;
+use zellij_utils::position::Position;
 use zellij_utils::shared::ansi_len;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
+use zellij_utils::zellij_tile::prelude::{Event, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
 };
 use log::info;
-use zellij_utils::{
-    channels::SenderWithContext,
-    pane_size::PositionAndSize,
-    position::Position,
-    shared::ansi_len,
-    zellij_tile::prelude::{Event, Mouse, PaletteColor},
-};
 
 pub(crate) struct PluginPane {
     pub pid: u32,
@@ -263,7 +257,6 @@ impl Pane for PluginPane {
         self.should_render = true;
     }
     fn scroll_up(&mut self, count: usize) {
-        info!("Got scroll_up event: {}, sending to: {}", count, self.pid);
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),

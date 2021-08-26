@@ -33,7 +33,6 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
-        dbg!(&event);
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
@@ -42,9 +41,7 @@ impl ZellijPlugin for State {
                     self.mouse_click_pos = col;
                     self.should_render = true;
                 }
-                _ => {
-                    dbg!(me);
-                }
+                _ => {}
             },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
@@ -95,8 +92,6 @@ impl ZellijPlugin for State {
                 if idx > 0 {
                     switch_tab_to(idx.try_into().unwrap());
                 }
-                dbg!("Mouse clicked here");
-                dbg!(&bar_part.part);
             }
             len_cnt += bar_part.len;
         }
