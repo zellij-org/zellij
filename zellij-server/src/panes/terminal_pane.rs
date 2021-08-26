@@ -28,11 +28,6 @@ pub enum PaneId {
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
-pub enum PaneDecoration {
-    BoundariesFrame(PaneFrame),
-    ContentOffset((usize, usize)), // (columns, rows)
-}
-
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
 // their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 pub struct TerminalPane {
@@ -176,6 +171,7 @@ impl Pane for TerminalPane {
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
         // diff as it usually does with the OutputBuffer
+        self.frame.replace(PaneFrame::default());
         self.grid.render_full_viewport();
     }
     fn selectable(&self) -> bool {
