@@ -20,8 +20,6 @@ use std::path::{Path, PathBuf};
 use std::vec::Vec;
 use std::{fs::File, io::prelude::*};
 
-use super::config::{LayoutMissingTabSectionError, LayoutPartAndTabError};
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
@@ -52,8 +50,6 @@ pub struct Layout {
     pub direction: Direction,
     #[serde(default)]
     pub parts: Vec<Layout>,
-    #[serde(default)]
-    pub tabs: Vec<TabLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     #[serde(default)]
@@ -64,9 +60,10 @@ pub struct Layout {
 // a yaml configuration file
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
+#[serde(default)]
 pub struct LayoutFromYaml {
-    //#[serde(default)]
-    pub template: LayoutTemplateFromYaml,
+    #[serde(default)]
+    pub template: LayoutTemplate,
     #[serde(default)]
     pub borderless: bool,
     #[serde(default)]
@@ -84,6 +81,7 @@ impl LayoutFromYaml {
         let mut layout = String::new();
         layout_file.read_to_string(&mut layout)?;
         let layout: LayoutFromYaml = serde_yaml::from_str(&layout)?;
+
         Ok(layout)
     }
 
@@ -112,16 +110,6 @@ impl LayoutFromYaml {
                 ))
             })
     }
-
-    pub fn construct_layout_template(&self) -> LayoutTemplate {
-        let (pre_tab, post_tab) = self.template.split_template().unwrap();
-        LayoutTemplate {
-            pre_tab: pre_tab.into(),
-            post_tab: Layout::from_vec_template_layout(post_tab),
-            tabs: self.tabs.clone(),
-        }
-    }
-
     // Currently still needed but on nightly
     // this is already possible:
     // HashMap<&'static str, Vec<u8>>
@@ -162,58 +150,43 @@ impl LayoutFromYaml {
 // construct the layout
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
-pub struct LayoutTemplateFromYaml {
+pub struct LayoutTemplate {
     pub direction: Direction,
     #[serde(default)]
     pub borderless: bool,
     #[serde(default)]
-    pub parts: Vec<LayoutTemplateFromYaml>,
+    pub parts: Vec<LayoutTemplate>,
     #[serde(default)]
     pub body: bool,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
 }
 
-impl LayoutTemplateFromYaml {
-    // Split the layout into parts that can be reassebled per tab
-    // returns the layout pre tab and the parts post tab
-    pub fn split_template(
-        &self,
-    ) -> Result<(LayoutTemplateFromYaml, Vec<LayoutTemplateFromYaml>), LayoutPartAndTabError> {
-        let mut main_layout = self.clone();
-        let mut pre_tab_layout = self.clone();
-        let mut post_tab_layout = vec![];
-        let mut post_tab = false;
-
-        pre_tab_layout.parts.clear();
-
-        if main_layout.body {
-            post_tab = true;
+impl LayoutTemplate {
+    // Insert an optional `[TabLayout]` at the correct postion
+    pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
+        if self.body {
+            return tab_layout.unwrap_or_default().into();
         }
-
-        for part in main_layout.parts.drain(..) {
-            let (curr_pre_layout, mut curr_post_layout) = part.split_template()?;
-
-            // Leaf
-            if !post_tab && !part.body {
-                pre_tab_layout.parts.push(curr_pre_layout);
-            }
-
-            // Node
+        for (i, part) in self.parts.clone().iter().enumerate() {
             if part.body {
-                post_tab = true;
-            // Leaf
-            } else if post_tab {
-                if curr_post_layout.is_empty() {
-                    let mut part_no_tab = part.clone();
-                    part_no_tab.parts.clear();
-                    post_tab_layout.push(part_no_tab);
-                } else {
-                    post_tab_layout.append(&mut curr_post_layout);
-                }
+                self.parts.push(tab_layout.unwrap_or_default().into());
+                self.parts.swap_remove(i);
+                break;
             }
+            // recurse
+            let new_part = part.clone().insert_tab_layout(tab_layout.clone());
+            self.parts.push(new_part);
+            self.parts.swap_remove(i);
         }
-        Ok((pre_tab_layout, post_tab_layout))
+        self
+    }
+
+    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
+        tab_layout
+            .iter()
+            .map(|tab_layout| Self::from(tab_layout.to_owned()))
+            .collect()
     }
 }
 
@@ -228,35 +201,6 @@ pub struct TabLayout {
     pub parts: Vec<TabLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-}
-
-// Main template layout struct, that carries information based on position of
-// tabs in relation to the whole layout.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
-pub struct LayoutTemplate {
-    pub pre_tab: Layout,
-    pub post_tab: Vec<Layout>,
-    pub tabs: Vec<TabLayout>,
-}
-
-impl LayoutTemplate {
-    pub fn construct_tab_layout(&self, tab_layout: Option<TabLayout>) -> Layout {
-        if let Some(tab_layout) = tab_layout {
-            let mut pre_tab_layout = self.pre_tab.clone();
-            let post_tab_layout = &self.post_tab;
-            pre_tab_layout.merge_tab_layout(tab_layout);
-            pre_tab_layout.merge_layout_parts(post_tab_layout.to_owned());
-            pre_tab_layout
-        } else {
-            let mut pre_tab_layout = self.pre_tab.clone();
-            let post_tab_layout = &self.post_tab;
-            let default_tab_layout = TabLayout::default();
-            pre_tab_layout.merge_tab_layout(default_tab_layout);
-            pre_tab_layout.merge_layout_parts(post_tab_layout.to_owned());
-            pre_tab_layout
-        }
-    }
 }
 
 impl Layout {
@@ -301,85 +245,12 @@ impl Layout {
         split_space(space, self)
     }
 
-    // Split the layout into parts that can be reassebled per tab
-    // returns the layout pre tab, the parts post tab and the tab layouts
-    pub fn split_main_and_tab_layout(
-        &self,
-    ) -> Result<(Layout, Vec<Layout>, Vec<TabLayout>), LayoutPartAndTabError> {
-        let mut main_layout = self.clone();
-        let mut pre_tab_layout = self.clone();
-        let mut post_tab_layout = vec![];
-        let mut tabs = vec![];
-        let mut post_tab = false;
-
-        pre_tab_layout.parts.clear();
-        pre_tab_layout.tabs.clear();
-
-        if !main_layout.tabs.is_empty() {
-            tabs.append(&mut main_layout.tabs);
-            post_tab = true;
-        }
-
-        if !main_layout.tabs.is_empty() && !main_layout.parts.is_empty() {
-            return Err(LayoutPartAndTabError);
-        }
-
-        for part in main_layout.parts.drain(..) {
-            let (curr_pre_layout, mut curr_post_layout, mut curr_tabs) =
-                part.split_main_and_tab_layout()?;
-
-            // Leaf
-            if !post_tab && part.tabs.is_empty() {
-                pre_tab_layout.parts.push(curr_pre_layout);
-            }
-
-            if !part.tabs.is_empty() && !part.parts.is_empty() {
-                return Err(LayoutPartAndTabError);
-            }
-
-            // Node
-            if !part.tabs.is_empty() {
-                tabs.append(&mut part.tabs.clone());
-                post_tab = true;
-            // Node
-            } else if !curr_tabs.is_empty() {
-                tabs.append(&mut curr_tabs);
-                post_tab = true;
-            // Leaf
-            } else if post_tab {
-                if curr_post_layout.is_empty() {
-                    let mut part_no_tab = part.clone();
-                    part_no_tab.tabs.clear();
-                    part_no_tab.parts.clear();
-                    post_tab_layout.push(part_no_tab);
-                } else {
-                    post_tab_layout.append(&mut curr_post_layout);
-                }
-            }
-        }
-        Ok((pre_tab_layout, post_tab_layout, tabs))
-    }
-
     pub fn merge_tab_layout(&mut self, tab: TabLayout) {
         self.parts.push(tab.into());
     }
 
     pub fn merge_layout_parts(&mut self, mut parts: Vec<Layout>) {
         self.parts.append(&mut parts);
-    }
-
-    pub fn construct_layout_template(&self) -> Result<LayoutTemplate, ConfigError> {
-        let (pre_tab, post_tab, tabs) = self.split_main_and_tab_layout()?;
-
-        if tabs.is_empty() {
-            return Err(ConfigError::Layout(LayoutMissingTabSectionError));
-        }
-
-        Ok(LayoutTemplate {
-            pre_tab,
-            post_tab,
-            tabs,
-        })
     }
 
     fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
@@ -389,7 +260,7 @@ impl Layout {
             .collect()
     }
 
-    fn from_vec_template_layout(layout_template: Vec<LayoutTemplateFromYaml>) -> Vec<Self> {
+    fn from_vec_template_layout(layout_template: Vec<LayoutTemplate>) -> Vec<Self> {
         layout_template
             .iter()
             .map(|layout_template| Layout::from(layout_template.to_owned()))
@@ -555,21 +426,32 @@ impl From<TabLayout> for Layout {
         Layout {
             direction: tab.direction,
             borderless: tab.borderless,
-            parts: Layout::from_vec_tab_layout(tab.parts),
-            tabs: vec![],
+            parts: Self::from_vec_tab_layout(tab.parts),
             split_size: tab.split_size,
             run: tab.run,
         }
     }
 }
 
-impl From<LayoutTemplateFromYaml> for Layout {
-    fn from(template: LayoutTemplateFromYaml) -> Self {
+impl From<TabLayout> for LayoutTemplate {
+    fn from(tab: TabLayout) -> Self {
+        Self {
+            direction: tab.direction,
+            borderless: tab.borderless,
+            parts: Self::from_vec_tab_layout(tab.parts),
+            body: false,
+            split_size: tab.split_size,
+            run: tab.run,
+        }
+    }
+}
+
+impl From<LayoutTemplate> for Layout {
+    fn from(template: LayoutTemplate) -> Self {
         Layout {
             direction: template.direction,
             borderless: template.borderless,
-            parts: Layout::from_vec_template_layout(template.parts),
-            tabs: vec![],
+            parts: Self::from_vec_template_layout(template.parts),
             split_size: template.split_size,
             run: template.run,
         }
@@ -584,6 +466,36 @@ impl Default for TabLayout {
             parts: vec![],
             split_size: None,
             run: None,
+        }
+    }
+}
+
+impl Default for LayoutTemplate {
+    fn default() -> Self {
+        Self {
+            direction: Direction::Horizontal,
+            body: false,
+            borderless: false,
+            parts: vec![LayoutTemplate {
+                direction: Direction::Horizontal,
+                body: true,
+                borderless: false,
+                split_size: None,
+                run: None,
+                parts: vec![],
+            }],
+            split_size: None,
+            run: None,
+        }
+    }
+}
+
+impl Default for LayoutFromYaml {
+    fn default() -> Self {
+        Self {
+            template: LayoutTemplate::default(),
+            borderless: false,
+            tabs: vec![],
         }
     }
 }

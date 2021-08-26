@@ -36,7 +36,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::LayoutTemplate,
+        layout::LayoutFromYaml,
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -50,7 +50,7 @@ pub(crate) enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Option<LayoutTemplate>,
+        Option<LayoutFromYaml>,
     ),
     Render(Option<String>),
     UnblockInputThread,
@@ -245,9 +245,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         if !&layout.tabs.is_empty() {
                             for tab_layout in layout.tabs {
                                 spawn_tabs(Some(tab_layout.clone()));
-                                // Spawning tabs in too quick succession might mess up the layout
-                                // TODO: investigate why
-                                thread::sleep(std::time::Duration::from_millis(250));
                             }
                         } else {
                             spawn_tabs(None);
@@ -329,7 +326,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: Option<LayoutTemplate>,
+    layout: Option<LayoutFromYaml>,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

@@ -20,7 +20,7 @@ use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, LayoutTemplate, Run, TabLayout},
+        layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
 };
@@ -60,7 +60,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutTemplate>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutFromYaml>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -88,8 +88,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutTemplate>
             }
             PtyInstruction::NewTab(terminal_action, tab_layout) => {
                 if let Some(layout) = maybe_layout.clone() {
-                    let merged_layout = layout.construct_tab_layout(tab_layout);
-                    pty.spawn_terminals_for_layout(merged_layout, terminal_action.clone());
+                    let merged_layout = layout.template.insert_tab_layout(tab_layout);
+                    pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
                 } else {
                     let pid = pty.spawn_terminal(terminal_action.clone());
                     pty.bus
