@@ -28,11 +28,6 @@ pub enum PaneId {
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
-pub enum PaneDecoration {
-    BoundariesFrame(PaneFrame),
-    ContentOffset((usize, usize)), // (columns, rows)
-}
-
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
 // their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 pub struct TerminalPane {
@@ -242,6 +237,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
+            let start = Instant::now();
             if let Some(last_frame) = &self.frame {
                 let frame = PaneFrame {
                     geom: self.current_geom().into(),
@@ -258,6 +254,8 @@ impl Pane for TerminalPane {
                     self.frame = Some(frame);
                 }
             }
+            let elapsed = start.elapsed();
+            zellij_utils::logging::debug_log_to_file(format!("{}", elapsed.as_nanos())).unwrap();
             self.set_should_render(false);
             Some(vte_output)
         } else {
