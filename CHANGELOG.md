@@ -37,12 +37,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
     direction: Horizontal
     parts:
       - direction: Vertical
+        borderless: true
+        split_size:
+          Fixed: 1
+        run:
+          plugin: tab-bar
+      - direction: Vertical # <= The location of
+        body: true          # <= the inserted tab.
       - direction: Vertical
-        body: true # <== The body section specifies the position of the
-        # inserted tab
+        borderless: true
+        split_size:
+          Fixed: 2
+        run:
+          plugin: status-bar
   tabs:
-    - direction: Vertical # <== Multiple tabs can be specified, that are
-    - direction: Vertical # run on start of the layout
+    - direction: Vertical # <= Multiple tabs can be
+    - direction: Vertical # <= specified in the layout.
+    - direction: Vertical
   ```
 
   The `NewTab` action can optionally be bound to open
@@ -65,7 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
   - action: [NewTab: {
     direction: Vertical,
-    parts: [ {direction: Horizontal, split_size: {Percent: 50}}, {direction: Horizontal, run: {command: {cmd: "htop"}}},],
+    parts: [ {direction: Horizontal, split_size: {Percent: 50}},
+    {direction: Horizontal, run: {command: {cmd: "htop"}}},],
     key: [F: 6,]
   ```
 
