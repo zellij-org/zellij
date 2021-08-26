@@ -18,7 +18,7 @@ fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct PaneFrame {
     pub geom: Viewport,
     pub title: String,

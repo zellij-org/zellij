@@ -47,7 +47,7 @@ pub struct TerminalPane {
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
-    frame: bool,
+    frame: Option<PaneFrame>,
     frame_color: Option<PaletteColor>,
 }
 
@@ -242,7 +242,7 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            if self.frame {
+            if let Some(last_frame) = &self.frame {
                 let frame = PaneFrame {
                     geom: self.current_geom().into(),
                     title: self
@@ -253,7 +253,10 @@ impl Pane for TerminalPane {
                     scroll_position: self.grid.scrollback_position_and_length(),
                     color: self.frame_color,
                 };
-                vte_output.push_str(&frame.render());
+                if &frame != last_frame {
+                    vte_output.push_str(&frame.render());
+                    self.frame = Some(frame);
+                }
             }
             self.set_should_render(false);
             Some(vte_output)
@@ -375,7 +378,11 @@ impl Pane for TerminalPane {
     }
 
     fn set_frame(&mut self, frame: bool) {
-        self.frame = frame;
+        self.frame = if frame {
+            Some(PaneFrame::default())
+        } else {
+            None
+        };
     }
 
     fn set_content_offset(&mut self, offset: Offset) {
@@ -403,7 +410,7 @@ impl TerminalPane {
             palette,
         );
         TerminalPane {
-            frame: false,
+            frame: None,
             frame_color: None,
             content_offset: Offset::default(),
             pid,
