@@ -20,7 +20,7 @@ use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, Run},
+        layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
 };
@@ -33,7 +33,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminal(Option<TerminalAction>),
     SpawnTerminalVertically(Option<TerminalAction>),
     SpawnTerminalHorizontally(Option<TerminalAction>),
-    NewTab(Option<TerminalAction>),
+    NewTab(Option<TerminalAction>, Option<TabLayout>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -47,7 +47,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
-            PtyInstruction::NewTab(_) => PtyContext::NewTab,
+            PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -60,7 +60,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutFromYaml>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -86,11 +86,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<Layout>) {
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
-            PtyInstruction::NewTab(terminal_action) => {
+            PtyInstruction::NewTab(terminal_action, tab_layout) => {
                 if let Some(layout) = maybe_layout.clone() {
-                    pty.spawn_terminals_for_layout(layout, terminal_action);
+                    let merged_layout = layout.template.insert_tab_layout(tab_layout);
+                    pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
                 } else {
-                    let pid = pty.spawn_terminal(terminal_action);
+                    let pid = pty.spawn_terminal(terminal_action.clone());
                     pty.bus
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(pid))

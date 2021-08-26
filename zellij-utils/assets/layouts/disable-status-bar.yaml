@@ -1,10 +1,12 @@
 ---
-direction: Horizontal
-parts:
-  - direction: Vertical
-    borderless: true
-    split_size:
-      Fixed: 1
-    run:
-      plugin: tab-bar
-  - direction: Vertical
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      borderless: true
+      split_size:
+        Fixed: 1
+      run:
+        plugin: tab-bar
+    - direction: Vertical
+      body: true

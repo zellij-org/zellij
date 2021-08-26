@@ -185,7 +185,7 @@ impl InputHandler {
             }
             Action::CloseFocus
             | Action::NewPane(_)
-            | Action::NewTab
+            | Action::NewTab(_)
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab

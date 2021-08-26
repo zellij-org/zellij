@@ -25,6 +25,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: fix progress bar line overflow (http://github.com/zellij-org/zellij/pull/656)
 * Add action to toggle between tabs `ToggleTab`, bound by default to [TAB] in tab mode (https://github.com/zellij-org/zellij/pull/622)
 * Terminal compatibility: properly handle cursor shape changes in eg. Neovim (https://github.com/zellij-org/zellij/pull/659)
+* Add `tabs` to `layouts` (https://github.com/zellij-org/zellij/pull/625)
+
+  The layout has now a template, and tabs section.
+  The template specifies the location a tab is inserted in with `body: true`.
+
+  Eg:
+  ```
+  ---
+  template:
+    direction: Horizontal
+    parts:
+      - direction: Vertical
+        borderless: true
+        split_size:
+          Fixed: 1
+        run:
+          plugin: tab-bar
+      - direction: Vertical # <= The location of
+        body: true          # <= the inserted tab.
+      - direction: Vertical
+        borderless: true
+        split_size:
+          Fixed: 2
+        run:
+          plugin: status-bar
+  tabs:
+    - direction: Vertical # <= Multiple tabs can be
+    - direction: Vertical # <= specified in the layout.
+    - direction: Vertical
+  ```
+
+  The `NewTab` action can optionally be bound to open
+  a layout that is assumed to be in the new `tabs` section
+
+  This is a BREAKING CHANGE for people that have the
+  `NewTab` action already bound in the config file:
+  ```
+  - action: [NewTab, ]
+    key: [F: 5,]
+  ```
+  must now be specified as:
+  ```
+  - action: [NewTab: ,]
+    key: [F: 5,]
+  ```
+
+  Optionally a layout that should be opened on the new tab can be
+  specified:
+  ```
+  - action: [NewTab: {
+    direction: Vertical,
+    parts: [ {direction: Horizontal, split_size: {Percent: 50}},
+    {direction: Horizontal, run: {command: {cmd: "htop"}}},],
+    key: [F: 6,]
+  ```
 
 
 ## [0.15.0] - 2021-07-19
