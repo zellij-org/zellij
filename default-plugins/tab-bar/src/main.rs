@@ -36,13 +36,12 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
-            Event::Mouse(me) => match me {
-                Mouse::LeftClick(_, col) => {
+            Event::Mouse(me) => {
+                if let Mouse::LeftClick(_, col) = me {
                     self.mouse_click_pos = col;
                     self.should_render = true;
                 }
-                _ => {}
-            },
+            }
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
     }
@@ -88,10 +87,9 @@ impl ZellijPlugin for State {
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
+                && idx > 0
             {
-                if idx > 0 {
-                    switch_tab_to(idx.try_into().unwrap());
-                }
+                switch_tab_to(idx.try_into().unwrap());
             }
             len_cnt += bar_part.len;
         }
