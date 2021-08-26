@@ -111,9 +111,9 @@ pub fn take_snapshot(terminal_output: &mut TerminalPane) -> String {
 
 pub struct RemoteTerminal<'a> {
     channel: &'a mut ssh2::Channel,
-    pub cursor_x: usize,
-    pub cursor_y: usize,
-    pub current_snapshot: String,
+    cursor_x: usize,
+    cursor_y: usize,
+    current_snapshot: String,
 }
 
 impl<'a> std::fmt::Debug for RemoteTerminal<'a> {
