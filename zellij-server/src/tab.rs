@@ -32,17 +32,20 @@ use zellij_utils::{
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
-// MIN_TERMINAL_HEIGHT here must be larger than the height of any of the status bars
-// this is a dirty hack until we implement fixed panes
+// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 const MIN_TERMINAL_HEIGHT: usize = 5;
 const MIN_TERMINAL_WIDTH: usize = 5;
 
-const RESIZE_PERCENT: f64 = 3.5;
+const RESIZE_PERCENT: f64 = 5.0;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 fn split(direction: Direction, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
-    if let Some(p) = rect.cols.as_percent() {
+    let space = match direction {
+        Direction::Vertical => rect.cols,
+        Direction::Horizontal => rect.rows,
+    };
+    if let Some(p) = space.as_percent() {
         let first_rect = match direction {
             Direction::Vertical => PaneGeom {
                 cols: Dimension::percent(p / 2.0),
@@ -1374,6 +1377,7 @@ impl Tab {
         {
             let pane = self.panes.get(terminal_id).unwrap();
             if (pane.rows() as isize) - (count as isize) < pane.min_height() as isize {
+                // FIXME: What is going on here?
                 // dirty, dirty hack - should be fixed by the resizing overhaul
                 return;
             }
@@ -1653,7 +1657,9 @@ impl Tab {
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            cols - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_left_of(pane_id).is_some()
+            let ids_left = self.pane_ids_directly_left_of(pane_id);
+            let flexible_left = self.ids_are_flexible(Direction::Horizontal, ids_left);
+            cols - reduce_by >= RESIZE_PERCENT && flexible_left
         } else {
             false
         }
@@ -1661,7 +1667,9 @@ impl Tab {
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            cols - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_right_of(pane_id).is_some()
+            let ids_right = self.pane_ids_directly_right_of(pane_id);
+            let flexible_right = self.ids_are_flexible(Direction::Horizontal, ids_right);
+            cols - reduce_by >= RESIZE_PERCENT && flexible_right
         } else {
             false
         }
@@ -1669,7 +1677,9 @@ impl Tab {
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            rows - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_above(pane_id).is_some()
+            let ids_above = self.pane_ids_directly_above(pane_id);
+            let flexible_above = self.ids_are_flexible(Direction::Vertical, ids_above);
+            rows - reduce_by >= RESIZE_PERCENT && flexible_above
         } else {
             false
         }
@@ -1677,10 +1687,23 @@ impl Tab {
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let pane = self.panes.get(pane_id).unwrap();
         if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            rows - reduce_by >= RESIZE_PERCENT && self.pane_ids_directly_below(pane_id).is_some()
+            let ids_below = self.pane_ids_directly_below(pane_id);
+            let flexible_below = self.ids_are_flexible(Direction::Vertical, ids_below);
+            rows - reduce_by >= RESIZE_PERCENT && flexible_below
         } else {
             false
         }
+    }
+    fn ids_are_flexible(&self, direction: Direction, pane_ids: Option<Vec<PaneId>>) -> bool {
+        pane_ids.is_some()
+            && pane_ids.unwrap().iter().all(|id| {
+                let geom = self.panes[id].current_geom();
+                let dimension = match direction {
+                    Direction::Vertical => geom.rows,
+                    Direction::Horizontal => geom.cols,
+                };
+                !dimension.is_fixed()
+            })
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
         let mut resizer = PaneResizer::new(&mut self.panes.iter_mut(), &mut self.os_api);
