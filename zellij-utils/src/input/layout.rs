@@ -53,9 +53,17 @@ pub enum SplitSize {
 #[serde(crate = "self::serde")]
 pub enum Run {
     #[serde(rename = "plugin")]
-    Plugin(Option<PathBuf>),
+    Plugin(Option<RunPlugin>),
     #[serde(rename = "command")]
     Command(RunCommand),
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct RunPlugin {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub _allow_exec_host_cmd: bool,
 }
 
 // The layout struct ultimately used to build the layouts.

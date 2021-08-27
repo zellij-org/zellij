@@ -37,6 +37,10 @@ pub fn open_file(path: &Path) {
 pub fn set_timeout(secs: f64) {
     unsafe { host_set_timeout(secs) };
 }
+pub fn exec_cmd(cmd: &[&str]) {
+    object_to_stdout(&cmd);
+    unsafe { host_exec_cmd() };
+}
 
 // Internal Functions
 
@@ -60,4 +64,5 @@ extern "C" {
     fn host_get_plugin_ids();
     fn host_open_file();
     fn host_set_timeout(secs: f64);
+    fn host_exec_cmd();
 }

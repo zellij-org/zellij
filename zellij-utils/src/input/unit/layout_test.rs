@@ -45,7 +45,10 @@ fn default_layout_merged_correctly() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "tab-bar".into(),
+                    ..Default::default()
+                }))),
             },
             Layout {
                 direction: Direction::Vertical,
@@ -59,7 +62,10 @@ fn default_layout_merged_correctly() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "status-bar".into(),
+                    ..Default::default()
+                }))),
             },
         ],
         split_size: None,
@@ -83,7 +89,10 @@ fn default_layout_new_tab_correct() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "tab-bar".into(),
+                    ..Default::default()
+                }))),
             },
             Layout {
                 direction: Direction::Horizontal,
@@ -97,7 +106,10 @@ fn default_layout_new_tab_correct() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "status-bar".into(),
+                    ..Default::default()
+                }))),
             },
         ],
         split_size: None,
@@ -253,7 +265,10 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "tab-bar".into(),
+                    ..Default::default()
+                }))),
             },
             Layout {
                 direction: Direction::Vertical,
@@ -297,7 +312,10 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "status-bar".into(),
+                    ..Default::default()
+                }))),
             },
         ],
         split_size: None,
@@ -321,7 +339,10 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "tab-bar".into(),
+                    ..Default::default()
+                }))),
             },
             Layout {
                 direction: Direction::Horizontal,
@@ -335,7 +356,10 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(Some(RunPlugin {
+                    path: "status-bar".into(),
+                    ..Default::default()
+                }))),
             },
         ],
         split_size: None,
