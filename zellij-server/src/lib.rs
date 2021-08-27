@@ -46,12 +46,7 @@ use zellij_utils::{
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(
-        ClientAttributes,
-        Box<CliArgs>,
-        Box<Options>,
-        LayoutFromYaml,
-    ),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,

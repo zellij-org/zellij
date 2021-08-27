@@ -7,6 +7,7 @@ use crate::{
     SessionState,
 };
 use std::sync::{Arc, RwLock};
+use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::pane_size::Size;
 
 use std::os::unix::io::RawFd;
@@ -83,7 +84,7 @@ fn create_new_tab(size: Size) -> Tab {
     let mode_info = ModeInfo::default();
     let colors = Palette::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
-    Tab::new(
+    let mut tab = Tab::new(
         index,
         position,
         name,
@@ -95,7 +96,9 @@ fn create_new_tab(size: Size) -> Tab {
         colors,
         session_state,
         true, // draw pane frames
-    )
+    );
+    tab.apply_layout(LayoutTemplate::default().into(), vec![1], index);
+    tab
 }
 
 #[test]
@@ -1277,7 +1280,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "first remaining pane column count"
     );
     assert_eq!(
@@ -1297,7 +1300,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "second remaining pane x position"
     );
     assert_eq!(
@@ -1316,7 +1319,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        15,
+        16,
         "second remaining pane column count"
     );
     assert_eq!(
@@ -1394,7 +1397,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "fourth remaining pane column count"
     );
     assert_eq!(
@@ -2542,7 +2545,7 @@ pub fn resize_down_with_pane_above() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
-        12,
+        11,
         "focused pane y position"
     );
     assert_eq!(
@@ -2562,7 +2565,7 @@ pub fn resize_down_with_pane_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        8,
+        9,
         "focused pane row count"
     );
 
@@ -2601,7 +2604,7 @@ pub fn resize_down_with_pane_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "pane above row count"
     );
 }
@@ -2633,7 +2636,7 @@ pub fn resize_down_with_pane_below() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
-        12,
+        11,
         "pane below y position"
     );
     assert_eq!(
@@ -2653,7 +2656,7 @@ pub fn resize_down_with_pane_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        8,
+        9,
         "pane below row count"
     );
 
@@ -2692,7 +2695,7 @@ pub fn resize_down_with_pane_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "focused pane row count"
     );
 }
@@ -4831,8 +4834,6 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.resize_down();
-
-    dbg!(tab.panes.values().map(|p| p.position_and_size()).collect::<Vec<_>>());
 
     assert_eq!(
         tab.panes

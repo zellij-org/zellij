@@ -1992,7 +1992,7 @@ impl Tab {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
             let terminal = self.panes.get(t).unwrap();
             borders.insert(terminal.y());
-            borders.insert(terminal.y() + terminal.rows() + 1); // 1 for the border width
+            borders.insert(terminal.y() + terminal.rows());
             borders
         })
     }
@@ -2000,14 +2000,14 @@ impl Tab {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
             let terminal = self.panes.get(t).unwrap();
             borders.insert(terminal.x());
-            borders.insert(terminal.x() + terminal.cols() + 1); // 1 for the border width
+            borders.insert(terminal.x() + terminal.cols());
             borders
         })
     }
     fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
-            let lower_close_border = terminal.y() + terminal.rows() + 1;
+            let lower_close_border = terminal.y() + terminal.rows();
 
             if let Some(terminals_to_the_left) = self.pane_ids_directly_left_of(&id) {
                 let mut selectable_panes: Vec<_> = terminals_to_the_left
@@ -2034,7 +2034,7 @@ impl Tab {
     fn panes_to_the_right_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
-            let lower_close_border = terminal.y() + terminal.rows() + 1;
+            let lower_close_border = terminal.y() + terminal.rows();
 
             if let Some(terminals_to_the_right) = self.pane_ids_directly_right_of(&id) {
                 let mut selectable_panes: Vec<_> = terminals_to_the_right
@@ -2061,7 +2061,7 @@ impl Tab {
     fn panes_above_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let left_close_border = terminal.x();
-            let right_close_border = terminal.x() + terminal.cols() + 1;
+            let right_close_border = terminal.x() + terminal.cols();
 
             if let Some(terminals_above) = self.pane_ids_directly_above(&id) {
                 let mut selectable_panes: Vec<_> = terminals_above
@@ -2088,7 +2088,7 @@ impl Tab {
     fn panes_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let left_close_border = terminal.x();
-            let right_close_border = terminal.x() + terminal.cols() + 1;
+            let right_close_border = terminal.x() + terminal.cols();
 
             if let Some(terminals_below) = self.pane_ids_directly_below(&id) {
                 let mut selectable_panes: Vec<_> = terminals_below
