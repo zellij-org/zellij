@@ -50,7 +50,7 @@ pub(crate) enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Option<LayoutFromYaml>,
+        LayoutFromYaml,
     ),
     Render(Option<String>),
     UnblockInputThread,
@@ -235,19 +235,12 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
-                match layout {
-                    None => {
-                        spawn_tabs(None);
+                if !&layout.tabs.is_empty() {
+                    for tab_layout in layout.tabs {
+                        spawn_tabs(Some(tab_layout.clone()));
                     }
-                    Some(layout) => {
-                        if !&layout.tabs.is_empty() {
-                            for tab_layout in layout.tabs {
-                                spawn_tabs(Some(tab_layout.clone()));
-                            }
-                        } else {
-                            spawn_tabs(None);
-                        }
-                    }
+                } else {
+                    spawn_tabs(None);
                 }
             }
             ServerInstruction::AttachClient(attrs, _, options) => {
@@ -324,7 +317,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: Option<LayoutFromYaml>,
+    layout: LayoutFromYaml,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

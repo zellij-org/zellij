@@ -137,7 +137,7 @@ pub fn start_client(
                 client_attributes,
                 Box::new(opts),
                 Box::new(config_options.clone()),
-                layout,
+                layout.unwrap(),
             )
         }
     };

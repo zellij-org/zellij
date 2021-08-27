@@ -62,7 +62,7 @@ pub enum ClientToServerMsg {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Option<LayoutFromYaml>,
+        LayoutFromYaml,
     ),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),

@@ -60,7 +60,6 @@ pub(crate) enum ScreenInstruction {
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
-    NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
     ToggleActiveSyncTab,
@@ -115,7 +114,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
-            ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
@@ -177,32 +175,6 @@ impl Screen {
             session_state,
             draw_pane_frames,
         }
-    }
-
-    /// Creates a new [`Tab`] in this [`Screen`], containing a single
-    /// [pane](crate::client::panes) with PTY file descriptor `pane_id`.
-    pub fn new_tab(&mut self, pane_id: RawFd) {
-        let tab_index = self.get_new_tab_index();
-        let position = self.tabs.len();
-        let tab = Tab::new(
-            tab_index,
-            position,
-            String::new(),
-            self.size,
-            self.bus.os_input.as_ref().unwrap().clone(),
-            self.bus.senders.clone(),
-            self.max_panes,
-            Some(PaneId::Terminal(pane_id)),
-            self.mode_info.clone(),
-            self.colors,
-            self.session_state.clone(),
-            self.draw_pane_frames,
-        );
-        self.tab_history.push(self.active_tab_index);
-        self.active_tab_index = Some(tab_index);
-        self.tabs.insert(tab_index, tab);
-        self.update_tabs();
-        self.render();
     }
 
     /// Returns the index where a new [`Tab`] should be created in this [`Screen`].
@@ -375,7 +347,6 @@ impl Screen {
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
-            None,
             self.mode_info.clone(),
             self.colors,
             self.session_state.clone(),
@@ -667,14 +638,6 @@ pub(crate) fn screen_thread_main(
                     tab.set_pane_frames(screen.draw_pane_frames);
                 }
                 screen.render();
-            }
-            ScreenInstruction::NewTab(pane_id) => {
-                screen.new_tab(pane_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
             }
             ScreenInstruction::SwitchTabNext => {
                 screen.switch_tab_next();

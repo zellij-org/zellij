@@ -60,7 +60,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutFromYaml>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -87,16 +87,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, maybe_layout: Option<LayoutFromYaml>
                     .unwrap();
             }
             PtyInstruction::NewTab(terminal_action, tab_layout) => {
-                if let Some(layout) = maybe_layout.clone() {
-                    let merged_layout = layout.template.insert_tab_layout(tab_layout);
-                    pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
-                } else {
-                    let pid = pty.spawn_terminal(terminal_action.clone());
-                    pty.bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::NewTab(pid))
-                        .unwrap();
-                }
+                let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
+                pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
             }
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id);

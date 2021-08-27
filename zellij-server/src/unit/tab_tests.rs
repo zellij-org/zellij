@@ -80,7 +80,6 @@ fn create_new_tab(size: Size) -> Tab {
     let os_api = Box::new(FakeInputOutput {});
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
-    let first_pane_id = Some(PaneId::Terminal(1));
     let mode_info = ModeInfo::default();
     let colors = Palette::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
@@ -92,7 +91,6 @@ fn create_new_tab(size: Size) -> Tab {
         os_api,
         senders,
         max_panes,
-        first_pane_id,
         mode_info,
         colors,
         session_state,

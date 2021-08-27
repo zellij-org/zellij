@@ -7,6 +7,7 @@ use crate::{
 };
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::command::TerminalAction;
+use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::pane_size::Size;
 
 use std::os::unix::io::RawFd;
@@ -93,6 +94,10 @@ fn create_new_screen(size: Size) -> Screen {
     )
 }
 
+fn new_tab(screen: &mut Screen, pid: i32) {
+    screen.apply_layout(LayoutTemplate::default().into(), vec![pid]);
+}
+
 #[test]
 fn open_new_tab() {
     let size = Size {
@@ -101,8 +106,8 @@ fn open_new_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
 
     assert_eq!(screen.tabs.len(), 2, "Screen now has two tabs");
     assert_eq!(
@@ -120,8 +125,8 @@ pub fn switch_to_prev_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
     screen.switch_tab_prev();
 
     assert_eq!(
@@ -139,8 +144,8 @@ pub fn switch_to_next_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
     screen.switch_tab_prev();
     screen.switch_tab_next();
 
@@ -159,8 +164,8 @@ pub fn close_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
     screen.close_tab();
 
     assert_eq!(screen.tabs.len(), 1, "Only one tab left");
@@ -179,11 +184,26 @@ pub fn close_the_middle_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
-    screen.new_tab(3);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 3);
+    dbg!(screen
+        .tabs
+        .values()
+        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
+        .collect::<Vec<_>>());
     screen.switch_tab_prev();
+    dbg!(screen
+        .tabs
+        .values()
+        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
+        .collect::<Vec<_>>());
     screen.close_tab();
+    dbg!(screen
+        .tabs
+        .values()
+        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
+        .collect::<Vec<_>>());
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(
@@ -201,9 +221,9 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
-    screen.new_tab(3);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 3);
     screen.switch_tab_prev();
     screen.move_focus_left_or_previous_tab();
 
@@ -222,9 +242,9 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
-    screen.new_tab(3);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 3);
     screen.switch_tab_prev();
     screen.move_focus_right_or_next_tab();
 
@@ -243,8 +263,8 @@ pub fn toggle_to_previous_tab_simple() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
     screen.go_to_tab(1);
     screen.go_to_tab(2);
 
@@ -271,9 +291,9 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    screen.new_tab(1);
-    screen.new_tab(2);
-    screen.new_tab(3);
+    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 3);
 
     assert_eq!(
         screen.tab_history,
@@ -321,10 +341,10 @@ pub fn toggle_to_previous_tab_delete() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    screen.new_tab(1); // 0
-    screen.new_tab(2); // 1
-    screen.new_tab(3); // 2
-    screen.new_tab(4); // 3
+    new_tab(&mut screen, 1); // 0
+    new_tab(&mut screen, 2); // 1
+    new_tab(&mut screen, 3); // 2
+    new_tab(&mut screen, 4); // 3
 
     assert_eq!(
         screen.tab_history,

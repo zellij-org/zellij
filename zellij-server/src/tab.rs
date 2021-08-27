@@ -258,28 +258,12 @@ impl Tab {
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
-        pane_id: Option<PaneId>,
         mode_info: ModeInfo,
         colors: Palette,
         session_state: Arc<RwLock<SessionState>>,
         draw_pane_frames: bool,
     ) -> Self {
-        let panes = if let Some(PaneId::Terminal(pid)) = pane_id {
-            let mut new_terminal = TerminalPane::new(pid, PaneGeom::default(), colors, 1);
-            // FIXME: This is dead code that is only run during the tests. In reality,
-            // `apply_layout` should be called.
-            new_terminal.set_frame(draw_pane_frames);
-            os_api.set_terminal_size_using_fd(
-                new_terminal.pid,
-                new_terminal.cols() as u16,
-                new_terminal.rows() as u16,
-            );
-            let mut panes: BTreeMap<PaneId, Box<dyn Pane>> = BTreeMap::new();
-            panes.insert(PaneId::Terminal(pid), Box::new(new_terminal));
-            panes
-        } else {
-            BTreeMap::new()
-        };
+        let panes = BTreeMap::new();
 
         let name = if name.is_empty() {
             format!("Tab #{}", position + 1)
@@ -294,7 +278,7 @@ impl Tab {
             name,
             max_panes,
             panes_to_hide: HashSet::new(),
-            active_terminal: pane_id,
+            active_terminal: None,
             viewport: display_area.into(),
             display_area,
             fullscreen_is_active: false,
