@@ -25,6 +25,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: fix progress bar line overflow (http://github.com/zellij-org/zellij/pull/656)
 * Add action to toggle between tabs `ToggleTab`, bound by default to [TAB] in tab mode (https://github.com/zellij-org/zellij/pull/622)
 * Terminal compatibility: properly handle cursor shape changes in eg. Neovim (https://github.com/zellij-org/zellij/pull/659)
+* The resize and layout systems have been overhauled (https://github.com/zellij-org/zellij/pull/568)
+  * Resizing a terminal then returning it to its original size will now always return panes to their original sizes and positions
+  * Resize mode resizes panes by 5% of the space on screen, not some fixed number
+  * Panes on-screen keep their ratios – a screen split 50/50 between two panes will remain 50/50 even as the terminal is resized (https://github.com/zellij-org/zellij/issues/406)
+  * The terminal can now be resized without leaving fullscreen mode
+  * Layout parts are split into equal percentages if no explicit split-size is given (https://github.com/zellij-org/zellij/issues/619)
+  * Fixed display of the tab bar at small terminal widths
 * Add `tabs` to `layouts` (https://github.com/zellij-org/zellij/pull/625)
 
   The layout has now a template, and tabs section.
