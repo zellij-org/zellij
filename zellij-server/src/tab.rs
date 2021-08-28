@@ -363,7 +363,6 @@ impl Tab {
                 .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                 .unwrap();
         }
-        self.set_pane_frames(self.draw_pane_frames);
         // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
         // non-fixed panes that are part of the viewport, get rid of this!
         self.resize_whole_tab(self.display_area);
@@ -477,7 +476,6 @@ impl Tab {
                 }
             }
             self.active_terminal = Some(pid);
-            self.set_pane_frames(self.draw_pane_frames);
             self.render();
         }
     }
@@ -508,7 +506,6 @@ impl Tab {
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
-                self.set_pane_frames(self.draw_pane_frames);
                 self.relayout_tab(Direction::Vertical);
                 self.render();
             }
@@ -542,7 +539,6 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
             }
             self.active_terminal = Some(pid);
-            self.set_pane_frames(self.draw_pane_frames);
             self.relayout_tab(Direction::Horizontal);
             self.render();
         }
@@ -1676,6 +1672,7 @@ impl Tab {
         if let Err(e) = &result {
             log::error!("{:?} relayout of the tab failed: {}", direction, e);
         }
+        self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         // FIXME: I *think* that Rust 2021 will let me just write this:
@@ -1704,6 +1701,7 @@ impl Tab {
             log::error!("Failed to vertically resize the tab!!!");
         }
         self.should_clear_display_before_rendering = true;
+        self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_left(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
