@@ -391,7 +391,7 @@ fn init_session(
                 vec![plugin_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
-                None,
+                Some(&to_plugin),
                 None,
                 None,
             );
