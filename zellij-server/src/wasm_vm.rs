@@ -170,9 +170,6 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
     zellij_export! {
         host_subscribe,
         host_unsubscribe,
-        host_set_invisible_borders,
-        host_set_fixed_height,
-        host_set_fixed_width,
         host_set_selectable,
         host_get_plugin_ids,
         host_open_file,
@@ -199,42 +196,6 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         .send_to_screen(ScreenInstruction::SetSelectable(
             PaneId::Plugin(plugin_env.plugin_id),
             selectable,
-            plugin_env.tab_index,
-        ))
-        .unwrap()
-}
-
-fn host_set_fixed_height(plugin_env: &PluginEnv, fixed_height: i32) {
-    let fixed_height = fixed_height as usize;
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::SetFixedHeight(
-            PaneId::Plugin(plugin_env.plugin_id),
-            fixed_height,
-            plugin_env.tab_index,
-        ))
-        .unwrap()
-}
-
-fn host_set_fixed_width(plugin_env: &PluginEnv, fixed_width: i32) {
-    let fixed_width = fixed_width as usize;
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::SetFixedWidth(
-            PaneId::Plugin(plugin_env.plugin_id),
-            fixed_width,
-            plugin_env.tab_index,
-        ))
-        .unwrap()
-}
-
-fn host_set_invisible_borders(plugin_env: &PluginEnv, invisible_borders: i32) {
-    let invisible_borders = invisible_borders != 0;
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::SetInvisibleBorders(
-            PaneId::Plugin(plugin_env.plugin_id),
-            invisible_borders,
             plugin_env.tab_index,
         ))
         .unwrap()
@@ -289,7 +250,6 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-// FIXME: Unwrap city
 pub fn wasi_read_string(wasi_env: &WasiEnv) -> String {
     let mut state = wasi_env.state();
     let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();

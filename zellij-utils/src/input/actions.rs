@@ -22,7 +22,7 @@ pub enum Direction {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,

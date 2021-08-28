@@ -5,6 +5,7 @@ use std::os::unix::io::RawFd;
 use std::str;
 use std::sync::{Arc, RwLock};
 
+use zellij_utils::pane_size::Size;
 use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
@@ -20,7 +21,6 @@ use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::ClientAttributes,
-    pane_size::PositionAndSize,
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -58,12 +58,8 @@ pub(crate) enum ScreenInstruction {
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
-    SetFixedHeight(PaneId, usize, usize),
-    SetFixedWidth(PaneId, usize, usize),
-    SetInvisibleBorders(PaneId, bool, usize),
     ClosePane(PaneId),
     ApplyLayout(Layout, Vec<RawFd>),
-    NewTab(RawFd),
     SwitchTabNext,
     SwitchTabPrev,
     ToggleActiveSyncTab,
@@ -71,7 +67,7 @@ pub(crate) enum ScreenInstruction {
     GoToTab(u32),
     ToggleTab,
     UpdateTabName(Vec<u8>),
-    TerminalResize(PositionAndSize),
+    TerminalResize(Size),
     ChangeMode(ModeInfo),
     LeftClick(Position),
     MouseRelease(Position),
@@ -116,12 +112,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             }
             ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
-            ScreenInstruction::SetInvisibleBorders(..) => ScreenContext::SetInvisibleBorders,
-            ScreenInstruction::SetFixedHeight(..) => ScreenContext::SetFixedHeight,
-            ScreenInstruction::SetFixedWidth(..) => ScreenContext::SetFixedWidth,
             ScreenInstruction::ClosePane(_) => ScreenContext::ClosePane,
             ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
-            ScreenInstruction::NewTab(_) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab => ScreenContext::CloseTab,
@@ -151,7 +143,7 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
-    position_and_size: PositionAndSize,
+    size: Size,
     /// The index of this [`Screen`]'s active [`Tab`].
     active_tab_index: Option<usize>,
     tab_history: Vec<Option<usize>>,
@@ -174,7 +166,7 @@ impl Screen {
         Screen {
             bus,
             max_panes,
-            position_and_size: client_attributes.position_and_size,
+            size: client_attributes.size,
             colors: client_attributes.palette,
             active_tab_index: None,
             tabs: BTreeMap::new(),
@@ -183,32 +175,6 @@ impl Screen {
             session_state,
             draw_pane_frames,
         }
-    }
-
-    /// Creates a new [`Tab`] in this [`Screen`], containing a single
-    /// [pane](crate::client::panes) with PTY file descriptor `pane_id`.
-    pub fn new_tab(&mut self, pane_id: RawFd) {
-        let tab_index = self.get_new_tab_index();
-        let position = self.tabs.len();
-        let tab = Tab::new(
-            tab_index,
-            position,
-            String::new(),
-            &self.position_and_size,
-            self.bus.os_input.as_ref().unwrap().clone(),
-            self.bus.senders.clone(),
-            self.max_panes,
-            Some(PaneId::Terminal(pane_id)),
-            self.mode_info.clone(),
-            self.colors,
-            self.session_state.clone(),
-            self.draw_pane_frames,
-        );
-        self.tab_history.push(self.active_tab_index);
-        self.active_tab_index = Some(tab_index);
-        self.tabs.insert(tab_index, tab);
-        self.update_tabs();
-        self.render();
     }
 
     /// Returns the index where a new [`Tab`] should be created in this [`Screen`].
@@ -308,8 +274,8 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self, new_screen_size: PositionAndSize) {
-        self.position_and_size = new_screen_size;
+    pub fn resize_to_screen(&mut self, new_screen_size: Size) {
+        self.size = new_screen_size;
         for (_, tab) in self.tabs.iter_mut() {
             tab.resize_whole_tab(new_screen_size);
         }
@@ -377,11 +343,10 @@ impl Screen {
             tab_index,
             position,
             String::new(),
-            &self.position_and_size,
+            self.size,
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
-            None,
             self.mode_info.clone(),
             self.colors,
             self.session_state.clone(),
@@ -657,43 +622,6 @@ pub(crate) fn screen_thread_main(
                     |tab| tab.set_pane_selectable(id, selectable),
                 );
             }
-            ScreenInstruction::SetFixedHeight(id, fixed_height, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            "Tab index #{} not found, could not set fixed height for plugin #{:?}.",
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_fixed_height(id, fixed_height),
-                );
-            }
-            ScreenInstruction::SetFixedWidth(id, fixed_width, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            "Tab index #{} not found, could not set fixed width for plugin #{:?}.",
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_fixed_width(id, fixed_width),
-                );
-            }
-            ScreenInstruction::SetInvisibleBorders(id, invisible_borders, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            r#"Tab index #{} not found, could not set invisible borders for plugin #{:?}."#,
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_invisible_borders(id, invisible_borders),
-                );
-                screen.render();
-            }
             ScreenInstruction::ClosePane(id) => {
                 screen.get_active_tab_mut().unwrap().close_pane(id);
                 screen.render();
@@ -710,14 +638,6 @@ pub(crate) fn screen_thread_main(
                     tab.set_pane_frames(screen.draw_pane_frames);
                 }
                 screen.render();
-            }
-            ScreenInstruction::NewTab(pane_id) => {
-                screen.new_tab(pane_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
             }
             ScreenInstruction::SwitchTabNext => {
                 screen.switch_tab_next();

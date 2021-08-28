@@ -46,12 +46,7 @@ use zellij_utils::{
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(
-        ClientAttributes,
-        Box<CliArgs>,
-        Box<Options>,
-        Option<LayoutFromYaml>,
-    ),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
     Render(Option<String>),
     UnblockInputThread,
     ClientExit,
@@ -127,8 +122,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(0o077)
-        // FIXME: My cherished `dbg!` was broken, so this is a hack to bring it back
-        //.stderr(std::fs::File::create("dbg.log").unwrap())
         .start()
         .expect("could not daemonize the server process");
 
@@ -237,19 +230,12 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
-                match layout {
-                    None => {
-                        spawn_tabs(None);
+                if !&layout.tabs.is_empty() {
+                    for tab_layout in layout.tabs {
+                        spawn_tabs(Some(tab_layout.clone()));
                     }
-                    Some(layout) => {
-                        if !&layout.tabs.is_empty() {
-                            for tab_layout in layout.tabs {
-                                spawn_tabs(Some(tab_layout.clone()));
-                            }
-                        } else {
-                            spawn_tabs(None);
-                        }
-                    }
+                } else {
+                    spawn_tabs(None);
                 }
             }
             ServerInstruction::AttachClient(attrs, _, options) => {
@@ -258,7 +244,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session_data = rlock.as_ref().unwrap();
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.position_and_size))
+                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.size))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
@@ -326,7 +312,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: Option<LayoutFromYaml>,
+    layout: LayoutFromYaml,
 ) -> SessionMetaData {
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

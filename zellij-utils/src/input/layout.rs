@@ -10,28 +10,43 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     input::{command::RunCommand, config::ConfigError},
-    pane_size::PositionAndSize,
+    pane_size::{Dimension, PaneGeom},
     setup,
 };
 use crate::{serde, serde_yaml};
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use std::vec::Vec;
+use std::{
+    cmp::max,
+    ops::Not,
+    path::{Path, PathBuf},
+};
 use std::{fs::File, io::prelude::*};
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
     Horizontal,
     Vertical,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+impl Not for Direction {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Direction::Horizontal => Direction::Vertical,
+            Direction::Vertical => Direction::Horizontal,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 #[serde(crate = "self::serde")]
 pub enum SplitSize {
-    Percent(u8), // 1 to 100
-    Fixed(u16),  // An absolute number of columns or rows
+    Percent(f64), // 1 to 100
+    Fixed(usize), // An absolute number of columns or rows
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -44,7 +59,7 @@ pub enum Run {
 }
 
 // The layout struct ultimately used to build the layouts.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 pub struct Layout {
     pub direction: Direction,
@@ -58,7 +73,7 @@ pub struct Layout {
 
 // The struct that is used to deserialize the layout from
 // a yaml configuration file
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 #[serde(default)]
 pub struct LayoutFromYaml {
@@ -148,7 +163,7 @@ impl LayoutFromYaml {
 
 // The struct that carries the information template that is used to
 // construct the layout
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 pub struct LayoutTemplate {
     pub direction: Direction,
@@ -191,7 +206,7 @@ impl LayoutTemplate {
 }
 
 // The tab-layout struct used to specify each individual tab.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 pub struct TabLayout {
     pub direction: Direction,
@@ -238,10 +253,7 @@ impl Layout {
         run_instructions
     }
 
-    pub fn position_panes_in_space(
-        &self,
-        space: &PositionAndSize,
-    ) -> Vec<(Layout, PositionAndSize)> {
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
         split_space(space, self)
     }
 
@@ -268,149 +280,90 @@ impl Layout {
     }
 }
 
-fn split_space_to_parts_vertically(
-    space_to_split: &PositionAndSize,
-    sizes: Vec<Option<SplitSize>>,
-) -> Vec<PositionAndSize> {
-    let mut split_parts = Vec::new();
-    let mut current_x_position = space_to_split.x;
-    let mut current_width = 0;
-    let max_width = space_to_split.cols;
-
-    let mut parts_to_grow = Vec::new();
-
-    // First fit in the parameterized sizes
-    for size in sizes {
-        let columns = match size {
-            Some(SplitSize::Percent(percent)) => {
-                (max_width as f32 * (percent as f32 / 100.0)) as usize
-            } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
-            None => {
-                parts_to_grow.push(current_x_position);
-                1 // This is grown later on
-            }
-        };
-        split_parts.push(PositionAndSize {
-            x: current_x_position,
-            y: space_to_split.y,
-            cols: columns,
-            rows: space_to_split.rows,
-            ..Default::default()
-        });
-        current_width += columns;
-        current_x_position += columns;
-    }
-
-    if current_width > max_width {
-        panic!("Layout contained too many columns to fit onto the screen!");
-    }
-
-    let mut last_flexible_index = split_parts.len() - 1;
-    if let Some(new_columns) = (max_width - current_width).checked_div(parts_to_grow.len()) {
-        current_width = 0;
-        current_x_position = 0;
-        for (idx, part) in split_parts.iter_mut().enumerate() {
-            part.x = current_x_position;
-            if parts_to_grow.contains(&part.x) {
-                part.cols = new_columns;
-                last_flexible_index = idx;
-            }
-            current_width += part.cols;
-            current_x_position += part.cols;
+fn layout_size(direction: Direction, layout: &Layout) -> usize {
+    fn child_layout_size(
+        direction: Direction,
+        parent_direction: Direction,
+        layout: &Layout,
+    ) -> usize {
+        let size = if parent_direction == direction { 1 } else { 0 };
+        if layout.parts.is_empty() {
+            size
+        } else {
+            let children_size = layout
+                .parts
+                .iter()
+                .map(|p| child_layout_size(direction, layout.direction, p))
+                .sum::<usize>();
+            max(size, children_size)
         }
     }
-
-    if current_width < max_width {
-        // we have some extra space left, let's add it to the last flexible part
-        let extra = max_width - current_width;
-        let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.cols += extra;
-        for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
-            part.x += extra;
-        }
-    }
-    split_parts
+    child_layout_size(direction, direction, layout)
 }
 
-fn split_space_to_parts_horizontally(
-    space_to_split: &PositionAndSize,
-    sizes: Vec<Option<SplitSize>>,
-) -> Vec<PositionAndSize> {
-    let mut split_parts = Vec::new();
-    let mut current_y_position = space_to_split.y;
-    let mut current_height = 0;
-    let max_height = space_to_split.rows;
-
-    let mut parts_to_grow = Vec::new();
-
-    for size in sizes {
-        let rows = match size {
-            Some(SplitSize::Percent(percent)) => {
-                (max_height as f32 * (percent as f32 / 100.0)) as usize
-            } // TODO: round properly
-            Some(SplitSize::Fixed(size)) => size as usize,
-            None => {
-                parts_to_grow.push(current_y_position);
-                1 // This is grown later on
-            }
-        };
-        split_parts.push(PositionAndSize {
-            x: space_to_split.x,
-            y: current_y_position,
-            cols: space_to_split.cols,
-            rows,
-            ..Default::default()
-        });
-        current_height += rows;
-        current_y_position += rows;
-    }
-
-    if current_height > max_height {
-        panic!("Layout contained too many rows to fit onto the screen!");
-    }
-
-    let mut last_flexible_index = split_parts.len() - 1;
-    if let Some(new_rows) = (max_height - current_height).checked_div(parts_to_grow.len()) {
-        current_height = 0;
-        current_y_position = 0;
-
-        for (idx, part) in split_parts.iter_mut().enumerate() {
-            part.y = current_y_position;
-            if parts_to_grow.contains(&part.y) {
-                part.rows = new_rows;
-                last_flexible_index = idx;
-            }
-            current_height += part.rows;
-            current_y_position += part.rows;
-        }
-    }
-
-    if current_height < max_height {
-        // we have some extra space left, let's add it to the last flexible part
-        let extra = max_height - current_height;
-        let mut last_part = split_parts.get_mut(last_flexible_index).unwrap();
-        last_part.rows += extra;
-        for part in (&mut split_parts[last_flexible_index + 1..]).iter_mut() {
-            part.y += extra;
-        }
-    }
-    split_parts
-}
-
-fn split_space(
-    space_to_split: &PositionAndSize,
-    layout: &Layout,
-) -> Vec<(Layout, PositionAndSize)> {
+fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneGeom)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
-    let split_parts = match layout.direction {
-        Direction::Vertical => split_space_to_parts_vertically(space_to_split, sizes),
-        Direction::Horizontal => split_space_to_parts_horizontally(space_to_split, sizes),
-    };
+    let mut split_geom = Vec::new();
+    let (mut current_position, split_dimension_space, mut inherited_dimension) =
+        match layout.direction {
+            Direction::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows),
+            Direction::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols),
+        };
+
+    let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
+
+    for (&size, part) in sizes.iter().zip(&layout.parts) {
+        let split_dimension = match size {
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
+            Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
+            None => {
+                let free_percent = if let Some(p) = split_dimension_space.as_percent() {
+                    p - sizes
+                        .iter()
+                        .map(|&s| {
+                            if let Some(SplitSize::Percent(ip)) = s {
+                                ip
+                            } else {
+                                0.0
+                            }
+                        })
+                        .sum::<f64>()
+                } else {
+                    panic!("Implicit sizing within fixed-size panes is not supported");
+                };
+                Dimension::percent(free_percent / flex_parts as f64)
+            }
+        };
+        inherited_dimension.set_inner(
+            layout
+                .parts
+                .iter()
+                .map(|p| layout_size(!layout.direction, p))
+                .max()
+                .unwrap(),
+        );
+        let geom = match layout.direction {
+            Direction::Vertical => PaneGeom {
+                x: current_position,
+                y: space_to_split.y,
+                cols: split_dimension,
+                rows: inherited_dimension,
+            },
+            Direction::Horizontal => PaneGeom {
+                x: space_to_split.x,
+                y: current_position,
+                cols: inherited_dimension,
+                rows: split_dimension,
+            },
+        };
+        split_geom.push(geom);
+        current_position += layout_size(layout.direction, part);
+    }
+
     for (i, part) in layout.parts.iter().enumerate() {
-        let part_position_and_size = split_parts.get(i).unwrap();
+        let part_position_and_size = split_geom.get(i).unwrap();
         if !part.parts.is_empty() {
             let mut part_positions = split_space(part_position_and_size, part);
             pane_positions.append(&mut part_positions);

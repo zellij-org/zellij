@@ -7,7 +7,8 @@ use crate::{
     SessionState,
 };
 use std::sync::{Arc, RwLock};
-use zellij_utils::pane_size::PositionAndSize;
+use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::pane_size::Size;
 
 use std::os::unix::io::RawFd;
 
@@ -73,43 +74,40 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_tab(position_and_size: PositionAndSize) -> Tab {
+fn create_new_tab(size: Size) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
-    let first_pane_id = Some(PaneId::Terminal(1));
     let mode_info = ModeInfo::default();
     let colors = Palette::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
-    Tab::new(
+    let mut tab = Tab::new(
         index,
         position,
         name,
-        &position_and_size,
+        size,
         os_api,
         senders,
         max_panes,
-        first_pane_id,
         mode_info,
         colors,
         session_state,
         true, // draw pane frames
-    )
+    );
+    tab.apply_layout(LayoutTemplate::default().into(), vec![1], index);
+    tab
 }
 
 #[test]
 fn split_panes_vertically() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id);
     assert_eq!(tab.panes.len(), 2, "The tab has two panes");
@@ -136,7 +134,8 @@ fn split_panes_vertically() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first pane column count"
     );
@@ -145,7 +144,8 @@ fn split_panes_vertically() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "first pane row count"
     );
@@ -172,7 +172,8 @@ fn split_panes_vertically() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second pane column count"
     );
@@ -181,7 +182,8 @@ fn split_panes_vertically() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "second pane row count"
     );
@@ -189,14 +191,11 @@ fn split_panes_vertically() {
 
 #[test]
 fn split_panes_horizontally() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id);
     assert_eq!(tab.panes.len(), 2, "The tab has two panes");
@@ -224,7 +223,8 @@ fn split_panes_horizontally() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "first pane column count"
     );
@@ -233,7 +233,8 @@ fn split_panes_horizontally() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first pane row count"
     );
@@ -261,7 +262,8 @@ fn split_panes_horizontally() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "second pane column count"
     );
@@ -270,7 +272,8 @@ fn split_panes_horizontally() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "second pane row count"
     );
@@ -278,14 +281,11 @@ fn split_panes_horizontally() {
 
 #[test]
 fn split_largest_pane() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id);
@@ -315,7 +315,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first pane column count"
     );
@@ -324,7 +325,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first pane row count"
     );
@@ -352,7 +354,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second pane column count"
     );
@@ -361,7 +364,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "second pane row count"
     );
@@ -389,7 +393,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "third pane column count"
     );
@@ -398,7 +403,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "third pane row count"
     );
@@ -426,7 +432,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "fourth pane column count"
     );
@@ -435,7 +442,8 @@ fn split_largest_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "fourth pane row count"
     );
@@ -443,56 +451,35 @@ fn split_largest_pane() {
 
 #[test]
 pub fn cannot_split_panes_vertically_when_active_pane_is_too_small() {
-    let position_and_size = PositionAndSize {
-        cols: 8,
-        rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
-    let mut tab = create_new_tab(position_and_size);
+    let size = Size { cols: 8, rows: 20 };
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
 }
 
 #[test]
 pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
-    let position_and_size = PositionAndSize {
-        cols: 121,
-        rows: 4,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
-    let mut tab = create_new_tab(position_and_size);
+    let size = Size { cols: 121, rows: 4 };
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
 }
 
 #[test]
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
-    let position_and_size = PositionAndSize {
-        cols: 8,
-        rows: 4,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
-    let mut tab = create_new_tab(position_and_size);
+    let size = Size { cols: 8, rows: 4 };
+    let mut tab = create_new_tab(size);
     tab.new_pane(PaneId::Terminal(2));
     assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
 }
 
 #[test]
 pub fn toggle_focused_pane_fullscreen() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id);
@@ -509,7 +496,7 @@ pub fn toggle_focused_pane_fullscreen() {
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().columns(),
+        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
         121,
         "Pane cols match fullscreen cols"
     );
@@ -530,7 +517,7 @@ pub fn toggle_focused_pane_fullscreen() {
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().columns(),
+        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
         60,
         "Pane cols match fullscreen cols"
     );
@@ -545,14 +532,11 @@ pub fn toggle_focused_pane_fullscreen() {
 
 #[test]
 pub fn move_focus_is_disabled_in_fullscreen() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id);
@@ -570,7 +554,7 @@ pub fn move_focus_is_disabled_in_fullscreen() {
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().columns(),
+        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
         121,
         "Pane cols match fullscreen cols"
     );
@@ -592,14 +576,11 @@ pub fn close_pane_with_another_pane_above_it() {
     // └───────────┘            └───────────┘
     // █ == pane being closed
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id);
     tab.close_focused_pane();
@@ -628,7 +609,8 @@ pub fn close_pane_with_another_pane_above_it() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "remaining pane column count"
     );
@@ -637,7 +619,8 @@ pub fn close_pane_with_another_pane_above_it() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "remaining pane row count"
     );
@@ -654,14 +637,11 @@ pub fn close_pane_with_another_pane_below_it() {
     // └───────────┘            └───────────┘
     // █ == pane being closed
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id);
     tab.move_focus_up();
@@ -691,7 +671,8 @@ pub fn close_pane_with_another_pane_below_it() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "remaining pane column count"
     );
@@ -700,7 +681,8 @@ pub fn close_pane_with_another_pane_below_it() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "remaining pane row count"
     );
@@ -714,14 +696,11 @@ pub fn close_pane_with_another_pane_to_the_left() {
     // │xxxxx│█████│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id);
     tab.close_focused_pane();
@@ -750,7 +729,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "remaining pane column count"
     );
@@ -759,7 +739,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "remaining pane row count"
     );
@@ -773,14 +754,11 @@ pub fn close_pane_with_another_pane_to_the_right() {
     // │█████│xxxxx│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id);
     tab.move_focus_left();
@@ -810,7 +788,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "remaining pane column count"
     );
@@ -819,7 +798,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "remaining pane row count"
     );
@@ -835,14 +815,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
     // │███████████│            │xxxxx│xxxxx│
     // └───────────┘            └─────┴─────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.horizontal_split(new_pane_id_1);
@@ -875,7 +852,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -884,7 +862,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "first remaining pane row count"
     );
@@ -912,7 +891,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second remaining pane column count"
     );
@@ -921,7 +901,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "second remaining pane row count"
     );
@@ -937,14 +918,11 @@ pub fn close_pane_with_multiple_panes_below_it() {
     // │xxxxx│xxxxx│            │xxxxx│xxxxx│
     // └─────┴─────┘            └─────┴─────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.horizontal_split(new_pane_id_1);
@@ -976,7 +954,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -985,7 +964,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "first remaining pane row count"
     );
@@ -1013,7 +993,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second remaining pane column count"
     );
@@ -1022,7 +1003,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "second remaining pane row count"
     );
@@ -1038,14 +1020,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     // │xxxxx│█████│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1);
@@ -1078,7 +1057,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "first remaining pane column count"
     );
@@ -1087,7 +1067,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first remaining pane row count"
     );
@@ -1115,7 +1096,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "second remaining pane column count"
     );
@@ -1124,7 +1106,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "second remaining pane row count"
     );
@@ -1140,14 +1123,11 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     // │█████│xxxxx│            │xxxxxxxxxx│
     // └─────┴─────┘            └──────────┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1);
@@ -1179,7 +1159,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "first remaining pane column count"
     );
@@ -1188,7 +1169,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first remaining pane row count"
     );
@@ -1216,7 +1198,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "second remaining pane column count"
     );
@@ -1225,7 +1208,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "second remaining pane row count"
     );
@@ -1241,14 +1225,11 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     // │xxx│███████│xxx│            │xxx│xxx│xxx│xxx│
     // └───┴───────┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -1297,7 +1278,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -1306,7 +1288,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first remaining pane row count"
     );
@@ -1334,7 +1317,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "second remaining pane column count"
     );
@@ -1343,7 +1327,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "second remaining pane row count"
     );
@@ -1371,7 +1356,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "third remaining pane column count"
     );
@@ -1380,7 +1366,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "third remaining pane row count"
     );
@@ -1408,7 +1395,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "fourth remaining pane column count"
     );
@@ -1417,7 +1405,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "fourth remaining pane row count"
     );
@@ -1445,7 +1434,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "sixths remaining pane column count"
     );
@@ -1454,7 +1444,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "sixths remaining pane row count"
     );
@@ -1482,7 +1473,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "seventh remaining pane column count"
     );
@@ -1491,7 +1483,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "seventh remaining pane row count"
     );
@@ -1508,14 +1501,11 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     // └───┴───┴───┴───┘            └───┴───┴───┴───┘
     // █ == pane being closed
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -1563,7 +1553,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -1572,7 +1563,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "first remaining pane row count"
     );
@@ -1600,7 +1592,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "third remaining pane column count"
     );
@@ -1609,7 +1602,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "third remaining pane row count"
     );
@@ -1637,7 +1631,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "fourth remaining pane column count"
     );
@@ -1646,7 +1641,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "fourth remaining pane row count"
     );
@@ -1674,7 +1670,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "second remaining pane column count"
     );
@@ -1683,7 +1680,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "second remaining pane row count"
     );
@@ -1711,7 +1709,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "sixths remaining pane column count"
     );
@@ -1720,7 +1719,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "sixths remaining pane row count"
     );
@@ -1748,7 +1748,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "seventh remaining pane column count"
     );
@@ -1757,7 +1758,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "seventh remaining pane row count"
     );
@@ -1776,14 +1778,11 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -1803,6 +1802,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     tab.move_focus_up();
     tab.move_focus_left();
     tab.resize_right();
+    tab.resize_up();
     tab.resize_up();
     tab.horizontal_split(new_pane_id_6);
     tab.move_focus_right();
@@ -1833,7 +1833,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -1842,8 +1843,9 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        12,
         "first remaining pane row count"
     );
 
@@ -1862,7 +1864,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        12,
         "third remaining pane y position"
     );
     assert_eq!(
@@ -1870,7 +1872,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "third remaining pane column count"
     );
@@ -1879,7 +1882,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "third remaining pane row count"
     );
@@ -1899,7 +1903,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "fourth remaining pane y position"
     );
     assert_eq!(
@@ -1907,7 +1911,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "fourth remaining pane column count"
     );
@@ -1916,8 +1921,9 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "fourth remaining pane row count"
     );
 
@@ -1944,7 +1950,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second remaining pane column count"
     );
@@ -1953,8 +1960,9 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        12,
         "second remaining pane row count"
     );
 
@@ -1973,7 +1981,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "sixths remaining pane y position"
     );
     assert_eq!(
@@ -1981,7 +1989,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "sixths remaining pane column count"
     );
@@ -1990,8 +1999,9 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "sixths remaining pane row count"
     );
 
@@ -2010,7 +2020,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        18,
+        17,
         "seventh remaining pane y position"
     );
     assert_eq!(
@@ -2018,7 +2028,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "seventh remaining pane column count"
     );
@@ -2027,7 +2038,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "seventh remaining pane row count"
     );
@@ -2046,14 +2058,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     // └────┴──────┘            └────┴──────┘
     // █ == pane being closed
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2072,6 +2081,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     tab.vertical_split(new_pane_id_5);
     tab.move_focus_up();
     tab.resize_left();
+    tab.resize_up();
     tab.resize_up();
     tab.horizontal_split(new_pane_id_6);
     tab.move_focus_left();
@@ -2102,7 +2112,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "first remaining pane column count"
     );
@@ -2111,8 +2122,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        11,
         "first remaining pane row count"
     );
 
@@ -2131,7 +2143,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "fourth remaining pane y position"
     );
     assert_eq!(
@@ -2139,7 +2151,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "fourth remaining pane column count"
     );
@@ -2148,8 +2161,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "fourth remaining pane row count"
     );
 
@@ -2176,7 +2190,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "second remaining pane column count"
     );
@@ -2185,8 +2200,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        11,
         "second remaining pane row count"
     );
 
@@ -2205,7 +2221,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        11,
         "third remaining pane y position"
     );
     assert_eq!(
@@ -2213,7 +2229,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "third remaining pane column count"
     );
@@ -2222,8 +2239,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        5,
+            .rows
+            .as_usize(),
+        6,
         "third remaining pane row count"
     );
 
@@ -2242,7 +2260,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "sixths remaining pane y position"
     );
     assert_eq!(
@@ -2250,7 +2268,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "sixths remaining pane column count"
     );
@@ -2259,8 +2278,9 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "sixths remaining pane row count"
     );
 
@@ -2279,7 +2299,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        18,
+        17,
         "seventh remaining pane y position"
     );
     assert_eq!(
@@ -2287,7 +2307,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "seventh remaining pane column count"
     );
@@ -2296,7 +2317,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "seventh remaining pane row count"
     );
@@ -2304,14 +2326,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
 
 #[test]
 pub fn move_focus_down() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id);
@@ -2327,14 +2346,11 @@ pub fn move_focus_down() {
 
 #[test]
 pub fn move_focus_down_to_the_most_recently_used_pane() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2359,14 +2375,11 @@ pub fn move_focus_down_to_the_most_recently_used_pane() {
 
 #[test]
 pub fn move_focus_up() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id);
@@ -2381,14 +2394,11 @@ pub fn move_focus_up() {
 
 #[test]
 pub fn move_focus_up_to_the_most_recently_used_pane() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2414,14 +2424,11 @@ pub fn move_focus_up_to_the_most_recently_used_pane() {
 
 #[test]
 pub fn move_focus_left() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id);
@@ -2436,14 +2443,11 @@ pub fn move_focus_left() {
 
 #[test]
 pub fn move_focus_left_to_the_most_recently_used_pane() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2469,14 +2473,11 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
 
 #[test]
 pub fn move_focus_right() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id);
@@ -2492,14 +2493,11 @@ pub fn move_focus_right() {
 
 #[test]
 pub fn move_focus_right_to_the_most_recently_used_pane() {
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2533,14 +2531,11 @@ pub fn resize_down_with_pane_above() {
     // │███████████│                  │███████████│
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id);
     tab.resize_down();
@@ -2552,7 +2547,7 @@ pub fn resize_down_with_pane_above() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
-        12,
+        11,
         "focused pane y position"
     );
     assert_eq!(
@@ -2560,7 +2555,8 @@ pub fn resize_down_with_pane_above() {
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "focused pane column count"
     );
@@ -2569,8 +2565,9 @@ pub fn resize_down_with_pane_above() {
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
-            .rows,
-        8,
+            .rows
+            .as_usize(),
+        9,
         "focused pane row count"
     );
 
@@ -2597,7 +2594,8 @@ pub fn resize_down_with_pane_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane above column count"
     );
@@ -2606,8 +2604,9 @@ pub fn resize_down_with_pane_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        12,
+            .rows
+            .as_usize(),
+        11,
         "pane above row count"
     );
 }
@@ -2622,14 +2621,11 @@ pub fn resize_down_with_pane_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id);
     tab.move_focus_up();
@@ -2642,7 +2638,7 @@ pub fn resize_down_with_pane_below() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
-        12,
+        11,
         "pane below y position"
     );
     assert_eq!(
@@ -2650,7 +2646,8 @@ pub fn resize_down_with_pane_below() {
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane below column count"
     );
@@ -2659,8 +2656,9 @@ pub fn resize_down_with_pane_below() {
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
-            .rows,
-        8,
+            .rows
+            .as_usize(),
+        9,
         "pane below row count"
     );
 
@@ -2687,7 +2685,8 @@ pub fn resize_down_with_pane_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "focused pane column count"
     );
@@ -2696,8 +2695,9 @@ pub fn resize_down_with_pane_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        12,
+            .rows
+            .as_usize(),
+        11,
         "focused pane row count"
     );
 }
@@ -2716,14 +2716,11 @@ pub fn resize_down_with_panes_above_and_below() {
     // │           │                  │           │
     // └───────────┘                  └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -2747,7 +2744,8 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "focused pane column count"
     );
@@ -2756,8 +2754,9 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        9,
         "focused pane row count"
     );
 
@@ -2768,7 +2767,7 @@ pub fn resize_down_with_panes_above_and_below() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id_2).unwrap().position_and_size().y,
-        25,
+        24,
         "pane below y position"
     );
     assert_eq!(
@@ -2776,7 +2775,8 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane below column count"
     );
@@ -2785,8 +2785,9 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
-            .rows,
-        5,
+            .rows
+            .as_usize(),
+        6,
         "pane below row count"
     );
 
@@ -2805,7 +2806,8 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane above column count"
     );
@@ -2814,7 +2816,8 @@ pub fn resize_down_with_panes_above_and_below() {
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane above row count"
     );
@@ -2830,14 +2833,11 @@ pub fn resize_down_with_multiple_panes_above() {
     // │███████████│                    │███████████│
     // └───────────┘                    └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -2854,7 +2854,7 @@ pub fn resize_down_with_multiple_panes_above() {
     );
     assert_eq!(
         tab.panes.get(&new_pane_id_1).unwrap().position_and_size().y,
-        17,
+        16,
         "focused pane y position"
     );
     assert_eq!(
@@ -2862,7 +2862,8 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "focused pane column count"
     );
@@ -2871,8 +2872,9 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "focused pane row count"
     );
 
@@ -2891,7 +2893,8 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "first pane above column count"
     );
@@ -2900,8 +2903,9 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "first pane above row count"
     );
 
@@ -2920,7 +2924,8 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "second pane above column count"
     );
@@ -2929,8 +2934,9 @@ pub fn resize_down_with_multiple_panes_above() {
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "second pane above row count"
     );
 }
@@ -2945,14 +2951,11 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     // │     │█████│                    │     │█████│
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let pane_above_and_left = PaneId::Terminal(1);
     let pane_to_the_left = PaneId::Terminal(2);
     let focused_pane = PaneId::Terminal(3);
@@ -2971,7 +2974,7 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     );
     assert_eq!(
         tab.panes.get(&focused_pane).unwrap().position_and_size().y,
-        17,
+        16,
         "focused pane y position"
     );
     assert_eq!(
@@ -2979,7 +2982,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "focused pane column count"
     );
@@ -2988,8 +2992,9 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "focused pane row count"
     );
 
@@ -3016,7 +3021,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane above and to the left column count"
     );
@@ -3025,7 +3031,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane above and to the left row count"
     );
@@ -3041,13 +3048,23 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane above y position"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().cols,
+        tab.panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
         60,
         "pane above column count"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().rows,
-        17,
+        tab.panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        16,
         "pane above row count"
     );
 
@@ -3074,7 +3091,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane to the left column count"
     );
@@ -3083,7 +3101,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane to the left row count"
     );
@@ -3100,14 +3119,11 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let pane_to_the_left = PaneId::Terminal(1);
     let pane_below_and_left = PaneId::Terminal(2);
     let pane_below = PaneId::Terminal(3);
@@ -3133,7 +3149,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "focused pane column count"
     );
@@ -3142,8 +3159,9 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "focused pane row count"
     );
 
@@ -3170,7 +3188,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane above and to the left column count"
     );
@@ -3179,7 +3198,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane above and to the left row count"
     );
@@ -3191,17 +3211,27 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     );
     assert_eq!(
         tab.panes.get(&pane_below).unwrap().position_and_size().y,
-        17,
+        16,
         "pane above y position"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().cols,
+        tab.panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
         60,
         "pane above column count"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().rows,
-        13,
+        tab.panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        14,
         "pane above row count"
     );
 
@@ -3228,7 +3258,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane to the left column count"
     );
@@ -3237,7 +3268,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane to the left row count"
     );
@@ -3254,14 +3286,11 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let pane_above = PaneId::Terminal(1);
     let focused_pane = PaneId::Terminal(2);
     let pane_to_the_right = PaneId::Terminal(3);
@@ -3281,7 +3310,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     );
     assert_eq!(
         tab.panes.get(&focused_pane).unwrap().position_and_size().y,
-        17,
+        16,
         "focused pane y position"
     );
     assert_eq!(
@@ -3289,7 +3318,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "focused pane column count"
     );
@@ -3298,8 +3328,9 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "focused pane row count"
     );
 
@@ -3314,13 +3345,23 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane above y position"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().cols,
+        tab.panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
         61,
         "pane above column count"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().rows,
-        17,
+        tab.panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        16,
         "pane above row count"
     );
 
@@ -3347,7 +3388,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane to the right column count"
     );
@@ -3356,7 +3398,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane to the right row count"
     );
@@ -3384,7 +3427,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane above and to the right column count"
     );
@@ -3393,7 +3437,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane above and to the right row count"
     );
@@ -3410,14 +3455,11 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     let focused_pane = PaneId::Terminal(1);
     let pane_below = PaneId::Terminal(2);
     let pane_below_and_right = PaneId::Terminal(3);
@@ -3444,7 +3486,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "focused pane column count"
     );
@@ -3453,8 +3496,9 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "focused pane row count"
     );
 
@@ -3465,17 +3509,27 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     );
     assert_eq!(
         tab.panes.get(&pane_below).unwrap().position_and_size().y,
-        17,
+        16,
         "pane below y position"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().cols,
+        tab.panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
         61,
         "pane below column count"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().rows,
-        13,
+        tab.panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        14,
         "pane below row count"
     );
 
@@ -3502,7 +3556,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane below and to the right column count"
     );
@@ -3511,7 +3566,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane below and to the right row count"
     );
@@ -3539,7 +3595,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane to the right column count"
     );
@@ -3548,7 +3605,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane to the right row count"
     );
@@ -3565,14 +3623,11 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -3606,7 +3661,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -3615,7 +3671,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -3643,7 +3700,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -3652,7 +3710,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -3672,7 +3731,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 3 y position"
     );
     assert_eq!(
@@ -3680,7 +3739,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 3 column count"
     );
@@ -3689,8 +3749,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -3717,7 +3778,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 4 column count"
     );
@@ -3726,7 +3788,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -3754,7 +3817,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 5 column count"
     );
@@ -3763,8 +3827,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 5 row count"
     );
 
@@ -3791,7 +3856,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 6 column count"
     );
@@ -3800,7 +3866,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -3817,14 +3884,11 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     // └───┴───┴───┘                    └───┴───┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -3857,7 +3921,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -3866,7 +3931,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -3894,7 +3960,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -3903,7 +3970,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -3923,7 +3991,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 3 y position"
     );
     assert_eq!(
@@ -3931,7 +3999,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 3 column count"
     );
@@ -3940,8 +4009,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -3968,7 +4038,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 4 column count"
     );
@@ -3977,7 +4048,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -4005,7 +4077,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 5 column count"
     );
@@ -4014,8 +4087,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 5 row count"
     );
 
@@ -4042,7 +4116,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 6 column count"
     );
@@ -4051,7 +4126,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -4068,14 +4144,11 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     // └─┴─┴───┴─┴─┘                    └─┴─┴───┴─┴─┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
-        cols: 121,
+    let size = Size {
+        cols: 122,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -4112,8 +4185,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -4121,7 +4195,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -4149,8 +4224,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -4158,7 +4234,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -4169,7 +4246,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -4186,8 +4263,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 3 column count"
     );
     assert_eq!(
@@ -4195,8 +4273,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 3 row count"
     );
 
@@ -4223,8 +4302,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -4232,7 +4312,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -4243,7 +4324,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 5 x position"
     );
     assert_eq!(
@@ -4252,7 +4333,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 5 y position"
     );
     assert_eq!(
@@ -4260,7 +4341,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "pane 5 column count"
     );
@@ -4269,8 +4351,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 5 row count"
     );
 
@@ -4297,8 +4380,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -4306,7 +4390,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -4317,7 +4402,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 7 x position"
     );
     assert_eq!(
@@ -4326,7 +4411,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 7 y position"
     );
     assert_eq!(
@@ -4334,7 +4419,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         8,
         "pane 7 column count"
     );
@@ -4343,8 +4429,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 7 row count"
     );
 
@@ -4354,7 +4441,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 8 x position"
     );
     assert_eq!(
@@ -4363,7 +4450,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 8 y position"
     );
     assert_eq!(
@@ -4371,8 +4458,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        7,
+            .cols
+            .as_usize(),
+        8,
         "pane 8 column count"
     );
     assert_eq!(
@@ -4380,8 +4468,9 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 8 row count"
     );
 }
@@ -4397,14 +4486,11 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // └─┴───────┴─┘                    └─┴───────┴─┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
-        cols: 121,
+    let size = Size {
+        cols: 122,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -4443,8 +4529,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -4452,7 +4539,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -4480,8 +4568,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -4489,7 +4578,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -4500,7 +4590,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -4517,7 +4607,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "pane 3 column count"
     );
@@ -4526,8 +4617,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 3 row count"
     );
 
@@ -4554,8 +4646,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -4563,7 +4656,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -4574,7 +4668,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 5 x position"
     );
     assert_eq!(
@@ -4591,7 +4685,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         8,
         "pane 5 column count"
     );
@@ -4600,8 +4695,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 5 row count"
     );
 
@@ -4611,7 +4707,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 6 x position"
     );
     assert_eq!(
@@ -4628,8 +4724,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        7,
+            .cols
+            .as_usize(),
+        8,
         "pane 6 column count"
     );
     assert_eq!(
@@ -4637,8 +4734,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 6 row count"
     );
 
@@ -4648,7 +4746,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 7 x position"
     );
     assert_eq!(
@@ -4657,7 +4755,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .unwrap()
             .position_and_size()
             .y,
-        17,
+        16,
         "pane 7 y position"
     );
     assert_eq!(
@@ -4665,8 +4763,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 7 column count"
     );
     assert_eq!(
@@ -4674,8 +4773,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 7 row count"
     );
 
@@ -4702,8 +4802,9 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 8 column count"
     );
     assert_eq!(
@@ -4711,7 +4812,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 8 row count"
     );
@@ -4726,14 +4828,11 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     // └───────────┘                  └───────────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 10,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.resize_down();
@@ -4743,7 +4842,8 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 1 height stayed the same"
     );
@@ -4752,7 +4852,8 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 2 height stayed the same"
     );
@@ -4767,14 +4868,11 @@ pub fn resize_left_with_pane_to_the_left() {
     // └─────┴─────┘                    └───┴───────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.resize_left();
 
@@ -4801,8 +4899,9 @@ pub fn resize_left_with_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -4810,7 +4909,8 @@ pub fn resize_left_with_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -4821,7 +4921,7 @@ pub fn resize_left_with_pane_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -4838,8 +4938,9 @@ pub fn resize_left_with_pane_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -4847,7 +4948,8 @@ pub fn resize_left_with_pane_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -4861,14 +4963,11 @@ pub fn resize_left_with_pane_to_the_right() {
     // │█████│     │                    │███│       │
     // └─────┴─────┘                    └───┴───────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.resize_left();
@@ -4896,8 +4995,9 @@ pub fn resize_left_with_pane_to_the_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -4905,7 +5005,8 @@ pub fn resize_left_with_pane_to_the_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -4916,7 +5017,7 @@ pub fn resize_left_with_pane_to_the_right() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -4933,8 +5034,9 @@ pub fn resize_left_with_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -4942,7 +5044,8 @@ pub fn resize_left_with_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -4957,14 +5060,11 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     // └─────┴─────┴─────┘                    └─────┴───┴───────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_left();
@@ -4993,8 +5093,9 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5002,7 +5103,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -5013,7 +5115,7 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -5030,8 +5132,9 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        40,
+            .cols
+            .as_usize(),
+        36,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5039,7 +5142,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -5050,7 +5154,7 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .unwrap()
             .position_and_size()
             .x,
-        91,
+        90,
         "pane 2 x position"
     );
     assert_eq!(
@@ -5067,8 +5171,9 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5076,7 +5181,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -5090,14 +5196,11 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     // │     │█████│                    │   │███████│
     // └─────┴─────┘                    └───┴───────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -5127,8 +5230,9 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5136,7 +5240,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -5147,7 +5252,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -5164,8 +5269,9 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5173,7 +5279,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -5201,8 +5308,9 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5210,7 +5318,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 2 row count"
     );
@@ -5225,14 +5334,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     // └─────┴─────┘                    └───┴───────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_up();
@@ -5263,7 +5369,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -5272,7 +5379,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -5300,8 +5408,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5309,7 +5418,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -5320,7 +5430,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 3 x position"
     );
     assert_eq!(
@@ -5337,8 +5447,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -5346,7 +5457,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -5374,7 +5486,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -5383,7 +5496,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -5398,14 +5512,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     // └─────┴─────┘                    └───┴───────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_up();
@@ -5437,7 +5548,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -5446,7 +5558,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -5474,8 +5587,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5483,7 +5597,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -5494,7 +5609,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 3 x position"
     );
     assert_eq!(
@@ -5511,8 +5626,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -5520,7 +5636,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -5548,7 +5665,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -5557,7 +5675,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -5572,14 +5691,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_up();
@@ -5609,8 +5725,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5618,7 +5735,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -5646,7 +5764,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -5655,7 +5774,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -5683,7 +5803,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -5692,7 +5813,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -5703,7 +5825,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 4 x position"
     );
     assert_eq!(
@@ -5720,8 +5842,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 4 column count"
     );
     assert_eq!(
@@ -5729,7 +5852,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -5744,14 +5868,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_up();
@@ -5782,8 +5903,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5791,7 +5913,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -5819,7 +5942,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -5828,7 +5952,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -5856,7 +5981,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -5865,7 +5991,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -5876,7 +6003,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 4 x position"
     );
     assert_eq!(
@@ -5893,8 +6020,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 4 column count"
     );
     assert_eq!(
@@ -5902,7 +6030,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -5919,14 +6048,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -5960,7 +6086,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -5969,8 +6096,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 1 row count"
     );
 
@@ -5989,7 +6117,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -5997,8 +6125,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6006,7 +6135,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         8,
         "pane 2 row count"
     );
@@ -6026,7 +6156,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6034,7 +6164,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -6043,8 +6174,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "pane 3 row count"
     );
 
@@ -6063,7 +6195,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6071,7 +6203,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -6080,8 +6213,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "pane 4 row count"
     );
 
@@ -6091,7 +6225,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 5 x position"
     );
     assert_eq!(
@@ -6100,7 +6234,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -6108,8 +6242,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 5 column count"
     );
     assert_eq!(
@@ -6117,7 +6252,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         8,
         "pane 5 row count"
     );
@@ -6145,7 +6281,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 6 column count"
     );
@@ -6154,8 +6291,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 6 row count"
     );
 }
@@ -6171,14 +6309,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -6213,7 +6348,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -6222,8 +6358,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 1 row count"
     );
 
@@ -6242,7 +6379,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -6250,8 +6387,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6259,7 +6397,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         8,
         "pane 2 row count"
     );
@@ -6279,7 +6418,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6287,7 +6426,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -6296,8 +6436,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "pane 3 row count"
     );
 
@@ -6316,7 +6457,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6324,7 +6465,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -6333,8 +6475,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "pane 4 row count"
     );
 
@@ -6344,7 +6487,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 5 x position"
     );
     assert_eq!(
@@ -6353,7 +6496,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -6361,8 +6504,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 5 column count"
     );
     assert_eq!(
@@ -6370,7 +6514,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         8,
         "pane 5 row count"
     );
@@ -6398,7 +6543,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 6 column count"
     );
@@ -6407,8 +6553,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 6 row count"
     );
 }
@@ -6424,14 +6571,11 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 70,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -6469,7 +6613,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -6478,7 +6623,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         35,
         "pane 1 row count"
     );
@@ -6506,8 +6652,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6515,8 +6662,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        20,
+            .rows
+            .as_usize(),
+        21,
         "pane 2 row count"
     );
 
@@ -6535,7 +6683,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6543,7 +6691,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -6552,8 +6701,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -6572,7 +6722,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6580,7 +6730,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -6589,8 +6740,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 4 row count"
     );
 
@@ -6617,7 +6769,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 5 column count"
     );
@@ -6626,7 +6779,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         35,
         "pane 5 row count"
     );
@@ -6637,7 +6791,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 6 x position"
     );
     assert_eq!(
@@ -6654,8 +6808,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 6 column count"
     );
     assert_eq!(
@@ -6663,8 +6818,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        11,
         "pane 6 row count"
     );
 
@@ -6674,7 +6830,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 7 x position"
     );
     assert_eq!(
@@ -6683,7 +6839,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        45,
+        46,
         "pane 7 y position"
     );
     assert_eq!(
@@ -6691,8 +6847,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 7 column count"
     );
     assert_eq!(
@@ -6700,7 +6857,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 7 row count"
     );
@@ -6711,7 +6869,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 8 x position"
     );
     assert_eq!(
@@ -6720,7 +6878,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        50,
+        51,
         "pane 8 y position"
     );
     assert_eq!(
@@ -6728,8 +6886,9 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 8 column count"
     );
     assert_eq!(
@@ -6737,7 +6896,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 8 row count"
     );
@@ -6754,14 +6914,11 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     // └─────┴─────┘                    └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 70,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -6800,7 +6957,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -6809,7 +6967,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         35,
         "pane 1 row count"
     );
@@ -6837,8 +6996,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6846,8 +7006,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        11,
         "pane 2 row count"
     );
 
@@ -6866,7 +7027,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6874,7 +7035,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -6883,8 +7045,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -6903,7 +7066,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6911,7 +7074,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -6920,8 +7084,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        15,
+            .rows
+            .as_usize(),
+        14,
         "pane 4 row count"
     );
 
@@ -6948,7 +7113,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 5 column count"
     );
@@ -6957,7 +7123,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         35,
         "pane 5 row count"
     );
@@ -6968,7 +7135,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 6 x position"
     );
     assert_eq!(
@@ -6985,8 +7152,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        70,
+            .cols
+            .as_usize(),
+        67,
         "pane 6 column count"
     );
     assert_eq!(
@@ -6994,8 +7162,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        20,
+            .rows
+            .as_usize(),
+        21,
         "pane 6 row count"
     );
 
@@ -7014,7 +7183,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        45,
+        46,
         "pane 7 y position"
     );
     assert_eq!(
@@ -7022,8 +7191,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 7 column count"
     );
     assert_eq!(
@@ -7031,7 +7201,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 7 row count"
     );
@@ -7051,7 +7222,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        50,
+        51,
         "pane 8 y position"
     );
     assert_eq!(
@@ -7059,8 +7230,9 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        51,
+            .cols
+            .as_usize(),
+        54,
         "pane 8 column count"
     );
     assert_eq!(
@@ -7068,7 +7240,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 8 row count"
     );
@@ -7083,14 +7256,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     // └─┴─┘                    └─┴─┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
-        cols: 10,
-        rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
-    let mut tab = create_new_tab(position_and_size);
+    let size = Size { cols: 10, rows: 20 };
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.resize_left();
 
@@ -7099,7 +7266,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         5,
         "pane 1 columns stayed the same"
     );
@@ -7108,7 +7276,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         5,
         "pane 2 columns stayed the same"
     );
@@ -7123,14 +7292,11 @@ pub fn resize_right_with_pane_to_the_left() {
     // └─────┴─────┘                   └───────┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.resize_right();
 
@@ -7157,8 +7323,9 @@ pub fn resize_right_with_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7166,7 +7333,8 @@ pub fn resize_right_with_pane_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -7177,7 +7345,7 @@ pub fn resize_right_with_pane_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7194,8 +7362,9 @@ pub fn resize_right_with_pane_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7203,7 +7372,8 @@ pub fn resize_right_with_pane_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -7218,14 +7388,11 @@ pub fn resize_right_with_pane_to_the_right() {
     // └─────┴─────┘                   └───────┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.resize_right();
@@ -7253,8 +7420,9 @@ pub fn resize_right_with_pane_to_the_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7262,7 +7430,8 @@ pub fn resize_right_with_pane_to_the_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -7273,7 +7442,7 @@ pub fn resize_right_with_pane_to_the_right() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7290,8 +7459,9 @@ pub fn resize_right_with_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7299,7 +7469,8 @@ pub fn resize_right_with_pane_to_the_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -7314,14 +7485,11 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     // └─────┴─────┴─────┘                   └─────┴───────┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.move_focus_left();
@@ -7350,7 +7518,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -7359,7 +7528,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 1 row count"
     );
@@ -7387,8 +7557,9 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        40,
+            .cols
+            .as_usize(),
+        36,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7396,7 +7567,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -7407,7 +7579,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .unwrap()
             .position_and_size()
             .x,
-        101,
+        97,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7424,8 +7596,9 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        20,
+            .cols
+            .as_usize(),
+        24,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7433,7 +7606,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -7448,14 +7622,11 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     // └─────┴─────┘                   └───────┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -7485,8 +7656,9 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7494,7 +7666,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -7505,7 +7678,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7522,8 +7695,9 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7531,7 +7705,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         20,
         "pane 2 row count"
     );
@@ -7559,8 +7734,9 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -7568,7 +7744,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 3 row count"
     );
@@ -7583,14 +7760,11 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     // └─────┴─────┘                   └───────┴───┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -7621,7 +7795,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -7630,7 +7805,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -7658,7 +7834,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 2 column count"
     );
@@ -7667,7 +7844,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 2 row count"
     );
@@ -7695,8 +7873,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -7704,7 +7883,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 3 row count"
     );
@@ -7715,7 +7895,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 4 x position"
     );
     assert_eq!(
@@ -7732,8 +7912,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 4 column count"
     );
     assert_eq!(
@@ -7741,7 +7922,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 4 row count"
     );
@@ -7755,14 +7937,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     // │█████│     │                   │███████│   │
     // └─────┴─────┘                   └───────┴───┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -7794,7 +7973,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -7803,7 +7983,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -7831,7 +8012,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 2 column count"
     );
@@ -7840,7 +8022,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 2 row count"
     );
@@ -7868,8 +8051,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -7877,7 +8061,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 3 row count"
     );
@@ -7888,7 +8073,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 4 x position"
     );
     assert_eq!(
@@ -7905,8 +8090,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 4 column count"
     );
     assert_eq!(
@@ -7914,7 +8100,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 4 row count"
     );
@@ -7929,14 +8116,11 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -7968,8 +8152,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7977,7 +8162,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -7988,7 +8174,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -8005,8 +8191,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8014,7 +8201,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 2 row count"
     );
@@ -8042,7 +8230,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -8051,7 +8240,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 3 row count"
     );
@@ -8079,7 +8269,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -8088,7 +8279,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 4 row count"
     );
@@ -8103,14 +8295,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.move_focus_left();
     tab.horizontal_split(PaneId::Terminal(3));
@@ -8143,8 +8332,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -8152,7 +8342,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -8163,7 +8354,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -8180,8 +8371,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8189,7 +8381,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 2 row count"
     );
@@ -8217,7 +8410,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -8226,7 +8420,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 3 row count"
     );
@@ -8254,7 +8449,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -8263,7 +8459,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 4 row count"
     );
@@ -8280,14 +8477,11 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -8321,7 +8515,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -8330,7 +8525,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -8358,8 +8554,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8367,7 +8564,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 2 row count"
     );
@@ -8395,7 +8593,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -8404,7 +8603,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 3 row count"
     );
@@ -8432,7 +8632,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -8441,7 +8642,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 4 row count"
     );
@@ -8452,7 +8654,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 5 x position"
     );
     assert_eq!(
@@ -8469,8 +8671,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 5 column count"
     );
     assert_eq!(
@@ -8478,7 +8681,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 5 row count"
     );
@@ -8506,7 +8710,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 6 column count"
     );
@@ -8515,7 +8720,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 6 row count"
     );
@@ -8531,14 +8737,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     // │     │     │                   │     │     │
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -8573,7 +8776,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -8582,7 +8786,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 1 row count"
     );
@@ -8610,8 +8815,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8619,7 +8825,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 2 row count"
     );
@@ -8647,7 +8854,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -8656,7 +8864,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 3 row count"
     );
@@ -8684,7 +8893,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -8693,7 +8903,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 4 row count"
     );
@@ -8704,7 +8915,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 5 x position"
     );
     assert_eq!(
@@ -8721,8 +8932,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 5 column count"
     );
     assert_eq!(
@@ -8730,7 +8942,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 5 row count"
     );
@@ -8758,7 +8971,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 6 column count"
     );
@@ -8767,7 +8981,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         10,
         "pane 6 row count"
     );
@@ -8783,14 +8998,11 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     // ├─────┼─────┤                   ├─────┬─┴───┤
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 70,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -8828,7 +9040,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -8837,8 +9050,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        33,
+            .rows
+            .as_usize(),
+        31,
         "pane 1 row count"
     );
 
@@ -8857,7 +9071,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 2 y position"
     );
     assert_eq!(
@@ -8865,8 +9079,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8874,8 +9089,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        20,
+            .rows
+            .as_usize(),
+        21,
         "pane 2 row count"
     );
 
@@ -8894,7 +9110,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 3 y position"
     );
     assert_eq!(
@@ -8902,7 +9118,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -8911,8 +9128,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        18,
         "pane 3 row count"
     );
 
@@ -8931,7 +9149,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 4 y position"
     );
     assert_eq!(
@@ -8939,7 +9157,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -8948,8 +9167,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        18,
         "pane 4 row count"
     );
 
@@ -8976,7 +9196,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 5 column count"
     );
@@ -8985,8 +9206,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        33,
+            .rows
+            .as_usize(),
+        31,
         "pane 5 row count"
     );
 
@@ -8996,7 +9218,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 6 x position"
     );
     assert_eq!(
@@ -9005,7 +9227,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 6 y position"
     );
     assert_eq!(
@@ -9013,8 +9235,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 6 column count"
     );
     assert_eq!(
@@ -9022,8 +9245,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        11,
         "pane 6 row count"
     );
 
@@ -9033,7 +9257,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 7 x position"
     );
     assert_eq!(
@@ -9042,7 +9266,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        43,
+        42,
         "pane 7 y position"
     );
     assert_eq!(
@@ -9050,8 +9274,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 7 column count"
     );
     assert_eq!(
@@ -9059,7 +9284,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 7 row count"
     );
@@ -9070,7 +9296,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 8 x position"
     );
     assert_eq!(
@@ -9079,7 +9305,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        48,
+        47,
         "pane 8 y position"
     );
     assert_eq!(
@@ -9087,8 +9313,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 8 column count"
     );
     assert_eq!(
@@ -9096,7 +9323,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 8 row count"
     );
@@ -9112,14 +9340,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     // ├─────┼─────┤                   ├─────┬─┴───┤
     // └─────┴─────┘                   └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 70,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -9158,7 +9383,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -9167,8 +9393,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        33,
+            .rows
+            .as_usize(),
+        31,
         "pane 1 row count"
     );
 
@@ -9187,7 +9414,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9195,8 +9422,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -9204,8 +9432,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        11,
         "pane 2 row count"
     );
 
@@ -9224,7 +9453,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 3 y position"
     );
     assert_eq!(
@@ -9232,7 +9461,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 3 column count"
     );
@@ -9241,8 +9471,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        18,
         "pane 3 row count"
     );
 
@@ -9261,7 +9492,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 4 y position"
     );
     assert_eq!(
@@ -9269,7 +9500,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -9278,8 +9510,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        18,
         "pane 4 row count"
     );
 
@@ -9306,7 +9539,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 5 column count"
     );
@@ -9315,8 +9549,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        33,
+            .rows
+            .as_usize(),
+        31,
         "pane 5 row count"
     );
 
@@ -9326,7 +9561,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 6 x position"
     );
     assert_eq!(
@@ -9335,7 +9570,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 6 y position"
     );
     assert_eq!(
@@ -9343,8 +9578,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        50,
+            .cols
+            .as_usize(),
+        54,
         "pane 6 column count"
     );
     assert_eq!(
@@ -9352,8 +9588,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
-        20,
+            .rows
+            .as_usize(),
+        21,
         "pane 6 row count"
     );
 
@@ -9372,7 +9609,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        43,
+        42,
         "pane 7 y position"
     );
     assert_eq!(
@@ -9380,8 +9617,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 7 column count"
     );
     assert_eq!(
@@ -9389,7 +9627,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 7 row count"
     );
@@ -9409,7 +9648,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        48,
+        47,
         "pane 8 y position"
     );
     assert_eq!(
@@ -9417,8 +9656,9 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        71,
+            .cols
+            .as_usize(),
+        67,
         "pane 8 column count"
     );
     assert_eq!(
@@ -9426,7 +9666,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 8 row count"
     );
@@ -9440,14 +9681,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     // │ │█│                   │ │█│
     // └─┴─┘                   └─┴─┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
-        cols: 10,
-        rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
-    };
-    let mut tab = create_new_tab(position_and_size);
+    let size = Size { cols: 10, rows: 20 };
+    let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2));
     tab.resize_right();
 
@@ -9456,7 +9691,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         5,
         "pane 1 columns stayed the same"
     );
@@ -9465,7 +9701,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         5,
         "pane 2 columns stayed the same"
     );
@@ -9481,14 +9718,11 @@ pub fn resize_up_with_pane_above() {
     // │███████████│                │███████████│
     // └───────────┘                └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.resize_up();
 
@@ -9515,7 +9749,8 @@ pub fn resize_up_with_pane_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 1 column count"
     );
@@ -9524,8 +9759,9 @@ pub fn resize_up_with_pane_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        8,
+            .rows
+            .as_usize(),
+        9,
         "pane 1 row count"
     );
 
@@ -9544,7 +9780,7 @@ pub fn resize_up_with_pane_above() {
             .unwrap()
             .position_and_size()
             .y,
-        8,
+        9,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9552,7 +9788,8 @@ pub fn resize_up_with_pane_above() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 2 column count"
     );
@@ -9561,8 +9798,9 @@ pub fn resize_up_with_pane_above() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        12,
+            .rows
+            .as_usize(),
+        11,
         "pane 2 row count"
     );
 }
@@ -9577,14 +9815,11 @@ pub fn resize_up_with_pane_below() {
     // │           │                │           │
     // └───────────┘                └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 20,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.resize_up();
@@ -9612,7 +9847,8 @@ pub fn resize_up_with_pane_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 1 column count"
     );
@@ -9621,8 +9857,9 @@ pub fn resize_up_with_pane_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        8,
+            .rows
+            .as_usize(),
+        9,
         "pane 1 row count"
     );
 
@@ -9641,7 +9878,7 @@ pub fn resize_up_with_pane_below() {
             .unwrap()
             .position_and_size()
             .y,
-        8,
+        9,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9649,7 +9886,8 @@ pub fn resize_up_with_pane_below() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 2 column count"
     );
@@ -9658,8 +9896,9 @@ pub fn resize_up_with_pane_below() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        12,
+            .rows
+            .as_usize(),
+        11,
         "pane 2 row count"
     );
 }
@@ -9677,14 +9916,11 @@ pub fn resize_up_with_panes_above_and_below() {
     // │           │                │           │
     // └───────────┘                └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.horizontal_split(PaneId::Terminal(3));
     tab.move_focus_up();
@@ -9713,7 +9949,8 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 1 column count"
     );
@@ -9722,7 +9959,8 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         13,
         "pane 1 row count"
     );
@@ -9750,7 +9988,8 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 2 column count"
     );
@@ -9759,8 +9998,9 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        10,
+            .rows
+            .as_usize(),
+        9,
         "pane 2 row count"
     );
 
@@ -9779,7 +10019,7 @@ pub fn resize_up_with_panes_above_and_below() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -9787,7 +10027,8 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 3 column count"
     );
@@ -9796,8 +10037,9 @@ pub fn resize_up_with_panes_above_and_below() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        7,
+            .rows
+            .as_usize(),
+        8,
         "pane 3 row count"
     );
 }
@@ -9811,14 +10053,11 @@ pub fn resize_up_with_multiple_panes_above() {
     // │███████████│                 │███████████│
     // └───────────┘                 └───────────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -9848,7 +10087,8 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -9857,8 +10097,9 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 1 row count"
     );
 
@@ -9877,7 +10118,7 @@ pub fn resize_up_with_multiple_panes_above() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9885,7 +10126,8 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         121,
         "pane 2 column count"
     );
@@ -9894,8 +10136,9 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 2 row count"
     );
 
@@ -9922,7 +10165,8 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -9931,8 +10175,9 @@ pub fn resize_up_with_multiple_panes_above() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 }
@@ -9945,14 +10190,11 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     // │     │█████│                  │     │█████│
     // └─────┴─────┘                  └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -9983,7 +10225,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -9992,7 +10235,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -10020,7 +10264,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10029,7 +10274,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -10057,7 +10303,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -10066,8 +10313,9 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -10086,7 +10334,7 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 4 y position"
     );
     assert_eq!(
@@ -10094,7 +10342,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -10103,8 +10352,9 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 4 row count"
     );
 }
@@ -10119,14 +10369,11 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     // │     │     │                  │     │     │
     // └─────┴─────┘                  └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -10158,7 +10405,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -10167,7 +10415,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -10195,7 +10444,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10204,7 +10454,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -10232,7 +10483,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -10241,8 +10493,9 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -10261,7 +10514,7 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 4 y position"
     );
     assert_eq!(
@@ -10269,7 +10522,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -10278,8 +10532,9 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 4 row count"
     );
 }
@@ -10294,14 +10549,11 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     // │█████│     │                  │█████│     │
     // └─────┴─────┘                  └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -10333,7 +10585,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -10342,8 +10595,9 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 1 row count"
     );
 
@@ -10362,7 +10616,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -10370,7 +10624,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10379,8 +10634,9 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 2 row count"
     );
 
@@ -10407,7 +10663,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -10416,7 +10673,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -10444,7 +10702,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -10453,7 +10712,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -10469,14 +10729,11 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     // │     │     │                  │     │     │
     // └─────┴─────┘                  └─────┴─────┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -10509,7 +10766,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -10518,8 +10776,9 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 1 row count"
     );
 
@@ -10538,7 +10797,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -10546,7 +10805,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10555,8 +10815,9 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 2 row count"
     );
 
@@ -10583,7 +10844,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 3 column count"
     );
@@ -10592,7 +10854,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 3 row count"
     );
@@ -10620,7 +10883,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         60,
         "pane 4 column count"
     );
@@ -10629,7 +10893,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -10645,14 +10910,11 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     // │   │███│   │                  │   │███│   │
     // └───┴───┴───┘                  └───┴───┴───┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -10685,7 +10947,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -10694,7 +10957,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -10722,7 +10986,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10731,7 +10996,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -10751,7 +11017,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 3 y position"
     );
     assert_eq!(
@@ -10759,7 +11025,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 3 column count"
     );
@@ -10768,8 +11035,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 3 row count"
     );
 
@@ -10796,7 +11064,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 4 column count"
     );
@@ -10805,7 +11074,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -10833,7 +11103,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 5 column count"
     );
@@ -10842,8 +11113,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 5 row count"
     );
 
@@ -10870,7 +11142,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 6 column count"
     );
@@ -10879,7 +11152,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -10895,14 +11169,11 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     // │   │   │   │                  │   │   │   │
     // └───┴───┴───┘                  └───┴───┴───┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.vertical_split(PaneId::Terminal(3));
     tab.vertical_split(PaneId::Terminal(4));
@@ -10936,7 +11207,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 1 column count"
     );
@@ -10945,7 +11217,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -10973,7 +11246,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         61,
         "pane 2 column count"
     );
@@ -10982,7 +11256,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -11002,7 +11277,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 3 y position"
     );
     assert_eq!(
@@ -11010,7 +11285,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 3 column count"
     );
@@ -11019,8 +11295,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 3 row count"
     );
 
@@ -11047,7 +11324,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 4 column count"
     );
@@ -11056,7 +11334,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -11084,7 +11363,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 5 column count"
     );
@@ -11093,8 +11373,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 5 row count"
     );
 
@@ -11121,7 +11402,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         30,
         "pane 6 column count"
     );
@@ -11130,7 +11412,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -11146,14 +11429,11 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     // │ │ │███│ │ │                  │ │ │███│ │ │
     // └─┴─┴───┴─┴─┘                  └─┴─┴───┴─┴─┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
-        cols: 121,
+    let size = Size {
+        cols: 122,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -11190,8 +11470,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -11199,7 +11480,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -11227,8 +11509,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -11236,7 +11519,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -11247,7 +11531,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -11264,8 +11548,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 3 column count"
     );
     assert_eq!(
@@ -11273,8 +11558,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -11301,8 +11587,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -11310,7 +11597,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -11321,7 +11609,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 5 x position"
     );
     assert_eq!(
@@ -11330,7 +11618,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -11338,7 +11626,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "pane 5 column count"
     );
@@ -11347,8 +11636,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 5 row count"
     );
 
@@ -11375,8 +11665,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -11384,7 +11675,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -11395,7 +11687,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 7 x position"
     );
     assert_eq!(
@@ -11404,7 +11696,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 7 y position"
     );
     assert_eq!(
@@ -11412,7 +11704,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         8,
         "pane 7 column count"
     );
@@ -11421,8 +11714,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 7 row count"
     );
 
@@ -11432,7 +11726,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 8 x position"
     );
     assert_eq!(
@@ -11441,7 +11735,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 8 y position"
     );
     assert_eq!(
@@ -11449,8 +11743,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        7,
+            .cols
+            .as_usize(),
+        8,
         "pane 8 column count"
     );
     assert_eq!(
@@ -11458,8 +11753,9 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 8 row count"
     );
 }
@@ -11474,14 +11770,11 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     // │ │       │ │                  │ │       │ │
     // └─┴───────┴─┘                  └─┴───────┴─┘
     // █ == focused pane
-    let position_and_size = PositionAndSize {
-        cols: 121,
+    let size = Size {
+        cols: 122,
         rows: 30,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.move_focus_up();
     tab.vertical_split(PaneId::Terminal(3));
@@ -11519,8 +11812,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -11528,7 +11822,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 1 row count"
     );
@@ -11556,8 +11851,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .cols,
-        61,
+            .cols
+            .as_usize(),
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -11565,7 +11861,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 2 row count"
     );
@@ -11576,7 +11873,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -11593,7 +11890,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         15,
         "pane 3 column count"
     );
@@ -11602,8 +11900,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 3 row count"
     );
 
@@ -11630,8 +11929,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -11639,7 +11939,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 4 row count"
     );
@@ -11650,7 +11951,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 5 x position"
     );
     assert_eq!(
@@ -11659,7 +11960,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -11667,8 +11968,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 5 column count"
     );
     assert_eq!(
@@ -11676,8 +11978,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
-            .rows,
-        17,
+            .rows
+            .as_usize(),
+        16,
         "pane 5 row count"
     );
 
@@ -11704,8 +12007,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .cols,
-        30,
+            .cols
+            .as_usize(),
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -11713,7 +12017,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         15,
         "pane 6 row count"
     );
@@ -11724,7 +12029,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 7 x position"
     );
     assert_eq!(
@@ -11741,7 +12046,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .cols,
+            .cols
+            .as_usize(),
         8,
         "pane 7 column count"
     );
@@ -11750,8 +12056,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 7 row count"
     );
 
@@ -11761,7 +12068,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 8 x position"
     );
     assert_eq!(
@@ -11778,8 +12085,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .cols,
-        7,
+            .cols
+            .as_usize(),
+        8,
         "pane 8 column count"
     );
     assert_eq!(
@@ -11787,8 +12095,9 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
-            .rows,
-        13,
+            .rows
+            .as_usize(),
+        14,
         "pane 8 row count"
     );
 }
@@ -11802,14 +12111,11 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     // └───────────┘                └───────────┘
     // █ == focused pane
 
-    let position_and_size = PositionAndSize {
+    let size = Size {
         cols: 121,
         rows: 10,
-        x: 0,
-        y: 0,
-        ..Default::default()
     };
-    let mut tab = create_new_tab(position_and_size);
+    let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2));
     tab.resize_down();
 
@@ -11818,7 +12124,8 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 1 height stayed the same"
     );
@@ -11827,7 +12134,8 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
-            .rows,
+            .rows
+            .as_usize(),
         5,
         "pane 2 height stayed the same"
     );

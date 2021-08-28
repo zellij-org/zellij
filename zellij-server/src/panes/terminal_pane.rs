@@ -1,14 +1,3 @@
-use zellij_utils::position::Position;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
-use zellij_utils::{vte, zellij_tile};
-
-use std::fmt::Debug;
-use std::os::unix::io::RawFd;
-use std::time::{self, Instant};
-use zellij_tile::data::Palette;
-
-use zellij_utils::pane_size::PositionAndSize;
-
 use crate::panes::AnsiCode;
 use crate::panes::{
     grid::Grid,
@@ -18,10 +7,20 @@ use crate::panes::{
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
+use std::fmt::Debug;
+use std::os::unix::io::RawFd;
+use std::time::{self, Instant};
+use zellij_utils::pane_size::Offset;
+use zellij_utils::{
+    pane_size::{Dimension, PaneGeom},
+    position::Position,
+    vte,
+    zellij_tile::data::{Palette, PaletteColor},
+};
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
-use crate::ui::pane_boundaries_frame::PaneBoundariesFrame;
+use crate::ui::pane_boundaries_frame::PaneFrame;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -29,24 +28,22 @@ pub enum PaneId {
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
-pub enum PaneDecoration {
-    BoundariesFrame(PaneBoundariesFrame),
-    ContentOffset((usize, usize)), // (columns, rows)
-}
-
+// FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
+// their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 pub struct TerminalPane {
     pub grid: Grid,
     pub pid: RawFd,
     pub selectable: bool,
-    position_and_size: PositionAndSize,
-    position_and_size_override: Option<PositionAndSize>,
+    pub geom: PaneGeom,
+    pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub colors: Palette,
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
-    content_position_and_size: PositionAndSize,
+    content_offset: Offset,
     pane_title: String,
-    pane_decoration: PaneDecoration,
+    frame: Option<PaneFrame>,
+    frame_color: Option<PaletteColor>,
 }
 
 impl Pane for TerminalPane {
@@ -59,32 +56,38 @@ impl Pane for TerminalPane {
     fn rows(&self) -> usize {
         self.get_rows()
     }
-    fn columns(&self) -> usize {
+    fn cols(&self) -> usize {
         self.get_columns()
     }
+    fn get_content_x(&self) -> usize {
+        self.get_x() + self.content_offset.left
+    }
+    fn get_content_y(&self) -> usize {
+        self.get_y() + self.content_offset.top
+    }
     fn get_content_columns(&self) -> usize {
-        self.get_content_columns()
+        // content columns might differ from the pane's columns if the pane has a frame
+        // in that case they would be 2 less
+        self.get_columns()
+            .saturating_sub(self.content_offset.left + self.content_offset.right)
     }
     fn get_content_rows(&self) -> usize {
-        self.get_content_rows()
+        // content rows might differ from the pane's rows if the pane has a frame
+        // in that case they would be 2 less
+        self.get_rows()
+            .saturating_sub(self.content_offset.top + self.content_offset.bottom)
     }
     fn reset_size_and_position_override(&mut self) {
-        self.position_and_size_override = None;
-        self.redistribute_space();
+        self.geom_override = None;
+        self.reflow_lines();
     }
-    fn change_pos_and_size(&mut self, position_and_size: &PositionAndSize) {
-        self.position_and_size = *position_and_size;
-        self.redistribute_space();
+    fn set_geom(&mut self, position_and_size: PaneGeom) {
+        self.geom = position_and_size;
+        self.reflow_lines();
     }
-    fn override_size_and_position(&mut self, x: usize, y: usize, size: &PositionAndSize) {
-        self.position_and_size_override = Some(PositionAndSize {
-            x,
-            y,
-            rows: size.rows,
-            cols: size.cols,
-            ..Default::default()
-        });
-        self.redistribute_space();
+    fn get_geom_override(&mut self, pane_geom: PaneGeom) {
+        self.geom_override = Some(pane_geom);
+        self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         for byte in bytes.iter() {
@@ -94,17 +97,10 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
-        let (x_offset, y_offset) = match &self.pane_decoration {
-            PaneDecoration::BoundariesFrame(boundries_frame) => {
-                let (content_columns_offset, content_rows_offset) =
-                    boundries_frame.content_offset();
-                (content_columns_offset, content_rows_offset)
-            }
-            PaneDecoration::ContentOffset(_) => (0, 0),
-        };
+        let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
-            .map(|(x, y)| (x + x_offset, y + y_offset))
+            .map(|(x, y)| (x + left, y + top))
     }
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
         // there are some cases in which the terminal state means that input sent to it
@@ -157,11 +153,14 @@ impl Pane for TerminalPane {
         };
         input_bytes
     }
-    fn position_and_size(&self) -> PositionAndSize {
-        self.position_and_size
+    fn position_and_size(&self) -> PaneGeom {
+        self.geom
     }
-    fn position_and_size_override(&self) -> Option<PositionAndSize> {
-        self.position_and_size_override
+    fn current_geom(&self) -> PaneGeom {
+        self.geom_override.unwrap_or(self.geom)
+    }
+    fn geom_override(&self) -> Option<PaneGeom> {
+        self.geom_override
     }
     fn should_render(&self) -> bool {
         self.grid.should_render
@@ -169,14 +168,10 @@ impl Pane for TerminalPane {
     fn set_should_render(&mut self, should_render: bool) {
         self.grid.should_render = should_render;
     }
-    fn set_should_render_boundaries(&mut self, should_render: bool) {
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            boundaries_frame.set_should_render(should_render);
-        }
-    }
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
         // diff as it usually does with the OutputBuffer
+        self.frame.replace(PaneFrame::default());
         self.grid.render_full_viewport();
     }
     fn selectable(&self) -> bool {
@@ -184,17 +179,6 @@ impl Pane for TerminalPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
-    }
-    fn set_fixed_height(&mut self, fixed_height: usize) {
-        self.position_and_size.rows = fixed_height;
-        self.position_and_size.rows_fixed = true;
-    }
-    fn set_fixed_width(&mut self, fixed_width: usize) {
-        self.position_and_size.cols = fixed_width;
-        self.position_and_size.cols_fixed = true;
-    }
-    fn set_invisible_borders(&mut self, _invisible_borders: bool) {
-        unimplemented!();
     }
     fn render(&mut self) -> Option<String> {
         if self.should_render() {
@@ -254,11 +238,20 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-                boundaries_frame.update_scroll(self.grid.scrollback_position_and_length());
-                boundaries_frame.update_title(self.grid.title.as_ref());
-                if let Some(boundaries_frame_vte) = boundaries_frame.render() {
-                    vte_output.push_str(&boundaries_frame_vte);
+            if let Some(last_frame) = &self.frame {
+                let frame = PaneFrame {
+                    geom: self.current_geom().into(),
+                    title: self
+                        .grid
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| self.pane_title.clone()),
+                    scroll_position: self.grid.scrollback_position_and_length(),
+                    color: self.frame_color,
+                };
+                if &frame != last_frame {
+                    vte_output.push_str(&frame.render());
+                    self.frame = Some(frame);
                 }
             }
             self.set_should_render(false);
@@ -270,57 +263,45 @@ impl Pane for TerminalPane {
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
     }
-    fn reduce_height_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.position_and_size.rows -= count;
-        self.redistribute_space();
+    fn reduce_height(&mut self, percent: f64) {
+        if let Some(p) = self.geom.rows.as_percent() {
+            self.geom.rows = Dimension::percent(p - percent);
+            self.set_should_render(true);
+        }
     }
-    fn increase_height_down(&mut self, count: usize) {
-        self.position_and_size.rows += count;
-        self.redistribute_space();
+    fn increase_height(&mut self, percent: f64) {
+        if let Some(p) = self.geom.rows.as_percent() {
+            self.geom.rows = Dimension::percent(p + percent);
+            self.set_should_render(true);
+        }
     }
-    fn increase_height_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.position_and_size.rows += count;
-        self.redistribute_space();
+    fn reduce_width(&mut self, percent: f64) {
+        if let Some(p) = self.geom.cols.as_percent() {
+            self.geom.cols = Dimension::percent(p - percent);
+            self.set_should_render(true);
+        }
     }
-    fn reduce_height_up(&mut self, count: usize) {
-        self.position_and_size.rows -= count;
-        self.redistribute_space();
-    }
-    fn reduce_width_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.position_and_size.cols -= count;
-        self.redistribute_space();
-    }
-    fn reduce_width_left(&mut self, count: usize) {
-        self.position_and_size.cols -= count;
-        self.redistribute_space();
-    }
-    fn increase_width_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.position_and_size.cols += count;
-        self.redistribute_space();
-    }
-    fn increase_width_right(&mut self, count: usize) {
-        self.position_and_size.cols += count;
-        self.redistribute_space();
+    fn increase_width(&mut self, percent: f64) {
+        if let Some(p) = self.geom.cols.as_percent() {
+            self.geom.cols = Dimension::percent(p + percent);
+            self.set_should_render(true);
+        }
     }
     fn push_down(&mut self, count: usize) {
-        self.position_and_size.y += count;
-        self.redistribute_space();
+        self.geom.y += count;
+        self.reflow_lines();
     }
     fn push_right(&mut self, count: usize) {
-        self.position_and_size.x += count;
-        self.redistribute_space();
+        self.geom.x += count;
+        self.reflow_lines();
     }
     fn pull_left(&mut self, count: usize) {
-        self.position_and_size.x -= count;
-        self.redistribute_space();
+        self.geom.x -= count;
+        self.reflow_lines();
     }
     fn pull_up(&mut self, count: usize) {
-        self.position_and_size.y -= count;
-        self.redistribute_space();
+        self.geom.y -= count;
+        self.reflow_lines();
     }
     fn scroll_up(&mut self, count: usize) {
         self.grid.move_viewport_up(count);
@@ -392,73 +373,47 @@ impl Pane for TerminalPane {
         self.grid.get_selected_text()
     }
 
+    fn set_frame(&mut self, frame: bool) {
+        self.frame = if frame {
+            Some(PaneFrame::default())
+        } else {
+            None
+        };
+    }
+
+    fn set_content_offset(&mut self, offset: Offset) {
+        self.content_offset = offset;
+        self.reflow_lines();
+    }
+
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            if boundaries_frame.color != color {
-                boundaries_frame.set_color(color);
-                self.set_should_render(true);
-            }
-        }
-    }
-    fn relative_position(&self, position_on_screen: &Position) -> Position {
-        let pane_position_and_size = self.get_content_posision_and_size();
-        position_on_screen.relative_to(&pane_position_and_size)
-    }
-    fn offset_content_columns(&mut self, by: usize) {
-        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
-            content_offset.0 = by;
-        } else {
-            self.pane_decoration = PaneDecoration::ContentOffset((by, 0));
-        }
-        self.redistribute_space();
-    }
-    fn offset_content_rows(&mut self, by: usize) {
-        if let PaneDecoration::ContentOffset(content_offset) = &mut self.pane_decoration {
-            content_offset.1 = by;
-        } else {
-            self.pane_decoration = PaneDecoration::ContentOffset((0, by));
-        }
-        self.redistribute_space();
-    }
-    fn show_boundaries_frame(&mut self, only_title: bool) {
-        let position_and_size = self
-            .position_and_size_override
-            .unwrap_or(self.position_and_size);
-        if let PaneDecoration::BoundariesFrame(boundaries_frame) = &mut self.pane_decoration {
-            boundaries_frame.render_only_title(only_title);
-            self.content_position_and_size = boundaries_frame.content_position_and_size();
-        } else {
-            let mut boundaries_frame =
-                PaneBoundariesFrame::new(position_and_size, self.pane_title.clone());
-            boundaries_frame.render_only_title(only_title);
-            self.content_position_and_size = boundaries_frame.content_position_and_size();
-            self.pane_decoration = PaneDecoration::BoundariesFrame(boundaries_frame);
-        }
-        self.redistribute_space();
-    }
-    fn remove_boundaries_frame(&mut self) {
-        self.pane_decoration = PaneDecoration::ContentOffset((0, 0));
-        self.redistribute_space();
+        self.frame_color = color;
+        self.set_should_render(true);
     }
 }
 
 impl TerminalPane {
     pub fn new(
         pid: RawFd,
-        position_and_size: PositionAndSize,
+        position_and_size: PaneGeom,
         palette: Palette,
-        pane_position: usize,
+        pane_index: usize,
     ) -> TerminalPane {
-        let initial_pane_title = format!("Pane #{}", pane_position);
-        let grid = Grid::new(position_and_size.rows, position_and_size.cols, palette);
+        let initial_pane_title = format!("Pane #{}", pane_index);
+        let grid = Grid::new(
+            position_and_size.rows.as_usize(),
+            position_and_size.cols.as_usize(),
+            palette,
+        );
         TerminalPane {
-            pane_decoration: PaneDecoration::ContentOffset((0, 0)),
-            content_position_and_size: position_and_size,
+            frame: None,
+            frame_color: None,
+            content_offset: Offset::default(),
             pid,
             grid,
             selectable: true,
-            position_and_size,
-            position_and_size_override: None,
+            geom: position_and_size,
+            geom_override: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
             colors: palette,
@@ -467,52 +422,33 @@ impl TerminalPane {
         }
     }
     pub fn get_x(&self) -> usize {
-        match self.position_and_size_override.as_ref() {
+        match self.geom_override {
             Some(position_and_size_override) => position_and_size_override.x,
-            None => self.position_and_size.x,
+            None => self.geom.x,
         }
     }
     pub fn get_y(&self) -> usize {
-        match self.position_and_size_override.as_ref() {
+        match self.geom_override {
             Some(position_and_size_override) => position_and_size_override.y,
-            None => self.position_and_size.y,
+            None => self.geom.y,
         }
     }
     pub fn get_columns(&self) -> usize {
-        match self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.cols,
-            None => self.position_and_size.cols,
+        match self.geom_override {
+            Some(position_and_size_override) => position_and_size_override.cols.as_usize(),
+            None => self.geom.cols.as_usize(),
         }
     }
     pub fn get_rows(&self) -> usize {
-        match self.position_and_size_override.as_ref() {
-            Some(position_and_size_override) => position_and_size_override.rows,
-            None => self.position_and_size.rows,
+        match self.geom_override {
+            Some(position_and_size_override) => position_and_size_override.rows.as_usize(),
+            None => self.geom.rows.as_usize(),
         }
-    }
-    pub fn get_content_x(&self) -> usize {
-        self.get_content_posision_and_size().x
-    }
-    pub fn get_content_y(&self) -> usize {
-        self.get_content_posision_and_size().y
-    }
-    pub fn get_content_columns(&self) -> usize {
-        // content columns might differ from the pane's columns if the pane has a frame
-        // in that case they would be 2 less
-        self.get_content_posision_and_size().cols
-    }
-    pub fn get_content_rows(&self) -> usize {
-        // content rows might differ from the pane's rows if the pane has a frame
-        // in that case they would be 2 less
-        self.get_content_posision_and_size().rows
-    }
-    pub fn get_content_posision_and_size(&self) -> PositionAndSize {
-        self.content_position_and_size
     }
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
-        let columns = self.get_content_columns();
-        self.grid.change_size(rows, columns);
+        let cols = self.get_content_columns();
+        self.grid.change_size(rows, cols);
         self.set_should_render(true);
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -521,24 +457,6 @@ impl TerminalPane {
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
-    }
-    fn redistribute_space(&mut self) {
-        let position_and_size = self
-            .position_and_size_override
-            .unwrap_or_else(|| self.position_and_size());
-        match &mut self.pane_decoration {
-            PaneDecoration::BoundariesFrame(boundaries_frame) => {
-                boundaries_frame.change_pos_and_size(position_and_size);
-                self.content_position_and_size = boundaries_frame.content_position_and_size();
-            }
-            PaneDecoration::ContentOffset((content_columns_offset, content_rows_offset)) => {
-                self.content_position_and_size = position_and_size;
-                self.content_position_and_size.cols =
-                    position_and_size.cols - *content_columns_offset;
-                self.content_position_and_size.rows = position_and_size.rows - *content_rows_offset;
-            }
-        };
-        self.reflow_lines();
     }
 }
 

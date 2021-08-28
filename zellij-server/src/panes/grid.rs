@@ -592,8 +592,13 @@ impl Grid {
         self.change_size(new_rows, new_columns);
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
+        // Do nothing if this pane hasn't been given a proper size yet
+        if new_columns == 0 || new_rows == 0 {
+            return;
+        }
         self.selection.reset();
         if new_columns != self.width {
+            self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
             let mut viewport_canonical_lines = vec![];
@@ -635,6 +640,11 @@ impl Grid {
                     } else {
                         canonical_line.columns.drain(..).collect()
                     };
+                    // If the next character is wider than the grid (i.e. there is nothing in
+                    // `next_wrap`, then just abort the resizing
+                    if next_wrap.is_empty() {
+                        break;
+                    }
                     let row = Row::from_columns(next_wrap);
                     // if there are no more parts, this row is canonical as long as it originally
                     // was canonical (it might not have been for example if it's the first row in
@@ -956,10 +966,9 @@ impl Grid {
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
-        self.viewport
-            .get_mut(self.cursor.y)
-            .unwrap()
-            .replace_and_pad_end(self.cursor.x, self.width, replace_with);
+        if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+            row.replace_and_pad_end(self.cursor.x, self.width, replace_with);
+        }
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
@@ -1109,7 +1118,7 @@ impl Grid {
         self.scroll_region = None;
     }
     pub fn set_scroll_region_to_viewport_size(&mut self) {
-        self.scroll_region = Some((0, self.height - 1));
+        self.scroll_region = Some((0, self.height.saturating_sub(1)));
     }
     pub fn delete_lines_in_scroll_region(
         &mut self,

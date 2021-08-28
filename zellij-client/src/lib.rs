@@ -116,7 +116,7 @@ pub fn start_client(
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
-        position_and_size: full_screen_ws,
+        size: full_screen_ws,
         palette,
     };
 
@@ -137,7 +137,7 @@ pub fn start_client(
                 client_attributes,
                 Box::new(opts),
                 Box::new(config_options.clone()),
-                layout,
+                layout.unwrap(),
             )
         }
     };
