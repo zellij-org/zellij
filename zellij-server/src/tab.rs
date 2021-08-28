@@ -391,93 +391,73 @@ impl Tab {
         if self.fullscreen_is_active {
             self.toggle_active_pane_fullscreen();
         }
-        if !self.has_panes() {
-            if let PaneId::Terminal(term_pid) = pid {
-                let next_selectable_pane_position = self.get_next_selectable_pane_position();
-                // FIXME: More dead code used only in tests
-                let new_terminal = TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(),
-                    self.colors,
-                    next_selectable_pane_position,
-                );
-                self.os_api.set_terminal_size_using_fd(
-                    new_terminal.pid,
-                    new_terminal.cols() as u16,
-                    new_terminal.rows() as u16,
-                );
-                self.panes.insert(pid, Box::new(new_terminal));
-                self.active_terminal = Some(pid);
-            }
-        } else {
-            // TODO: check minimum size of active terminal
+        // TODO: check minimum size of active terminal
 
-            let (_largest_terminal_size, terminal_id_to_split) = self.get_panes().fold(
-                (0, None),
-                |(current_largest_terminal_size, current_terminal_id_to_split),
-                 id_and_terminal_to_check| {
-                    let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
-                    let terminal_size = (terminal_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO)
-                        * terminal_to_check.cols();
-                    let terminal_can_be_split = terminal_to_check.cols() >= MIN_TERMINAL_WIDTH
-                        && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
-                        && ((terminal_to_check.cols() > terminal_to_check.min_width() * 2)
-                            || (terminal_to_check.rows() > terminal_to_check.min_height() * 2));
-                    if terminal_can_be_split && terminal_size > current_largest_terminal_size {
-                        (terminal_size, Some(*id_of_terminal_to_check))
-                    } else {
-                        (current_largest_terminal_size, current_terminal_id_to_split)
-                    }
-                },
-            );
-            if terminal_id_to_split.is_none() {
-                self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                    .unwrap();
-                return; // likely no terminal large enough to split
-            }
-            let terminal_id_to_split = terminal_id_to_split.unwrap();
-            let next_selectable_pane_position = self.get_next_selectable_pane_position();
-            let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
-            let terminal_ws = terminal_to_split.position_and_size();
-            if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.cols()
-                && terminal_to_split.rows() > terminal_to_split.min_height() * 2
-            {
-                if let PaneId::Terminal(term_pid) = pid {
-                    if let Some((top_winsize, bottom_winsize)) =
-                        split(Direction::Horizontal, &terminal_ws)
-                    {
-                        let new_terminal = TerminalPane::new(
-                            term_pid,
-                            bottom_winsize,
-                            self.colors,
-                            next_selectable_pane_position,
-                        );
-                        terminal_to_split.set_geom(top_winsize);
-                        self.panes.insert(pid, Box::new(new_terminal));
-                        self.relayout_tab(Direction::Vertical);
-                    }
+        let (_largest_terminal_size, terminal_id_to_split) = self.get_panes().fold(
+            (0, None),
+            |(current_largest_terminal_size, current_terminal_id_to_split),
+             id_and_terminal_to_check| {
+                let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
+                let terminal_size = (terminal_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO)
+                    * terminal_to_check.cols();
+                let terminal_can_be_split = terminal_to_check.cols() >= MIN_TERMINAL_WIDTH
+                    && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
+                    && ((terminal_to_check.cols() > terminal_to_check.min_width() * 2)
+                        || (terminal_to_check.rows() > terminal_to_check.min_height() * 2));
+                if terminal_can_be_split && terminal_size > current_largest_terminal_size {
+                    (terminal_size, Some(*id_of_terminal_to_check))
+                } else {
+                    (current_largest_terminal_size, current_terminal_id_to_split)
                 }
-            } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
-                if let PaneId::Terminal(term_pid) = pid {
-                    if let Some((left_winsize, right_winsize)) =
-                        split(Direction::Vertical, &terminal_ws)
-                    {
-                        let new_terminal = TerminalPane::new(
-                            term_pid,
-                            right_winsize,
-                            self.colors,
-                            next_selectable_pane_position,
-                        );
-                        terminal_to_split.set_geom(left_winsize);
-                        self.panes.insert(pid, Box::new(new_terminal));
-                        self.relayout_tab(Direction::Horizontal);
-                    }
-                }
-            }
-            self.active_terminal = Some(pid);
-            self.render();
+            },
+        );
+        if terminal_id_to_split.is_none() {
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
+                .unwrap();
+            return; // likely no terminal large enough to split
         }
+        let terminal_id_to_split = terminal_id_to_split.unwrap();
+        let next_selectable_pane_position = self.get_next_selectable_pane_position();
+        let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
+        let terminal_ws = terminal_to_split.position_and_size();
+        if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.cols()
+            && terminal_to_split.rows() > terminal_to_split.min_height() * 2
+        {
+            if let PaneId::Terminal(term_pid) = pid {
+                if let Some((top_winsize, bottom_winsize)) =
+                    split(Direction::Horizontal, &terminal_ws)
+                {
+                    let new_terminal = TerminalPane::new(
+                        term_pid,
+                        bottom_winsize,
+                        self.colors,
+                        next_selectable_pane_position,
+                    );
+                    terminal_to_split.set_geom(top_winsize);
+                    self.panes.insert(pid, Box::new(new_terminal));
+                    self.relayout_tab(Direction::Vertical);
+                }
+            }
+        } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
+            if let PaneId::Terminal(term_pid) = pid {
+                if let Some((left_winsize, right_winsize)) =
+                    split(Direction::Vertical, &terminal_ws)
+                {
+                    let new_terminal = TerminalPane::new(
+                        term_pid,
+                        right_winsize,
+                        self.colors,
+                        next_selectable_pane_position,
+                    );
+                    terminal_to_split.set_geom(left_winsize);
+                    self.panes.insert(pid, Box::new(new_terminal));
+                    self.relayout_tab(Direction::Horizontal);
+                }
+            }
+        }
+        self.active_terminal = Some(pid);
+        self.render();
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
         self.close_down_to_max_terminals();
@@ -828,10 +808,6 @@ impl Tab {
             })
             .count()
             + 1
-    }
-    fn has_panes(&self) -> bool {
-        let mut all_terminals = self.get_panes();
-        all_terminals.next().is_some()
     }
     fn has_selectable_panes(&self) -> bool {
         let mut all_terminals = self.get_selectable_panes();
