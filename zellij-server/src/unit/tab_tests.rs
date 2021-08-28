@@ -1280,7 +1280,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "first remaining pane column count"
     );
     assert_eq!(
@@ -1300,7 +1300,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "second remaining pane x position"
     );
     assert_eq!(
@@ -1319,7 +1319,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        16,
+        15,
         "second remaining pane column count"
     );
     assert_eq!(
@@ -1397,7 +1397,7 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "fourth remaining pane column count"
     );
     assert_eq!(
@@ -1555,7 +1555,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "first remaining pane column count"
     );
     assert_eq!(
@@ -1633,7 +1633,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "fourth remaining pane column count"
     );
     assert_eq!(
@@ -1653,7 +1653,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "second remaining pane x position"
     );
     assert_eq!(
@@ -1672,7 +1672,7 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
             .position_and_size()
             .cols
             .as_usize(),
-        16,
+        15,
         "second remaining pane column count"
     );
     assert_eq!(
@@ -1884,7 +1884,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        6,
+        5,
         "third remaining pane row count"
     );
 
@@ -1903,7 +1903,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "fourth remaining pane y position"
     );
     assert_eq!(
@@ -1923,7 +1923,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "fourth remaining pane row count"
     );
 
@@ -1981,7 +1981,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "sixths remaining pane y position"
     );
     assert_eq!(
@@ -2001,7 +2001,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "sixths remaining pane row count"
     );
 
@@ -2020,7 +2020,7 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        18,
+        17,
         "seventh remaining pane y position"
     );
     assert_eq!(
@@ -2124,7 +2124,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "first remaining pane row count"
     );
 
@@ -2202,7 +2202,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "second remaining pane row count"
     );
 
@@ -2221,7 +2221,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .unwrap()
             .position_and_size()
             .y,
-        12,
+        11,
         "third remaining pane y position"
     );
     assert_eq!(
@@ -2241,7 +2241,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
             .position_and_size()
             .rows
             .as_usize(),
-        5,
+        6,
         "third remaining pane row count"
     );
 
@@ -3663,7 +3663,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "pane 1 column count"
     );
     assert_eq!(
@@ -3702,7 +3702,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "pane 2 column count"
     );
     assert_eq!(
@@ -3722,7 +3722,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "pane 3 x position"
     );
     assert_eq!(
@@ -3741,7 +3741,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        31,
+        30,
         "pane 3 column count"
     );
     assert_eq!(
@@ -3800,7 +3800,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "pane 5 x position"
     );
     assert_eq!(
@@ -3819,7 +3819,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        31,
+        30,
         "pane 5 column count"
     );
     assert_eq!(
@@ -3923,7 +3923,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "pane 1 column count"
     );
     assert_eq!(
@@ -3962,7 +3962,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        60,
+        61,
         "pane 2 column count"
     );
     assert_eq!(
@@ -3982,7 +3982,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "pane 3 x position"
     );
     assert_eq!(
@@ -4001,7 +4001,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        31,
+        30,
         "pane 3 column count"
     );
     assert_eq!(
@@ -4060,7 +4060,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        60,
+        61,
         "pane 5 x position"
     );
     assert_eq!(
@@ -4079,7 +4079,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        31,
+        30,
         "pane 5 column count"
     );
     assert_eq!(
@@ -4145,7 +4145,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     // █ == focused pane
 
     let size = Size {
-        cols: 121,
+        cols: 122,
         rows: 30,
     };
     let mut tab = create_new_tab(size);
@@ -4304,7 +4304,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -4382,7 +4382,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -4487,7 +4487,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     // █ == focused pane
 
     let size = Size {
-        cols: 121,
+        cols: 122,
         rows: 30,
     };
     let mut tab = create_new_tab(size);
@@ -4648,7 +4648,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -4804,7 +4804,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 8 column count"
     );
     assert_eq!(
@@ -4901,7 +4901,7 @@ pub fn resize_left_with_pane_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -4921,7 +4921,7 @@ pub fn resize_left_with_pane_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -4940,7 +4940,7 @@ pub fn resize_left_with_pane_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -4997,7 +4997,7 @@ pub fn resize_left_with_pane_to_the_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5017,7 +5017,7 @@ pub fn resize_left_with_pane_to_the_right() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -5036,7 +5036,7 @@ pub fn resize_left_with_pane_to_the_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5232,7 +5232,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5252,7 +5252,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 2 x position"
     );
     assert_eq!(
@@ -5271,7 +5271,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5310,7 +5310,7 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5410,7 +5410,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5430,7 +5430,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 3 x position"
     );
     assert_eq!(
@@ -5449,7 +5449,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -5589,7 +5589,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -5609,7 +5609,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 3 x position"
     );
     assert_eq!(
@@ -5628,7 +5628,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -5727,7 +5727,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -5825,7 +5825,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 4 x position"
     );
     assert_eq!(
@@ -5844,7 +5844,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 4 column count"
     );
     assert_eq!(
@@ -5905,7 +5905,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 1 column count"
     );
     assert_eq!(
@@ -6003,7 +6003,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 4 x position"
     );
     assert_eq!(
@@ -6022,7 +6022,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 4 column count"
     );
     assert_eq!(
@@ -6098,7 +6098,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 1 row count"
     );
 
@@ -6117,7 +6117,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -6127,7 +6127,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6156,7 +6156,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6176,7 +6176,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "pane 3 row count"
     );
 
@@ -6195,7 +6195,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6215,7 +6215,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "pane 4 row count"
     );
 
@@ -6225,7 +6225,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 5 x position"
     );
     assert_eq!(
@@ -6234,7 +6234,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -6244,7 +6244,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 5 column count"
     );
     assert_eq!(
@@ -6293,7 +6293,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 6 row count"
     );
 }
@@ -6360,7 +6360,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 1 row count"
     );
 
@@ -6379,7 +6379,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -6389,7 +6389,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .cols
             .as_usize(),
-        55,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6418,7 +6418,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6438,7 +6438,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "pane 3 row count"
     );
 
@@ -6457,7 +6457,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6477,7 +6477,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "pane 4 row count"
     );
 
@@ -6487,7 +6487,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .x,
-        55,
+        54,
         "pane 5 x position"
     );
     assert_eq!(
@@ -6496,7 +6496,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .y,
-        15,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -6506,7 +6506,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .cols
             .as_usize(),
-        66,
+        67,
         "pane 5 column count"
     );
     assert_eq!(
@@ -6555,7 +6555,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 6 row count"
     );
 }
@@ -6654,7 +6654,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .cols
             .as_usize(),
-        51,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -6664,7 +6664,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .rows
             .as_usize(),
-        20,
+        21,
         "pane 2 row count"
     );
 
@@ -6683,7 +6683,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 3 y position"
     );
     assert_eq!(
@@ -6703,7 +6703,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 3 row count"
     );
 
@@ -6722,7 +6722,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 4 y position"
     );
     assert_eq!(
@@ -6742,7 +6742,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 4 row count"
     );
 
@@ -6791,7 +6791,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 6 x position"
     );
     assert_eq!(
@@ -6810,7 +6810,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .cols
             .as_usize(),
-        70,
+        67,
         "pane 6 column count"
     );
     assert_eq!(
@@ -6820,7 +6820,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .rows
             .as_usize(),
-        10,
+        11,
         "pane 6 row count"
     );
 
@@ -6830,7 +6830,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 7 x position"
     );
     assert_eq!(
@@ -6839,7 +6839,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        45,
+        46,
         "pane 7 y position"
     );
     assert_eq!(
@@ -6849,7 +6849,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .cols
             .as_usize(),
-        70,
+        67,
         "pane 7 column count"
     );
     assert_eq!(
@@ -6869,7 +6869,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 8 x position"
     );
     assert_eq!(
@@ -6878,7 +6878,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .unwrap()
             .position_and_size()
             .y,
-        50,
+        51,
         "pane 8 y position"
     );
     assert_eq!(
@@ -6888,7 +6888,7 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
             .position_and_size()
             .cols
             .as_usize(),
-        70,
+        67,
         "pane 8 column count"
     );
     assert_eq!(
@@ -6904,7 +6904,6 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
 }
 
 #[test]
-#[ignore]
 pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_above_and_below() {
     // ┌─────┬─────┐                    ┌─────┬─────┐
     // ├─────┼─────┤                    ├───┬─┴─────┤
@@ -6999,7 +6998,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        51,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7009,7 +7008,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        10,
+        11,
         "pane 2 row count"
     );
 
@@ -7028,7 +7027,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 3 y position"
     );
     assert_eq!(
@@ -7048,7 +7047,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 3 row count"
     );
 
@@ -7067,7 +7066,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        55,
+        56,
         "pane 4 y position"
     );
     assert_eq!(
@@ -7087,7 +7086,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        15,
+        14,
         "pane 4 row count"
     );
 
@@ -7136,7 +7135,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        51,
+        54,
         "pane 6 x position"
     );
     assert_eq!(
@@ -7155,7 +7154,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        70,
+        67,
         "pane 6 column count"
     );
     assert_eq!(
@@ -7165,7 +7164,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        20,
+        21,
         "pane 6 row count"
     );
 
@@ -7184,7 +7183,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        45,
+        46,
         "pane 7 y position"
     );
     assert_eq!(
@@ -7194,7 +7193,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        51,
+        54,
         "pane 7 column count"
     );
     assert_eq!(
@@ -7223,7 +7222,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        50,
+        51,
         "pane 8 y position"
     );
     assert_eq!(
@@ -7233,7 +7232,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        51,
+        54,
         "pane 8 column count"
     );
     assert_eq!(
@@ -7249,7 +7248,6 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
 }
 
 #[test]
-#[ignore]
 pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     // ┌─┬─┐                    ┌─┬─┐
     // │ │█│                    │ │█│
@@ -7286,7 +7284,6 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_pane_to_the_left() {
     // ┌─────┬─────┐                   ┌───────┬───┐
     // │     │█████│                   │       │███│
@@ -7328,7 +7325,7 @@ pub fn resize_right_with_pane_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7348,7 +7345,7 @@ pub fn resize_right_with_pane_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7367,7 +7364,7 @@ pub fn resize_right_with_pane_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7383,7 +7380,6 @@ pub fn resize_right_with_pane_to_the_left() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_pane_to_the_right() {
     // ┌─────┬─────┐                   ┌───────┬───┐
     // │█████│     │                   │███████│   │
@@ -7426,7 +7422,7 @@ pub fn resize_right_with_pane_to_the_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7446,7 +7442,7 @@ pub fn resize_right_with_pane_to_the_right() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7465,7 +7461,7 @@ pub fn resize_right_with_pane_to_the_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7481,7 +7477,6 @@ pub fn resize_right_with_pane_to_the_right() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_left_and_right() {
     // ┌─────┬─────┬─────┐                   ┌─────┬───────┬───┐
     // │     │█████│     │                   │     │███████│   │
@@ -7564,7 +7559,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        40,
+        36,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7584,7 +7579,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .unwrap()
             .position_and_size()
             .x,
-        101,
+        97,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7603,7 +7598,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
             .position_and_size()
             .cols
             .as_usize(),
-        20,
+        24,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7619,7 +7614,6 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_multiple_panes_to_the_left() {
     // ┌─────┬─────┐                   ┌───────┬───┐
     // │     │█████│                   │       │███│
@@ -7664,7 +7658,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -7684,7 +7678,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -7703,7 +7697,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -7742,7 +7736,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -7758,7 +7752,6 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // │     │     │                   │     │     │
@@ -7882,7 +7875,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -7902,7 +7895,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 4 x position"
     );
     assert_eq!(
@@ -7921,7 +7914,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 4 column count"
     );
     assert_eq!(
@@ -7937,7 +7930,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // │     │     │                   │     │     │
@@ -8061,7 +8053,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 3 column count"
     );
     assert_eq!(
@@ -8081,7 +8073,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 4 x position"
     );
     assert_eq!(
@@ -8100,7 +8092,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 4 column count"
     );
     assert_eq!(
@@ -8116,7 +8108,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     // ┌─────┬─────┐                   ┌───────┬───┐
     // │     │█████│                   │       │███│
@@ -8163,7 +8154,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -8183,7 +8174,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -8202,7 +8193,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8296,7 +8287,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     // ┌─────┬─────┐                   ┌───────┬───┐
     // │█████│     │                   │███████│   │
@@ -8344,7 +8334,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 1 column count"
     );
     assert_eq!(
@@ -8364,7 +8354,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 2 x position"
     );
     assert_eq!(
@@ -8383,7 +8373,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8477,7 +8467,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_pane() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // │     │     │                   │     │     │
@@ -8567,7 +8556,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8665,7 +8654,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 5 x position"
     );
     assert_eq!(
@@ -8684,7 +8673,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 5 column count"
     );
     assert_eq!(
@@ -8739,7 +8728,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_pane() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // │     │     │                   │     │     │
@@ -8829,7 +8817,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -8927,7 +8915,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 5 x position"
     );
     assert_eq!(
@@ -8946,7 +8934,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 5 column count"
     );
     assert_eq!(
@@ -9001,7 +8989,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_above_and_below() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // ├─────┼─────┤                   ├─────┴─┬───┤
@@ -9065,7 +9052,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        33,
+        31,
         "pane 1 row count"
     );
 
@@ -9084,7 +9071,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9094,7 +9081,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -9104,7 +9091,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        20,
+        21,
         "pane 2 row count"
     );
 
@@ -9123,7 +9110,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 3 y position"
     );
     assert_eq!(
@@ -9143,7 +9130,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        18,
         "pane 3 row count"
     );
 
@@ -9162,7 +9149,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 4 y position"
     );
     assert_eq!(
@@ -9182,7 +9169,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        18,
         "pane 4 row count"
     );
 
@@ -9221,7 +9208,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        33,
+        31,
         "pane 5 row count"
     );
 
@@ -9231,7 +9218,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 6 x position"
     );
     assert_eq!(
@@ -9240,7 +9227,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 6 y position"
     );
     assert_eq!(
@@ -9250,7 +9237,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 6 column count"
     );
     assert_eq!(
@@ -9260,7 +9247,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .rows
             .as_usize(),
-        10,
+        11,
         "pane 6 row count"
     );
 
@@ -9270,7 +9257,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 7 x position"
     );
     assert_eq!(
@@ -9279,7 +9266,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        43,
+        42,
         "pane 7 y position"
     );
     assert_eq!(
@@ -9289,7 +9276,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 7 column count"
     );
     assert_eq!(
@@ -9309,7 +9296,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 8 x position"
     );
     assert_eq!(
@@ -9318,7 +9305,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .unwrap()
             .position_and_size()
             .y,
-        48,
+        47,
         "pane 8 y position"
     );
     assert_eq!(
@@ -9328,7 +9315,7 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 8 column count"
     );
     assert_eq!(
@@ -9344,7 +9331,6 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
 }
 
 #[test]
-#[ignore]
 pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_above_and_below() {
     // ┌─────┬─────┐                   ┌─────┬─────┐
     // ├─────┼─────┤                   ├─────┴─┬───┤
@@ -9409,7 +9395,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        33,
+        31,
         "pane 1 row count"
     );
 
@@ -9428,7 +9414,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9438,7 +9424,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 2 column count"
     );
     assert_eq!(
@@ -9448,7 +9434,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        10,
+        11,
         "pane 2 row count"
     );
 
@@ -9467,7 +9453,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 3 y position"
     );
     assert_eq!(
@@ -9487,7 +9473,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        18,
         "pane 3 row count"
     );
 
@@ -9506,7 +9492,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        53,
+        52,
         "pane 4 y position"
     );
     assert_eq!(
@@ -9526,7 +9512,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        18,
         "pane 4 row count"
     );
 
@@ -9565,7 +9551,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        33,
+        31,
         "pane 5 row count"
     );
 
@@ -9575,7 +9561,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .x,
-        71,
+        67,
         "pane 6 x position"
     );
     assert_eq!(
@@ -9584,7 +9570,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        33,
+        31,
         "pane 6 y position"
     );
     assert_eq!(
@@ -9594,7 +9580,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .cols
             .as_usize(),
-        50,
+        54,
         "pane 6 column count"
     );
     assert_eq!(
@@ -9604,7 +9590,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .rows
             .as_usize(),
-        20,
+        21,
         "pane 6 row count"
     );
 
@@ -9623,7 +9609,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        43,
+        42,
         "pane 7 y position"
     );
     assert_eq!(
@@ -9633,7 +9619,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 7 column count"
     );
     assert_eq!(
@@ -9662,7 +9648,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .unwrap()
             .position_and_size()
             .y,
-        48,
+        47,
         "pane 8 y position"
     );
     assert_eq!(
@@ -9672,7 +9658,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
             .position_and_size()
             .cols
             .as_usize(),
-        71,
+        67,
         "pane 8 column count"
     );
     assert_eq!(
@@ -9688,7 +9674,6 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
 }
 
 #[test]
-#[ignore]
 pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     // ┌─┬─┐                   ┌─┬─┐
     // │ │█│                   │ │█│
@@ -9724,7 +9709,6 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_pane_above() {
     // ┌───────────┐                ┌───────────┐
     // │           │                │           │
@@ -9777,7 +9761,7 @@ pub fn resize_up_with_pane_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        8,
+        9,
         "pane 1 row count"
     );
 
@@ -9796,7 +9780,7 @@ pub fn resize_up_with_pane_above() {
             .unwrap()
             .position_and_size()
             .y,
-        8,
+        9,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9816,13 +9800,12 @@ pub fn resize_up_with_pane_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "pane 2 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_pane_below() {
     // ┌───────────┐                ┌───────────┐
     // │███████████│                │███████████│
@@ -9876,7 +9859,7 @@ pub fn resize_up_with_pane_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        8,
+        9,
         "pane 1 row count"
     );
 
@@ -9895,7 +9878,7 @@ pub fn resize_up_with_pane_below() {
             .unwrap()
             .position_and_size()
             .y,
-        8,
+        9,
         "pane 2 y position"
     );
     assert_eq!(
@@ -9915,13 +9898,12 @@ pub fn resize_up_with_pane_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        12,
+        11,
         "pane 2 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_above_and_below() {
     // ┌───────────┐                ┌───────────┐
     // │           │                │           │
@@ -10018,7 +10000,7 @@ pub fn resize_up_with_panes_above_and_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        10,
+        9,
         "pane 2 row count"
     );
 
@@ -10037,7 +10019,7 @@ pub fn resize_up_with_panes_above_and_below() {
             .unwrap()
             .position_and_size()
             .y,
-        23,
+        22,
         "pane 3 y position"
     );
     assert_eq!(
@@ -10057,13 +10039,12 @@ pub fn resize_up_with_panes_above_and_below() {
             .position_and_size()
             .rows
             .as_usize(),
-        7,
+        8,
         "pane 3 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_multiple_panes_above() {
     //
     // ┌─────┬─────┐                 ┌─────┬─────┐
@@ -10118,7 +10099,7 @@ pub fn resize_up_with_multiple_panes_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 1 row count"
     );
 
@@ -10137,7 +10118,7 @@ pub fn resize_up_with_multiple_panes_above() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -10157,7 +10138,7 @@ pub fn resize_up_with_multiple_panes_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 2 row count"
     );
 
@@ -10196,13 +10177,12 @@ pub fn resize_up_with_multiple_panes_above() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 3 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     // ┌─────┬─────┐                  ┌─────┬─────┐
     // │     │     │                  │     ├─────┤
@@ -10335,7 +10315,7 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 3 row count"
     );
 
@@ -10354,7 +10334,7 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 4 y position"
     );
     assert_eq!(
@@ -10374,13 +10354,12 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 4 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     // ┌─────┬─────┐                  ┌─────┬─────┐
     // │     │█████│                  │     │█████│
@@ -10516,7 +10495,7 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 3 row count"
     );
 
@@ -10535,7 +10514,7 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 4 y position"
     );
     assert_eq!(
@@ -10555,13 +10534,12 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 4 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     // ┌─────┬─────┐                  ┌─────┬─────┐
     // │     │     │                  │     │     │
@@ -10619,7 +10597,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 1 row count"
     );
 
@@ -10638,7 +10616,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -10658,7 +10636,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 2 row count"
     );
 
@@ -10742,7 +10720,6 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     // ┌─────┬─────┐                  ┌─────┬─────┐
     // │█████│     │                  │█████│     │
@@ -10801,7 +10778,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 1 row count"
     );
 
@@ -10820,7 +10797,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 2 y position"
     );
     assert_eq!(
@@ -10840,7 +10817,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 2 row count"
     );
 
@@ -10924,7 +10901,6 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     // ┌───┬───┬───┐                  ┌───┬───┬───┐
     // │   │   │   │                  │   │   │   │
@@ -11041,7 +11017,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 3 y position"
     );
     assert_eq!(
@@ -11061,7 +11037,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 3 row count"
     );
 
@@ -11139,7 +11115,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 5 row count"
     );
 
@@ -11184,7 +11160,6 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     // ┌───┬───┬───┐                  ┌───┬───┬───┐
     // │   │███│   │                  │   │███│   │
@@ -11302,7 +11277,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 3 y position"
     );
     assert_eq!(
@@ -11322,7 +11297,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 3 row count"
     );
 
@@ -11400,7 +11375,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 5 row count"
     );
 
@@ -11445,7 +11420,6 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_and_right() {
     // ┌─┬───────┬─┐                  ┌─┬───────┬─┐
     // │ │       │ │                  │ │       │ │
@@ -11456,7 +11430,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     // └─┴─┴───┴─┴─┘                  └─┴─┴───┴─┴─┘
     // █ == focused pane
     let size = Size {
-        cols: 121,
+        cols: 122,
         rows: 30,
     };
     let mut tab = create_new_tab(size);
@@ -11498,7 +11472,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -11537,7 +11511,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -11557,7 +11531,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -11576,7 +11550,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 3 column count"
     );
     assert_eq!(
@@ -11586,7 +11560,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 3 row count"
     );
 
@@ -11615,7 +11589,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -11635,7 +11609,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 5 x position"
     );
     assert_eq!(
@@ -11644,7 +11618,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -11664,7 +11638,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 5 row count"
     );
 
@@ -11693,7 +11667,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -11713,7 +11687,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 7 x position"
     );
     assert_eq!(
@@ -11722,7 +11696,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 7 y position"
     );
     assert_eq!(
@@ -11742,7 +11716,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 7 row count"
     );
 
@@ -11752,7 +11726,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 8 x position"
     );
     assert_eq!(
@@ -11761,7 +11735,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 8 y position"
     );
     assert_eq!(
@@ -11771,7 +11745,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .cols
             .as_usize(),
-        7,
+        8,
         "pane 8 column count"
     );
     assert_eq!(
@@ -11781,13 +11755,12 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 8 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_right() {
     // ┌─┬─┬───┬─┬─┐                  ┌─┬─┬───┬─┬─┐
     // │ │ │███│ │ │                  │ │ │███│ │ │
@@ -11798,7 +11771,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     // └─┴───────┴─┘                  └─┴───────┴─┘
     // █ == focused pane
     let size = Size {
-        cols: 121,
+        cols: 122,
         rows: 30,
     };
     let mut tab = create_new_tab(size);
@@ -11841,7 +11814,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "pane 1 column count"
     );
     assert_eq!(
@@ -11880,7 +11853,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        61,
+        60,
         "pane 2 column count"
     );
     assert_eq!(
@@ -11900,7 +11873,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 3 x position"
     );
     assert_eq!(
@@ -11929,7 +11902,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 3 row count"
     );
 
@@ -11958,7 +11931,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 4 column count"
     );
     assert_eq!(
@@ -11978,7 +11951,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        61,
+        60,
         "pane 5 x position"
     );
     assert_eq!(
@@ -11987,7 +11960,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .y,
-        13,
+        14,
         "pane 5 y position"
     );
     assert_eq!(
@@ -11997,7 +11970,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 5 column count"
     );
     assert_eq!(
@@ -12007,7 +11980,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .rows
             .as_usize(),
-        17,
+        16,
         "pane 5 row count"
     );
 
@@ -12036,7 +12009,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        30,
+        31,
         "pane 6 column count"
     );
     assert_eq!(
@@ -12056,7 +12029,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        76,
+        75,
         "pane 7 x position"
     );
     assert_eq!(
@@ -12085,7 +12058,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 7 row count"
     );
 
@@ -12095,7 +12068,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .unwrap()
             .position_and_size()
             .x,
-        84,
+        83,
         "pane 8 x position"
     );
     assert_eq!(
@@ -12114,7 +12087,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .cols
             .as_usize(),
-        7,
+        8,
         "pane 8 column count"
     );
     assert_eq!(
@@ -12124,13 +12097,12 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
             .position_and_size()
             .rows
             .as_usize(),
-        13,
+        14,
         "pane 8 row count"
     );
 }
 
 #[test]
-#[ignore]
 pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     // ┌───────────┐                ┌───────────┐
     // │           │                │           │

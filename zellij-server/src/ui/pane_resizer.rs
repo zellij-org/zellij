@@ -248,15 +248,6 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     constraints
 }
 
-// In some cases, the Cassowary solver will return solutions containing sizes like `10.5` which are
-// rounded to an integer number of rows / columns by the discretization algorithm. In some
-// sub-cases, the solver will also introduce a small floating-point error – `10.5`, for example,
-// could become `10.499999999999998` or `10.500000000000002`. The latter case doesn't cause any
-// problems as it's still rounded up to `11`, just like `10.5`, but the former will actually be
-// rounded down to `10`! A small, random floating-point error can move a pane by a full column or
-// row, creating a stuttery appearance. This function rounds numbers in two steps, first to a
-// single decimal place, rounding `10.499999999999998` to `10.5`, then to an integer, correctly
-// rounding `10.5` to `11`. TL;DR – floating-point numbers are awful.
 fn stable_round(x: f64) -> f64 {
-    ((x * 10.0).round() / 10.0).round()
+    ((x * 100.0).round() / 100.0).round()
 }

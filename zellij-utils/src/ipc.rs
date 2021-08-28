@@ -58,12 +58,7 @@ pub enum ClientToServerMsg {
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
     TerminalResize(Size),
-    NewClient(
-        ClientAttributes,
-        Box<CliArgs>,
-        Box<Options>,
-        LayoutFromYaml,
-    ),
+    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
     AttachClient(ClientAttributes, bool, Options),
     Action(Action),
     ClientExited,
