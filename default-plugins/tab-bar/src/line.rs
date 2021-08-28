@@ -48,10 +48,7 @@ fn populate_tabs_in_tab_line(
 
 fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: &str) -> LinePart {
     if tab_count_to_the_left == 0 {
-        return LinePart {
-            part: String::new(),
-            len: 0,
-        };
+        return LinePart::default();
     }
     let more_text = if tab_count_to_the_left < 10000 {
         format!(" ← +{} ", tab_count_to_the_left)
@@ -81,10 +78,7 @@ fn right_more_message(
     separator: &str,
 ) -> LinePart {
     if tab_count_to_the_right == 0 {
-        return LinePart {
-            part: String::new(),
-            len: 0,
-        };
+        return LinePart::default();
     };
     let more_text = if tab_count_to_the_right < 10000 {
         format!(" +{} → ", tab_count_to_the_right)
@@ -118,11 +112,15 @@ fn add_previous_tabs_msg(
     while get_current_title_len(tabs_to_render)
         + left_more_message(tabs_before_active.len(), palette, separator).len
         >= cols
+        && !tabs_to_render.is_empty()
     {
         tabs_before_active.push(tabs_to_render.remove(0));
     }
+
     let left_more_message = left_more_message(tabs_before_active.len(), palette, separator);
-    title_bar.push(left_more_message);
+    if left_more_message.len <= cols {
+        title_bar.push(left_more_message);
+    }
 }
 
 fn add_next_tabs_msg(
@@ -135,11 +133,14 @@ fn add_next_tabs_msg(
     while get_current_title_len(title_bar)
         + right_more_message(tabs_after_active.len(), palette, separator).len
         >= cols
+        && !title_bar.is_empty()
     {
         tabs_after_active.insert(0, title_bar.pop().unwrap());
     }
     let right_more_message = right_more_message(tabs_after_active.len(), palette, separator);
-    title_bar.push(right_more_message);
+    if right_more_message.len < cols {
+        title_bar.push(right_more_message);
+    }
 }
 
 fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) -> Vec<LinePart> {

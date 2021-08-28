@@ -6,7 +6,7 @@ use zellij_tile::prelude::*;
 use crate::line::tab_line;
 use crate::tab::tab_style;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LinePart {
     part: String,
     len: usize,
