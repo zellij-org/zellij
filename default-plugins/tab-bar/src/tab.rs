@@ -42,7 +42,7 @@ pub fn tab_style(
     is_active_tab: bool,
     is_sync_panes_active: bool,
     palette: Palette,
-    capabilities: PluginCapabilities,
+    capabilities: Capabilities,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
     let mut tab_text = text;

@@ -10,15 +10,11 @@ pub mod options;
 pub mod theme;
 
 use termion::input::TermRead;
-use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
+use zellij_tile::data::{Capabilities, InputMode, Key, ModeInfo, Palette};
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
-pub fn get_mode_info(
-    mode: InputMode,
-    palette: Palette,
-    capabilities: PluginCapabilities,
-) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode, palette: Palette, capabilities: Capabilities) -> ModeInfo {
     let keybinds = match mode {
         InputMode::Normal | InputMode::Locked => Vec::new(),
         InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],

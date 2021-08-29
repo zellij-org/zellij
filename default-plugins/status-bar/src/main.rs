@@ -158,7 +158,7 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let separator = if !self.mode_info.capabilities.arrow_fonts {
+        let separator = if self.mode_info.capabilities.fancy_fonts {
             ARROW_SEPARATOR
         } else {
             &""

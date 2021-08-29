@@ -149,7 +149,7 @@ pub struct ModeInfo {
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
     pub palette: Palette,
-    pub capabilities: PluginCapabilities,
+    pub capabilities: Capabilities,
     pub session_name: Option<String>,
 }
 
@@ -169,12 +169,12 @@ pub struct PluginIds {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct PluginCapabilities {
-    pub arrow_fonts: bool,
+pub struct Capabilities {
+    pub fancy_fonts: bool,
 }
 
-impl Default for PluginCapabilities {
-    fn default() -> PluginCapabilities {
-        PluginCapabilities { arrow_fonts: true }
+impl Default for Capabilities {
+    fn default() -> Capabilities {
+        Capabilities { fancy_fonts: true }
     }
 }

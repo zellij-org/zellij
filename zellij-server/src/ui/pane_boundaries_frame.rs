@@ -24,6 +24,9 @@ pub struct PaneFrame {
     pub title: String,
     pub scroll_position: (usize, usize), // (position, length)
     pub color: Option<PaletteColor>,
+    // FIXME: I'm not thrilled by this implementation, but I'm a bit stuck waiting for the Pane
+    // refactor
+    pub rounded: bool,
 }
 
 impl PaneFrame {
@@ -79,8 +82,16 @@ impl PaneFrame {
     }
     fn render_title(&self, vte_output: &mut String) {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let left_boundary = boundary_type::TOP_LEFT;
-        let right_boundary = boundary_type::TOP_RIGHT;
+        let left_boundary = if self.rounded {
+            boundary_type::TOP_LEFT_ROUND
+        } else {
+            boundary_type::TOP_LEFT
+        };
+        let right_boundary = if self.rounded {
+            boundary_type::TOP_RIGHT_ROUND
+        } else {
+            boundary_type::TOP_RIGHT
+        };
         let left_side = self.render_title_left_side(total_title_length);
         let right_side = left_side.as_ref().and_then(|left_side| {
             let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
@@ -125,6 +136,16 @@ impl PaneFrame {
         )); // goto row/col + boundary character
     }
     pub fn render(&self) -> String {
+        let left_boundary = if self.rounded {
+            boundary_type::BOTTOM_LEFT_ROUND
+        } else {
+            boundary_type::BOTTOM_LEFT
+        };
+        let right_boundary = if self.rounded {
+            boundary_type::BOTTOM_RIGHT_ROUND
+        } else {
+            boundary_type::BOTTOM_RIGHT
+        };
         let mut vte_output = String::new();
         for row in self.geom.y..(self.geom.y + self.geom.rows) {
             if row == self.geom.y {
@@ -139,7 +160,7 @@ impl PaneFrame {
                             "\u{1b}[{};{}H\u{1b}[m{}",
                             row + 1, // +1 because goto is 1 indexed
                             col + 1,
-                            color_string(boundary_type::BOTTOM_LEFT, self.color),
+                            color_string(left_boundary, self.color),
                         )); // goto row/col + boundary character
                     } else if col == self.geom.x + self.geom.cols - 1 {
                         // bottom right corner
@@ -147,7 +168,7 @@ impl PaneFrame {
                             "\u{1b}[{};{}H\u{1b}[m{}",
                             row + 1, // +1 because goto is 1 indexed
                             col + 1,
-                            color_string(boundary_type::BOTTOM_RIGHT, self.color),
+                            color_string(right_boundary, self.color),
                         )); // goto row/col + boundary character
                     } else {
                         vte_output.push_str(&format!(

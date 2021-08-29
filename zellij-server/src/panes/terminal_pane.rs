@@ -11,6 +11,7 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
+use zellij_utils::zellij_tile::prelude::Capabilities;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
@@ -44,6 +45,7 @@ pub struct TerminalPane {
     pane_title: String,
     frame: Option<PaneFrame>,
     frame_color: Option<PaletteColor>,
+    capabilities: Capabilities,
 }
 
 impl Pane for TerminalPane {
@@ -248,6 +250,7 @@ impl Pane for TerminalPane {
                         .unwrap_or_else(|| self.pane_title.clone()),
                     scroll_position: self.grid.scrollback_position_and_length(),
                     color: self.frame_color,
+                    rounded: self.capabilities.fancy_fonts,
                 };
                 if &frame != last_frame {
                     vte_output.push_str(&frame.render());
@@ -390,6 +393,9 @@ impl Pane for TerminalPane {
         self.frame_color = color;
         self.set_should_render(true);
     }
+    fn set_capabilites(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
+    }
 }
 
 impl TerminalPane {
@@ -419,6 +425,7 @@ impl TerminalPane {
             colors: palette,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
+            capabilities: Capabilities::default(),
         }
     }
     pub fn get_x(&self) -> usize {

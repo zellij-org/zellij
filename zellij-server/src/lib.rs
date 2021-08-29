@@ -19,7 +19,7 @@ use std::{
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;
-use zellij_tile::data::{Event, Palette, PluginCapabilities};
+use zellij_tile::data::{Capabilities, Event, Palette};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -91,7 +91,7 @@ impl ErrorInstruction for ServerInstruction {
 
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
-    pub capabilities: PluginCapabilities,
+    pub capabilities: Capabilities,
     pub palette: Palette,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
@@ -329,8 +329,8 @@ fn init_session(
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
-    let capabilities = PluginCapabilities {
-        arrow_fonts: config_options.simplified_ui,
+    let capabilities = Capabilities {
+        fancy_fonts: !config_options.simplified_ui,
     };
 
     let default_shell = config_options.default_shell.clone().map(|command| {

@@ -16,7 +16,7 @@ use crate::{
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
-use zellij_tile::data::{Event, ModeInfo, Palette, PluginCapabilities, TabInfo};
+use zellij_tile::data::{Capabilities, Event, ModeInfo, Palette, TabInfo};
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
@@ -433,7 +433,7 @@ pub(crate) fn screen_thread_main(
     config_options: Box<Options>,
     session_state: Arc<RwLock<SessionState>>,
 ) {
-    let capabilities = config_options.simplified_ui;
+    let capabilities = !config_options.simplified_ui;
     let draw_pane_frames = !config_options.no_pane_frames;
 
     let mut screen = Screen::new(
@@ -443,8 +443,8 @@ pub(crate) fn screen_thread_main(
         get_mode_info(
             config_options.default_mode.unwrap_or_default(),
             client_attributes.palette,
-            PluginCapabilities {
-                arrow_fonts: capabilities,
+            Capabilities {
+                fancy_fonts: capabilities,
             },
         ),
         session_state,

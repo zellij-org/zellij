@@ -168,8 +168,8 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     parts
 }
 
-pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
-    if !capabilities.arrow_fonts {
+pub fn tab_separator(capabilities: Capabilities) -> &'static str {
+    if capabilities.fancy_fonts {
         ARROW_SEPARATOR
     } else {
         ""
@@ -182,7 +182,7 @@ pub fn tab_line(
     active_tab_index: usize,
     cols: usize,
     palette: Palette,
-    capabilities: PluginCapabilities,
+    capabilities: Capabilities,
 ) -> Vec<LinePart> {
     let mut tabs_to_render = Vec::new();
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);

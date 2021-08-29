@@ -21,6 +21,7 @@ use std::{
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::input::layout::Direction;
 use zellij_utils::pane_size::{Offset, Size, Viewport};
+use zellij_utils::zellij_tile::prelude::Capabilities;
 use zellij_utils::{
     input::{
         layout::{Layout, Run},
@@ -245,6 +246,7 @@ pub trait Pane {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
     fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
+    fn set_capabilites(&mut self, capabilities: Capabilities);
 }
 
 impl Tab {
@@ -685,6 +687,7 @@ impl Tab {
         self.draw_pane_frames = draw_pane_frames;
         for (pane_id, pane) in self.panes.iter_mut() {
             pane.set_frame(draw_pane_frames);
+            pane.set_capabilites(self.mode_info.capabilities);
             if draw_pane_frames {
                 pane.set_content_offset(Offset::frame(1));
             } else {

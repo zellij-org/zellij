@@ -9,11 +9,15 @@ use zellij_utils::shared::colors;
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {
     pub const TOP_RIGHT: &str = "┐";
+    pub const TOP_RIGHT_ROUND: &str = "╮";
     pub const VERTICAL: &str = "│";
     pub const HORIZONTAL: &str = "─";
     pub const TOP_LEFT: &str = "┌";
+    pub const TOP_LEFT_ROUND: &str = "╭";
     pub const BOTTOM_RIGHT: &str = "┘";
+    pub const BOTTOM_RIGHT_ROUND: &str = "╯";
     pub const BOTTOM_LEFT: &str = "└";
+    pub const BOTTOM_LEFT_ROUND: &str = "╰";
     pub const VERTICAL_LEFT: &str = "┤";
     pub const VERTICAL_RIGHT: &str = "├";
     pub const HORIZONTAL_DOWN: &str = "┬";

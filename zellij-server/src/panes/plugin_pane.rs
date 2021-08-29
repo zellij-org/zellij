@@ -9,7 +9,7 @@ use crate::ui::pane_boundaries_frame::PaneFrame;
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::shared::ansi_len;
-use zellij_utils::zellij_tile::prelude::PaletteColor;
+use zellij_utils::zellij_tile::prelude::{Capabilities, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
@@ -27,6 +27,7 @@ pub(crate) struct PluginPane {
     pub pane_title: String,
     frame: bool,
     frame_color: Option<PaletteColor>,
+    capabilities: Capabilities,
 }
 
 impl PluginPane {
@@ -48,6 +49,7 @@ impl PluginPane {
             frame_color: None,
             content_offset: Offset::default(),
             pane_title: title,
+            capabilities: Capabilities::default(),
         }
     }
 }
@@ -156,6 +158,7 @@ impl Pane for PluginPane {
                     geom: self.current_geom().into(),
                     title: self.pane_title.clone(),
                     color: self.frame_color,
+                    rounded: self.capabilities.fancy_fonts,
                     ..Default::default()
                 };
                 vte_output.push_str(&frame.render());
@@ -278,5 +281,8 @@ impl Pane for PluginPane {
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
         self.frame_color = color;
         self.set_should_render(true);
+    }
+    fn set_capabilites(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
     }
 }
