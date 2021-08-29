@@ -266,11 +266,14 @@ impl Screen {
         } else {
             self.active_tab_index = self.tab_history.pop().unwrap();
             for t in self.tabs.values_mut() {
-                if t.position > active_tab.position {
+                if t.position == self.active_tab_index.unwrap() {
+                    t.set_force_render()
+                } else if t.position > active_tab.position {
                     t.position -= 1;
                 }
             }
             self.update_tabs();
+            self.render();
         }
     }
 
