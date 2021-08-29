@@ -4,7 +4,7 @@ expression: last_snapshot
 
 ---
  Zellij 
-┌──────┐
+╭──────╮
 │$ Hi!█│
 │      │
 │      │
@@ -20,6 +20,6 @@ expression: last_snapshot
 │      │
 │      │
 │      │
-└──────┘
+╰──────╯
  Ctrl +
         
