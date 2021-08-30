@@ -11,7 +11,6 @@ use std::net::TcpStream;
 use std::path::Path;
 
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
-const ZELLIJ_DATA_LOCATION: &str = "/usr/src/zellij/dev-data";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
@@ -52,8 +51,8 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --data-dir {} --session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, ZELLIJ_DATA_LOCATION, SESSION_NAME
+                "{} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
             )
             .as_bytes(),
         )
@@ -66,8 +65,8 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --data-dir {} --session {} options --no-pane-frames\n",
-                ZELLIJ_EXECUTABLE_LOCATION, ZELLIJ_DATA_LOCATION, SESSION_NAME
+                "{} --session {} options --no-pane-frames\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
             )
             .as_bytes(),
         )
@@ -80,8 +79,8 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel
         .write_all(
             format!(
-                "{} --data-dir {} --layout-path {} --session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, ZELLIJ_DATA_LOCATION, layout_path, SESSION_NAME
+                "{} --layout-path {} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME
             )
             .as_bytes(),
         )
