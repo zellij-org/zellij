@@ -245,6 +245,8 @@ pub trait Pane {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
     fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
+    fn set_borderless(&mut self, borderless: bool);
+    fn borderless(&self) -> bool;
 }
 
 impl Tab {
@@ -327,12 +329,13 @@ impl Tab {
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let title = String::from(plugin.as_path().as_os_str().to_string_lossy());
-                let new_plugin = PluginPane::new(
+                let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                     title,
                 );
+                new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
                 // Send an initial mode update to the newly loaded plugin only!
                 self.senders
@@ -345,12 +348,13 @@ impl Tab {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
                 let next_terminal_position = self.get_next_terminal_position();
-                let new_pane = TerminalPane::new(
+                let mut new_pane = TerminalPane::new(
                     *pid,
                     *position_and_size,
                     self.colors,
                     next_terminal_position,
                 );
+                new_pane.set_borderless(layout.borderless);
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));
             }
@@ -693,10 +697,12 @@ impl Tab {
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
             }
-            // FIXME: The selectable thing is a massive Hack! Decouple borders from selectability
-            if !pane.selectable() {
+
+            // FIXME: this should also override the above logic
+            if pane.borderless() {
                 pane.set_content_offset(Offset::default());
             }
+
             // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
             // `TerminalPane::reflow_lines`
             if let PaneId::Terminal(pid) = pane_id {
@@ -2107,9 +2113,6 @@ impl Tab {
                 self.active_terminal = self.next_active_pane(&self.get_pane_ids())
             }
         }
-        // FIXME: This is a super, super nasty hack while borderless-ness is still tied to
-        // selectability. Delete this once those are decoupled
-        self.set_pane_frames(self.draw_pane_frames);
         self.render();
     }
     pub fn close_pane(&mut self, id: PaneId) {
