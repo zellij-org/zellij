@@ -48,7 +48,7 @@ impl CtrlKeyShortcut {
             CtrlKeyAction::Lock => 'g',
             CtrlKeyAction::Pane => 'p',
             CtrlKeyAction::Tab => 't',
-            CtrlKeyAction::Resize => 'r',
+            CtrlKeyAction::Resize => 'n',
             CtrlKeyAction::Scroll => 's',
             CtrlKeyAction::Quit => 'q',
             CtrlKeyAction::Session => 'o',
