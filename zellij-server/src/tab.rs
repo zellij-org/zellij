@@ -344,12 +344,12 @@ impl Tab {
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let next_selectable_pane_position = self.get_next_selectable_pane_position();
+                let next_terminal_position = self.get_next_terminal_position();
                 let new_pane = TerminalPane::new(
                     *pid,
                     *position_and_size,
                     self.colors,
-                    next_selectable_pane_position,
+                    next_terminal_position,
                 );
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));
@@ -418,7 +418,7 @@ impl Tab {
             return; // likely no terminal large enough to split
         }
         let terminal_id_to_split = terminal_id_to_split.unwrap();
-        let next_selectable_pane_position = self.get_next_selectable_pane_position();
+        let next_terminal_position = self.get_next_terminal_position();
         let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
         let terminal_ws = terminal_to_split.position_and_size();
         if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.cols()
@@ -432,7 +432,7 @@ impl Tab {
                         term_pid,
                         bottom_winsize,
                         self.colors,
-                        next_selectable_pane_position,
+                        next_terminal_position,
                     );
                     terminal_to_split.set_geom(top_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -448,7 +448,7 @@ impl Tab {
                         term_pid,
                         right_winsize,
                         self.colors,
-                        next_selectable_pane_position,
+                        next_terminal_position,
                     );
                     terminal_to_split.set_geom(left_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -465,7 +465,7 @@ impl Tab {
             self.toggle_active_pane_fullscreen();
         }
         if let PaneId::Terminal(term_pid) = pid {
-            let next_selectable_pane_position = self.get_next_selectable_pane_position();
+            let next_terminal_position = self.get_next_terminal_position();
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.rows() < MIN_TERMINAL_HEIGHT * 2 {
@@ -481,7 +481,7 @@ impl Tab {
                     term_pid,
                     bottom_winsize,
                     self.colors,
-                    next_selectable_pane_position,
+                    next_terminal_position,
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
@@ -498,7 +498,7 @@ impl Tab {
         }
         if let PaneId::Terminal(term_pid) = pid {
             // TODO: check minimum size of active terminal
-            let next_selectable_pane_position = self.get_next_selectable_pane_position();
+            let next_terminal_position = self.get_next_terminal_position();
             let active_pane_id = &self.get_active_pane_id().unwrap();
             let active_pane = self.panes.get_mut(active_pane_id).unwrap();
             if active_pane.cols() < MIN_TERMINAL_WIDTH * 2 {
@@ -513,7 +513,7 @@ impl Tab {
                     term_pid,
                     right_winsize,
                     self.colors,
-                    next_selectable_pane_position,
+                    next_terminal_position,
                 );
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
@@ -799,7 +799,7 @@ impl Tab {
     fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
     }
-    fn get_next_selectable_pane_position(&self) -> usize {
+    fn get_next_terminal_position(&self) -> usize {
         self.panes
             .iter()
             .filter(|(k, _)| match k {
