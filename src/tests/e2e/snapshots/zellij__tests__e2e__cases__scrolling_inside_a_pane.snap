@@ -25,5 +25,5 @@ expression: last_snapshot
 │                                                          ││line18 000000000000000000000000000000000000000000000000000│
 │                                                          ││line19 00000000000000000000000000000000000000000000000000█│
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <r> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
  <↓↑> Scroll / <PgUp/PgDn> Scroll Page / <ENTER> Select pane                                                            
