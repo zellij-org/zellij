@@ -27,6 +27,7 @@ pub(crate) struct PluginPane {
     pub pane_title: String,
     frame: bool,
     frame_color: Option<PaletteColor>,
+    borderless: bool,
 }
 
 impl PluginPane {
@@ -48,6 +49,7 @@ impl PluginPane {
             frame_color: None,
             content_offset: Offset::default(),
             pane_title: title,
+            borderless: false,
         }
     }
 }
@@ -278,5 +280,11 @@ impl Pane for PluginPane {
     fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
         self.frame_color = color;
         self.set_should_render(true);
+    }
+    fn set_borderless(&mut self, borderless: bool) {
+        self.borderless = borderless;
+    }
+    fn borderless(&self) -> bool {
+        self.borderless
     }
 }

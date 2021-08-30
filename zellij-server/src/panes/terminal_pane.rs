@@ -44,6 +44,7 @@ pub struct TerminalPane {
     pane_title: String,
     frame: Option<PaneFrame>,
     frame_color: Option<PaletteColor>,
+    borderless: bool,
 }
 
 impl Pane for TerminalPane {
@@ -390,6 +391,12 @@ impl Pane for TerminalPane {
         self.frame_color = color;
         self.set_should_render(true);
     }
+    fn set_borderless(&mut self, borderless: bool) {
+        self.borderless = borderless;
+    }
+    fn borderless(&self) -> bool {
+        self.borderless
+    }
 }
 
 impl TerminalPane {
@@ -419,6 +426,7 @@ impl TerminalPane {
             colors: palette,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
+            borderless: false,
         }
     }
     pub fn get_x(&self) -> usize {
