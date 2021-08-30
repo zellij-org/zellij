@@ -102,7 +102,7 @@ pub(crate) struct Tab {
     panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
-    viewport: Viewport, // includes all selectable panes
+    viewport: Viewport, // includes all non-UI panes
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
