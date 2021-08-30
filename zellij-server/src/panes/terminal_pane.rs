@@ -171,7 +171,9 @@ impl Pane for TerminalPane {
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
         // diff as it usually does with the OutputBuffer
-        self.frame.replace(PaneFrame::default());
+        if self.frame.is_some() {
+            self.frame.replace(PaneFrame::default());
+        }
         self.grid.render_full_viewport();
     }
     fn selectable(&self) -> bool {
