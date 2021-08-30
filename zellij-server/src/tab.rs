@@ -513,12 +513,8 @@ impl Tab {
             }
             let terminal_ws = active_pane.position_and_size();
             if let Some((left_winsize, right_winsize)) = split(Direction::Vertical, &terminal_ws) {
-                let new_terminal = TerminalPane::new(
-                    term_pid,
-                    right_winsize,
-                    self.colors,
-                    next_terminal_position,
-                );
+                let new_terminal =
+                    TerminalPane::new(term_pid, right_winsize, self.colors, next_terminal_position);
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
