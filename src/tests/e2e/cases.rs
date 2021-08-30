@@ -35,7 +35,7 @@ pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
 pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
 pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
 
-pub const RESIZE_MODE: [u8; 1] = [18]; // ctrl-r
+pub const RESIZE_MODE: [u8; 1] = [14]; // ctrl-n
 pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
 pub const RESIZE_UP_IN_RESIZE_MODE: [u8; 1] = [107]; // k
 pub const RESIZE_LEFT_IN_RESIZE_MODE: [u8; 1] = [104]; // h
