@@ -1,4 +1,4 @@
-use crate::{os_input_output::ServerOsApi, panes::PaneId, tab::Pane};
+use crate::{panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
     Expression, Solver, Variable,
@@ -12,7 +12,6 @@ use zellij_utils::{
 
 pub struct PaneResizer<'a> {
     panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
-    os_api: &'a mut Box<dyn ServerOsApi>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
 }
@@ -31,10 +30,7 @@ struct Span {
 type Grid = Vec<Vec<Span>>;
 
 impl<'a> PaneResizer<'a> {
-    pub fn new(
-        panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
-        os_api: &'a mut Box<dyn ServerOsApi>,
-    ) -> Self {
+    pub fn new(panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>) -> Self {
         let panes: HashMap<_, _> = panes.collect();
         let mut vars = HashMap::new();
         for &&k in panes.keys() {
@@ -42,7 +38,6 @@ impl<'a> PaneResizer<'a> {
         }
         PaneResizer {
             panes,
-            os_api,
             vars,
             solver: Solver::new(),
         }
@@ -145,13 +140,6 @@ impl<'a> PaneResizer<'a> {
                 pane.get_geom_override(new_geom);
             } else {
                 pane.set_geom(new_geom);
-            }
-            if let PaneId::Terminal(pid) = pane.pid() {
-                self.os_api.set_terminal_size_using_fd(
-                    pid,
-                    pane.get_content_columns() as u16,
-                    pane.get_content_rows() as u16,
-                );
             }
         }
     }
