@@ -385,6 +385,7 @@ impl Tab {
         for geom in boundary_geom {
             self.offset_viewport(&geom)
         }
+        self.set_pane_frames(self.draw_pane_frames);
         // This is the end of the nasty viewport hack...
         // FIXME: Active / new / current terminal, should be pane
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
@@ -1642,7 +1643,7 @@ impl Tab {
             })
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
-        let mut resizer = PaneResizer::new(&mut self.panes.iter_mut(), &mut self.os_api);
+        let mut resizer = PaneResizer::new(self.panes.iter_mut());
         let result = match direction {
             Direction::Horizontal => resizer.layout(direction, self.display_area.cols),
             Direction::Vertical => resizer.layout(direction, self.display_area.rows),
@@ -1662,7 +1663,7 @@ impl Tab {
             .iter_mut()
             .filter(|(pid, _)| !temp_panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
-        let mut resizer = PaneResizer::new(panes, &mut self.os_api);
+        let mut resizer = PaneResizer::new(panes);
         if resizer.layout(Direction::Horizontal, cols).is_ok() {
             let column_difference = cols as isize - self.display_area.cols as isize;
             // FIXME: Should the viewport be an Offset?
