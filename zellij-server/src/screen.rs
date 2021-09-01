@@ -266,7 +266,7 @@ impl Screen {
         } else {
             self.active_tab_index = self.tab_history.pop().unwrap();
             for t in self.tabs.values_mut() {
-                if t.position == self.active_tab_index.unwrap() {
+                if t.index == self.active_tab_index.unwrap() {
                     t.set_force_render()
                 }
                 if t.position > active_tab.position {
