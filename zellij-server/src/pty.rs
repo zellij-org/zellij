@@ -54,6 +54,7 @@ impl From<&PtyInstruction> for PtyContext {
 }
 
 pub(crate) struct Pty {
+    pub active_pane: Option<PaneId>,
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<RawFd, Pid>,
     debug_to_file: bool,
@@ -208,6 +209,7 @@ fn stream_terminal_bytes(
 impl Pty {
     pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
         Pty {
+            active_pane: None,
             bus,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
@@ -314,6 +316,9 @@ impl Pty {
         ids.iter().for_each(|&id| {
             self.close_pane(id);
         });
+    }
+    pub fn set_active_pane(&mut self, pane_id: Option<PaneId>) {
+        self.active_pane = pane_id;
     }
 }
 
