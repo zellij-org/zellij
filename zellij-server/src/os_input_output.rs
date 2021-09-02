@@ -100,6 +100,10 @@ fn handle_command_exit(mut child: Child) {
 /// `orig_termios`.
 ///
 fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid) {
+    let current_dir = cmd.cwd
+        .or_else(|| env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap()));
+
     let (pid_primary, pid_secondary): (RawFd, Pid) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
@@ -109,6 +113,7 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
                     ForkResult::Child => {
                         let child = unsafe {
                             Command::new(cmd.command)
+                                .current_dir(current_dir)
                                 .args(&cmd.args)
                                 .pre_exec(|| -> std::io::Result<()> {
                                     // this is the "unsafe" part, for more details please see:
@@ -164,14 +169,14 @@ pub fn spawn_terminal(
                 .into_os_string()
                 .into_string()
                 .expect("Not valid Utf8 Encoding")];
-            RunCommand { command, args }
+            RunCommand { command, args, cwd: None }
         }
         Some(TerminalAction::RunCommand(command)) => command,
         None => {
             let command =
                 PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable"));
             let args = vec![];
-            RunCommand { command, args }
+            RunCommand { command, args, cwd: None }
         }
     };
 
