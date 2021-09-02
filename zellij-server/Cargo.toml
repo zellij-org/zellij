@@ -23,6 +23,9 @@ log = "0.4.14"
 typetag = "0.1.7"
 chrono = "0.4.19"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+darwin-libproc = "0.2.0"
+
 [dev-dependencies]
 insta = "1.6.0"
 

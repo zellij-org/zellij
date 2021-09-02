@@ -1,9 +1,13 @@
+#[cfg(target_os = "macos")]
+use darwin_libproc;
+
 use std::env;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use std::fs;
 
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
 
@@ -247,6 +251,8 @@ pub trait ServerOsApi: Send + Sync {
     /// Update the receiver socket for the client
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
+    /// Returns the current working directory for a given pid
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf>;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -335,6 +341,20 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn load_palette(&self) -> Palette {
         default_palette()
+    }
+    #[cfg(target_os = "macos")]
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
+        match darwin_libproc::pid_cwd(pid) {
+            Ok(cwd) => Some(cwd),
+            Err(_) => None,
+        }
+    }
+    #[cfg(target_os = "linux")]
+    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
+        match fs::read_link(format!("/proc/{}/cwd", pid)) {
+            Ok(cwd) => Some(cwd),
+            Err(_) => None,
+        }
     }
 }
 
