@@ -33,6 +33,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminal(Option<TerminalAction>),
     SpawnTerminalVertically(Option<TerminalAction>),
     SpawnTerminalHorizontally(Option<TerminalAction>),
+    UpdateActivePane(Option<PaneId>),
     NewTab(Option<TerminalAction>, Option<TabLayout>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -45,6 +46,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminal(_) => PtyContext::SpawnTerminal,
             PtyInstruction::SpawnTerminalVertically(_) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
+            PtyInstruction::UpdateActivePane(_) => PtyContext::UpdateActivePane,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
@@ -86,6 +88,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                     .senders
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                     .unwrap();
+            }
+            PtyInstruction::UpdateActivePane(pane_id) => {
+                pty.set_active_pane(pane_id);
             }
             PtyInstruction::NewTab(terminal_action, tab_layout) => {
                 let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
