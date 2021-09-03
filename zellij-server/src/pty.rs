@@ -11,21 +11,28 @@ use async_std::{
     task::{self, JoinHandle},
 };
 use std::{
+    env,
     collections::HashMap,
     os::unix::io::RawFd,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 use zellij_utils::{
     async_std,
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
-        command::TerminalAction,
+        command::{RunCommand, TerminalAction},
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
 };
 
 pub type VteBytes = Vec<u8>;
+#[derive(Debug)]
+pub struct ChildId {
+    child: Pid,
+    shell: RawFd
+}
 
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
@@ -58,7 +65,7 @@ impl From<&PtyInstruction> for PtyContext {
 pub(crate) struct Pty {
     pub active_pane: Option<PaneId>,
     pub bus: Bus<PtyInstruction>,
-    pub id_to_child_pid: HashMap<RawFd, Pid>,
+    pub id_to_child_pid: HashMap<RawFd, ChildId>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -221,8 +228,22 @@ impl Pty {
             task_handles: HashMap::new(),
         }
     }
+    pub fn get_default_terminal(&self) -> TerminalAction {
+        TerminalAction::RunCommand(RunCommand {
+            args: vec![],
+            command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
+            cwd: self.active_pane
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(..) => None,
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).map(|id| id.shell),
+                })
+                .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
+                .flatten()
+        })
+    }
     pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, Pid) = self
+        let terminal_action = terminal_action.unwrap_or_else(|| self.get_default_terminal());
+        let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
             .bus
             .os_input
             .as_mut()
@@ -235,7 +256,10 @@ impl Pty {
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
-        self.id_to_child_pid.insert(pid_primary, pid_secondary);
+        self.id_to_child_pid.insert(pid_primary, ChildId {
+            child: pid_secondary,
+            shell: pid_shell
+        });
         pid_primary
     }
     pub fn spawn_terminals_for_layout(
@@ -243,29 +267,36 @@ impl Pty {
         layout: Layout,
         default_shell: Option<TerminalAction>,
     ) {
+        let default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
-                        .spawn_terminal(Some(cmd));
-                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                        .spawn_terminal(cmd);
+                    self.id_to_child_pid.insert(pid_primary, ChildId {
+                        child: pid_secondary,
+                        shell: pid_shell
+                    });
                     new_pane_pids.push(pid_primary);
                 }
                 None => {
-                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(default_shell.clone());
-                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                    self.id_to_child_pid.insert(pid_primary, ChildId {
+                        child: pid_secondary,
+                        shell: pid_shell
+                    });
                     new_pane_pids.push(pid_primary);
                 }
                 // Investigate moving plugin loading to here.
@@ -292,10 +323,10 @@ impl Pty {
     pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
-                let child_pid = self.id_to_child_pid.remove(&id).unwrap();
+                let pids = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
                 task::block_on(async {
-                    self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
+                    self.bus.os_input.as_mut().unwrap().kill(pids.child).unwrap();
                     let timeout = Duration::from_millis(100);
                     match async_timeout(timeout, handle.cancel()).await {
                         Ok(_) => {}
@@ -304,7 +335,7 @@ impl Pty {
                                 .os_input
                                 .as_mut()
                                 .unwrap()
-                                .force_kill(child_pid)
+                                .force_kill(pids.child)
                                 .unwrap();
                         }
                     };

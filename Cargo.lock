@@ -2669,6 +2669,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "async-trait",
  "base64",
+ "byteorder",
  "cassowary",
  "chrono",
  "daemonize",

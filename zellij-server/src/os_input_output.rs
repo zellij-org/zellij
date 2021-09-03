@@ -14,7 +14,7 @@ use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile}
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
-use nix::pty::{forkpty, Winsize};
+use nix::pty::{forkpty, ForkptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
@@ -31,6 +31,7 @@ use zellij_utils::{
     shared::default_palette,
 };
 
+use byteorder::{BigEndian, ByteOrder};
 use async_std::io::ReadExt;
 pub use async_trait::async_trait;
 
@@ -96,49 +97,99 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
+fn handle_fork_pty(fork_pty_res: ForkptyResult, cmd: RunCommand, parent_fd: RawFd, child_fd: RawFd) -> (RawFd, Pid, RawFd) {
+    let pid_primary = fork_pty_res.master;
+    let (pid_secondary, pid_shell) = match fork_pty_res.fork_result {
+        ForkResult::Parent { child } => {
+            //fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
+            let pid_shell: u32 = read_from_pipe(parent_fd, child_fd);
+            (child, pid_shell)
+        },
+        ForkResult::Child => {
+            let child = unsafe {
+                let command = &mut Command::new(cmd.command);
+                if let Some(current_dir) = cmd.cwd {
+                    command.current_dir(current_dir);
+                }
+                command
+                    .args(&cmd.args)
+                    .pre_exec(|| -> std::io::Result<()> {
+                        // this is the "unsafe" part, for more details please see:
+                        // https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#notes-and-safety
+                        unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0))
+                            .expect("failed to create a new process group");
+                        Ok(())
+                    })
+                    .spawn()
+                    .expect("failed to spawn")
+
+            };
+            unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
+                .expect("faled to set child's forceground process group");
+            write_to_pipe(child.id() as u32, parent_fd, child_fd);
+            handle_command_exit(child);
+            ::std::process::exit(0);
+        }
+    };
+    (pid_primary, pid_secondary, pid_shell as i32)
+}
+
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid) {
-    let current_dir = cmd.cwd
-        .or_else(|| env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap()));
-
-    let (pid_primary, pid_secondary): (RawFd, Pid) = {
+fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid, RawFd) {
+    // Create a pipe to allow the child the communicate the shell's pid to it's
+    // parent.
+    let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
+    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => {
-                let pid_primary = fork_pty_res.master;
-                let pid_secondary = match fork_pty_res.fork_result {
-                    ForkResult::Parent { child } => child,
-                    ForkResult::Child => {
-                        let child = unsafe {
-                            Command::new(cmd.command)
-                                .current_dir(current_dir)
-                                .args(&cmd.args)
-                                .pre_exec(|| -> std::io::Result<()> {
-                                    // this is the "unsafe" part, for more details please see:
-                                    // https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#notes-and-safety
-                                    unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0))
-                                        .expect("failed to create a new process group");
-                                    Ok(())
-                                })
-                                .spawn()
-                                .expect("failed to spawn")
-                        };
-                        unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
-                            .expect("faled to set child's forceground process group");
-                        handle_command_exit(child);
-                        ::std::process::exit(0);
-                    }
-                };
-                (pid_primary, pid_secondary)
+                handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd)
             }
             Err(e) => {
                 panic!("failed to fork {:?}", e);
             }
         }
     };
-    (pid_primary, pid_secondary)
+    (pid_primary, pid_secondary, pid_shell)
+}
+
+/// Write to a pipe given both file descriptors
+///
+/// # Panics
+///
+/// This function will panic if a close operation on one of the file descriptors fails or if the
+/// write operation fails.
+fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
+    let mut buff = [0; 4];
+    BigEndian::write_u32(&mut buff, data);
+    unistd::close(parent_fd).expect("Write: couldn't close parent_fd");
+    match unistd::write(child_fd, &buff) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("Write operation failed: {:?}", e);
+        }
+    }
+    unistd::close(child_fd).expect("Write: couldn't close child_fd");
+}
+
+/// Read from a pipe given both file descriptors
+///
+/// # Panics
+///
+/// This function will panic if a close operation on one of the file descriptors fails or if the
+/// read operation fails.
+fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> u32 {
+    let mut buffer = [0; 4];
+    unistd::close(child_fd).expect("Read: couldn't close child_fd");
+    match unistd::read(parent_fd, &mut buffer) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("Read operation failed: {:?}", e);
+        }
+    }
+    unistd::close(parent_fd).expect("Read: couldn't close parent_fd");
+    u32::from_be_bytes(buffer)
 }
 
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
@@ -154,11 +205,11 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
 /// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
 /// set.
 pub fn spawn_terminal(
-    terminal_action: Option<TerminalAction>,
+    terminal_action: TerminalAction,
     orig_termios: termios::Termios,
-) -> (RawFd, Pid) {
+) -> (RawFd, Pid, RawFd) {
     let cmd = match terminal_action {
-        Some(TerminalAction::OpenFile(file_to_open)) => {
+        TerminalAction::OpenFile(file_to_open) => {
             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
                 panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
             }
@@ -171,13 +222,7 @@ pub fn spawn_terminal(
                 .expect("Not valid Utf8 Encoding")];
             RunCommand { command, args, cwd: None }
         }
-        Some(TerminalAction::RunCommand(command)) => command,
-        None => {
-            let command =
-                PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable"));
-            let args = vec![];
-            RunCommand { command, args, cwd: None }
-        }
+        TerminalAction::RunCommand(command) => command,
     };
 
     handle_terminal(cmd, orig_termios)
@@ -224,7 +269,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action.
-    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid);
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -266,7 +311,7 @@ impl ServerOsApi for ServerOsInputOutput {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
-    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(terminal_action, orig_termios.clone())
     }
