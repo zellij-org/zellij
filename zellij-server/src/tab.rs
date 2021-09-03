@@ -1752,7 +1752,7 @@ impl Tab {
             .unwrap();
         let active_terminal = terminal_ids.get(active_terminal_id_position + 1)
             .or_else(|| terminal_ids.get(0))
-            .map(|id| *id);
+            .copied();
 
         self.set_active_terminal(active_terminal);
         self.render();

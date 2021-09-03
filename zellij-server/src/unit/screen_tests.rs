@@ -5,6 +5,7 @@ use crate::{
     thread_bus::Bus,
     SessionState,
 };
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
@@ -28,7 +29,7 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, Pid, RawFd) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -71,6 +72,9 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
+        unimplemented!()
+    }
+    fn get_cwd(&self, _pid: RawFd) -> Option<PathBuf> {
         unimplemented!()
     }
 }
