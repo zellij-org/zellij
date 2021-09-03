@@ -268,7 +268,7 @@ impl Tab {
         let panes = BTreeMap::new();
 
         let name = if name.is_empty() {
-            format!("Tab #{}", position + 1)
+            format!("Tab #{}", index + 1)
         } else {
             name
         };
