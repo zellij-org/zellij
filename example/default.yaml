@@ -129,7 +129,7 @@ keybinds:
           key: [ Char: 'j',]
         - action: [GoToPreviousTab,]
           key: [ Char: 'k',]
-        - action: [NewTab,]
+        - action: [NewTab: ,]
           key: [ Char: 'n',]
         - action: [CloseTab,]
           key: [ Char: 'x',]
