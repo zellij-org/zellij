@@ -37,7 +37,7 @@ impl From<RunCommandAction> for RunCommand {
         RunCommand {
             command: action.command,
             args: action.args,
-            cwd: action.cwd
+            cwd: action.cwd,
         }
     }
 }

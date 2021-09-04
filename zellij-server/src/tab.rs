@@ -1750,7 +1750,8 @@ impl Tab {
             .iter()
             .position(|id| id == &active_terminal_id)
             .unwrap();
-        let active_terminal = terminal_ids.get(active_terminal_id_position + 1)
+        let active_terminal = terminal_ids
+            .get(active_terminal_id_position + 1)
             .or_else(|| terminal_ids.get(0))
             .copied();
 
@@ -1778,7 +1779,8 @@ impl Tab {
             .position(|(id, _)| *id == &active_pane_id) // TODO: better
             .unwrap();
 
-        let active_terminal = panes.get(active_pane_position + 1)
+        let active_terminal = panes
+            .get(active_pane_position + 1)
             .or_else(|| panes.get(0))
             .map(|p| *p.0);
 
@@ -1847,9 +1849,7 @@ impl Tab {
                     self.render();
                     return true;
                 }
-                None => {
-                    Some(active.pid())
-                }
+                None => Some(active.pid()),
             }
         } else {
             Some(active_terminal.unwrap().pid())
@@ -1886,9 +1886,7 @@ impl Tab {
 
                     Some(p)
                 }
-                None => {
-                    Some(active.pid())
-                }
+                None => Some(active.pid()),
             }
         } else {
             Some(active_terminal.unwrap().pid())
@@ -1925,9 +1923,7 @@ impl Tab {
 
                     Some(p)
                 }
-                None => {
-                    Some(active.pid())
-                }
+                None => Some(active.pid()),
             }
         } else {
             Some(active_terminal.unwrap().pid())
@@ -1967,9 +1963,7 @@ impl Tab {
                     self.render();
                     return true;
                 }
-                None => {
-                    Some(active.pid())
-                }
+                None => Some(active.pid()),
             }
         } else {
             Some(active_terminal.unwrap().pid())

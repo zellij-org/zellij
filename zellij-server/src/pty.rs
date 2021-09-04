@@ -11,8 +11,8 @@ use async_std::{
     task::{self, JoinHandle},
 };
 use std::{
-    env,
     collections::HashMap,
+    env,
     os::unix::io::RawFd,
     path::PathBuf,
     time::{Duration, Instant},
@@ -31,7 +31,7 @@ pub type VteBytes = Vec<u8>;
 #[derive(Debug)]
 pub struct ChildId {
     child: Pid,
-    shell: RawFd
+    shell: RawFd,
 }
 
 /// Instructions related to PTYs (pseudoterminals).
@@ -232,13 +232,14 @@ impl Pty {
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
-            cwd: self.active_pane
+            cwd: self
+                .active_pane
                 .and_then(|pane| match pane {
                     PaneId::Plugin(..) => None,
                     PaneId::Terminal(id) => self.id_to_child_pid.get(&id).map(|id| id.shell),
                 })
                 .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
-                .flatten()
+                .flatten(),
         })
     }
     pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
@@ -256,10 +257,13 @@ impl Pty {
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
-        self.id_to_child_pid.insert(pid_primary, ChildId {
-            child: pid_secondary,
-            shell: pid_shell
-        });
+        self.id_to_child_pid.insert(
+            pid_primary,
+            ChildId {
+                child: pid_secondary,
+                shell: pid_shell,
+            },
+        );
         pid_primary
     }
     pub fn spawn_terminals_for_layout(
@@ -274,16 +278,15 @@ impl Pty {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
-                        .bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .spawn_terminal(cmd);
-                    self.id_to_child_pid.insert(pid_primary, ChildId {
-                        child: pid_secondary,
-                        shell: pid_shell
-                    });
+                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) =
+                        self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd);
+                    self.id_to_child_pid.insert(
+                        pid_primary,
+                        ChildId {
+                            child: pid_secondary,
+                            shell: pid_shell,
+                        },
+                    );
                     new_pane_pids.push(pid_primary);
                 }
                 None => {
@@ -293,10 +296,13 @@ impl Pty {
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(default_shell.clone());
-                    self.id_to_child_pid.insert(pid_primary, ChildId {
-                        child: pid_secondary,
-                        shell: pid_shell
-                    });
+                    self.id_to_child_pid.insert(
+                        pid_primary,
+                        ChildId {
+                            child: pid_secondary,
+                            shell: pid_shell,
+                        },
+                    );
                     new_pane_pids.push(pid_primary);
                 }
                 // Investigate moving plugin loading to here.
@@ -326,7 +332,12 @@ impl Pty {
                 let pids = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
                 task::block_on(async {
-                    self.bus.os_input.as_mut().unwrap().kill(pids.child).unwrap();
+                    self.bus
+                        .os_input
+                        .as_mut()
+                        .unwrap()
+                        .kill(pids.child)
+                        .unwrap();
                     let timeout = Duration::from_millis(100);
                     match async_timeout(timeout, handle.cancel()).await {
                         Ok(_) => {}

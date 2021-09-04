@@ -2,12 +2,12 @@
 use darwin_libproc;
 
 use std::env;
+use std::fs;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-use std::fs;
 
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
 
@@ -31,9 +31,9 @@ use zellij_utils::{
     shared::default_palette,
 };
 
-use byteorder::{BigEndian, ByteOrder};
 use async_std::io::ReadExt;
 pub use async_trait::async_trait;
+use byteorder::{BigEndian, ByteOrder};
 
 pub use nix::unistd::Pid;
 
@@ -97,14 +97,19 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
-fn handle_fork_pty(fork_pty_res: ForkptyResult, cmd: RunCommand, parent_fd: RawFd, child_fd: RawFd) -> (RawFd, Pid, RawFd) {
+fn handle_fork_pty(
+    fork_pty_res: ForkptyResult,
+    cmd: RunCommand,
+    parent_fd: RawFd,
+    child_fd: RawFd,
+) -> (RawFd, Pid, RawFd) {
     let pid_primary = fork_pty_res.master;
     let (pid_secondary, pid_shell) = match fork_pty_res.fork_result {
         ForkResult::Parent { child } => {
             //fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
             let pid_shell: u32 = read_from_pipe(parent_fd, child_fd);
             (child, pid_shell)
-        },
+        }
         ForkResult::Child => {
             let child = unsafe {
                 let command = &mut Command::new(cmd.command);
@@ -122,7 +127,6 @@ fn handle_fork_pty(fork_pty_res: ForkptyResult, cmd: RunCommand, parent_fd: RawF
                     })
                     .spawn()
                     .expect("failed to spawn")
-
             };
             unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
                 .expect("faled to set child's forceground process group");
@@ -143,9 +147,7 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
     let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
     let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = {
         match forkpty(None, Some(&orig_termios)) {
-            Ok(fork_pty_res) => {
-                handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd)
-            }
+            Ok(fork_pty_res) => handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd),
             Err(e) => {
                 panic!("failed to fork {:?}", e);
             }
@@ -220,7 +222,11 @@ pub fn spawn_terminal(
                 .into_os_string()
                 .into_string()
                 .expect("Not valid Utf8 Encoding")];
-            RunCommand { command, args, cwd: None }
+            RunCommand {
+                command,
+                args,
+                cwd: None,
+            }
         }
         TerminalAction::RunCommand(command) => command,
     };
