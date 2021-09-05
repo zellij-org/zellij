@@ -2,7 +2,10 @@ use zellij_tile::data::Palette;
 
 use zellij_server::panes::TerminalPane;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::{
+    vte,
+    zellij_tile::{self, data::ModeInfo},
+};
 
 use ssh2::Session;
 use std::io::prelude::*;
@@ -207,7 +210,8 @@ impl RemoteRunner {
             rows,
             cols,
         };
-        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        let terminal_output =
+            TerminalPane::new(0, pane_geom, Palette::default(), 0, ModeInfo::default()); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
         RemoteRunner {
@@ -238,7 +242,8 @@ impl RemoteRunner {
             rows,
             cols,
         };
-        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        let terminal_output =
+            TerminalPane::new(0, pane_geom, Palette::default(), 0, ModeInfo::default()); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
         RemoteRunner {
@@ -274,7 +279,8 @@ impl RemoteRunner {
             rows,
             cols,
         };
-        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        let terminal_output =
+            TerminalPane::new(0, pane_geom, Palette::default(), 0, ModeInfo::default()); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_layout(&mut channel, &remote_path.to_string_lossy());
         RemoteRunner {

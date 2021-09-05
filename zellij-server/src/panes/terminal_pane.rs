@@ -15,7 +15,7 @@ use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
     vte,
-    zellij_tile::data::{Palette, PaletteColor},
+    zellij_tile::data::{ModeInfo, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -45,6 +45,7 @@ pub struct TerminalPane {
     frame: Option<PaneFrame>,
     frame_color: Option<PaletteColor>,
     borderless: bool,
+    mode_info: ModeInfo,
 }
 
 impl Pane for TerminalPane {
@@ -89,6 +90,12 @@ impl Pane for TerminalPane {
     fn get_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.reflow_lines();
+    }
+    fn set_mode_info(&mut self, mode_info: ModeInfo) {
+        self.mode_info = mode_info;
+    }
+    fn get_mode_info(&self) -> Option<&ModeInfo> {
+        Some(&self.mode_info)
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         for byte in bytes.iter() {
@@ -407,6 +414,7 @@ impl TerminalPane {
         position_and_size: PaneGeom,
         palette: Palette,
         pane_index: usize,
+        mode_info: ModeInfo,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
@@ -415,6 +423,7 @@ impl TerminalPane {
             palette,
         );
         TerminalPane {
+            mode_info,
             frame: None,
             frame_color: None,
             content_offset: Offset::default(),

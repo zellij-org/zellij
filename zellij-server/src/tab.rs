@@ -139,6 +139,10 @@ pub trait Pane {
     fn set_geom(&mut self, position_and_size: PaneGeom);
     fn get_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
+    fn set_mode_info(&mut self, _mode_info: ModeInfo) {}
+    fn get_mode_info(&self) -> Option<&ModeInfo> {
+        None
+    }
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
     fn position_and_size(&self) -> PaneGeom;
@@ -353,6 +357,7 @@ impl Tab {
                     *position_and_size,
                     self.colors,
                     next_terminal_position,
+                    self.mode_info.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.panes
@@ -438,6 +443,7 @@ impl Tab {
                         bottom_winsize,
                         self.colors,
                         next_terminal_position,
+                        self.mode_info.clone(),
                     );
                     terminal_to_split.set_geom(top_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -454,6 +460,7 @@ impl Tab {
                         right_winsize,
                         self.colors,
                         next_terminal_position,
+                        self.mode_info.clone(),
                     );
                     terminal_to_split.set_geom(left_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -487,6 +494,7 @@ impl Tab {
                     bottom_winsize,
                     self.colors,
                     next_terminal_position,
+                    self.mode_info.clone(),
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
@@ -514,8 +522,13 @@ impl Tab {
             }
             let terminal_ws = active_pane.position_and_size();
             if let Some((left_winsize, right_winsize)) = split(Direction::Vertical, &terminal_ws) {
-                let new_terminal =
-                    TerminalPane::new(term_pid, right_winsize, self.colors, next_terminal_position);
+                let new_terminal = TerminalPane::new(
+                    term_pid,
+                    right_winsize,
+                    self.colors,
+                    next_terminal_position,
+                    self.mode_info.clone(),
+                );
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
