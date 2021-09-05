@@ -8,10 +8,12 @@ use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::{
-    command_is_executing::CommandIsExecuting, input_handler::input_loop,
+    command_is_executing::CommandIsExecuting,
+    input_handler::{input_loop, InputMode},
     os_input_output::ClientOsApi,
 };
 use zellij_utils::{
@@ -28,6 +30,7 @@ use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 pub(crate) enum ClientInstruction {
     Error(String),
     Render(String),
+    SetInputMode(InputMode),
     UnblockInputThread,
     Exit(ExitReason),
 }
@@ -37,6 +40,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
         match instruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
+            ServerToClientMsg::SetInputMode(mode) => ClientInstruction::SetInputMode(mode),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
         }
     }
@@ -48,6 +52,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Exit(_) => ClientContext::Exit,
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
+            ClientInstruction::SetInputMode(_) => ClientContext::SetInputMode,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
         }
     }
@@ -167,6 +172,7 @@ pub fn start_client(
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
+    let input_mode = Arc::new(Mutex::new(config_options.default_mode.unwrap_or_default()));
 
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
@@ -174,7 +180,7 @@ pub fn start_client(
             let send_client_instructions = send_client_instructions.clone();
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
-            let default_mode = config_options.default_mode.unwrap_or_default();
+            let default_mode = input_mode.clone();
             move || {
                 input_loop(
                     os_input,
@@ -275,6 +281,9 @@ pub fn start_client(
                     .write_all(output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
+            }
+            ClientInstruction::SetInputMode(mode) => {
+                *input_mode.lock().unwrap() = mode;
             }
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();

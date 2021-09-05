@@ -180,7 +180,7 @@ pub fn quit_breaks_input_loop() {
         options,
         command_is_executing,
         send_client_instructions,
-        default_mode,
+        Arc::new(Mutex::new(default_mode)),
     ));
     let expected_actions_sent_to_server = vec![Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
@@ -216,7 +216,7 @@ pub fn move_focus_left_in_pane_mode() {
         options,
         command_is_executing,
         send_client_instructions,
-        default_mode,
+        Arc::new(Mutex::new(default_mode)),
     ));
     let expected_actions_sent_to_server =
         vec![Action::MoveFocusOrTab(Direction::Left), Action::Quit];
@@ -256,7 +256,7 @@ pub fn bracketed_paste() {
         options,
         command_is_executing,
         send_client_instructions,
-        default_mode,
+        Arc::new(Mutex::new(default_mode)),
     ));
     let expected_actions_sent_to_server = vec![
         Action::Write(commands::BRACKETED_PASTE_START.to_vec()),

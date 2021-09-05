@@ -1,5 +1,4 @@
 //! Main input logic.
-
 use zellij_utils::{
     input::{
         mouse::{MouseButton, MouseEvent},
@@ -16,14 +15,15 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, ExitReason},
 };
 
+use std::sync::{Arc, Mutex};
 use termion::input::TermReadEventsAndRaw;
-use zellij_tile::data::{InputMode, Key};
+pub use zellij_tile::data::{InputMode, Key};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
 struct InputHandler {
     /// The current input mode
-    mode: InputMode,
+    mode: Arc<Mutex<InputMode>>,
     os_input: Box<dyn ClientOsApi>,
     config: Config,
     options: Options,
@@ -41,7 +41,7 @@ impl InputHandler {
         config: Config,
         options: Options,
         send_client_instructions: SenderWithContext<ClientInstruction>,
-        mode: InputMode,
+        mode: Arc<Mutex<InputMode>>,
     ) -> Self {
         InputHandler {
             mode,
@@ -108,23 +108,25 @@ impl InputHandler {
         }
     }
     fn handle_unknown_key(&mut self, raw_bytes: Vec<u8>) {
-        if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+        let mode = *self.mode.lock().unwrap();
+        if mode == InputMode::Normal || mode == InputMode::Locked {
             let action = Action::Write(raw_bytes);
             self.dispatch_action(action);
         }
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
+        let mode = *self.mode.lock().unwrap();
         let keybinds = &self.config.keybinds;
         if self.pasting {
             // we're inside a paste block, if we're in a mode that allows sending text to the
             // terminal, send all text directly without interpreting it
             // otherwise, just discard the input
-            if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+            if mode == InputMode::Normal || mode == InputMode::Locked {
                 let action = Action::Write(raw_bytes);
                 self.dispatch_action(action);
             }
         } else {
-            for action in Keybinds::key_to_actions(key, raw_bytes, &self.mode, keybinds) {
+            for action in Keybinds::key_to_actions(key, raw_bytes, &mode, keybinds) {
                 let should_exit = self.dispatch_action(action);
                 if should_exit {
                     self.should_exit = true;
@@ -179,7 +181,7 @@ impl InputHandler {
                 should_break = true;
             }
             Action::SwitchToMode(mode) => {
-                self.mode = mode;
+                *self.mode.lock().unwrap() = mode;
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));
             }
@@ -223,7 +225,7 @@ pub(crate) fn input_loop(
     options: Options,
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
-    default_mode: InputMode,
+    default_mode: Arc<Mutex<InputMode>>,
 ) {
     let _handler = InputHandler::new(
         os_input,

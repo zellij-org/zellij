@@ -261,6 +261,7 @@ pub enum ClientContext {
     UnblockInputThread,
     Render,
     ServerError,
+    SetInputMode,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.

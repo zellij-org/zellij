@@ -16,7 +16,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-use zellij_tile::data::Palette;
+use zellij_tile::data::{InputMode, Palette};
 
 type SessionId = u64;
 
@@ -71,6 +71,7 @@ pub enum ServerToClientMsg {
     SessionInfo(Session),
     // A list of sessions
     SessionList(HashSet<Session>),*/
+    SetInputMode(InputMode),
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
