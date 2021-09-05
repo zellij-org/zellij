@@ -14,7 +14,6 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
-        dbg!(&event, self.selected(), self.scroll());
         let prev_event = if self.ev_history.len() == 2 {
             self.ev_history.pop_front()
         } else {

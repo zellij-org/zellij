@@ -37,7 +37,6 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) {
-        dbg!(&event);
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
@@ -86,17 +85,16 @@ impl ZellijPlugin for State {
         );
         let mut s = String::new();
         let mut len_cnt = 0;
-        // dbg!(self.mouse_click_pos, self.should_render);
         for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
-
+            
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
                 && idx > 1
             {
-                dbg!("hello", idx, bar_part);
-                dbg!(&tab_line);
+                // First two elements of tab_line are "Zellij" and session name, hence the idx > 1 condition.
+                // Tabs are indexed starting from 1, therefore we need subtract 1 below.
                 switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 1);
             }
             len_cnt += bar_part.len;
