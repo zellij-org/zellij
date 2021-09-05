@@ -94,7 +94,8 @@ impl ZellijPlugin for State {
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
                 && idx > 1
-            {   dbg!("hello", idx, bar_part);
+            {
+                dbg!("hello", idx, bar_part);
                 dbg!(&tab_line);
                 switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 1);
             }
