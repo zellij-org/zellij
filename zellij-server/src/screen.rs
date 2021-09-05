@@ -5,7 +5,6 @@ use std::os::unix::io::RawFd;
 use std::str;
 
 use zellij_utils::pane_size::Size;
-use log::info;
 use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{

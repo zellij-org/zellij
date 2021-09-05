@@ -29,10 +29,15 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
-        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate, EventType::Mouse, ]);
+        subscribe(&[
+            EventType::TabUpdate,
+            EventType::ModeUpdate,
+            EventType::Mouse,
+        ]);
     }
 
     fn update(&mut self, event: Event) {
+        dbg!(&event);
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => self.tabs = tabs,
@@ -81,15 +86,17 @@ impl ZellijPlugin for State {
         );
         let mut s = String::new();
         let mut len_cnt = 0;
+        // dbg!(self.mouse_click_pos, self.should_render);
         for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
 
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
-                && idx > 0
-            {
-                switch_tab_to(idx.try_into().unwrap());
+                && idx > 1
+            {   dbg!("hello", idx, bar_part);
+                dbg!(&tab_line);
+                switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 1);
             }
             len_cnt += bar_part.len;
         }

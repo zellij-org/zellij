@@ -22,16 +22,12 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
-use zellij_utils::input::layout::Direction;
-use zellij_utils::pane_size::{Offset, Size, Viewport};
 use zellij_utils::{
     input::{
-        layout::{Layout, Run},
+        layout::{Direction, Layout, Run},
         parse_keys,
     },
-    pane_size::{Dimension, PaneGeom},
-    position::Position,
-    serde, zellij_tile,
+    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this

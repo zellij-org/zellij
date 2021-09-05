@@ -15,7 +15,6 @@ use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
 };
-use log::info;
 
 pub(crate) struct PluginPane {
     pub pid: u32,
