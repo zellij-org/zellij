@@ -87,7 +87,7 @@ impl ZellijPlugin for State {
         let mut len_cnt = 0;
         for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
-            
+
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
