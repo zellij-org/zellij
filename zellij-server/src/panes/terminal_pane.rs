@@ -253,7 +253,9 @@ impl Pane for TerminalPane {
                     color: self.frame_color,
                 };
                 if &frame != last_frame {
-                    vte_output.push_str(&frame.render());
+                    if !self.borderless {
+                        vte_output.push_str(&frame.render());
+                    }
                     self.frame = Some(frame);
                 }
             }

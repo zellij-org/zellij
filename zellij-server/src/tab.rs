@@ -684,20 +684,33 @@ impl Tab {
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
-        for (pane_id, pane) in self.panes.iter_mut() {
-            pane.set_frame(draw_pane_frames);
-            if draw_pane_frames {
+        self.should_clear_display_before_rendering = true;
+        let viewport = self.viewport.clone();
+        for (pane_id, pane) in self
+            .panes
+            .iter_mut()
+            .filter(|(_id, pane)| is_inside_viewport(&viewport, &pane))
+        {
+            if !pane.borderless() {
+                pane.set_frame(draw_pane_frames);
+            }
+
+            if draw_pane_frames & !pane.borderless() {
+                // there's definitely a frame around this pane, offset its contents
                 pane.set_content_offset(Offset::frame(1));
+            } else if draw_pane_frames && pane.borderless() {
+                // there's no frame around this pane, and the tab isn't handling the boundaries
+                // between panes (they each draw their own frames as they please)
+                // this one doesn't - do not offset its content
+                pane.set_content_offset(Offset::default());
             } else {
+                // no draw_pane_frames and this pane should have a separation to other panes
+                // according to its position in the viewport (eg. no separation if its at the
+                // viewport bottom) - offset its content accordingly
                 let position_and_size = pane.current_geom();
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
-            }
-
-            // FIXME: this should also override the above logic
-            if pane.borderless() {
-                pane.set_content_offset(Offset::default());
             }
 
             // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
@@ -2345,10 +2358,9 @@ impl Tab {
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
-        let pane_position_and_size = self.panes.get(pane_id).unwrap().current_geom();
-        pane_position_and_size.y >= self.viewport.y
-            && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
-                <= self.viewport.y + self.viewport.rows
+        // this is mostly separated to an outside function in order to allow us to pass a clone to
+        // it sometimes when we need to get around the borrow checker
+        is_inside_viewport(&self.viewport, self.panes.get(pane_id).unwrap())
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
         if position_and_size.x == self.viewport.x
@@ -2376,6 +2388,13 @@ impl Tab {
             }
         }
     }
+}
+
+fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
+    let pane_position_and_size = pane.current_geom();
+    pane_position_and_size.y >= viewport.y
+        && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
+            <= viewport.y + viewport.rows
 }
 
 #[cfg(test)]
