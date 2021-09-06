@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix bug when in some cases closing a tab would not clear the previous pane's contents (https://github.com/zellij-org/zellij/pull/684)
 * Fix bug where tabs would sometimes be created with the wrong index in their name (https://github.com/zellij-org/zellij/pull/686)
 * Fix bug where wide chars would mess up pane titles (https://github.com/zellij-org/zellij/pull/698)
+* Fix various borderless-frame in viewport bugs (https://github.com/zellij-org/zellij/pull/697)
 
 ## [0.16.0] - 2021-08-31
 * Plugins don't crash zellij anymore on receiving mouse events (https://github.com/zellij-org/zellij/pull/620)
