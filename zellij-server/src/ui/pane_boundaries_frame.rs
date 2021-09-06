@@ -73,7 +73,7 @@ impl PaneFrame {
                 if second_part.width() + char.width().unwrap_or(0) > length_of_each_half {
                     break;
                 } else {
-                    second_part.push(char);
+                    second_part.insert(0, char);
                 }
             }
 
