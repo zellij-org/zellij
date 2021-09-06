@@ -685,11 +685,11 @@ impl Tab {
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
         self.should_clear_display_before_rendering = true;
-        let viewport = self.viewport.clone();
+        let viewport = self.viewport;
         for (pane_id, pane) in self
             .panes
             .iter_mut()
-            .filter(|(_id, pane)| is_inside_viewport(&viewport, &pane))
+            .filter(|(_id, pane)| is_inside_viewport(&viewport, pane))
         {
             if !pane.borderless() {
                 pane.set_frame(draw_pane_frames);
@@ -2390,6 +2390,7 @@ impl Tab {
     }
 }
 
+#[allow(clippy::borrowed_box)]
 fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
     let pane_position_and_size = pane.current_geom();
     pane_position_and_size.y >= viewport.y
