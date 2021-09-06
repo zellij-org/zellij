@@ -435,16 +435,19 @@ impl Screen {
         let current_mode = active_tab.mode_info.mode;
 
         if current_mode != InputMode::Normal {
-            return
+            return;
         }
 
         let new_mode = active_tab.get_active_pane().and_then(|pane| {
-            pane.get_mode_info()
-                .and_then(|info| matches.iter().find_map(|test| if test == &info.mode {
-                    Some(info.clone())
-                } else {
-                    None
-                }))
+            pane.get_mode_info().and_then(|info| {
+                matches.iter().find_map(|test| {
+                    if test == &info.mode {
+                        Some(info.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
         });
 
         if let Some(mode_info) = new_mode {
@@ -792,9 +795,7 @@ pub(crate) fn screen_thread_main(
     }
 }
 
-const DEFAULT_STICKY_MODES: &[InputMode; 1] = &[
-    InputMode::Scroll,
-];
+const DEFAULT_STICKY_MODES: &[InputMode; 1] = &[InputMode::Scroll];
 
 #[cfg(test)]
 #[path = "./unit/screen_tests.rs"]
