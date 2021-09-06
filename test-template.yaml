@@ -1,0 +1,20 @@
+---
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      borderless: true
+      split_size:
+        Fixed: 1
+      run:
+        plugin: tab-bar
+    - direction: Vertical
+      borderless: true
+    - direction: Vertical
+      borderless: true
+    - direction: Vertical
+      borderless: true
+      split_size:
+        Fixed: 2
+      run:
+        plugin: status-bar

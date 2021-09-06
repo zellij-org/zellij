@@ -4,6 +4,8 @@ use ansi_term::Style;
 use zellij_utils::pane_size::Viewport;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
 
+use unicode_width::UnicodeWidthStr;
+
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
         Some(color) => match color {
@@ -33,11 +35,12 @@ impl PaneFrame {
             let full_indication =
                 format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
             let short_indication = format!(" {} ", self.scroll_position.0);
-            if prefix.chars().count() + full_indication.chars().count() <= max_length {
+            // if prefix.chars().count() + full_indication.chars().count() <= max_length {
+            if prefix.width() + full_indication.width() <= max_length {
                 Some(format!("{}{}", prefix, full_indication))
-            } else if full_indication.chars().count() <= max_length {
+            } else if full_indication.width() <= max_length {
                 Some(full_indication)
-            } else if short_indication.chars().count() <= max_length {
+            } else if short_indication.width() <= max_length {
                 Some(short_indication)
             } else {
                 None
@@ -52,18 +55,18 @@ impl PaneFrame {
         let full_text = format!(" {} ", &self.title);
         if max_length <= 6 {
             None
-        } else if full_text.chars().count() <= max_length {
+        } else if full_text.width() <= max_length {
             Some(full_text)
         } else {
-            let length_of_each_half = (max_length - middle_truncated_sign.chars().count()) / 2;
+            let length_of_each_half = (max_length - middle_truncated_sign.width()) / 2;
             let first_part: String = full_text.chars().take(length_of_each_half).collect();
             let second_part: String = full_text
                 .chars()
-                .skip(full_text.chars().count() - length_of_each_half)
+                .skip(full_text.width() - length_of_each_half)
                 .collect();
-            let title_left_side = if first_part.chars().count()
-                + middle_truncated_sign.chars().count()
-                + second_part.chars().count()
+            let title_left_side = if first_part.width()
+                + middle_truncated_sign.width()
+                + second_part.width()
                 < max_length
             {
                 // this means we lost 1 character when dividing the total length into halves
@@ -83,14 +86,15 @@ impl PaneFrame {
         let right_boundary = boundary_type::TOP_RIGHT;
         let left_side = self.render_title_left_side(total_title_length);
         let right_side = left_side.as_ref().and_then(|left_side| {
-            let space_left = total_title_length.saturating_sub(left_side.chars().count() + 1); // 1 for a middle separator
+            let space_left = total_title_length.saturating_sub(left_side.width() + 1); // 1 for a middle separator
             self.render_title_right_side(space_left)
         });
         let title_text = match (left_side, right_side) {
             (Some(left_side), Some(right_side)) => {
                 let mut middle = String::new();
                 for _ in
-                    (left_side.chars().count() + right_side.chars().count())..total_title_length
+                    // (left_side.chars().count() + right_side.chars().count())..total_title_length
+                    (left_side.width() + right_side.width())..total_title_length
                 {
                     middle.push_str(boundary_type::HORIZONTAL);
                 }
@@ -101,7 +105,8 @@ impl PaneFrame {
             }
             (Some(left_side), None) => {
                 let mut middle_padding = String::new();
-                for _ in left_side.chars().count()..total_title_length {
+                // for _ in left_side.chars().count()..total_title_length {
+                for _ in left_side.width()..total_title_length {
                     middle_padding.push_str(boundary_type::HORIZONTAL);
                 }
                 format!(
