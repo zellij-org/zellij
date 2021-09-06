@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * Fix bug when opening new tab the new pane's viewport would sometimes be calculated incorrectly (https://github.com/zellij-org/zellij/pull/683)
 * Fix bug when in some cases closing a tab would not clear the previous pane's contents (https://github.com/zellij-org/zellij/pull/684)
+* Fix bug where tabs would sometimes be created with the wrong index in their name (https://github.com/zellij-org/zellij/pull/686)
 
 ## [0.16.0] - 2021-08-31
 * Plugins don't crash zellij anymore on receiving mouse events (https://github.com/zellij-org/zellij/pull/620)
