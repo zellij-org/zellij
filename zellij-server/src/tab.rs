@@ -686,11 +686,7 @@ impl Tab {
         self.draw_pane_frames = draw_pane_frames;
         self.should_clear_display_before_rendering = true;
         let viewport = self.viewport;
-        for (pane_id, pane) in self
-            .panes
-            .iter_mut()
-            .filter(|(_id, pane)| is_inside_viewport(&viewport, pane))
-        {
+        for (pane_id, pane) in self.panes.iter_mut() {
             if !pane.borderless() {
                 pane.set_frame(draw_pane_frames);
             }
@@ -702,6 +698,9 @@ impl Tab {
                 // there's no frame around this pane, and the tab isn't handling the boundaries
                 // between panes (they each draw their own frames as they please)
                 // this one doesn't - do not offset its content
+                pane.set_content_offset(Offset::default());
+            } else if !is_inside_viewport(&viewport, pane) {
+                // this pane is outside the viewport and has no border - it should not have an offset
                 pane.set_content_offset(Offset::default());
             } else {
                 // no draw_pane_frames and this pane should have a separation to other panes
