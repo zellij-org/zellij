@@ -691,6 +691,7 @@ impl Tab {
                 pane.set_frame(draw_pane_frames);
             }
 
+            #[allow(clippy::if_same_then_else)]
             if draw_pane_frames & !pane.borderless() {
                 // there's definitely a frame around this pane, offset its contents
                 pane.set_content_offset(Offset::frame(1));
