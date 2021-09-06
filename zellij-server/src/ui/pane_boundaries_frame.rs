@@ -4,7 +4,7 @@ use ansi_term::Style;
 use zellij_utils::pane_size::Viewport;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
 
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
 
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
@@ -35,7 +35,6 @@ impl PaneFrame {
             let full_indication =
                 format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
             let short_indication = format!(" {} ", self.scroll_position.0);
-            // if prefix.chars().count() + full_indication.chars().count() <= max_length {
             if prefix.width() + full_indication.width() <= max_length {
                 Some(format!("{}{}", prefix, full_indication))
             } else if full_indication.width() <= max_length {
@@ -59,11 +58,25 @@ impl PaneFrame {
             Some(full_text)
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.width()) / 2;
-            let first_part: String = full_text.chars().take(length_of_each_half).collect();
-            let second_part: String = full_text
-                .chars()
-                .skip(full_text.width() - length_of_each_half)
-                .collect();
+
+            let mut first_part: String = String::with_capacity(length_of_each_half);
+            for char in full_text.chars() {
+                if first_part.width() + char.width().unwrap_or(0) > length_of_each_half {
+                    break;
+                } else {
+                    first_part.push(char);
+                }
+            }
+
+            let mut second_part: String = String::with_capacity(length_of_each_half);
+            for char in full_text.chars().rev() {
+                if second_part.width() + char.width().unwrap_or(0) > length_of_each_half {
+                    break;
+                } else {
+                    second_part.push(char);
+                }
+            }
+
             let title_left_side = if first_part.width()
                 + middle_truncated_sign.width()
                 + second_part.width()
@@ -93,7 +106,6 @@ impl PaneFrame {
             (Some(left_side), Some(right_side)) => {
                 let mut middle = String::new();
                 for _ in
-                    // (left_side.chars().count() + right_side.chars().count())..total_title_length
                     (left_side.width() + right_side.width())..total_title_length
                 {
                     middle.push_str(boundary_type::HORIZONTAL);
@@ -105,7 +117,6 @@ impl PaneFrame {
             }
             (Some(left_side), None) => {
                 let mut middle_padding = String::new();
-                // for _ in left_side.chars().count()..total_title_length {
                 for _ in left_side.width()..total_title_length {
                     middle_padding.push_str(boundary_type::HORIZONTAL);
                 }
