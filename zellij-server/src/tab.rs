@@ -541,6 +541,17 @@ impl Tab {
         self.get_active_pane_id()
             .and_then(|ap| self.panes.get(&ap).map(Box::as_ref))
     }
+    pub fn get_active_pane_mut(&mut self) -> Option<&mut dyn Pane> {
+        let active = self
+            .get_active_pane_id()
+            .and_then(move |id| self.panes.get_mut(&id));
+
+        if let Some(pane) = active {
+            Some(pane.as_mut())
+        } else {
+            None
+        }
+    }
     fn get_active_pane_id(&self) -> Option<PaneId> {
         self.active_terminal
     }

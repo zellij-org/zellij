@@ -51,22 +51,11 @@ fn route_action(
             // to allow for this
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
-                    None,
-                    Event::ModeUpdate(get_mode_info(mode, palette, session.capabilities)),
-                ))
-                .unwrap();
-            session
-                .senders
                 .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
                     mode,
                     palette,
                     session.capabilities,
                 )))
-                .unwrap();
-            session
-                .senders
-                .send_to_screen(ScreenInstruction::Render)
                 .unwrap();
         }
         Action::Resize(direction) => {

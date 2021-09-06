@@ -56,7 +56,7 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn send_to_client(&self, _msg: ServerToClientMsg) {
-        unimplemented!()
+        //unimplemented!()
     }
     fn add_client_sender(&self) {
         unimplemented!()

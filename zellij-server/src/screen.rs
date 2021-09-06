@@ -16,11 +16,11 @@ use crate::{
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
-use zellij_tile::data::{Event, ModeInfo, Palette, PluginCapabilities, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
-    ipc::ClientAttributes,
+    ipc::{ClientAttributes, ServerToClientMsg},
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -203,6 +203,7 @@ impl Screen {
             }
         }
         self.update_tabs();
+        self.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
         self.render();
     }
 
@@ -224,6 +225,7 @@ impl Screen {
             }
         }
         self.update_tabs();
+        self.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
         self.render();
     }
 
@@ -398,20 +400,67 @@ impl Screen {
         self.update_tabs();
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo) {
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(
+                None,
+                Event::ModeUpdate(mode_info.clone()),
+            ))
+            .unwrap();
+
         self.colors = mode_info.palette;
-        self.mode_info = mode_info;
+        self.mode_info = mode_info.clone();
+
         for tab in self.tabs.values_mut() {
-            tab.mode_info = self.mode_info.clone();
+            tab.mode_info = mode_info.clone();
             tab.mark_active_pane_for_rerender();
         }
+        if let Some(pane) = self.get_active_tab_mut().unwrap().get_active_pane_mut() {
+            pane.set_mode_info(mode_info);
+        }
+
+        self.render();
     }
     pub fn move_focus_left_or_previous_tab(&mut self) {
-        if !self.get_active_tab_mut().unwrap().move_focus_left() {
+        if self.get_active_tab_mut().unwrap().move_focus_left() {
+            self.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
+        } else {
             self.switch_tab_prev();
         }
     }
+    /// Updates the active mode of the screen to a previously selected mode if it matches the
+    /// one of the passed input modes and the current mode is normal.
+    pub fn update_active_mode_to_previously_selected(&mut self, matches: &[InputMode]) {
+        let active_tab = self.get_active_tab().unwrap();
+        let current_mode = active_tab.mode_info.mode;
+
+        if current_mode != InputMode::Normal {
+            return
+        }
+
+        let new_mode = active_tab.get_active_pane().and_then(|pane| {
+            pane.get_mode_info()
+                .and_then(|info| matches.iter().find_map(|test| if test == &info.mode {
+                    Some(info.clone())
+                } else {
+                    None
+                }))
+        });
+
+        if let Some(mode_info) = new_mode {
+            let input_mode = mode_info.mode;
+            self.change_mode(mode_info);
+            self.bus
+                .os_input
+                .as_ref()
+                .unwrap()
+                .send_to_client(ServerToClientMsg::SetInputMode(input_mode));
+        }
+    }
     pub fn move_focus_right_or_next_tab(&mut self) {
-        if !self.get_active_tab_mut().unwrap().move_focus_right() {
+        if self.get_active_tab_mut().unwrap().move_focus_right() {
+            self.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
+        } else {
             self.switch_tab_next();
         }
     }
@@ -527,15 +576,19 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::SwitchFocus => {
                 screen.get_active_tab_mut().unwrap().move_focus();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::FocusNextPane => {
                 screen.get_active_tab_mut().unwrap().focus_next_pane();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::FocusPreviousPane => {
                 screen.get_active_tab_mut().unwrap().focus_previous_pane();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::MoveFocusLeft => {
                 screen.get_active_tab_mut().unwrap().move_focus_left();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::MoveFocusLeftOrPreviousTab => {
                 screen.move_focus_left_or_previous_tab();
@@ -547,12 +600,15 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::MoveFocusDown => {
                 screen.get_active_tab_mut().unwrap().move_focus_down();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::MoveFocusRight => {
                 screen.get_active_tab_mut().unwrap().move_focus_right();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::MoveFocusRightOrNextTab => {
                 screen.move_focus_right_or_next_tab();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
                 screen
                     .bus
                     .senders
@@ -561,6 +617,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::MoveFocusUp => {
                 screen.get_active_tab_mut().unwrap().move_focus_up();
+                screen.update_active_mode_to_previously_selected(DEFAULT_STICKY_MODES);
             }
             ScreenInstruction::ScrollUp => {
                 screen
@@ -734,6 +791,10 @@ pub(crate) fn screen_thread_main(
         }
     }
 }
+
+const DEFAULT_STICKY_MODES: &[InputMode; 1] = &[
+    InputMode::Scroll,
+];
 
 #[cfg(test)]
 #[path = "./unit/screen_tests.rs"]
