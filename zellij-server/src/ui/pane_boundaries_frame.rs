@@ -4,7 +4,7 @@ use ansi_term::Style;
 use zellij_utils::pane_size::Viewport;
 use zellij_utils::zellij_tile::prelude::PaletteColor;
 
-use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
@@ -77,19 +77,18 @@ impl PaneFrame {
                 }
             }
 
-            let title_left_side = if first_part.width()
-                + middle_truncated_sign.width()
-                + second_part.width()
-                < max_length
-            {
-                // this means we lost 1 character when dividing the total length into halves
-                format!(
-                    "{}{}{}",
-                    first_part, middle_truncated_sign_long, second_part
-                )
-            } else {
-                format!("{}{}{}", first_part, middle_truncated_sign, second_part)
-            };
+            let title_left_side =
+                if first_part.width() + middle_truncated_sign.width() + second_part.width()
+                    < max_length
+                {
+                    // this means we lost 1 character when dividing the total length into halves
+                    format!(
+                        "{}{}{}",
+                        first_part, middle_truncated_sign_long, second_part
+                    )
+                } else {
+                    format!("{}{}{}", first_part, middle_truncated_sign, second_part)
+                };
             Some(title_left_side)
         }
     }
@@ -105,9 +104,7 @@ impl PaneFrame {
         let title_text = match (left_side, right_side) {
             (Some(left_side), Some(right_side)) => {
                 let mut middle = String::new();
-                for _ in
-                    (left_side.width() + right_side.width())..total_title_length
-                {
+                for _ in (left_side.width() + right_side.width())..total_title_length {
                     middle.push_str(boundary_type::HORIZONTAL);
                 }
                 format!(
