@@ -247,6 +247,14 @@ impl From<KeybindsFromYaml> for Keybinds {
             }
             keybinds.0.insert(mode, mode_keybinds);
         }
+
+        // Apply `all` keybinds to all the other modes if any
+        if let Some(all) = keybinds.0.remove(&InputMode::All) {
+            for mode_keybinds in keybinds.0.values_mut() {
+                mode_keybinds.0.extend(all.clone().0);
+            }
+        }
+
         keybinds
     }
 }

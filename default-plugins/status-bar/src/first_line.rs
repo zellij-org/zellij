@@ -246,6 +246,7 @@ pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let colored_elements = color_elements(help.palette);
     match &help.mode {
+        InputMode::All => Default::default(),
         InputMode::Locked => key_indicators(
             max_len,
             &[

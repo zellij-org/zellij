@@ -40,6 +40,10 @@ pub enum Event {
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
 pub enum InputMode {
+    /// `All` is a pseudo mode, any key bindings in this mode will be added to other real modes.
+    /// This is usually used for common key binding definition.
+    #[serde(alias = "all")]
+    All,
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
     #[serde(alias = "normal")]

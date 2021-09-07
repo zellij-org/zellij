@@ -799,3 +799,47 @@ fn uppercase_and_lowercase_are_distinct() {
     assert!(result_n.is_some());
     assert!(result_large_n.is_some());
 }
+
+#[test]
+fn apply_all_to_multiple_modes() {
+    let normal_mode_keybinds = vec![KeyActionUnbind::KeyAction(KeyActionFromYaml {
+        key: vec![Key::F(1)],
+        action: vec![Action::NoOp],
+    })];
+    let all_mode_keybinds = vec![KeyActionUnbind::KeyAction(KeyActionFromYaml {
+        key: vec![Key::F(2)],
+        action: vec![Action::GoToTab(1)],
+    })];
+
+    let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
+    keys.insert(InputMode::Normal, normal_mode_keybinds);
+    keys.insert(InputMode::All, all_mode_keybinds);
+
+    let keybinds_from_yaml = KeybindsFromYaml {
+        keybinds: keys,
+        unbind: Unbind::All(false),
+    };
+
+    let expected_normal_mode_keybinds = {
+        let mut mode_keybinds = ModeKeybinds::new();
+        mode_keybinds.0.insert(Key::F(1), vec![Action::NoOp]);
+        mode_keybinds.0.insert(Key::F(2), vec![Action::GoToTab(1)]);
+        mode_keybinds
+    };
+    let expected_other_mode_keybinds = {
+        let mut mode_keybinds = ModeKeybinds::new();
+        mode_keybinds.0.insert(Key::F(2), vec![Action::GoToTab(1)]);
+        mode_keybinds
+    };
+
+    let got = Keybinds::from(keybinds_from_yaml);
+
+    assert_eq!(got.0.len(), InputMode::iter().count() - 1); // `All` mode should be excluded
+    for (mode, mode_keybinds) in got.0 {
+        if mode == InputMode::Normal {
+            assert_eq!(mode_keybinds, expected_normal_mode_keybinds);
+        } else {
+            assert_eq!(mode_keybinds, expected_other_mode_keybinds);
+        }
+    }
+}
