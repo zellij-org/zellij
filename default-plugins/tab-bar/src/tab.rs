@@ -5,7 +5,7 @@ use zellij_tile_utils::style;
 
 pub fn active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
     let left_separator = style!(palette.cyan, palette.green).paint(separator);
-    let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the text padding
+    let tab_text_len = text.chars().count() + 2 + separator.chars().count() * 2; // 2 for left and right separators, 2 for the text padding
     let tab_styled_text = style!(palette.black, palette.green)
         .bold()
         .paint(format!(" {} ", text));
@@ -22,7 +22,7 @@ pub fn active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
 
 pub fn non_active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
     let left_separator = style!(palette.cyan, palette.fg).paint(separator);
-    let tab_text_len = text.chars().count() + 4; // 2 for left and right separators, 2 for the padding
+    let tab_text_len = text.chars().count() + 2 + separator.chars().count() * 2; // 2 for left and right separators, 2 for the text padding
     let tab_styled_text = style!(palette.black, palette.fg)
         .bold()
         .paint(format!(" {} ", text));
