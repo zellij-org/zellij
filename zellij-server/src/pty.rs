@@ -30,8 +30,10 @@ use zellij_utils::{
 pub type VteBytes = Vec<u8>;
 #[derive(Debug)]
 pub struct ChildId {
+    /// Process id of the parent containing the shell
     child: Pid,
-    shell: RawFd,
+    /// Process id of the shell running inside the parent process
+    shell: Option<Pid>,
 }
 
 /// Instructions related to PTYs (pseudoterminals).
@@ -236,7 +238,7 @@ impl Pty {
                 .active_pane
                 .and_then(|pane| match pane {
                     PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).map(|id| id.shell),
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).and_then(|id| id.shell),
                 })
                 .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
                 .flatten(),
@@ -244,7 +246,7 @@ impl Pty {
     }
     pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
         let terminal_action = terminal_action.unwrap_or_else(|| self.get_default_terminal());
-        let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
+        let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = self
             .bus
             .os_input
             .as_mut()
@@ -278,7 +280,7 @@ impl Pty {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) =
+                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) =
                         self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd);
                     self.id_to_child_pid.insert(
                         pid_primary,
@@ -290,7 +292,7 @@ impl Pty {
                     new_pane_pids.push(pid_primary);
                 }
                 None => {
-                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = self
+                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = self
                         .bus
                         .os_input
                         .as_mut()

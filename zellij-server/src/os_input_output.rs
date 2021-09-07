@@ -102,12 +102,11 @@ fn handle_fork_pty(
     cmd: RunCommand,
     parent_fd: RawFd,
     child_fd: RawFd,
-) -> (RawFd, Pid, RawFd) {
+) -> (RawFd, Pid, Option<Pid>) {
     let pid_primary = fork_pty_res.master;
     let (pid_secondary, pid_shell) = match fork_pty_res.fork_result {
         ForkResult::Parent { child } => {
-            //fcntl(pid_primary, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).expect("could not fcntl");
-            let pid_shell: u32 = read_from_pipe(parent_fd, child_fd);
+            let pid_shell = read_from_pipe(parent_fd, child_fd);
             (child, pid_shell)
         }
         ForkResult::Child => {
@@ -130,22 +129,22 @@ fn handle_fork_pty(
             };
             unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
                 .expect("faled to set child's forceground process group");
-            write_to_pipe(child.id() as u32, parent_fd, child_fd);
+            write_to_pipe(child.id(), parent_fd, child_fd);
             handle_command_exit(child);
             ::std::process::exit(0);
         }
     };
-    (pid_primary, pid_secondary, pid_shell as i32)
+    (pid_primary, pid_secondary, pid_shell.map(|pid| Pid::from_raw(pid as i32)))
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid, RawFd) {
+fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid, Option<Pid>) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
     // parent.
     let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
-    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, RawFd) = {
+    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = {
         match forkpty(None, Some(&orig_termios)) {
             Ok(fork_pty_res) => handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd),
             Err(e) => {
@@ -157,41 +156,31 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, P
 }
 
 /// Write to a pipe given both file descriptors
-///
-/// # Panics
-///
-/// This function will panic if a close operation on one of the file descriptors fails or if the
-/// write operation fails.
 fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
     let mut buff = [0; 4];
     BigEndian::write_u32(&mut buff, data);
-    unistd::close(parent_fd).expect("Write: couldn't close parent_fd");
-    match unistd::write(child_fd, &buff) {
-        Ok(_) => {}
-        Err(e) => {
-            panic!("Write operation failed: {:?}", e);
-        }
+    if let Err(_) = unistd::close(parent_fd) {
+        return;
     }
-    unistd::close(child_fd).expect("Write: couldn't close child_fd");
+    if let Err(_) = unistd::write(child_fd, &buff) {
+        return;
+    }
+    unistd::close(child_fd).unwrap_or_default();
 }
 
 /// Read from a pipe given both file descriptors
-///
-/// # Panics
-///
-/// This function will panic if a close operation on one of the file descriptors fails or if the
-/// read operation fails.
-fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> u32 {
+fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> Option<u32> {
     let mut buffer = [0; 4];
-    unistd::close(child_fd).expect("Read: couldn't close child_fd");
-    match unistd::read(parent_fd, &mut buffer) {
-        Ok(_) => {}
-        Err(e) => {
-            panic!("Read operation failed: {:?}", e);
-        }
+    if let Err(_) = unistd::close(child_fd) {
+        return None;
     }
-    unistd::close(parent_fd).expect("Read: couldn't close parent_fd");
-    u32::from_be_bytes(buffer)
+    if let Err(_) = unistd::read(parent_fd, &mut buffer) {
+        return None;
+    }
+    if let Err(_) = unistd::close(parent_fd) {
+        return None;
+    }
+    Some(u32::from_be_bytes(buffer))
 }
 
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
@@ -209,7 +198,7 @@ fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> u32 {
 pub fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
-) -> (RawFd, Pid, RawFd) {
+) -> (RawFd, Pid, Option<Pid>) {
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open) => {
             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
@@ -275,7 +264,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action.
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, RawFd);
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, Option<Pid>);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -308,7 +297,7 @@ pub trait ServerOsApi: Send + Sync {
     fn update_receiver(&mut self, stream: LocalSocketStream);
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
-    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf>;
+    fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -317,7 +306,7 @@ impl ServerOsApi for ServerOsInputOutput {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, RawFd) {
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, Option<Pid>) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(terminal_action, orig_termios.clone())
     }
@@ -399,18 +388,12 @@ impl ServerOsApi for ServerOsInputOutput {
         default_palette()
     }
     #[cfg(target_os = "macos")]
-    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
-        match darwin_libproc::pid_cwd(pid) {
-            Ok(cwd) => Some(cwd),
-            Err(_) => None,
-        }
+    fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
+        darwin_libproc::pid_cwd(pid.as_raw()).ok()
     }
     #[cfg(target_os = "linux")]
-    fn get_cwd(&self, pid: RawFd) -> Option<PathBuf> {
-        match fs::read_link(format!("/proc/{}/cwd", pid)) {
-            Ok(cwd) => Some(cwd),
-            Err(_) => None,
-        }
+    fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
+        fs::read_link(format!("/proc/{}/cwd", pid)).ok()
     }
 }
 
