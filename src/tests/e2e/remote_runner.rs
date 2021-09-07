@@ -154,7 +154,7 @@ impl<'a> RemoteTerminal<'a> {
         format!("x: {}, y: {}", self.cursor_x, self.cursor_y)
     }
     pub fn send_key(&mut self, key: &[u8]) {
-        self.channel.write(key).unwrap();
+        self.channel.write_all(key).unwrap();
         self.channel.flush().unwrap();
     }
     pub fn change_size(&mut self, cols: u32, rows: u32) {
