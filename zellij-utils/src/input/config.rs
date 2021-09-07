@@ -275,8 +275,10 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_config() {
         let arbitrary_config = PathBuf::from("nonexistent.yaml");
-        let mut opts = CliArgs::default();
-        opts.config = Some(arbitrary_config);
+        let opts = CliArgs {
+            config: Some(arbitrary_config),
+            ..Default::default()
+        };
         println!("OPTS= {:?}", opts);
         let result = Config::try_from(&opts);
         assert!(result.is_err());
@@ -285,11 +287,13 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_option_clean() {
         use crate::setup::Setup;
-        let mut opts = CliArgs::default();
-        opts.command = Some(Command::Setup(Setup {
-            clean: true,
-            ..Setup::default()
-        }));
+        let opts = CliArgs {
+            command: Some(Command::Setup(Setup {
+                clean: true,
+                ..Setup::default()
+            })),
+            ..Default::default()
+        };
         let result = Config::try_from(&opts);
         assert!(result.is_ok());
     }

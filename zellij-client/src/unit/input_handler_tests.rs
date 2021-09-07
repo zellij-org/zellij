@@ -110,8 +110,7 @@ impl ClientOsApi for FakeClientOsApi {
         if stdin_events.is_empty() {
             panic!("ran out of stdin events!");
         }
-        let next_event = stdin_events.remove(0);
-        next_event
+        stdin_events.remove(0)
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         unimplemented!()
@@ -174,14 +173,14 @@ pub fn quit_breaks_input_loop() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(
+    input_loop(
         client_os_api,
         config,
         options,
         command_is_executing,
         send_client_instructions,
         default_mode,
-    ));
+    );
     let expected_actions_sent_to_server = vec![Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
     assert_eq!(
@@ -192,8 +191,7 @@ pub fn quit_breaks_input_loop() {
 
 #[test]
 pub fn move_focus_left_in_pane_mode() {
-    let mut stdin_events = vec![];
-    stdin_events.push(commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec());
+    let stdin_events = vec![commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec()];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
@@ -210,14 +208,14 @@ pub fn move_focus_left_in_pane_mode() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(
+    input_loop(
         client_os_api,
         config,
         options,
         command_is_executing,
         send_client_instructions,
         default_mode,
-    ));
+    );
     let expected_actions_sent_to_server =
         vec![Action::MoveFocusOrTab(Direction::Left), Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
@@ -250,14 +248,14 @@ pub fn bracketed_paste() {
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
     let default_mode = InputMode::Normal;
-    drop(input_loop(
+    input_loop(
         client_os_api,
         config,
         options,
         command_is_executing,
         send_client_instructions,
         default_mode,
-    ));
+    );
     let expected_actions_sent_to_server = vec![
         Action::Write(commands::BRACKETED_PASTE_START.to_vec()),
         Action::Write(commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec()), // keys were directly written to server and not interpreted

@@ -34,9 +34,7 @@ fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: Size) {
         .request_pty("xterm", None, Some((columns, rows, 0, 0)))
         .unwrap();
     channel.shell().unwrap();
-    channel
-        .write_all(format!("export PS1=\"$ \"\n").as_bytes())
-        .unwrap();
+    channel.write_all("export PS1=\"$ \"\n".as_bytes()).unwrap();
     channel.flush().unwrap();
 }
 
