@@ -163,10 +163,10 @@ fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, C
 fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
     let mut buff = [0; 4];
     BigEndian::write_u32(&mut buff, data);
-    if let Err(_) = unistd::close(parent_fd) {
+    if unistd::close(parent_fd).is_err() {
         return;
     }
-    if let Err(_) = unistd::write(child_fd, &buff) {
+    if unistd::write(child_fd, &buff).is_err() {
         return;
     }
     unistd::close(child_fd).unwrap_or_default();
@@ -175,13 +175,13 @@ fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
 /// Read from a pipe given both file descriptors
 fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> Option<u32> {
     let mut buffer = [0; 4];
-    if let Err(_) = unistd::close(child_fd) {
+    if unistd::close(child_fd).is_err() {
         return None;
     }
-    if let Err(_) = unistd::read(parent_fd, &mut buffer) {
+    if unistd::read(parent_fd, &mut buffer).is_err() {
         return None;
     }
-    if let Err(_) = unistd::close(parent_fd) {
+    if unistd::close(parent_fd).is_err() {
         return None;
     }
     Some(u32::from_be_bytes(buffer))
