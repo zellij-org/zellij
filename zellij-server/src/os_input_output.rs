@@ -395,6 +395,10 @@ impl ServerOsApi for ServerOsInputOutput {
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
         fs::read_link(format!("/proc/{}/cwd", pid)).ok()
     }
+    #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
+    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+        None
+    }
 }
 
 impl Clone for Box<dyn ServerOsApi> {
