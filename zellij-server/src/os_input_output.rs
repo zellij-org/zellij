@@ -102,7 +102,7 @@ fn handle_fork_pty(
     cmd: RunCommand,
     parent_fd: RawFd,
     child_fd: RawFd,
-) -> (RawFd, Pid, Option<Pid>) {
+) -> (RawFd, ChildId) {
     let pid_primary = fork_pty_res.master;
     let (pid_secondary, pid_shell) = match fork_pty_res.fork_result {
         ForkResult::Parent { child } => {
@@ -134,25 +134,29 @@ fn handle_fork_pty(
             ::std::process::exit(0);
         }
     };
-    (pid_primary, pid_secondary, pid_shell.map(|pid| Pid::from_raw(pid as i32)))
+
+    (
+        pid_primary,
+        ChildId {
+            primary: pid_secondary,
+            shell: pid_shell.map(|pid| Pid::from_raw(pid as i32)),
+        },
+    )
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, Pid, Option<Pid>) {
+fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, ChildId) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
     // parent.
     let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
-    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = {
-        match forkpty(None, Some(&orig_termios)) {
-            Ok(fork_pty_res) => handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd),
-            Err(e) => {
-                panic!("failed to fork {:?}", e);
-            }
+    match forkpty(None, Some(&orig_termios)) {
+        Ok(fork_pty_res) => handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd),
+        Err(e) => {
+            panic!("failed to fork {:?}", e);
         }
-    };
-    (pid_primary, pid_secondary, pid_shell)
+    }
 }
 
 /// Write to a pipe given both file descriptors
@@ -198,7 +202,7 @@ fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> Option<u32> {
 pub fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
-) -> (RawFd, Pid, Option<Pid>) {
+) -> (RawFd, ChildId) {
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open) => {
             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
@@ -263,8 +267,10 @@ impl AsyncReader for RawFdAsyncReader {
 pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
-    /// Spawn a new terminal, with a terminal action.
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, Option<Pid>);
+    /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
+    /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
+    /// the forked child process.
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, ChildId);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -306,7 +312,7 @@ impl ServerOsApi for ServerOsInputOutput {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, Pid, Option<Pid>) {
+    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, ChildId) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(terminal_action, orig_termios.clone())
     }
@@ -415,4 +421,14 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
         receive_instructions_from_client: None,
         send_instructions_to_client: Arc::new(Mutex::new(None)),
     })
+}
+
+/// Process id's for forked terminals
+#[derive(Debug)]
+pub struct ChildId {
+    /// Primary process id of a forked terminal
+    pub primary: Pid,
+    /// Process id of the command running inside the forked terminal, usually a shell. The primary
+    /// field is it's parent process id.
+    pub shell: Option<Pid>,
 }

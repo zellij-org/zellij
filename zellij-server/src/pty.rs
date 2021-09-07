@@ -1,5 +1,5 @@
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, ChildId, ServerOsApi},
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
@@ -28,13 +28,6 @@ use zellij_utils::{
 };
 
 pub type VteBytes = Vec<u8>;
-#[derive(Debug)]
-pub struct ChildId {
-    /// Process id of the parent containing the shell
-    child: Pid,
-    /// Process id of the shell running inside the parent process
-    shell: Option<Pid>,
-}
 
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
@@ -246,7 +239,7 @@ impl Pty {
     }
     pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
         let terminal_action = terminal_action.unwrap_or_else(|| self.get_default_terminal());
-        let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = self
+        let (pid_primary, child_id): (RawFd, ChildId) = self
             .bus
             .os_input
             .as_mut()
@@ -259,13 +252,7 @@ impl Pty {
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
-        self.id_to_child_pid.insert(
-            pid_primary,
-            ChildId {
-                child: pid_secondary,
-                shell: pid_shell,
-            },
-        );
+        self.id_to_child_pid.insert(pid_primary, child_id);
         pid_primary
     }
     pub fn spawn_terminals_for_layout(
@@ -280,31 +267,19 @@ impl Pty {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) =
+                    let (pid_primary, child_id): (RawFd, ChildId) =
                         self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd);
-                    self.id_to_child_pid.insert(
-                        pid_primary,
-                        ChildId {
-                            child: pid_secondary,
-                            shell: pid_shell,
-                        },
-                    );
+                    self.id_to_child_pid.insert(pid_primary, child_id);
                     new_pane_pids.push(pid_primary);
                 }
                 None => {
-                    let (pid_primary, pid_secondary, pid_shell): (RawFd, Pid, Option<Pid>) = self
+                    let (pid_primary, child_id): (RawFd, ChildId) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(default_shell.clone());
-                    self.id_to_child_pid.insert(
-                        pid_primary,
-                        ChildId {
-                            child: pid_secondary,
-                            shell: pid_shell,
-                        },
-                    );
+                    self.id_to_child_pid.insert(pid_primary, child_id);
                     new_pane_pids.push(pid_primary);
                 }
                 // Investigate moving plugin loading to here.
@@ -338,7 +313,7 @@ impl Pty {
                         .os_input
                         .as_mut()
                         .unwrap()
-                        .kill(pids.child)
+                        .kill(pids.primary)
                         .unwrap();
                     let timeout = Duration::from_millis(100);
                     match async_timeout(timeout, handle.cancel()).await {
@@ -348,7 +323,7 @@ impl Pty {
                                 .os_input
                                 .as_mut()
                                 .unwrap()
-                                .force_kill(pids.child)
+                                .force_kill(pids.primary)
                                 .unwrap();
                         }
                     };
