@@ -325,10 +325,15 @@ impl Tab {
             if let Some(Run::Plugin(Some(plugin))) = &layout.run {
                 let (pid_tx, pid_rx) = channel();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone(), tab_index))
+                    .send_to_plugin(PluginInstruction::Load(
+                        pid_tx,
+                        plugin.path.clone(),
+                        tab_index,
+                        plugin._allow_exec_host_cmd,
+                    ))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let title = String::from(plugin.as_path().as_os_str().to_string_lossy());
+                let title = String::from(plugin.path.as_path().as_os_str().to_string_lossy());
                 let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,

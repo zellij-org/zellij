@@ -1,4 +1,4 @@
-use log::info;
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
@@ -28,8 +28,8 @@ use zellij_utils::{input::command::TerminalAction, serde, zellij_tile};
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
-    Load(Sender<u32>, PathBuf, usize), // tx_pid, path_of_plugin , tab_index
-    Update(Option<u32>, Event),        // Focused plugin / broadcast, event data
+    Load(Sender<u32>, PathBuf, usize, bool), // tx_pid, path_of_plugin , tab_index, allow_exec_host_cmd
+    Update(Option<u32>, Event),              // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
     Exit,
@@ -54,6 +54,8 @@ pub(crate) struct PluginEnv {
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    // FIXME: Once permission system is ready, this could be removed
+    pub _allow_exec_host_cmd: bool,
 }
 
 // Thread main --------------------------------------------------------------------------------------------------------
@@ -65,7 +67,7 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(pid_tx, path, tab_index) => {
+            PluginInstruction::Load(pid_tx, path, tab_index, _allow_exec_host_cmd) => {
                 let plugin_dir = data_dir.join("plugins/");
                 let wasm_bytes = fs::read(&path)
                     .or_else(|_| fs::read(&path.with_extension("wasm")))
@@ -99,12 +101,17 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
 
                 let wasi = wasi_env.import_object(&module).unwrap();
 
+                if _allow_exec_host_cmd {
+                    info!("Plugin({:?}) is able to run any host command, this may lead to some security issues!", path);
+                }
+
                 let plugin_env = PluginEnv {
                     plugin_id,
                     tab_index,
                     senders: bus.senders.clone(),
                     wasi_env,
                     subscriptions: Arc::new(Mutex::new(HashSet::new())),
+                    _allow_exec_host_cmd,
                 };
 
                 let zellij = zellij_exports(&store, &plugin_env);
@@ -174,6 +181,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_get_plugin_ids,
         host_open_file,
         host_set_timeout,
+        host_exec_cmd,
     }
 }
 
@@ -246,6 +254,24 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
             ))
             .unwrap();
     });
+}
+
+fn host_exec_cmd(plugin_env: &PluginEnv) {
+    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env);
+    let command = cmdline.remove(0);
+
+    // Bail out if we're forbidden to run command
+    if !plugin_env._allow_exec_host_cmd {
+        warn!("This plugin isn't allow to run command in host side, skip running this command: '{cmd} {args}'.",
+        	cmd = command, args = cmdline.join(" "));
+        return;
+    }
+
+    // Here, we don't wait the command to finish
+    process::Command::new(command)
+        .args(cmdline)
+        .spawn()
+        .unwrap();
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
