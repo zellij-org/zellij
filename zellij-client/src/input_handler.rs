@@ -172,7 +172,7 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
-            Action::Quit | Action::Detach => {
+            Action::Detach => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));
                 self.exit();
@@ -184,6 +184,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action));
             }
             Action::CloseFocus
+            | Action::Quit
             | Action::NewPane(_)
             | Action::NewTab(_)
             | Action::GoToNextTab

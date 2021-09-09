@@ -809,6 +809,95 @@ impl Tab {
             .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
     }
+    pub fn render_with_overlay(&mut self, overlay: Option<String>) {
+        if self.active_terminal.is_none()
+            || *self.session_state.read().unwrap() != SessionState::Attached
+        {
+            // we might not have an active terminal if we closed the last pane
+            // in that case, we should not render as the app is exiting
+            // or if this session is not attached to a client, we do not have to render
+            return;
+        }
+        let mut output = String::new();
+        let mut boundaries = Boundaries::new(self.viewport);
+        let hide_cursor = "\u{1b}[?25l";
+        output.push_str(hide_cursor);
+        if self.should_clear_display_before_rendering {
+            let clear_display = "\u{1b}[2J";
+            output.push_str(clear_display);
+            self.should_clear_display_before_rendering = false;
+        }
+        for (_kind, pane) in self.panes.iter_mut() {
+            if !self.panes_to_hide.contains(&pane.pid()) {
+                match self.active_terminal.unwrap() == pane.pid() {
+                    true => {
+                        pane.set_active_at(Instant::now());
+                        match self.mode_info.mode {
+                            InputMode::Normal | InputMode::Locked => {
+                                pane.set_boundary_color(Some(self.colors.green));
+                            }
+                            _ => {
+                                pane.set_boundary_color(Some(self.colors.orange));
+                            }
+                        }
+                        if !self.draw_pane_frames {
+                            boundaries.add_rect(
+                                pane.as_ref(),
+                                self.mode_info.mode,
+                                Some(self.colors),
+                            )
+                        }
+                    }
+                    false => {
+                        pane.set_boundary_color(None);
+                        if !self.draw_pane_frames {
+                            boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
+                        }
+                    }
+                }
+                if let Some(vte_output) = pane.render() {
+                    // FIXME: Use Termion for cursor and style clearing?
+                    output.push_str(&format!(
+                        "\u{1b}[{};{}H\u{1b}[m{}",
+                        pane.y() + 1,
+                        pane.x() + 1,
+                        vte_output
+                    ));
+                }
+            }
+        }
+
+        if !self.draw_pane_frames {
+            output.push_str(&boundaries.vte_output());
+        }
+
+        if let Some(overlay_vte) = overlay {
+            output.push_str(&overlay_vte);
+        }
+
+        match self.get_active_terminal_cursor_position() {
+            Some((cursor_position_x, cursor_position_y)) => {
+                let show_cursor = "\u{1b}[?25h";
+                let change_cursor_shape = self.get_active_pane().unwrap().cursor_shape_csi();
+                let goto_cursor_position = &format!(
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    cursor_position_y + 1,
+                    cursor_position_x + 1,
+                    change_cursor_shape
+                ); // goto row/col
+                output.push_str(show_cursor);
+                output.push_str(goto_cursor_position);
+            }
+            None => {
+                let hide_cursor = "\u{1b}[?25l";
+                output.push_str(hide_cursor);
+            }
+        }
+
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(output)))
+            .unwrap();
+    }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }

@@ -87,6 +87,9 @@ pub enum Action {
     MouseRelease(Position),
     MouseHold(Position),
     Copy,
+    Confirm,
+    Deny,
+    SkipConfirm(Box<Action>),
 }
 
 impl From<OnForceClose> for Action {

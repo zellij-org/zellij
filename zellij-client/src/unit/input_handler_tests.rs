@@ -25,6 +25,7 @@ use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 #[allow(unused)]
 pub mod commands {
     pub const QUIT: [u8; 1] = [17]; // ctrl-q
+    pub const CONFIRM: [u8; 1] = [121]; // y
     pub const ESC: [u8; 1] = [27];
     pub const ENTER: [u8; 1] = [10]; // char '\n'
 
@@ -83,6 +84,7 @@ impl FakeClientOsApi {
         // ClientOsApi trait, and that will cause a lot of havoc
         let command_is_executing = Arc::new(Mutex::new(command_is_executing));
         stdin_events.push(commands::QUIT.to_vec());
+        stdin_events.push(commands::CONFIRM.to_vec());
         let stdin_events = Arc::new(Mutex::new(stdin_events)); // this is also done for interior mutability
         FakeClientOsApi {
             stdin_events,
@@ -157,7 +159,9 @@ fn extract_actions_sent_to_server(
 
 #[test]
 pub fn quit_breaks_input_loop() {
-    let stdin_events = vec![];
+    let mut stdin_events = vec![];
+    stdin_events.push(commands::QUIT.to_vec());
+    stdin_events.push(commands::CONFIRM.to_vec());
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
@@ -182,7 +186,7 @@ pub fn quit_breaks_input_loop() {
         send_client_instructions,
         default_mode,
     ));
-    let expected_actions_sent_to_server = vec![Action::Quit];
+    let expected_actions_sent_to_server = vec![Action::Quit, Action::Confirm];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
     assert_eq!(
         expected_actions_sent_to_server, received_actions,

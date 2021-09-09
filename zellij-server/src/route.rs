@@ -1,10 +1,11 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::zellij_tile::data::Event;
+use zellij_utils::zellij_tile::{data::Event, prelude::InputMode};
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData, SessionState,
+    ui::overlay::prompt, wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData,
+    SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
@@ -241,8 +242,11 @@ fn route_action(
                 .unwrap();
         }
         Action::Quit => {
-            to_server.send(ServerInstruction::ClientExit).unwrap();
-            should_break = true;
+            let prompt = prompt::generate_quit_prompt();
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::AddOverlay(prompt))
+                .unwrap();
         }
         Action::Detach => {
             to_server.send(ServerInstruction::DetachSession).unwrap();
@@ -272,6 +276,25 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::Copy)
                 .unwrap();
         }
+        Action::Confirm => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ConfirmPrompt)
+                .unwrap();
+        }
+        Action::Deny => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::DenyPrompt)
+                .unwrap();
+        }
+        Action::SkipConfirm(action) => match *action {
+            Action::Quit => {
+                to_server.send(ServerInstruction::ClientExit).unwrap();
+                should_break = true;
+            }
+            _ => {}
+        },
         Action::NoOp => {}
     }
     should_break

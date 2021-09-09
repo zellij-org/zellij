@@ -65,6 +65,9 @@ pub enum InputMode {
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
+    /// `Prompt` mode allows interacting with active prompts.
+    #[serde(alias = "prompt")]
+    Prompt,
 }
 
 impl Default for InputMode {
@@ -108,6 +111,7 @@ impl FromStr for InputMode {
             "scroll" => Ok(InputMode::Scroll),
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
+            "prompt" => Ok(InputMode::Prompt),
             e => Err(e.to_string().into()),
         }
     }
