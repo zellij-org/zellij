@@ -79,8 +79,10 @@ fn create_new_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput {};
     bus.os_input = Some(Box::new(fake_os_input));
-    let mut client_attributes = ClientAttributes::default();
-    client_attributes.size = size;
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));
