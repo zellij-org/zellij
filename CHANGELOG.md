@@ -11,6 +11,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix bug where wide chars would mess up pane titles (https://github.com/zellij-org/zellij/pull/698)
 * Fix various borderless-frame in viewport bugs (https://github.com/zellij-org/zellij/pull/697)
 * Fix example configuration file (https://github.com/zellij-org/zellij/pull/693)
+* Allow plugins to run system commands (https://github.com/zellij-org/zellij/pull/666)
+  * This has also added a temporary new permission flag that needs to be specified in the layout. This is a breaking change:
+    ```yaml
+    ...
+    plugin: strider
+    ...
+    ```
+    has become:
+    ```yaml
+    plugin:
+      path: strider
+    ```
+    A plugin can be given command executing permission with:
+    ```yaml
+    plugin:
+      path: strider
+      _allow_exec_host_cmd: true
+    ```
 
 ## [0.16.0] - 2021-08-31
 * Plugins don't crash zellij anymore on receiving mouse events (https://github.com/zellij-org/zellij/pull/620)
