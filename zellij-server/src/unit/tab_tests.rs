@@ -1,11 +1,12 @@
 use super::Tab;
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, ChildId, Pid, ServerOsApi},
     panes::PaneId,
     thread_bus::ThreadSenders,
     SessionState,
 };
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::pane_size::Size;
@@ -27,7 +28,7 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, ChildId) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -70,6 +71,9 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
+        unimplemented!()
+    }
+    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
 }
