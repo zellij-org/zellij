@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
 * Fix bug when opening new tab the new pane's viewport would sometimes be calculated incorrectly (https://github.com/zellij-org/zellij/pull/683)
 * Fix bug when in some cases closing a tab would not clear the previous pane's contents (https://github.com/zellij-org/zellij/pull/684)
 * Fix bug where tabs would sometimes be created with the wrong index in their name (https://github.com/zellij-org/zellij/pull/686)
