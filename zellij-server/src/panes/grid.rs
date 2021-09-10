@@ -665,6 +665,19 @@ impl Grid {
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
+            let mut last_blank_row_index = None;
+            for (i, row) in new_viewport_rows.iter().enumerate() {
+                if row.is_blank() {
+                    if last_blank_row_index.is_none() {
+                        last_blank_row_index = Some(i);
+                    }
+                } else {
+                    last_blank_row_index = None;
+                }
+            }
+            if let Some(last_blank_row_index) = last_blank_row_index {
+                new_viewport_rows.truncate(std::cmp::max(last_blank_row_index, self.cursor.y));
+            }
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
