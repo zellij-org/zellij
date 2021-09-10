@@ -527,8 +527,8 @@ impl Grid {
         for (i, line) in self.viewport.iter().enumerate() {
             if line.is_canonical {
                 canonical_lines_traversed += 1;
+                y_coordinates = i;
                 if canonical_lines_traversed == canonical_line_index + 1 {
-                    y_coordinates = i;
                     break;
                 }
             }
@@ -628,6 +628,13 @@ impl Grid {
                     }
                 }
             }
+            for line in viewport_canonical_lines.iter_mut() {
+                if line.is_blank() {
+                    if line.columns.len() > new_columns {
+                        line.columns.drain(..new_columns);
+                    }
+                }
+            }
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
@@ -661,6 +668,7 @@ impl Grid {
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
             let current_viewport_row_count = self.viewport.len();
@@ -2198,6 +2206,19 @@ impl Row {
     }
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()
+    }
+    pub fn is_blank(&self) -> bool {
+        self.columns.iter().fold(true, |is_empty, character| {
+            if !is_empty {
+                return false;
+            } else {
+                if character.character == EMPTY_TERMINAL_CHARACTER.character {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        })
     }
     pub fn delete_and_return_character(&mut self, x: usize) -> Option<TerminalCharacter> {
         if x < self.columns.len() {
