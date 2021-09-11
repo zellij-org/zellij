@@ -2708,6 +2708,7 @@ dependencies = [
  "strum",
  "tempfile",
  "termion",
+ "unicode-width",
  "vte 0.10.1",
  "zellij-tile",
 ]
