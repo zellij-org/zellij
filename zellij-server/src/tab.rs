@@ -2396,6 +2396,21 @@ impl Tab {
             }
         }
     }
+
+    pub fn visible(&self, visible: bool) {
+        let pids_in_this_tab = self.panes.keys().filter_map(|p| match p {
+            PaneId::Plugin(pid) => Some(pid),
+            _ => None,
+        });
+        for pid in pids_in_this_tab {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(
+                    Some(*pid),
+                    Event::Visible(visible),
+                ))
+                .unwrap();
+        }
+    }
 }
 
 #[allow(clippy::borrowed_box)]

@@ -35,6 +35,7 @@ pub enum Event {
     Timer(f64),
     CopyToClipboard,
     InputReceived,
+    Visible(bool),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
