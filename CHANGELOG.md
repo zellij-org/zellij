@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
       _allow_exec_host_cmd: true
     ```
 * Use the unicode width in tab-bar plugin, for tab names (https://github.com/zellij-org/zellij/pull/709)
+* Fix automated builds that make use of the `setup` subcommand (https://github.com/zellij-org/zellij/pull/711)
 
 
 ## [0.16.0] - 2021-08-31
