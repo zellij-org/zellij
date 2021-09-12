@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
       path: strider
       _allow_exec_host_cmd: true
     ```
+* Use the unicode width in tab-bar plugin, for tab names (https://github.com/zellij-org/zellij/pull/709)
 
 
 ## [0.16.0] - 2021-08-31
