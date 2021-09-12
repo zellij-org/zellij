@@ -1998,6 +1998,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term 0.12.1",
  "colored",
+ "unicode-width",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -2726,6 +2727,7 @@ dependencies = [
  "strum",
  "tempfile",
  "termion",
+ "unicode-width",
  "vte 0.10.1",
  "zellij-tile",
 ]
