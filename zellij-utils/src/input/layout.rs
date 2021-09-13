@@ -224,6 +224,8 @@ pub struct TabLayout {
     pub parts: Vec<TabLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
+    #[serde(default)]
+    pub name: String,
 }
 
 impl Layout {
@@ -427,6 +429,7 @@ impl Default for TabLayout {
             parts: vec![],
             split_size: None,
             run: None,
+            name: String::new(),
         }
     }
 }
