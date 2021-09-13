@@ -103,9 +103,12 @@ impl LayoutFromYaml {
 
         let mut layout = String::new();
         layout_file.read_to_string(&mut layout)?;
-        let layout: LayoutFromYaml = serde_yaml::from_str(&layout)?;
+        let layout: Option<LayoutFromYaml> = serde_yaml::from_str(&layout)?;
 
-        Ok(layout)
+        match layout {
+            Some(layout) => Ok(layout),
+            None => Ok(LayoutFromYaml::default()),
+        }
     }
 
     // It wants to use Path here, but that doesn't compile.
