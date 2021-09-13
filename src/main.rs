@@ -9,7 +9,7 @@ use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
 use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
-    cli::{CliArgs, Command, Sessions},
+    cli::{CliArgs, Command, SessionCommand, Sessions},
     consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
     setup::{get_default_data_dir, Setup},
@@ -54,6 +54,7 @@ pub fn main() {
         if let Some(Command::Sessions(Sessions::Attach {
             mut session_name,
             force,
+            options,
         })) = opts.command.clone()
         {
             if let Some(session) = session_name.as_ref() {
@@ -62,10 +63,16 @@ pub fn main() {
                 session_name = Some(get_active_session());
             }
 
+            let config_options = match options {
+                Some(SessionCommand::Options(o)) => config_options.merge(o),
+                None => config_options,
+            };
+
             start_client(
                 Box::new(os_input),
                 opts,
                 config,
+                config_options.clone(),
                 ClientInfo::Attach(session_name.unwrap(), force, config_options),
                 None,
             );
@@ -85,6 +92,7 @@ pub fn main() {
                 Box::new(os_input),
                 opts,
                 config,
+                config_options,
                 ClientInfo::New(session_name),
                 layout,
             );
