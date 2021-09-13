@@ -36,6 +36,14 @@ pub fn main() {
         };
         start_server(Box::new(os_input), path);
     } else {
+        let (config, layout, config_options) = match Setup::from_options(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                eprintln!("{}", e);
+                process::exit(1);
+            }
+        };
+
         let os_input = match get_client_os_input() {
             Ok(os_input) => os_input,
             Err(e) => {
@@ -55,13 +63,6 @@ pub fn main() {
                 session_name = Some(get_active_session());
             }
 
-            let (config, _, config_options) = match Setup::from_options(&opts) {
-                Ok(results) => results,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    process::exit(1);
-                }
-            };
             let config_options = match options {
                 Some(SessionCommand::Options(o)) => config_options.merge(o),
                 None => config_options,
@@ -76,14 +77,6 @@ pub fn main() {
                 None,
             );
         } else {
-            let (config, layout, config_options) = match Setup::from_options(&opts) {
-                Ok(results) => results,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    process::exit(1);
-                }
-            };
-
             let session_name = opts
                 .session
                 .clone()

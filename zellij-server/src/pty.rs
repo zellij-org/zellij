@@ -95,8 +95,28 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                 pty.set_active_pane(pane_id);
             }
             PtyInstruction::NewTab(terminal_action, tab_layout) => {
+                let tab_name = tab_layout.as_ref().and_then(|layout| {
+                    if layout.name.is_empty() {
+                        None
+                    } else {
+                        Some(layout.name.clone())
+                    }
+                });
+
                 let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
                 pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
+
+                if let Some(tab_name) = tab_name {
+                    // clear current name at first
+                    pty.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0]))
+                        .unwrap();
+                    pty.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::UpdateTabName(tab_name.into_bytes()))
+                        .unwrap();
+                }
             }
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id);
