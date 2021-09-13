@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
     ```
 * Use the unicode width in tab-bar plugin, for tab names (https://github.com/zellij-org/zellij/pull/709)
 * Fix automated builds that make use of the `setup` subcommand (https://github.com/zellij-org/zellij/pull/711)
+* Add option to specify a tabs name in the tab `layout` file (https://github.com/zellij-org/zellij/pull/715)
 
 
 ## [0.16.0] - 2021-08-31
