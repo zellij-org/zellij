@@ -56,6 +56,7 @@ pub(crate) struct PluginEnv {
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
     // FIXME: Once permission system is ready, this could be removed
     pub _allow_exec_host_cmd: bool,
+    plugin_own_data_dir: PathBuf,
 }
 
 // Thread main --------------------------------------------------------------------------------------------------------
@@ -63,12 +64,15 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
     info!("Wasm main thread starts");
     let mut plugin_id = 0;
     let mut plugin_map = HashMap::new();
+    let plugin_dir = data_dir.join("plugins/");
+    let plugin_global_data_dir = plugin_dir.join("data");
+    fs::create_dir_all(plugin_global_data_dir.as_path()).unwrap();
+
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(pid_tx, path, tab_index, _allow_exec_host_cmd) => {
-                let plugin_dir = data_dir.join("plugins/");
                 let wasm_bytes = fs::read(&path)
                     .or_else(|_| fs::read(&path.with_extension("wasm")))
                     .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
@@ -83,15 +87,15 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                     path.as_path().file_name().unwrap().to_str().unwrap(),
                     plugin_id,
                 );
+
+                let plugin_name = path.as_path().file_stem().unwrap();
+                let plugin_own_data_dir = plugin_global_data_dir.join(plugin_name);
+
                 let mut wasi_env = WasiState::new("Zellij")
                     .env("CLICOLOR_FORCE", "1")
-                    .preopen(|p| {
-                        p.directory(".") // FIXME: Change this to a more meaningful dir
-                            .alias(".")
-                            .read(true)
-                            .write(true)
-                            .create(true)
-                    })
+                    .map_dir("/host", ".")
+                    .unwrap()
+                    .map_dir("/data", plugin_own_data_dir.as_path())
                     .unwrap()
                     .stdin(Box::new(input))
                     .stdout(Box::new(output))
@@ -112,6 +116,7 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                     wasi_env,
                     subscriptions: Arc::new(Mutex::new(HashSet::new())),
                     _allow_exec_host_cmd,
+                    plugin_own_data_dir,
                 };
 
                 let zellij = zellij_exports(&store, &plugin_env);
@@ -154,10 +159,16 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                     buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                 }
             }
-            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+            PluginInstruction::Unload(pid) => {
+                info!("Bye from plugin {}", &pid);
+                // TODO: remove plugin's own data directory
+                drop(plugin_map.remove(&pid));
+            }
             PluginInstruction::Exit => break,
         }
     }
+    info!("wasm main thread exits");
+    fs::remove_dir_all(plugin_global_data_dir.as_path()).unwrap();
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
