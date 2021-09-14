@@ -9,7 +9,10 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
-    input::{command::RunCommand, config::ConfigError},
+    input::{
+        command::RunCommand,
+        config::{ConfigError, LayoutNameInTabError},
+    },
     pane_size::{Dimension, PaneGeom},
     setup,
 };
@@ -106,7 +109,12 @@ impl LayoutFromYaml {
         let layout: Option<LayoutFromYaml> = serde_yaml::from_str(&layout)?;
 
         match layout {
-            Some(layout) => Ok(layout),
+            Some(layout) => {
+                for tab in layout.tabs.clone() {
+                    tab.check()?;
+                }
+                Ok(layout)
+            }
             None => Ok(LayoutFromYaml::default()),
         }
     }
@@ -220,6 +228,7 @@ impl LayoutTemplate {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 pub struct TabLayout {
+    #[serde(default)]
     pub direction: Direction,
     #[serde(default)]
     pub borderless: bool,
@@ -229,6 +238,18 @@ pub struct TabLayout {
     pub run: Option<Run>,
     #[serde(default)]
     pub name: String,
+}
+
+impl TabLayout {
+    fn check(&self) -> Result<TabLayout, ConfigError> {
+        for part in self.parts.iter() {
+            part.check()?;
+            if !part.name.is_empty() {
+                return Err(ConfigError::LayoutNameInTab(LayoutNameInTabError));
+            }
+        }
+        Ok(self.clone())
+    }
 }
 
 impl Layout {
@@ -464,6 +485,12 @@ impl Default for LayoutFromYaml {
             borderless: false,
             tabs: vec![],
         }
+    }
+}
+
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::Horizontal
     }
 }
 
