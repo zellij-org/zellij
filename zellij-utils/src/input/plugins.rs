@@ -48,9 +48,9 @@ impl Plugins {
             // FIXME
             RunPluginLocation::File(path) => Some(Plugin {
                 path: path.clone(),
-                tag: PluginTag::default(),
                 run: PluginType::OncePerPane(None),
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                location: run.location.clone(),
             }),
             RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned(),
         }
@@ -87,12 +87,12 @@ impl From<PluginFromYaml> for Plugin {
     fn from(plugin: PluginFromYaml) -> Self {
         Plugin {
             path: plugin.path,
-            tag: plugin.tag,
             run: match plugin.run {
                 PluginTypeFromYaml::OncePerPane => PluginType::OncePerPane(None),
                 PluginTypeFromYaml::Headless => PluginType::Headless,
             },
             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+            location: RunPluginLocation::Zellij(plugin.tag),
         }
     }
 }
@@ -102,12 +102,12 @@ impl From<PluginFromYaml> for Plugin {
 pub struct Plugin {
     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
     pub path: PathBuf,
-    /// Tag used to identify the plugin in layout and config yaml files
-    pub tag: PluginTag,
     /// Plugin type
     pub run: PluginType,
     /// Allow command execution from plugin
     pub _allow_exec_host_cmd: bool,
+    /// Original location of the
+    pub location: RunPluginLocation,
 }
 
 impl Plugin {
@@ -128,6 +128,16 @@ impl Plugin {
             .or_else(|_| fs::read(&self.path.with_extension("wasm")))
             .or_else(|_| fs::read(plugin_dir.join(&self.path).with_extension("wasm")))
             .ok()
+    }
+
+    /// Sets the tab index inside of the plugin type of the run field.
+    pub fn set_tab_index(&mut self, tab_index: usize) {
+        match self.run {
+            PluginType::OncePerPane(..) => {
+                self.run = PluginType::OncePerPane(Some(tab_index));
+            }
+            PluginType::Headless => {}
+        }
     }
 }
 
@@ -265,7 +275,7 @@ mod tests {
             Some(Plugin {
                 _allow_exec_host_cmd: false,
                 path: PathBuf::from("boo.wasm"),
-                tag: PluginTag::new("tab-bar"),
+                location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                 run: PluginType::OncePerPane(None),
             })
         );

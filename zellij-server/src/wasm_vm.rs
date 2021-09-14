@@ -28,7 +28,7 @@ use zellij_utils::errors::{ContextType, PluginContext};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::RunPlugin,
-    input::plugins::{PluginType, Plugins},
+    input::plugins::{Plugin, PluginType, Plugins},
     serde, zellij_tile,
 };
 
@@ -56,8 +56,7 @@ impl From<&PluginInstruction> for PluginContext {
 #[derive(WasmerEnv, Clone)]
 pub(crate) struct PluginEnv {
     pub plugin_id: u32,
-    pub run: RunPlugin,
-    pub plugin_type: PluginType,
+    pub plugin: Plugin,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
@@ -82,9 +81,8 @@ pub(crate) fn wasm_thread_main(
     for plugin in plugins.iter() {
         if let PluginType::Headless = plugin.run {
             let (instance, plugin_env) = start_plugin(
-                &plugins,
                 plugin_id,
-                &plugin.into(),
+                plugin,
                 0,
                 &bus,
                 &store,
@@ -104,11 +102,13 @@ pub(crate) fn wasm_thread_main(
                 if run._allow_exec_host_cmd {
                     info!("Plugin({:?}) is able to run any host command, this may lead to some security issues!", run.location);
                 }
+                let plugin = plugins
+                    .get(&run)
+                    .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
 
                 let (instance, plugin_env) = start_plugin(
-                    &plugins,
                     plugin_id,
-                    &run,
+                    &plugin,
                     tab_index,
                     &bus,
                     &store,
@@ -160,29 +160,25 @@ pub(crate) fn wasm_thread_main(
 }
 
 fn start_plugin(
-    plugins: &Plugins,
     plugin_id: u32,
-    run: &RunPlugin,
+    plugin: &Plugin,
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
     store: &Store,
     data_dir: &Path,
     plugin_global_data_dir: &Path,
 ) -> (Instance, PluginEnv) {
-    let plugin = plugins
-        .get(run)
-        .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
     let wasm_bytes = plugin
         .resolve_wasm_bytes(&data_dir.join("plugins/"))
-        .unwrap_or_else(|| panic!("Cannot find plugin {:?}", run));
+        .unwrap_or_else(|| panic!("Cannot resolve wasm bytes for plugin {:?}", plugin));
 
     // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
     let module = Module::new(store, &wasm_bytes).unwrap();
 
     let output = Pipe::new();
     let input = Pipe::new();
-    let stderr = LoggingPipe::new(&run.location.to_string(), plugin_id);
-    let plugin_own_data_dir = plugin_global_data_dir.join(Url::from(&run.location).to_string());
+    let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
+    let plugin_own_data_dir = plugin_global_data_dir.join(Url::from(&plugin.location).to_string());
     fs::create_dir_all(&plugin_own_data_dir).unwrap();
 
     let mut wasi_env = WasiState::new("Zellij")
@@ -198,14 +194,12 @@ fn start_plugin(
         .unwrap();
 
     let wasi = wasi_env.import_object(&module).unwrap();
+    let mut plugin = plugin.clone();
+    plugin.set_tab_index(tab_index);
 
     let plugin_env = PluginEnv {
         plugin_id,
-        run: run.clone(),
-        plugin_type: match plugin.run {
-            PluginType::OncePerPane(..) => PluginType::OncePerPane(Some(tab_index)),
-            PluginType::Headless => PluginType::Headless,
-        },
+        plugin,
         senders: bus.senders.clone(),
         wasi_env,
         subscriptions: Arc::new(Mutex::new(HashSet::new())),
@@ -261,7 +255,7 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 }
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
-    match plugin_env.plugin_type {
+    match plugin_env.plugin.run {
         PluginType::OncePerPane(Some(tab_index)) => {
             let selectable = selectable != 0;
             plugin_env
@@ -276,7 +270,7 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         _ => {
             debug!(
                 "{} - Calling method 'host_set_selectable' does nothing for service plugins",
-                plugin_env.run.location
+                plugin_env.plugin.location
             )
         }
     }
@@ -334,7 +328,7 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
     let command = cmdline.remove(0);
 
     // Bail out if we're forbidden to run command
-    if !plugin_env.run._allow_exec_host_cmd {
+    if !plugin_env.plugin._allow_exec_host_cmd {
         warn!("This plugin isn't allow to run command in host side, skip running this command: '{cmd} {args}'.",
         	cmd = command, args = cmdline.join(" "));
         return;

@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{Plugin, PluginTag, PluginsError};
+use super::plugins::{PluginTag, PluginsError};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -95,15 +95,6 @@ pub struct RunPlugin {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
-}
-
-impl From<&Plugin> for RunPlugin {
-    fn from(plugin: &Plugin) -> Self {
-        RunPlugin {
-            _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
-            location: RunPluginLocation::Zellij(plugin.tag.clone()),
-        }
-    }
 }
 
 impl From<&RunPluginLocation> for Url {
