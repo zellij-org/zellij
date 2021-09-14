@@ -103,7 +103,17 @@ impl LayoutFromYaml {
 
         let mut layout = String::new();
         layout_file.read_to_string(&mut layout)?;
-        let layout: Option<LayoutFromYaml> = serde_yaml::from_str(&layout)?;
+        let layout: Option<LayoutFromYaml> = match serde_yaml::from_str(&layout) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if layout.is_empty() {
+                    return Ok(LayoutFromYaml::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
 
         match layout {
             Some(layout) => Ok(layout),
