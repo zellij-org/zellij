@@ -628,13 +628,23 @@ impl Grid {
                     }
                 }
             }
+
+            // trim lines after the last empty space that has no following character, because
+            // terminals don't trim empty lines
             for line in viewport_canonical_lines.iter_mut() {
-                if line.is_blank() {
-                    if line.columns.len() > new_columns {
-                        line.columns.drain(..new_columns);
+                let mut trim_at = None;
+                for (index, character) in line.columns.iter().enumerate() {
+                    if character.character != EMPTY_TERMINAL_CHARACTER.character {
+                        trim_at = None;
+                    } else if trim_at.is_none() {
+                        trim_at = Some(index);
                     }
                 }
+                if let Some(trim_at) = trim_at {
+                    line.columns.truncate(trim_at);
+                }
             }
+
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
@@ -665,19 +675,7 @@ impl Grid {
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
-            let mut last_blank_row_index = None;
-            for (i, row) in new_viewport_rows.iter().enumerate() {
-                if row.is_blank() {
-                    if last_blank_row_index.is_none() {
-                        last_blank_row_index = Some(i);
-                    }
-                } else {
-                    last_blank_row_index = None;
-                }
-            }
-            if let Some(last_blank_row_index) = last_blank_row_index {
-                new_viewport_rows.truncate(std::cmp::max(last_blank_row_index, self.cursor.y));
-            }
+
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);

@@ -3,8 +3,8 @@ source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
 
 ---
-00 (C): ➜  mosaic git:(mosaic#130) emacs                                                                                                                                                                                                                                                            
-01 (C): ➜  mosaic git:(mosaic#130) emacs -nw                                                                                                                                                                                                                                                        
+00 (C): ➜  mosaic git:(mosaic#130) emacs
+01 (C): ➜  mosaic git:(mosaic#130) emacs -nw
 02 (C): ➜  mosaic git:(mosaic#130) exit                                                                                                                                                                                                                                                             
 03 (C): 
 
