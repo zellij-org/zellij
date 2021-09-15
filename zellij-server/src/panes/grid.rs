@@ -2218,19 +2218,6 @@ impl Row {
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()
     }
-    pub fn is_blank(&self) -> bool {
-        self.columns.iter().fold(true, |is_empty, character| {
-            if !is_empty {
-                return false;
-            } else {
-                if character.character == EMPTY_TERMINAL_CHARACTER.character {
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-        })
-    }
     pub fn delete_and_return_character(&mut self, x: usize) -> Option<TerminalCharacter> {
         if x < self.columns.len() {
             Some(self.columns.remove(x))
