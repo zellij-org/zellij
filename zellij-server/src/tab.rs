@@ -295,6 +295,13 @@ impl Tab {
         }
     }
 
+    fn set_active_terminal(&mut self, pane_id: Option<PaneId>) {
+        self.active_terminal = pane_id;
+        self.senders
+            .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
+    }
+
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PaneGeom::default();
@@ -393,7 +400,7 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
         // This is the end of the nasty viewport hack...
         // FIXME: Active / new / current terminal, should be pane
-        self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
+        self.set_active_terminal(self.panes.iter().map(|(id, _)| id.to_owned()).next());
         self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
@@ -466,7 +473,7 @@ impl Tab {
                 }
             }
         }
-        self.active_terminal = Some(pid);
+        self.set_active_terminal(Some(pid));
         self.render();
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
@@ -495,7 +502,7 @@ impl Tab {
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
-                self.active_terminal = Some(pid);
+                self.set_active_terminal(Some(pid));
                 self.relayout_tab(Direction::Vertical);
                 self.render();
             }
@@ -524,7 +531,7 @@ impl Tab {
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
-            self.active_terminal = Some(pid);
+            self.set_active_terminal(Some(pid));
             self.relayout_tab(Direction::Horizontal);
             self.render();
         }
@@ -1757,16 +1764,16 @@ impl Tab {
         }
         let active_terminal_id = self.get_active_pane_id().unwrap();
         let terminal_ids: Vec<PaneId> = self.get_selectable_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
-        let first_terminal = terminal_ids.get(0).unwrap();
         let active_terminal_id_position = terminal_ids
             .iter()
             .position(|id| id == &active_terminal_id)
             .unwrap();
-        if let Some(next_terminal) = terminal_ids.get(active_terminal_id_position + 1) {
-            self.active_terminal = Some(*next_terminal);
-        } else {
-            self.active_terminal = Some(*first_terminal);
-        }
+        let active_terminal = terminal_ids
+            .get(active_terminal_id_position + 1)
+            .or_else(|| terminal_ids.get(0))
+            .copied();
+
+        self.set_active_terminal(active_terminal);
         self.render();
     }
     pub fn focus_next_pane(&mut self) {
@@ -1785,16 +1792,17 @@ impl Tab {
                 a_pane.y().cmp(&b_pane.y())
             }
         });
-        let first_pane = panes.get(0).unwrap();
         let active_pane_position = panes
             .iter()
             .position(|(id, _)| *id == &active_pane_id) // TODO: better
             .unwrap();
-        if let Some(next_pane) = panes.get(active_pane_position + 1) {
-            self.active_terminal = Some(*next_pane.0);
-        } else {
-            self.active_terminal = Some(*first_pane.0);
-        }
+
+        let active_terminal = panes
+            .get(active_pane_position + 1)
+            .or_else(|| panes.get(0))
+            .map(|p| *p.0);
+
+        self.set_active_terminal(active_terminal);
         self.render();
     }
     pub fn focus_previous_pane(&mut self) {
@@ -1818,11 +1826,13 @@ impl Tab {
             .iter()
             .position(|(id, _)| *id == &active_pane_id) // TODO: better
             .unwrap();
-        if active_pane_position == 0 {
-            self.active_terminal = Some(*last_pane.0);
+
+        let active_terminal = if active_pane_position == 0 {
+            Some(*last_pane.0)
         } else {
-            self.active_terminal = Some(*panes.get(active_pane_position - 1).unwrap().0);
-        }
+            Some(*panes.get(active_pane_position - 1).unwrap().0)
+        };
+        self.set_active_terminal(active_terminal);
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1834,7 +1844,7 @@ impl Tab {
             return false;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1853,17 +1863,16 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    self.set_active_terminal(Some(p));
                     self.render();
                     return true;
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.set_active_terminal(updated_active_terminal);
         false
     }
     pub fn move_focus_down(&mut self) {
@@ -1874,7 +1883,7 @@ impl Tab {
             return;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1893,15 +1902,14 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    Some(p)
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.set_active_terminal(updated_active_terminal);
         self.render();
     }
     pub fn move_focus_up(&mut self) {
@@ -1912,7 +1920,7 @@ impl Tab {
             return;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1931,15 +1939,14 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    Some(p)
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.set_active_terminal(updated_active_terminal);
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1951,7 +1958,7 @@ impl Tab {
             return false;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1970,17 +1977,16 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    self.set_active_terminal(Some(p));
                     self.render();
                     return true;
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.set_active_terminal(updated_active_terminal);
         false
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
@@ -1999,6 +2005,7 @@ impl Tab {
             borders
         })
     }
+
     fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
@@ -2125,7 +2132,7 @@ impl Tab {
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.set_selectable(selectable);
             if self.get_active_pane_id() == Some(id) && !selectable {
-                self.active_terminal = self.next_active_pane(&self.get_pane_ids())
+                self.set_active_terminal(self.next_active_pane(&self.get_pane_ids()));
             }
         }
         self.render();
@@ -2146,7 +2153,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.active_terminal = next_active_pane;
+                        self.set_active_terminal(next_active_pane);
                     }
                     self.relayout_tab(Direction::Horizontal);
                     return;
@@ -2158,7 +2165,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.active_terminal = next_active_pane;
+                        self.set_active_terminal(next_active_pane);
                     }
                     self.relayout_tab(Direction::Horizontal);
                     return;
@@ -2170,7 +2177,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.active_terminal = next_active_pane;
+                        self.set_active_terminal(next_active_pane);
                     }
                     self.relayout_tab(Direction::Vertical);
                     return;
@@ -2182,7 +2189,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.active_terminal = next_active_pane;
+                        self.set_active_terminal(next_active_pane);
                     }
                     self.relayout_tab(Direction::Vertical);
                     return;
@@ -2304,7 +2311,7 @@ impl Tab {
     }
     fn focus_pane_at(&mut self, point: &Position) {
         if let Some(clicked_pane) = self.get_pane_id_at(point) {
-            self.active_terminal = Some(clicked_pane);
+            self.set_active_terminal(Some(clicked_pane));
             self.render();
         }
     }

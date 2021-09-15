@@ -52,7 +52,7 @@ impl PaneFrame {
         let middle_truncated_sign = "[..]";
         let middle_truncated_sign_long = "[...]";
         let full_text = format!(" {} ", &self.title);
-        if max_length <= 6 {
+        if max_length <= 6 || self.title.is_empty() {
             None
         } else if full_text.width() <= max_length {
             Some(full_text)

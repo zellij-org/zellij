@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
 * Fix bug when opening new tab the new pane's viewport would sometimes be calculated incorrectly (https://github.com/zellij-org/zellij/pull/683)
 * Fix bug when in some cases closing a tab would not clear the previous pane's contents (https://github.com/zellij-org/zellij/pull/684)
 * Fix bug where tabs would sometimes be created with the wrong index in their name (https://github.com/zellij-org/zellij/pull/686)
@@ -30,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
       path: strider
       _allow_exec_host_cmd: true
     ```
+* Use the unicode width in tab-bar plugin, for tab names (https://github.com/zellij-org/zellij/pull/709)
+* Fix automated builds that make use of the `setup` subcommand (https://github.com/zellij-org/zellij/pull/711)
+* Add option to specify a tabs name in the tab `layout` file (https://github.com/zellij-org/zellij/pull/715)
+* Improve handling of empty valid `yaml` files (https://github.com/zellij-org/zellij/pull/716)
+* Add options subcommand to attach (https://github.com/zellij-org/zellij/pull/718)
+* Fix: do not pad empty pane frame title (https://github.com/zellij-org/zellij/pull/724)
 
 
 ## [0.16.0] - 2021-08-31

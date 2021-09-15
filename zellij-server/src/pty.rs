@@ -1,5 +1,5 @@
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, ChildId, ServerOsApi},
     panes::PaneId,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
@@ -12,14 +12,16 @@ use async_std::{
 };
 use std::{
     collections::HashMap,
+    env,
     os::unix::io::RawFd,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 use zellij_utils::{
     async_std,
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
-        command::TerminalAction,
+        command::{RunCommand, TerminalAction},
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
@@ -33,6 +35,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminal(Option<TerminalAction>),
     SpawnTerminalVertically(Option<TerminalAction>),
     SpawnTerminalHorizontally(Option<TerminalAction>),
+    UpdateActivePane(Option<PaneId>),
     NewTab(Option<TerminalAction>, Option<TabLayout>),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -45,6 +48,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminal(_) => PtyContext::SpawnTerminal,
             PtyInstruction::SpawnTerminalVertically(_) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
+            PtyInstruction::UpdateActivePane(_) => PtyContext::UpdateActivePane,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
@@ -54,8 +58,9 @@ impl From<&PtyInstruction> for PtyContext {
 }
 
 pub(crate) struct Pty {
+    pub active_pane: Option<PaneId>,
     pub bus: Bus<PtyInstruction>,
-    pub id_to_child_pid: HashMap<RawFd, Pid>,
+    pub id_to_child_pid: HashMap<RawFd, ChildId>,
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
@@ -86,9 +91,32 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                     .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
                     .unwrap();
             }
+            PtyInstruction::UpdateActivePane(pane_id) => {
+                pty.set_active_pane(pane_id);
+            }
             PtyInstruction::NewTab(terminal_action, tab_layout) => {
+                let tab_name = tab_layout.as_ref().and_then(|layout| {
+                    if layout.name.is_empty() {
+                        None
+                    } else {
+                        Some(layout.name.clone())
+                    }
+                });
+
                 let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
                 pty.spawn_terminals_for_layout(merged_layout.into(), terminal_action.clone());
+
+                if let Some(tab_name) = tab_name {
+                    // clear current name at first
+                    pty.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0]))
+                        .unwrap();
+                    pty.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::UpdateTabName(tab_name.into_bytes()))
+                        .unwrap();
+                }
             }
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id);
@@ -208,14 +236,30 @@ fn stream_terminal_bytes(
 impl Pty {
     pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
         Pty {
+            active_pane: None,
             bus,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
             task_handles: HashMap::new(),
         }
     }
+    pub fn get_default_terminal(&self) -> TerminalAction {
+        TerminalAction::RunCommand(RunCommand {
+            args: vec![],
+            command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
+            cwd: self
+                .active_pane
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(..) => None,
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).and_then(|id| id.shell),
+                })
+                .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
+                .flatten(),
+        })
+    }
     pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
-        let (pid_primary, pid_secondary): (RawFd, Pid) = self
+        let terminal_action = terminal_action.unwrap_or_else(|| self.get_default_terminal());
+        let (pid_primary, child_id): (RawFd, ChildId) = self
             .bus
             .os_input
             .as_mut()
@@ -228,7 +272,7 @@ impl Pty {
             self.debug_to_file,
         );
         self.task_handles.insert(pid_primary, task_handle);
-        self.id_to_child_pid.insert(pid_primary, pid_secondary);
+        self.id_to_child_pid.insert(pid_primary, child_id);
         pid_primary
     }
     pub fn spawn_terminals_for_layout(
@@ -236,29 +280,26 @@ impl Pty {
         layout: Layout,
         default_shell: Option<TerminalAction>,
     ) {
+        let default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
-                        .bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .spawn_terminal(Some(cmd));
-                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                    let (pid_primary, child_id): (RawFd, ChildId) =
+                        self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd);
+                    self.id_to_child_pid.insert(pid_primary, child_id);
                     new_pane_pids.push(pid_primary);
                 }
                 None => {
-                    let (pid_primary, pid_secondary): (RawFd, Pid) = self
+                    let (pid_primary, child_id): (RawFd, ChildId) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(default_shell.clone());
-                    self.id_to_child_pid.insert(pid_primary, pid_secondary);
+                    self.id_to_child_pid.insert(pid_primary, child_id);
                     new_pane_pids.push(pid_primary);
                 }
                 // Investigate moving plugin loading to here.
@@ -285,10 +326,15 @@ impl Pty {
     pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
-                let child_pid = self.id_to_child_pid.remove(&id).unwrap();
+                let pids = self.id_to_child_pid.remove(&id).unwrap();
                 let handle = self.task_handles.remove(&id).unwrap();
                 task::block_on(async {
-                    self.bus.os_input.as_mut().unwrap().kill(child_pid).unwrap();
+                    self.bus
+                        .os_input
+                        .as_mut()
+                        .unwrap()
+                        .kill(pids.primary)
+                        .unwrap();
                     let timeout = Duration::from_millis(100);
                     match async_timeout(timeout, handle.cancel()).await {
                         Ok(_) => {}
@@ -297,7 +343,7 @@ impl Pty {
                                 .os_input
                                 .as_mut()
                                 .unwrap()
-                                .force_kill(child_pid)
+                                .force_kill(pids.primary)
                                 .unwrap();
                         }
                     };
@@ -314,6 +360,9 @@ impl Pty {
         ids.iter().for_each(|&id| {
             self.close_pane(id);
         });
+    }
+    pub fn set_active_pane(&mut self, pane_id: Option<PaneId>) {
+        self.active_pane = pane_id;
     }
 }
 
