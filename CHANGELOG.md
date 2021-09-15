@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Improve handling of empty valid `yaml` files (https://github.com/zellij-org/zellij/pull/716)
 * Add options subcommand to attach (https://github.com/zellij-org/zellij/pull/718)
 * Fix: do not pad empty pane frame title (https://github.com/zellij-org/zellij/pull/724)
+* Fix: Do not overflow empty lines when resizing panes (https://github.com/zellij-org/zellij/pull/725)
 
 
 ## [0.16.0] - 2021-08-31
