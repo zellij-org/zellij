@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add option to specify a tabs name in the tab `layout` file (https://github.com/zellij-org/zellij/pull/715)
 * Improve handling of empty valid `yaml` files (https://github.com/zellij-org/zellij/pull/716)
 * Add options subcommand to attach (https://github.com/zellij-org/zellij/pull/718)
+* Fix: do not pad empty pane frame title (https://github.com/zellij-org/zellij/pull/724)
 
 
 ## [0.16.0] - 2021-08-31
