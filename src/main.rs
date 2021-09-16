@@ -121,7 +121,7 @@ pub fn main() {
                 Box::new(os_input),
                 opts,
                 config,
-                config_options.clone(),
+                config_options,
                 client,
                 attach_layout,
             );
