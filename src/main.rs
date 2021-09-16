@@ -4,7 +4,10 @@ mod sessions;
 mod tests;
 
 use crate::install::populate_data_dir;
-use sessions::{assert_session, assert_session_ne, get_active_session, list_sessions};
+use sessions::{
+    assert_session, assert_session_ne, get_active_session, get_sessions, list_sessions,
+    print_sessions, session_exists, ActiveSession,
+};
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
 use zellij_server::{os_input_output::get_server_os_input, start_server};
@@ -52,20 +55,66 @@ pub fn main() {
             }
         };
         if let Some(Command::Sessions(Sessions::Attach {
-            mut session_name,
+            session_name,
             force,
+            create,
             options,
         })) = opts.command.clone()
         {
-            if let Some(session) = session_name.as_ref() {
-                assert_session(session);
-            } else {
-                session_name = Some(get_active_session());
-            }
-
             let config_options = match options {
                 Some(SessionCommand::Options(o)) => config_options.merge(o),
                 None => config_options,
+            };
+
+            let (client, attach_layout) = match session_name.as_ref() {
+                Some(session) => {
+                    if create {
+                        if !session_exists(session).unwrap() {
+                            (ClientInfo::New(session_name.unwrap()), layout)
+                        } else {
+                            (
+                                ClientInfo::Attach(
+                                    session_name.unwrap(),
+                                    force,
+                                    config_options.clone(),
+                                ),
+                                None,
+                            )
+                        }
+                    } else {
+                        assert_session(session);
+                        (
+                            ClientInfo::Attach(
+                                session_name.unwrap(),
+                                force,
+                                config_options.clone(),
+                            ),
+                            None,
+                        )
+                    }
+                }
+                None => match get_active_session() {
+                    ActiveSession::None => {
+                        if create {
+                            (
+                                ClientInfo::New(names::Generator::default().next().unwrap()),
+                                layout,
+                            )
+                        } else {
+                            println!("No active zellij sessions found.");
+                            process::exit(1);
+                        }
+                    }
+                    ActiveSession::One(session_name) => (
+                        ClientInfo::Attach(session_name, force, config_options.clone()),
+                        None,
+                    ),
+                    ActiveSession::Many => {
+                        println!("Please specify the session name to attach to. The following sessions are active:");
+                        print_sessions(get_sessions().unwrap());
+                        process::exit(1);
+                    }
+                },
             };
 
             start_client(
@@ -73,8 +122,8 @@ pub fn main() {
                 opts,
                 config,
                 config_options.clone(),
-                ClientInfo::Attach(session_name.unwrap(), force, config_options),
-                None,
+                client,
+                attach_layout,
             );
         } else {
             let session_name = opts
