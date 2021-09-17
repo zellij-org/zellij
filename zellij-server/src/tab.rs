@@ -295,13 +295,6 @@ impl Tab {
         }
     }
 
-    fn set_active_terminal(&mut self, pane_id: Option<PaneId>) {
-        self.active_terminal = pane_id;
-        self.senders
-            .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
-            .unwrap();
-    }
-
     pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PaneGeom::default();
@@ -400,7 +393,7 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
         // This is the end of the nasty viewport hack...
         // FIXME: Active / new / current terminal, should be pane
-        self.set_active_terminal(self.panes.iter().map(|(id, _)| id.to_owned()).next());
+        self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
         self.render();
     }
     pub fn new_pane(&mut self, pid: PaneId) {
@@ -473,7 +466,7 @@ impl Tab {
                 }
             }
         }
-        self.set_active_terminal(Some(pid));
+        self.active_terminal = Some(pid);
         self.render();
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
@@ -502,7 +495,7 @@ impl Tab {
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
-                self.set_active_terminal(Some(pid));
+                self.active_terminal = Some(pid);
                 self.relayout_tab(Direction::Vertical);
                 self.render();
             }
@@ -531,7 +524,7 @@ impl Tab {
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
-            self.set_active_terminal(Some(pid));
+            self.active_terminal = Some(pid);
             self.relayout_tab(Direction::Horizontal);
             self.render();
         }
@@ -745,6 +738,9 @@ impl Tab {
             // or if this session is not attached to a client, we do not have to render
             return;
         }
+        self.senders
+            .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         let mut output = String::new();
         let mut boundaries = Boundaries::new(self.viewport);
         let hide_cursor = "\u{1b}[?25l";
@@ -1773,7 +1769,7 @@ impl Tab {
             .or_else(|| terminal_ids.get(0))
             .copied();
 
-        self.set_active_terminal(active_terminal);
+        self.active_terminal = active_terminal;
         self.render();
     }
     pub fn focus_next_pane(&mut self) {
@@ -1802,7 +1798,7 @@ impl Tab {
             .or_else(|| panes.get(0))
             .map(|p| *p.0);
 
-        self.set_active_terminal(active_terminal);
+        self.active_terminal = active_terminal;
         self.render();
     }
     pub fn focus_previous_pane(&mut self) {
@@ -1832,7 +1828,7 @@ impl Tab {
         } else {
             Some(*panes.get(active_pane_position - 1).unwrap().0)
         };
-        self.set_active_terminal(active_terminal);
+        self.active_terminal = active_terminal;
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1863,7 +1859,7 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.set_active_terminal(Some(p));
+                    self.active_terminal = Some(p);
                     self.render();
                     return true;
                 }
@@ -1872,7 +1868,7 @@ impl Tab {
         } else {
             Some(active_terminal.unwrap().pid())
         };
-        self.set_active_terminal(updated_active_terminal);
+        self.active_terminal = updated_active_terminal;
         false
     }
     pub fn move_focus_down(&mut self) {
@@ -1909,7 +1905,7 @@ impl Tab {
         } else {
             Some(active_terminal.unwrap().pid())
         };
-        self.set_active_terminal(updated_active_terminal);
+        self.active_terminal = updated_active_terminal;
         self.render();
     }
     pub fn move_focus_up(&mut self) {
@@ -1946,7 +1942,7 @@ impl Tab {
         } else {
             Some(active_terminal.unwrap().pid())
         };
-        self.set_active_terminal(updated_active_terminal);
+        self.active_terminal = updated_active_terminal;
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1977,7 +1973,7 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.set_active_terminal(Some(p));
+                    self.active_terminal = Some(p);
                     self.render();
                     return true;
                 }
@@ -1986,7 +1982,7 @@ impl Tab {
         } else {
             Some(active_terminal.unwrap().pid())
         };
-        self.set_active_terminal(updated_active_terminal);
+        self.active_terminal = updated_active_terminal;
         false
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
@@ -2132,7 +2128,7 @@ impl Tab {
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.set_selectable(selectable);
             if self.get_active_pane_id() == Some(id) && !selectable {
-                self.set_active_terminal(self.next_active_pane(&self.get_pane_ids()));
+                self.active_terminal = self.next_active_pane(&self.get_pane_ids());
             }
         }
         self.render();
@@ -2153,7 +2149,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.set_active_terminal(next_active_pane);
+                        self.active_terminal = next_active_pane;
                     }
                     self.relayout_tab(Direction::Horizontal);
                     return;
@@ -2165,7 +2161,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.set_active_terminal(next_active_pane);
+                        self.active_terminal = next_active_pane;
                     }
                     self.relayout_tab(Direction::Horizontal);
                     return;
@@ -2177,7 +2173,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.set_active_terminal(next_active_pane);
+                        self.active_terminal = next_active_pane;
                     }
                     self.relayout_tab(Direction::Vertical);
                     return;
@@ -2189,7 +2185,7 @@ impl Tab {
                     self.panes.remove(&id);
                     if self.active_terminal == Some(id) {
                         let next_active_pane = self.next_active_pane(&panes);
-                        self.set_active_terminal(next_active_pane);
+                        self.active_terminal = next_active_pane;
                     }
                     self.relayout_tab(Direction::Vertical);
                     return;
@@ -2311,7 +2307,7 @@ impl Tab {
     }
     fn focus_pane_at(&mut self, point: &Position) {
         if let Some(clicked_pane) = self.get_pane_id_at(point) {
-            self.set_active_terminal(Some(clicked_pane));
+            self.active_terminal = Some(clicked_pane);
             self.render();
         }
     }
