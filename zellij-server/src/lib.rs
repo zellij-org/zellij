@@ -170,19 +170,13 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             thread_handles.lock().unwrap().push(
                                 thread::Builder::new()
                                     .name("server_router".to_string())
-                                    .spawn({
-                                        let session_data = session_data.clone();
-                                        let os_input = os_input.clone();
-                                        let to_server = to_server.clone();
-
-                                        move || {
-                                            route_thread_main(
-                                                session_data,
-                                                session_state,
-                                                os_input,
-                                                to_server,
-                                            )
-                                        }
+                                    .spawn(move || {
+                                        route_thread_main(
+                                            session_data,
+                                            session_state,
+                                            os_input,
+                                            to_server,
+                                        )
                                     })
                                     .unwrap(),
                             );
@@ -267,7 +261,6 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             }
             ServerInstruction::ClientExit => {
-                *session_data.write().unwrap() = None;
                 os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
                 break;
             }
@@ -297,6 +290,10 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
         }
     }
+
+    // Drop cached session data before exit.
+    *session_data.write().unwrap() = None;
+
     thread_handles
         .lock()
         .unwrap()
