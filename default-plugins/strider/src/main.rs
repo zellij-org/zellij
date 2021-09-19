@@ -2,8 +2,10 @@ mod state;
 
 use colored::*;
 use state::{FsEntry, State};
-use std::{cmp::min, fs::read_dir};
+use std::{cmp::min, fs::read_dir, path::Path};
 use zellij_tile::prelude::*;
+
+const ROOT: &str = "/host";
 
 register_plugin!(State);
 
@@ -29,7 +31,7 @@ impl ZellijPlugin for State {
                             self.path = p;
                             refresh_directory(self);
                         }
-                        FsEntry::File(p, _) => open_file(&p),
+                        FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
                     }
                 }
                 Key::Left | Key::Char('h') => {
@@ -76,7 +78,7 @@ impl ZellijPlugin for State {
 }
 
 fn refresh_directory(state: &mut State) {
-    state.files = read_dir(&state.path)
+    state.files = read_dir(Path::new(ROOT).join(&state.path))
         .unwrap()
         .filter_map(|res| {
             res.and_then(|d| {
