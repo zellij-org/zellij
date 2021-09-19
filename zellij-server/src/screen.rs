@@ -188,22 +188,37 @@ impl Screen {
         }
     }
 
+    /// A helper function to switch to a new tab at specified position.
+    fn switch_active_tab(&mut self, new_tab_pos: usize) {
+        if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
+            let current_tab = self.get_active_tab().unwrap();
+
+            // If new active tab is same as the current one, do nothing.
+            if current_tab.position == new_tab_pos {
+                return;
+            }
+
+            current_tab.visible(false);
+            let new_tab_index = new_tab.index;
+            let new_tab = self.get_indexed_tab_mut(new_tab_index).unwrap();
+            new_tab.set_force_render();
+            new_tab.visible(true);
+
+            let old_active_index = self.active_tab_index.replace(new_tab_index);
+            self.tab_history.retain(|&e| e != Some(new_tab_pos));
+            self.tab_history.push(old_active_index);
+
+            self.update_tabs();
+            self.render();
+        }
+    }
+
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
     pub fn switch_tab_next(&mut self) {
         let active_tab_pos = self.get_active_tab().unwrap().position;
         let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
 
-        for tab in self.tabs.values_mut() {
-            if tab.position == new_tab_pos {
-                tab.set_force_render();
-                self.tab_history.retain(|&e| e != Some(tab.index));
-                self.tab_history.push(self.active_tab_index);
-                self.active_tab_index = Some(tab.index);
-                break;
-            }
-        }
-        self.update_tabs();
-        self.render();
+        self.switch_active_tab(new_tab_pos);
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
@@ -214,32 +229,12 @@ impl Screen {
         } else {
             active_tab_pos - 1
         };
-        for tab in self.tabs.values_mut() {
-            if tab.position == new_tab_pos {
-                tab.set_force_render();
-                self.tab_history.retain(|&e| e != Some(tab.index));
-                self.tab_history.push(self.active_tab_index);
-                self.active_tab_index = Some(tab.index);
-                break;
-            }
-        }
-        self.update_tabs();
-        self.render();
+
+        self.switch_active_tab(new_tab_pos);
     }
 
-    pub fn go_to_tab(&mut self, mut tab_index: usize) {
-        tab_index -= 1;
-        let active_tab_index = self.get_active_tab().unwrap().index;
-        if let Some(t) = self.tabs.values_mut().find(|t| t.position == tab_index) {
-            if t.index != active_tab_index {
-                t.set_force_render();
-                self.tab_history.retain(|&e| e != Some(t.index));
-                self.tab_history.push(self.active_tab_index);
-                self.active_tab_index = Some(t.index);
-                self.update_tabs();
-                self.render();
-            }
-        }
+    pub fn go_to_tab(&mut self, tab_index: usize) {
+        self.switch_active_tab(tab_index - 1);
     }
 
     /// Closes this [`Screen`]'s active [`Tab`], exiting the application if it happens
@@ -264,10 +259,14 @@ impl Screen {
                     .unwrap();
             }
         } else {
+            if let Some(tab) = self.get_active_tab() {
+                tab.visible(false);
+            }
             self.active_tab_index = self.tab_history.pop().unwrap();
             for t in self.tabs.values_mut() {
                 if t.index == self.active_tab_index.unwrap() {
-                    t.set_force_render()
+                    t.set_force_render();
+                    t.visible(true);
                 }
                 if t.position > active_tab.position {
                     t.position -= 1;
@@ -357,8 +356,12 @@ impl Screen {
             self.draw_pane_frames,
         );
         tab.apply_layout(layout, new_pids, tab_index);
-        self.tab_history.push(self.active_tab_index);
-        self.active_tab_index = Some(tab_index);
+        if let Some(active_tab) = self.get_active_tab() {
+            active_tab.visible(false);
+        }
+        self.tab_history
+            .push(self.active_tab_index.replace(tab_index));
+        tab.visible(true);
         self.tabs.insert(tab_index, tab);
         self.update_tabs();
     }
