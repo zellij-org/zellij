@@ -102,7 +102,7 @@ pub(crate) fn list_sessions() {
     process::exit(exit_code);
 }
 
-pub(crate) fn session_exists(name: &str) -> Result<bool, ErrorKind> {
+pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     return match get_sessions() {
         Ok(sessions) => {
             if sessions.iter().any(|s| s == name) {
