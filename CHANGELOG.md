@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * Fix: Properly open new pane with CWD also when switching to a new tab (https://github.com/zellij-org/zellij/pull/729)
 * Feature: Option to create a new session if attach fails (`zellij attach --create`) (https://github.com/zellij-org/zellij/pull/731)
+* Feature: Added the new `Visible` event, allowing plugins to detect if they are visible in the current tab (https://github.com/zellij-org/zellij/pull/717)
 
 ## [0.17.0] - 2021-09-15
 * New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
