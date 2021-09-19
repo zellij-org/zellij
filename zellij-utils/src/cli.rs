@@ -87,7 +87,7 @@ pub enum Sessions {
         force: bool,
 
         /// Create a session if one does not exist.
-        #[structopt(long)]
+        #[structopt(short, long)]
         create: bool,
 
         /// Change the behaviour of zellij
