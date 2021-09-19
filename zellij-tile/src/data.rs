@@ -159,6 +159,8 @@ pub struct TabInfo {
     pub position: usize,
     pub name: String,
     pub active: bool,
+    pub panes_to_hide: usize,
+    pub is_fullscreen_active: bool,
     pub is_sync_panes_active: bool,
 }
 

@@ -99,7 +99,7 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
-    panes_to_hide: HashSet<PaneId>,
+    pub panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
     viewport: Viewport, // includes all non-UI panes
@@ -657,6 +657,9 @@ impl Tab {
             self.render();
             self.toggle_fullscreen_is_active();
         }
+    }
+    pub fn is_fullscreen_active(&self) -> bool {
+        self.fullscreen_is_active
     }
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;

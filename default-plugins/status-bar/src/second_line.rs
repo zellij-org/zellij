@@ -387,3 +387,82 @@ pub fn text_copied_hint(palette: &Palette) -> LinePart {
         len: hint.len(),
     }
 }
+
+pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let green_color = match palette.green {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let fullscreen = "FULLSCREEN";
+    let puls = "+ ";
+    let panes = panes_to_hide.to_string();
+    let hide = " hidden panes";
+    let len = fullscreen.chars().count()
+        + puls.chars().count()
+        + panes.chars().count()
+        + hide.chars().count()
+        + 5; // 3 for ():'s around shortcut, 2 for the space
+    LinePart {
+        part: format!(
+            "{}{}{}{}{}{}",
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(fullscreen),
+            shortcut_right_separator,
+            Style::new().fg(white_color).bold().paint(puls),
+            Style::new().fg(green_color).bold().paint(panes),
+            Style::new().fg(white_color).bold().paint(hide)
+        ),
+        len,
+    }
+}
+
+pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let green_color = match palette.green {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let fullscreen = "FULLSCREEN";
+    let puls = "+ ";
+    let panes = panes_to_hide.to_string();
+    let hide = " hidden panes";
+    let len = locked_text.chars().count()
+        + fullscreen.chars().count()
+        + puls.chars().count()
+        + panes.chars().count()
+        + hide.chars().count()
+        + 5; // 3 for ():'s around shortcut, 2 for the space
+    LinePart {
+        part: format!(
+            "{}{}{}{}{}{}{}",
+            Style::new().fg(white_color).bold().paint(locked_text),
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(fullscreen),
+            shortcut_right_separator,
+            Style::new().fg(white_color).bold().paint(puls),
+            Style::new().fg(green_color).bold().paint(panes),
+            Style::new().fg(white_color).bold().paint(hide)
+        ),
+        len,
+    }
+}
