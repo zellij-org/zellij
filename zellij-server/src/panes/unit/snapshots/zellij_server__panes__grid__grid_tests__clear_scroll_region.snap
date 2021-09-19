@@ -3,7 +3,7 @@ source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
 
 ---
-00 (C): Welcome to fish, the friendly interactive shell                                                                     
+00 (C): Welcome to fish, the friendly interactive shell
 01 (C): ⋊> ~/c/mosaic on main ⨯ vim some-file                                                                       15:07:22
 02 (C): ⋊> ~/c/mosaic on main ⨯                                                                                     15:07:29
 

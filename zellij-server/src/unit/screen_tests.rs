@@ -1,10 +1,11 @@
 use super::{Screen, ScreenInstruction};
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, ChildId, Pid, ServerOsApi},
     thread_bus::Bus,
     SessionState,
 };
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
@@ -28,7 +29,7 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, ChildId) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -73,14 +74,19 @@ impl ServerOsApi for FakeInputOutput {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
+    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+        unimplemented!()
+    }
 }
 
 fn create_new_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput {};
     bus.os_input = Some(Box::new(fake_os_input));
-    let mut client_attributes = ClientAttributes::default();
-    client_attributes.size = size;
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let session_state = Arc::new(RwLock::new(SessionState::Attached));

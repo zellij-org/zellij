@@ -13,8 +13,8 @@
 
 <p align="center">
   <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073"></a>
+  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060"></a>
 </p>
-
 
 # What is this?
 

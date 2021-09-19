@@ -7,6 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
 use strip_ansi_escapes::strip;
+use unicode_width::UnicodeWidthStr;
 use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 
 const UNIX_PERMISSIONS: u32 = 0o700;
@@ -18,10 +19,7 @@ pub fn set_permissions(path: &Path) -> io::Result<()> {
 }
 
 pub fn ansi_len(s: &str) -> usize {
-    from_utf8(&strip(s.as_bytes()).unwrap())
-        .unwrap()
-        .chars()
-        .count()
+    from_utf8(&strip(s.as_bytes()).unwrap()).unwrap().width()
 }
 
 pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {

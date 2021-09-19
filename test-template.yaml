@@ -7,16 +7,14 @@ template:
       split_size:
         Fixed: 1
       run:
-        plugin:
-          path: tab-bar
+        plugin: tab-bar
     - direction: Vertical
-      body: true
+      borderless: true
+    - direction: Vertical
+      borderless: true
     - direction: Vertical
       borderless: true
       split_size:
         Fixed: 2
       run:
-        plugin:
-          path: status-bar
-tabs:
-  - direction: Vertical
+        plugin: status-bar

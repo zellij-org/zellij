@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: Properly open new pane with CWD also when switching to a new tab (https://github.com/zellij-org/zellij/pull/729)
+* Feature: Option to create a new session if attach fails (`zellij attach --create`) (https://github.com/zellij-org/zellij/pull/731)
+* Feature: Added the new `Visible` event, allowing plugins to detect if they are visible in the current tab (https://github.com/zellij-org/zellij/pull/717)
+* Feature: Plugins now have access to a data directory at `/data` – the working directory is now mounted at `/host` instead of `.` (https://github.com/zellij-org/zellij/pull/723)
+
+## [0.17.0] - 2021-09-15
+* New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
+* Fix bug when opening new tab the new pane's viewport would sometimes be calculated incorrectly (https://github.com/zellij-org/zellij/pull/683)
+* Fix bug when in some cases closing a tab would not clear the previous pane's contents (https://github.com/zellij-org/zellij/pull/684)
+* Fix bug where tabs would sometimes be created with the wrong index in their name (https://github.com/zellij-org/zellij/pull/686)
+* Fix bug where wide chars would mess up pane titles (https://github.com/zellij-org/zellij/pull/698)
+* Fix various borderless-frame in viewport bugs (https://github.com/zellij-org/zellij/pull/697)
+* Fix example configuration file (https://github.com/zellij-org/zellij/pull/693)
+* Fix various tab bar responsiveness issues (https://github.com/zellij-org/zellij/pull/703)
+* Allow plugins to run system commands (https://github.com/zellij-org/zellij/pull/666)
+  * This has also added a temporary new permission flag that needs to be specified in the layout. This is a breaking change:
+    ```yaml
+    ...
+    plugin: strider
+    ...
+    ```
+    has become:
+    ```yaml
+    plugin:
+      path: strider
+    ```
+    A plugin can be given command executing permission with:
+    ```yaml
+    plugin:
+      path: strider
+      _allow_exec_host_cmd: true
+    ```
+* Use the unicode width in tab-bar plugin, for tab names (https://github.com/zellij-org/zellij/pull/709)
+* Fix automated builds that make use of the `setup` subcommand (https://github.com/zellij-org/zellij/pull/711)
+* Add option to specify a tabs name in the tab `layout` file (https://github.com/zellij-org/zellij/pull/715)
+* Improve handling of empty valid `yaml` files (https://github.com/zellij-org/zellij/pull/716)
+* Add options subcommand to attach (https://github.com/zellij-org/zellij/pull/718)
+* Fix: do not pad empty pane frame title (https://github.com/zellij-org/zellij/pull/724)
+* Fix: Do not overflow empty lines when resizing panes (https://github.com/zellij-org/zellij/pull/725)
+
 
 ## [0.16.0] - 2021-08-31
 * Plugins don't crash zellij anymore on receiving mouse events (https://github.com/zellij-org/zellij/pull/620)

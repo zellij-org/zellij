@@ -149,7 +149,7 @@ mod logging_pipe_test {
 
         let test_buffer = "Testing write".as_bytes();
 
-        pipe.write(test_buffer).expect("Err write");
+        pipe.write_all(test_buffer).expect("Err write");
         pipe.flush().expect("Err flush");
 
         assert_eq!(pipe.buffer.len(), test_buffer.len());
@@ -161,7 +161,7 @@ mod logging_pipe_test {
 
         let test_buffer = "Testing write \n".as_bytes();
 
-        pipe.write(test_buffer).expect("Err write");
+        pipe.write_all(test_buffer).expect("Err write");
         pipe.flush().expect("Err flush");
 
         assert_eq!(pipe.buffer.len(), 0);
@@ -174,7 +174,7 @@ mod logging_pipe_test {
         let test_buffer = "Testing write \n".as_bytes();
         let test_buffer2 = "And the rest".as_bytes();
 
-        pipe.write(
+        pipe.write_all(
             [
                 test_buffer,
                 test_buffer,
@@ -197,7 +197,7 @@ mod logging_pipe_test {
 
         let test_buffer = "Testing write \n".as_bytes();
 
-        pipe.write(
+        pipe.write_all(
             [
                 test_buffer,
                 test_buffer,
@@ -223,7 +223,7 @@ mod logging_pipe_test {
         // make sure it's not valid utf-8 string if we drop last symbol
         assert!(std::str::from_utf8(&test_buffer[..test_buffer.len() - 1]).is_err());
 
-        pipe.write(&test_buffer[..test_buffer.len() - 1])
+        pipe.write_all(&test_buffer[..test_buffer.len() - 1])
             .expect("Err write");
         pipe.flush().expect("Err flush");
 
@@ -237,7 +237,7 @@ mod logging_pipe_test {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
         let test_buffer = "Testing write \n".as_bytes();
 
-        pipe.write(
+        pipe.write_all(
             [test_buffer, test_buffer, b"\n", b"\n", b"\n"]
                 .concat()
                 .as_slice(),

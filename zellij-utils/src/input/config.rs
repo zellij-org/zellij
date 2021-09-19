@@ -99,16 +99,21 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(yaml_config)?;
-        let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
-        let options = Options::from_yaml(config_from_yaml.options);
-        let themes = config_from_yaml.themes;
+        let config_from_yaml: Option<ConfigFromYaml> = serde_yaml::from_str(yaml_config)?;
 
-        Ok(Config {
-            keybinds,
-            options,
-            themes,
-        })
+        match config_from_yaml {
+            None => Ok(Config::default()),
+            Some(config) => {
+                let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
+                let options = Options::from_yaml(config.options);
+                let themes = config.themes;
+                Ok(Config {
+                    keybinds,
+                    options,
+                    themes,
+                })
+            }
+        }
     }
 
     /// Deserializes from given path.
@@ -275,8 +280,10 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_config() {
         let arbitrary_config = PathBuf::from("nonexistent.yaml");
-        let mut opts = CliArgs::default();
-        opts.config = Some(arbitrary_config);
+        let opts = CliArgs {
+            config: Some(arbitrary_config),
+            ..Default::default()
+        };
         println!("OPTS= {:?}", opts);
         let result = Config::try_from(&opts);
         assert!(result.is_err());
@@ -285,11 +292,13 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_option_clean() {
         use crate::setup::Setup;
-        let mut opts = CliArgs::default();
-        opts.command = Some(Command::Setup(Setup {
-            clean: true,
-            ..Setup::default()
-        }));
+        let opts = CliArgs {
+            command: Some(Command::Setup(Setup {
+                clean: true,
+                ..Setup::default()
+            })),
+            ..Default::default()
+        };
         let result = Config::try_from(&opts);
         assert!(result.is_ok());
     }

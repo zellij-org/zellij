@@ -527,8 +527,8 @@ impl Grid {
         for (i, line) in self.viewport.iter().enumerate() {
             if line.is_canonical {
                 canonical_lines_traversed += 1;
+                y_coordinates = i;
                 if canonical_lines_traversed == canonical_line_index + 1 {
-                    y_coordinates = i;
                     break;
                 }
             }
@@ -628,6 +628,23 @@ impl Grid {
                     }
                 }
             }
+
+            // trim lines after the last empty space that has no following character, because
+            // terminals don't trim empty lines
+            for line in viewport_canonical_lines.iter_mut() {
+                let mut trim_at = None;
+                for (index, character) in line.columns.iter().enumerate() {
+                    if character.character != EMPTY_TERMINAL_CHARACTER.character {
+                        trim_at = None;
+                    } else if trim_at.is_none() {
+                        trim_at = Some(index);
+                    }
+                }
+                if let Some(trim_at) = trim_at {
+                    line.columns.truncate(trim_at);
+                }
+            }
+
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
@@ -658,9 +675,11 @@ impl Grid {
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
+
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
             let current_viewport_row_count = self.viewport.len();

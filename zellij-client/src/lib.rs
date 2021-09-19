@@ -86,6 +86,7 @@ pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
     config: Config,
+    config_options: Options,
     info: ClientInfo,
     layout: Option<LayoutFromYaml>,
 ) {
@@ -105,7 +106,6 @@ pub fn start_client(
         .unwrap();
     std::env::set_var(&"ZELLIJ", "0");
 
-    let config_options = Options::from_cli(&config.options, opts.command.clone());
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
         |t| {
