@@ -6,7 +6,7 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
 
-fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
+pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
@@ -47,7 +47,7 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-fn print_sessions(sessions: Vec<String>) {
+pub(crate) fn print_sessions(sessions: Vec<String>) {
     let curr_session = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
     sessions.iter().for_each(|session| {
         let suffix = if curr_session == *session {
@@ -59,22 +59,29 @@ fn print_sessions(sessions: Vec<String>) {
     })
 }
 
-pub(crate) fn get_active_session() -> String {
+pub(crate) enum ActiveSession {
+    None,
+    One(String),
+    Many,
+}
+
+pub(crate) fn get_active_session() -> ActiveSession {
     match get_sessions() {
         Ok(mut sessions) => {
             if sessions.len() == 1 {
-                return sessions.pop().unwrap();
+                return ActiveSession::One(sessions.pop().unwrap());
             }
             if sessions.is_empty() {
-                println!("No active zellij sessions found.");
+                ActiveSession::None
             } else {
-                println!("Please specify the session name to attach to. The following sessions are active:");
-                print_sessions(sessions);
+                ActiveSession::Many
             }
         }
-        Err(e) => eprintln!("Error occured: {:?}", e),
+        Err(e) => {
+            eprintln!("Error occured: {:?}", e);
+            process::exit(1);
+        }
     }
-    process::exit(1);
 }
 
 pub(crate) fn list_sessions() {
@@ -95,15 +102,30 @@ pub(crate) fn list_sessions() {
     process::exit(exit_code);
 }
 
-pub(crate) fn assert_session(name: &str) {
-    match get_sessions() {
+pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+    return match get_sessions() {
         Ok(sessions) => {
             if sessions.iter().any(|s| s == name) {
-                return;
+                return Ok(true);
             }
-            println!("No session named {:?} found.", name);
+            Ok(false)
         }
-        Err(e) => eprintln!("Error occured: {:?}", e),
+        Err(e) => Err(e),
+    };
+}
+
+pub(crate) fn assert_session(name: &str) {
+    match session_exists(name) {
+        Ok(result) => {
+            if result {
+                return;
+            } else {
+                println!("No session named {:?} found.", name);
+            }
+        }
+        Err(e) => {
+            eprintln!("Error occured: {:?}", e);
+        }
     };
     process::exit(1);
 }
