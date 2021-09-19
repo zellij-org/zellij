@@ -90,6 +90,7 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
 
                 let plugin_name = path.as_path().file_stem().unwrap();
                 let plugin_own_data_dir = plugin_global_data_dir.join(plugin_name);
+                fs::create_dir_all(&plugin_own_data_dir).unwrap();
 
                 let mut wasi_env = WasiState::new("Zellij")
                     .env("CLICOLOR_FORCE", "1")
