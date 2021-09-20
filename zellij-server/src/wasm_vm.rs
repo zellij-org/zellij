@@ -99,9 +99,6 @@ pub(crate) fn wasm_thread_main(
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(pid_tx, run, tab_index) => {
-                if run._allow_exec_host_cmd {
-                    info!("Plugin({:?}) is able to run any host command, this may lead to some security issues!", run.location);
-                }
                 let plugin = plugins
                     .get(&run)
                     .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
@@ -168,6 +165,13 @@ fn start_plugin(
     data_dir: &Path,
     plugin_global_data_dir: &Path,
 ) -> (Instance, PluginEnv) {
+    if plugin._allow_exec_host_cmd {
+        info!(
+            "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
+            plugin.path
+        );
+    }
+
     let wasm_bytes = plugin
         .resolve_wasm_bytes(&data_dir.join("plugins/"))
         .unwrap_or_else(|| panic!("Cannot resolve wasm bytes for plugin {:?}", plugin));
