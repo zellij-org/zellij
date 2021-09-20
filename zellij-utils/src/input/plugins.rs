@@ -42,6 +42,7 @@ impl PluginsConfig {
         base_plugins
     }
 
+    /// Get plugin config from run configuration specified in layout files.
     pub fn get(&self, run: impl Borrow<RunPlugin>) -> Option<PluginConfig> {
         let run = run.borrow();
         match &run.location {
