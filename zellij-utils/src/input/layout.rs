@@ -508,12 +508,7 @@ impl TryFrom<TabLayout> for Layout {
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
-            run: tab
-                .run
-                .map(Run::try_from)
-                // FIXME: This is just Result::transpose but that method is unstable, when it
-                // stabalizes we should swap this out.
-                .map_or(Ok(None), |r| r.map(Some))?,
+            run: tab.run.map(Run::try_from).transpose()?,
         })
     }
 }
