@@ -52,7 +52,10 @@ impl Plugins {
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 location: run.location.clone(),
             }),
-            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned(),
+            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| Plugin {
+                _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                ..plugin
+            }),
         }
     }
 
@@ -220,6 +223,33 @@ mod tests {
     use super::*;
     use crate::input::config::ConfigError;
     use std::convert::TryInto;
+
+    #[test]
+    fn run_plugin_permissions_are_inherited() -> Result<(), ConfigError> {
+        let yaml_plugins: PluginsFromYaml = serde_yaml::from_str(
+            "
+            - path: boo.wasm
+              tag: boo
+              _allow_exec_host_cmd: false
+        ",
+        )?;
+        let plugins = Plugins::try_from(yaml_plugins)?;
+
+        assert_eq!(
+            plugins.get(RunPlugin {
+                _allow_exec_host_cmd: true,
+                location: RunPluginLocation::Zellij(PluginTag::new("boo"))
+            }),
+            Some(Plugin {
+                _allow_exec_host_cmd: true,
+                path: PathBuf::from("boo.wasm"),
+                tag: PluginTag::new("boo"),
+                run: PluginType::OncePerPane(None),
+            })
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn try_from_yaml_fails_when_duplicate_tag_names_are_present() -> Result<(), ConfigError> {
