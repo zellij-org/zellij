@@ -10,7 +10,7 @@ use std::convert::{TryFrom, TryInto};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
-use super::plugins::{Plugins, PluginsError, PluginsFromYaml};
+use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
 use super::theme::ThemesFromYaml;
 use crate::cli::{CliArgs, Command};
 use crate::setup;
@@ -27,7 +27,7 @@ pub struct ConfigFromYaml {
     pub keybinds: Option<KeybindsFromYaml>,
     pub themes: Option<ThemesFromYaml>,
     #[serde(default)]
-    pub plugins: PluginsFromYaml,
+    pub plugins: PluginsConfigFromYaml,
 }
 
 /// Main configuration.
@@ -36,7 +36,7 @@ pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
-    pub plugins: Plugins,
+    pub plugins: PluginsConfig,
 }
 
 #[derive(Debug)]
@@ -52,7 +52,7 @@ pub enum ConfigError {
     // Naming a part in a tab is unsupported
     LayoutNameInTab(LayoutNameInTabError),
     // Plugins have a semantic error, usually trying to parse two of the same tag
-    PluginsError(PluginsError),
+    PluginsError(PluginsConfigError),
 }
 
 impl Default for Config {
@@ -60,7 +60,7 @@ impl Default for Config {
         let keybinds = Keybinds::default();
         let options = Options::default();
         let themes = None;
-        let plugins = Plugins::default();
+        let plugins = PluginsConfig::default();
 
         Config {
             keybinds,
@@ -114,7 +114,7 @@ impl Config {
                 let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
                 let options = Options::from_yaml(config.options);
                 let themes = config.themes;
-                let plugins = Plugins::get_plugins_with_default(config.plugins.try_into()?);
+                let plugins = PluginsConfig::get_plugins_with_default(config.plugins.try_into()?);
                 Ok(Config {
                     keybinds,
                     options,
@@ -139,7 +139,7 @@ impl Config {
     }
 
     /// Gets default configuration from assets
-    // TODO Deserialize the Configuration from bytes &[u8],
+    // TODO Deserialize the Config from bytes &[u8],
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
@@ -232,8 +232,8 @@ impl From<LayoutNameInTabError> for ConfigError {
     }
 }
 
-impl From<PluginsError> for ConfigError {
-    fn from(err: PluginsError) -> ConfigError {
+impl From<PluginsConfigError> for ConfigError {
+    fn from(err: PluginsConfigError) -> ConfigError {
         ConfigError::PluginsError(err)
     }
 }

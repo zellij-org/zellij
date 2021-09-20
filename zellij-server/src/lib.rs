@@ -38,7 +38,7 @@ use zellij_utils::{
         get_mode_info,
         layout::LayoutFromYaml,
         options::Options,
-        plugins::Plugins,
+        plugins::PluginsConfig,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
@@ -52,7 +52,7 @@ pub(crate) enum ServerInstruction {
         Box<CliArgs>,
         Box<Options>,
         LayoutFromYaml,
-        Option<Plugins>,
+        Option<PluginsConfig>,
     ),
     Render(Option<String>),
     UnblockInputThread,
@@ -322,7 +322,7 @@ pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
     pub layout: LayoutFromYaml,
-    pub plugins: Option<Plugins>,
+    pub plugins: Option<PluginsConfig>,
 }
 
 fn init_session(

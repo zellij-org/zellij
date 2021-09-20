@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsError};
+use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -462,7 +462,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
 }
 
 impl TryFrom<Url> for RunPluginLocation {
-    type Error = PluginsError;
+    type Error = PluginsConfigError;
 
     fn try_from(url: Url) -> Result<Self, Self::Error> {
         match url.scheme() {
@@ -471,22 +471,22 @@ impl TryFrom<Url> for RunPluginLocation {
                 let path = PathBuf::from(url.path());
                 let canonicalize = |p: &Path| {
                     fs::canonicalize(p)
-                        .map_err(|_| PluginsError::InvalidPluginLocation(p.to_owned()))
+                        .map_err(|_| PluginsConfigError::InvalidPluginLocation(p.to_owned()))
                 };
                 canonicalize(&path)
                     .or_else(|_| match path.strip_prefix("/") {
                         Ok(path) => canonicalize(path),
-                        Err(_) => Err(PluginsError::InvalidPluginLocation(path.to_owned())),
+                        Err(_) => Err(PluginsConfigError::InvalidPluginLocation(path.to_owned())),
                     })
                     .map(Self::File)
             }
-            _ => Err(PluginsError::InvalidUrl(url)),
+            _ => Err(PluginsConfigError::InvalidUrl(url)),
         }
     }
 }
 
 impl TryFrom<RunFromYaml> for Run {
-    type Error = PluginsError;
+    type Error = PluginsConfigError;
 
     fn try_from(run: RunFromYaml) -> Result<Self, Self::Error> {
         match run {

@@ -16,21 +16,21 @@ use crate::setup;
 pub use zellij_tile::data::PluginTag;
 
 lazy_static! {
-    static ref DEFAULT_CONFIG_PLUGINS: Plugins = {
+    static ref DEFAULT_CONFIG_PLUGINS: PluginsConfig = {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec()).unwrap();
         let cfg_yaml: ConfigFromYaml = serde_yaml::from_str(cfg.as_str()).unwrap();
-        Plugins::try_from(cfg_yaml.plugins).unwrap()
+        PluginsConfig::try_from(cfg_yaml.plugins).unwrap()
     };
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct PluginsFromYaml(Vec<PluginFromYaml>);
+pub struct PluginsConfigFromYaml(Vec<PluginConfigFromYaml>);
 
 /// Used in the config struct for plugin metadata
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Plugins(HashMap<PluginTag, Plugin>);
+pub struct PluginsConfig(HashMap<PluginTag, PluginConfig>);
 
-impl Plugins {
+impl PluginsConfig {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
@@ -42,56 +42,55 @@ impl Plugins {
         base_plugins
     }
 
-    pub fn get(&self, run: impl Borrow<RunPlugin>) -> Option<Plugin> {
+    pub fn get(&self, run: impl Borrow<RunPlugin>) -> Option<PluginConfig> {
         let run = run.borrow();
         match &run.location {
-            // FIXME
-            RunPluginLocation::File(path) => Some(Plugin {
+            RunPluginLocation::File(path) => Some(PluginConfig {
                 path: path.clone(),
-                run: PluginType::OncePerPane(None),
+                run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 location: run.location.clone(),
             }),
-            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| Plugin {
+            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 ..plugin
             }),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Plugin> {
+    pub fn iter(&self) -> impl Iterator<Item = &PluginConfig> {
         self.0.values()
     }
 }
 
-impl Default for Plugins {
+impl Default for PluginsConfig {
     fn default() -> Self {
-        Self::get_plugins_with_default(Plugins::new())
+        Self::get_plugins_with_default(PluginsConfig::new())
     }
 }
 
-impl TryFrom<PluginsFromYaml> for Plugins {
-    type Error = PluginsError;
+impl TryFrom<PluginsConfigFromYaml> for PluginsConfig {
+    type Error = PluginsConfigError;
 
-    fn try_from(yaml: PluginsFromYaml) -> Result<Self, PluginsError> {
+    fn try_from(yaml: PluginsConfigFromYaml) -> Result<Self, PluginsConfigError> {
         let mut plugins = HashMap::new();
         for plugin in yaml.0 {
             if plugins.contains_key(&plugin.tag) {
-                return Err(PluginsError::DuplicatePlugins(plugin.tag));
+                return Err(PluginsConfigError::DuplicatePlugins(plugin.tag));
             }
             plugins.insert(plugin.tag.clone(), plugin.into());
         }
 
-        Ok(Plugins(plugins))
+        Ok(PluginsConfig(plugins))
     }
 }
 
-impl From<PluginFromYaml> for Plugin {
-    fn from(plugin: PluginFromYaml) -> Self {
-        Plugin {
+impl From<PluginConfigFromYaml> for PluginConfig {
+    fn from(plugin: PluginConfigFromYaml) -> Self {
+        PluginConfig {
             path: plugin.path,
             run: match plugin.run {
-                PluginTypeFromYaml::OncePerPane => PluginType::OncePerPane(None),
+                PluginTypeFromYaml::Pane => PluginType::Pane(None),
                 PluginTypeFromYaml::Headless => PluginType::Headless,
             },
             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
@@ -102,7 +101,7 @@ impl From<PluginFromYaml> for Plugin {
 
 /// Plugin metadata
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Plugin {
+pub struct PluginConfig {
     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
     pub path: PathBuf,
     /// Plugin type
@@ -113,7 +112,7 @@ pub struct Plugin {
     pub location: RunPluginLocation,
 }
 
-impl Plugin {
+impl PluginConfig {
     /// Resolve wasm plugin bytes for the plugin path and given plugin directory. Attempts to first
     /// resolve the plugin path as an absolute path, then adds a ".wasm" extension to the path and
     /// resolves that, finally we use the plugin directoy joined with the path with an appended
@@ -136,36 +135,36 @@ impl Plugin {
     /// Sets the tab index inside of the plugin type of the run field.
     pub fn set_tab_index(&mut self, tab_index: usize) {
         match self.run {
-            PluginType::OncePerPane(..) => {
-                self.run = PluginType::OncePerPane(Some(tab_index));
+            PluginType::Pane(..) => {
+                self.run = PluginType::Pane(Some(tab_index));
             }
             PluginType::Headless => {}
         }
     }
 }
 
-/// Type of the plugin. Defaults to OncePerPane.
+/// Type of the plugin. Defaults to Pane.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PluginType {
     // TODO: A plugin with output thats cloned across every pane in a tab, or across the entire
     // application might be useful
-    // OncePerTab
+    // Tab
     // Static
     /// Starts immediately when Zellij is started and runs without a visible pane
     Headless,
-    /// Runs when declared inside a layout file
-    OncePerPane(Option<usize>), // tab_index
+    /// Runs once per pane declared inside a layout file
+    Pane(Option<usize>), // tab_index
 }
 
 impl Default for PluginType {
     fn default() -> Self {
-        Self::OncePerPane(None)
+        Self::Pane(None)
     }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct PluginFromYaml {
+pub struct PluginConfigFromYaml {
     pub path: PathBuf,
     pub tag: PluginTag,
     #[serde(default)]
@@ -180,37 +179,37 @@ pub struct PluginFromYaml {
 #[serde(rename_all = "kebab-case")]
 pub enum PluginTypeFromYaml {
     Headless,
-    OncePerPane,
+    Pane,
 }
 
 impl Default for PluginTypeFromYaml {
     fn default() -> Self {
-        Self::OncePerPane
+        Self::Pane
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum PluginsError {
+pub enum PluginsConfigError {
     DuplicatePlugins(PluginTag),
     InvalidUrl(Url),
     InvalidPluginLocation(PathBuf),
 }
 
-impl std::error::Error for PluginsError {}
-impl Display for PluginsError {
+impl std::error::Error for PluginsConfigError {}
+impl Display for PluginsConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PluginsError::DuplicatePlugins(tag) => write!(
+            PluginsConfigError::DuplicatePlugins(tag) => write!(
                 formatter,
                 "Duplication in plugin tag names is not allowed: '{}'",
                 String::from(tag.clone())
             ),
-            PluginsError::InvalidUrl(url) => write!(
+            PluginsConfigError::InvalidUrl(url) => write!(
                 formatter,
                 "Only 'file:' and 'zellij:' url schemes are supported for plugin lookup. '{}' does not match either.",
                 url
             ),
-            PluginsError::InvalidPluginLocation(path) => write!(
+            PluginsConfigError::InvalidPluginLocation(path) => write!(
                 formatter,
                 "Could not find plugin at the path: '{:?}'", path
             ),
@@ -226,25 +225,25 @@ mod tests {
 
     #[test]
     fn run_plugin_permissions_are_inherited() -> Result<(), ConfigError> {
-        let yaml_plugins: PluginsFromYaml = serde_yaml::from_str(
+        let yaml_plugins: PluginsConfigFromYaml = serde_yaml::from_str(
             "
             - path: boo.wasm
               tag: boo
               _allow_exec_host_cmd: false
         ",
         )?;
-        let plugins = Plugins::try_from(yaml_plugins)?;
+        let plugins = PluginsConfig::try_from(yaml_plugins)?;
 
         assert_eq!(
             plugins.get(RunPlugin {
                 _allow_exec_host_cmd: true,
                 location: RunPluginLocation::Zellij(PluginTag::new("boo"))
             }),
-            Some(Plugin {
+            Some(PluginConfig {
                 _allow_exec_host_cmd: true,
                 path: PathBuf::from("boo.wasm"),
-                tag: PluginTag::new("boo"),
-                run: PluginType::OncePerPane(None),
+                location: RunPluginLocation::Zellij(PluginTag::new("boo")),
+                run: PluginType::Pane(None),
             })
         );
 
@@ -264,8 +263,8 @@ mod tests {
         )?;
 
         assert_eq!(
-            Plugins::try_from(plugins),
-            Err(PluginsError::DuplicatePlugins(PluginTag::new("boo")))
+            PluginsConfig::try_from(plugins),
+            Err(PluginsConfigError::DuplicatePlugins(PluginTag::new("boo")))
         );
 
         Ok(())
@@ -280,7 +279,7 @@ mod tests {
                   tag: boo
         ",
         )?;
-        let plugins = Plugins::get_plugins_with_default(plugins.try_into()?);
+        let plugins = PluginsConfig::get_plugins_with_default(plugins.try_into()?);
 
         assert_eq!(plugins.iter().collect::<Vec<_>>().len(), 4);
         Ok(())
@@ -295,18 +294,18 @@ mod tests {
                   tag: tab-bar
         ",
         )?;
-        let plugins = Plugins::get_plugins_with_default(plugins.try_into()?);
+        let plugins = PluginsConfig::get_plugins_with_default(plugins.try_into()?);
 
         assert_eq!(
             plugins.get(RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: RunPluginLocation::Zellij(PluginTag::new("tab-bar"))
             }),
-            Some(Plugin {
+            Some(PluginConfig {
                 _allow_exec_host_cmd: false,
                 path: PathBuf::from("boo.wasm"),
                 location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
-                run: PluginType::OncePerPane(None),
+                run: PluginType::Pane(None),
             })
         );
 

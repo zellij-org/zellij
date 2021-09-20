@@ -28,7 +28,7 @@ use zellij_utils::errors::{ContextType, PluginContext};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::RunPlugin,
-    input::plugins::{Plugin, PluginType, Plugins},
+    input::plugins::{PluginConfig, PluginType, PluginsConfig},
     serde, zellij_tile,
 };
 
@@ -56,7 +56,7 @@ impl From<&PluginInstruction> for PluginContext {
 #[derive(WasmerEnv, Clone)]
 pub(crate) struct PluginEnv {
     pub plugin_id: u32,
-    pub plugin: Plugin,
+    pub plugin: PluginConfig,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
@@ -68,7 +68,7 @@ pub(crate) fn wasm_thread_main(
     bus: Bus<PluginInstruction>,
     store: Store,
     data_dir: PathBuf,
-    plugins: Plugins,
+    plugins: PluginsConfig,
 ) {
     info!("Wasm main thread starts");
 
@@ -161,7 +161,7 @@ pub(crate) fn wasm_thread_main(
 
 fn start_plugin(
     plugin_id: u32,
-    plugin: &Plugin,
+    plugin: &PluginConfig,
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
     store: &Store,
@@ -256,7 +256,7 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
     match plugin_env.plugin.run {
-        PluginType::OncePerPane(Some(tab_index)) => {
+        PluginType::Pane(Some(tab_index)) => {
             let selectable = selectable != 0;
             plugin_env
                 .senders
@@ -269,7 +269,7 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         }
         _ => {
             debug!(
-                "{} - Calling method 'host_set_selectable' does nothing for service plugins",
+                "{} - Calling method 'host_set_selectable' does nothing for headless plugins",
                 plugin_env.plugin.location
             )
         }
