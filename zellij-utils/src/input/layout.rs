@@ -113,13 +113,9 @@ impl From<&RunPluginLocation> for Url {
 impl fmt::Display for RunPluginLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Self::File(path) => write!(
-                f,
-                "file:{}",
-                path.clone().into_os_string().into_string().unwrap()
-            ),
+            Self::File(path) => write!(f, "{}", path.clone().into_os_string().into_string().unwrap()),
 
-            Self::Zellij(tag) => write!(f, "zellij:{}", tag),
+            Self::Zellij(tag) => write!(f, "{}", tag),
         }
     }
 }
