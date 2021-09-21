@@ -3,6 +3,8 @@
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target"
 SKIP_TEST = false
+ZELLIJ_EXAMPLE_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/example"
+ZELLIJ_ASSETS_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/zellij-utils/assets"
 
 # Add clippy to the default flow
 [tasks.dev-test-flow]
@@ -118,6 +120,16 @@ dependencies = ["install-mandown"]
 command = "cargo"
 args = ["install", "mandown"]
 
+
+# copy the example default config from assets directory to a more user facing one
+[tasks.update-default-config]
+workspace = false
+dependencies = []
+script_runner = "@duckscript"
+script = '''
+cp ${ZELLIJ_ASSETS_DIR}/config/default.yaml ${ZELLIJ_EXAMPLE_DIR}/default.yaml
+'''
+
 # CI Releasing Zellij
 [tasks.ci-build-release]
 workspace = false
@@ -193,6 +205,6 @@ cwd = "zellij-tile-utils"
 script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
-dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils"]
+dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils", "update-default-config"]
 command = "cargo"
 args = ["publish"]
