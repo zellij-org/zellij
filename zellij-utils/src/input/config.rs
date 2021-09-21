@@ -45,9 +45,8 @@ pub enum ConfigError {
     IoPath(io::Error, PathBuf),
     // Internal Deserialization Error
     FromUtf8(std::string::FromUtf8Error),
-    // Missing the tab section in the layout.
-    Layout(LayoutMissingTabSectionError),
-    LayoutPartAndTab(LayoutPartAndTabError),
+    // Naming a part in a tab is unsupported
+    LayoutNameInTab(LayoutNameInTabError),
 }
 
 impl Default for Config {
@@ -139,70 +138,32 @@ impl Config {
 
 // TODO: Split errors up into separate modules
 #[derive(Debug, Clone)]
-pub struct LayoutMissingTabSectionError;
-#[derive(Debug, Clone)]
-pub struct LayoutPartAndTabError;
+pub struct LayoutNameInTabError;
 
-impl fmt::Display for LayoutMissingTabSectionError {
+impl fmt::Display for LayoutNameInTabError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "MissingTabSectionError:
-There needs to be exactly one `tabs` section specified in the layout file, for example:
+            "LayoutNameInTabError:
+The `parts` inside the `tabs` can't be named. For example:
 ---
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
-    tabs:
-      - direction: Vertical
-      - direction: Vertical
-  - direction: Vertical
-"
-        )
-    }
-}
-
-impl std::error::Error for LayoutMissingTabSectionError {
-    fn description(&self) -> &str {
-        "One tab must be specified per Layout."
-    }
-}
-
-impl fmt::Display for LayoutPartAndTabError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "LayoutPartAndTabError:
-The `tabs` and `parts` section should not be specified on the same level in the layout file, for example:
----
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
 tabs:
   - direction: Vertical
-  - direction: Vertical
-  - direction: Vertical
-
-should rather be specified as:
----
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
-    tabs:
+    name: main
+    parts:
       - direction: Vertical
+        name: section # <== The part section can't be named.
       - direction: Vertical
-      - direction: Vertical
+  - direction: Vertical
+    name: test
 "
         )
     }
 }
 
-impl std::error::Error for LayoutPartAndTabError {
+impl std::error::Error for LayoutNameInTabError {
     fn description(&self) -> &str {
-        "The `tabs` and parts section should not be specified on the same level."
+        "The `parts` inside the `tabs` can't be named."
     }
 }
 
@@ -215,10 +176,7 @@ impl Display for ConfigError {
             }
             ConfigError::Serde(ref err) => write!(formatter, "Deserialization error: {}", err),
             ConfigError::FromUtf8(ref err) => write!(formatter, "FromUtf8Error: {}", err),
-            ConfigError::Layout(ref err) => {
-                write!(formatter, "There was an error in the layout file, {}", err)
-            }
-            ConfigError::LayoutPartAndTab(ref err) => {
+            ConfigError::LayoutNameInTab(ref err) => {
                 write!(formatter, "There was an error in the layout file, {}", err)
             }
         }
@@ -232,8 +190,7 @@ impl std::error::Error for ConfigError {
             ConfigError::IoPath(ref err, _) => Some(err),
             ConfigError::Serde(ref err) => Some(err),
             ConfigError::FromUtf8(ref err) => Some(err),
-            ConfigError::Layout(ref err) => Some(err),
-            ConfigError::LayoutPartAndTab(ref err) => Some(err),
+            ConfigError::LayoutNameInTab(ref err) => Some(err),
         }
     }
 }
@@ -256,15 +213,9 @@ impl From<std::string::FromUtf8Error> for ConfigError {
     }
 }
 
-impl From<LayoutMissingTabSectionError> for ConfigError {
-    fn from(err: LayoutMissingTabSectionError) -> ConfigError {
-        ConfigError::Layout(err)
-    }
-}
-
-impl From<LayoutPartAndTabError> for ConfigError {
-    fn from(err: LayoutPartAndTabError) -> ConfigError {
-        ConfigError::LayoutPartAndTab(err)
+impl From<LayoutNameInTabError> for ConfigError {
+    fn from(err: LayoutNameInTabError) -> ConfigError {
+        ConfigError::LayoutNameInTab(err)
     }
 }
 
