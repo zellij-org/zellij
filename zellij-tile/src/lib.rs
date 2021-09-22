@@ -27,7 +27,9 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn update() {
             STATE.with(|state| {
-                state.borrow_mut().update($crate::shim::object_from_stdin());
+                state
+                    .borrow_mut()
+                    .update($crate::shim::object_from_stdin().unwrap());
             });
         }
 

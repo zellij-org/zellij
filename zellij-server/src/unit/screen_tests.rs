@@ -5,6 +5,7 @@ use crate::{
     thread_bus::Bus,
     SessionState,
 };
+use std::convert::TryInto;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::command::TerminalAction;
@@ -101,7 +102,7 @@ fn create_new_screen(size: Size) -> Screen {
 }
 
 fn new_tab(screen: &mut Screen, pid: i32) {
-    screen.apply_layout(LayoutTemplate::default().into(), vec![pid]);
+    screen.apply_layout(LayoutTemplate::default().try_into().unwrap(), vec![pid]);
 }
 
 #[test]

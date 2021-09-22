@@ -138,6 +138,7 @@ pub fn start_client(
                 Box::new(opts),
                 Box::new(config_options.clone()),
                 layout.unwrap(),
+                Some(config.plugins.clone()),
             )
         }
     };

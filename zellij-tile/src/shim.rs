@@ -24,7 +24,7 @@ pub fn set_selectable(selectable: bool) {
 // Query Functions
 pub fn get_plugin_ids() -> PluginIds {
     unsafe { host_get_plugin_ids() };
-    object_from_stdin()
+    object_from_stdin().unwrap()
 }
 
 // Host Functions
@@ -45,10 +45,10 @@ pub fn exec_cmd(cmd: &[&str]) {
 // Internal Functions
 
 #[doc(hidden)]
-pub fn object_from_stdin<T: DeserializeOwned>() -> T {
+pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
-    serde_json::from_str(&json).unwrap()
+    serde_json::from_str(&json)
 }
 
 #[doc(hidden)]

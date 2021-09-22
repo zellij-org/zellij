@@ -6,6 +6,7 @@ use crate::{
     thread_bus::ThreadSenders,
     SessionState,
 };
+use std::convert::TryInto;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::layout::LayoutTemplate;
@@ -101,7 +102,11 @@ fn create_new_tab(size: Size) -> Tab {
         session_state,
         true, // draw pane frames
     );
-    tab.apply_layout(LayoutTemplate::default().into(), vec![1], index);
+    tab.apply_layout(
+        LayoutTemplate::default().try_into().unwrap(),
+        vec![1],
+        index,
+    );
     tab
 }
 

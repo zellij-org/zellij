@@ -248,6 +248,13 @@ keybinds:
           key: [Ctrl: 'q',]
         - action: [Detach,]
           key: [Char: 'd',]
+plugins:
+    - path: tab-bar
+      tag: tab-bar
+    - path: status-bar
+      tag: status-bar
+    - path: strider
+      tag: strider
 
 # Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 # eg. when terminal window with an active zellij session is closed
