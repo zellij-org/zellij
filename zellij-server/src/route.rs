@@ -330,7 +330,13 @@ pub(crate) fn route_thread_main(
                     .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                     .unwrap();
             }
-            ClientToServerMsg::NewClient(client_attributes, cli_args, opts, layout, plugin_config) => {
+            ClientToServerMsg::NewClient(
+                client_attributes,
+                cli_args,
+                opts,
+                layout,
+                plugin_config,
+            ) => {
                 let new_client_instruction = ServerInstruction::NewClient(
                     client_attributes,
                     cli_args,
