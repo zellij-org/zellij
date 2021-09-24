@@ -197,26 +197,26 @@ pub fn scrolling_inside_a_pane() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
-                    remote_terminal.send_key(&format!("{:0<56}", "line1 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line2 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line3 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line4 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line5 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line6 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line7 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line8 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line9 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line10 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line11 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line12 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line13 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line14 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line15 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line16 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line17 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line18 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line19 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<57}", "line20 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<56}", "line1 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line2 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line3 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line4 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line5 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line6 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line7 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line8 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line9 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line10 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line11 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line12 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line13 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line14 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line15 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line16 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line17 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line18 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line19 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<57}", "line20 ").as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -566,7 +566,7 @@ pub fn lock_mode() {
                 if remote_terminal.snapshot_contains("INTERFACE LOCKED") {
                     remote_terminal.send_key(&TAB_MODE);
                     remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
-                    remote_terminal.send_key(&"abc".as_bytes());
+                    remote_terminal.send_key("abc".as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -667,7 +667,7 @@ pub fn detach_and_attach_session() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                     // new pane has been opened and focused
-                    remote_terminal.send_key(&"I am some text".as_bytes());
+                    remote_terminal.send_key("I am some text".as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -817,26 +817,26 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
-                    remote_terminal.send_key(&format!("{:0<56}", "line1 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line2 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line3 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line4 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line5 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line6 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line7 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line8 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line9 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line10 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line11 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line12 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line13 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line14 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line15 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line16 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line17 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line18 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<58}", "line19 ").as_bytes());
-                    remote_terminal.send_key(&format!("{:0<57}", "line20 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<56}", "line1 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line2 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line3 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line4 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line5 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line6 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line7 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line8 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line9 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line10 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line11 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line12 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line13 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line14 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line15 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line16 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line17 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line18 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<58}", "line19 ").as_bytes());
+                    remote_terminal.send_key(format!("{:0<57}", "line20 ").as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete

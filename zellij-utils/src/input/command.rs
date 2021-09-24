@@ -15,6 +15,8 @@ pub struct RunCommand {
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
 }
 
 /// Intermediate representation
@@ -25,6 +27,8 @@ pub struct RunCommandAction {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
     pub direction: Option<Direction>,
 }
 
@@ -33,6 +37,7 @@ impl From<RunCommandAction> for RunCommand {
         RunCommand {
             command: action.command,
             args: action.args,
+            cwd: action.cwd,
         }
     }
 }

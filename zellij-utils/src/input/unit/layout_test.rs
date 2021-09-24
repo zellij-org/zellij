@@ -1,4 +1,5 @@
 use super::super::layout::*;
+use std::convert::TryInto;
 
 fn layout_test_dir(layout: String) -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -45,7 +46,10 @@ fn default_layout_merged_correctly() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
             Layout {
                 direction: Direction::Vertical,
@@ -59,13 +63,16 @@ fn default_layout_merged_correctly() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
         ],
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -83,7 +90,10 @@ fn default_layout_new_tab_correct() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
             Layout {
                 direction: Direction::Horizontal,
@@ -97,13 +107,16 @@ fn default_layout_new_tab_correct() {
                 borderless: true,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
         ],
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -195,7 +208,7 @@ fn three_panes_with_tab_merged_correctly() {
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -217,7 +230,7 @@ fn three_panes_with_tab_new_tab_is_correct() {
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -253,7 +266,10 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
             Layout {
                 direction: Direction::Vertical,
@@ -297,13 +313,16 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
         ],
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -321,7 +340,10 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
-                run: Some(Run::Plugin(Some("tab-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
             Layout {
                 direction: Direction::Horizontal,
@@ -335,13 +357,16 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 borderless: false,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
-                run: Some(Run::Plugin(Some("status-bar".into()))),
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
             },
         ],
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -449,7 +474,7 @@ fn deeply_nested_tab_merged_correctly() {
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -499,7 +524,7 @@ fn three_tabs_tab_one_merged_correctly() {
         run: None,
     };
 
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -549,7 +574,7 @@ fn three_tabs_tab_two_merged_correctly() {
         run: None,
     };
 
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -598,7 +623,7 @@ fn three_tabs_tab_three_merged_correctly() {
         split_size: None,
         run: None,
     };
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -636,7 +661,7 @@ fn no_tabs_merged_correctly() {
         run: None,
     };
 
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
 
 #[test]
@@ -692,5 +717,5 @@ fn no_layout_template_merged_correctly() {
         borderless: false,
     };
 
-    assert_eq!(merged_layout, tab_layout.into());
+    assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }

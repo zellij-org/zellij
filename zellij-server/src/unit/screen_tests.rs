@@ -1,10 +1,12 @@
 use super::{Screen, ScreenInstruction};
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, ChildId, Pid, ServerOsApi},
     thread_bus::Bus,
     ClientId, SessionState,
 };
+use std::convert::TryInto;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
@@ -17,7 +19,6 @@ use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::nix;
 
 use zellij_utils::{
-    errors::ErrorContext,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
@@ -29,7 +30,7 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, ChildId) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -69,14 +70,19 @@ impl ServerOsApi for FakeInputOutput {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
+    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+        unimplemented!()
+    }
 }
 
 fn create_new_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput {};
     bus.os_input = Some(Box::new(fake_os_input));
-    let mut client_attributes = ClientAttributes::default();
-    client_attributes.size = size;
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let session_state = Arc::new(RwLock::new(SessionState::new()));
@@ -91,7 +97,7 @@ fn create_new_screen(size: Size) -> Screen {
 }
 
 fn new_tab(screen: &mut Screen, pid: i32) {
-    screen.apply_layout(LayoutTemplate::default().into(), vec![pid]);
+    screen.apply_layout(LayoutTemplate::default().try_into().unwrap(), vec![pid]);
 }
 
 #[test]

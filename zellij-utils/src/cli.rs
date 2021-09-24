@@ -63,6 +63,13 @@ pub enum Command {
 }
 
 #[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
+pub enum SessionCommand {
+    /// Change the behaviour of zellij
+    #[structopt(name = "options")]
+    Options(Options),
+}
+
+#[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
 pub enum Sessions {
     /// List active sessions
     #[structopt(alias = "ls")]
@@ -78,5 +85,13 @@ pub enum Sessions {
         /// zellij client (if any) and attach to this.
         #[structopt(long, short)]
         force: bool,
+
+        /// Create a session if one does not exist.
+        #[structopt(short, long)]
+        create: bool,
+
+        /// Change the behaviour of zellij
+        #[structopt(subcommand, name = "options")]
+        options: Option<SessionCommand>,
     },
 }

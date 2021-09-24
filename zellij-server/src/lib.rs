@@ -40,6 +40,7 @@ use zellij_utils::{
         get_mode_info,
         layout::LayoutFromYaml,
         options::Options,
+        plugins::PluginsConfig,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
@@ -56,6 +57,7 @@ pub(crate) enum ServerInstruction {
         Box<Options>,
         LayoutFromYaml,
         ClientId,
+        Option<PluginsConfig>,
     ),
     Render(Option<String>),
     UnblockInputThread,
@@ -222,21 +224,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             thread_handles.lock().unwrap().push(
                                 thread::Builder::new()
                                     .name("server_router".to_string())
-                                    .spawn({
-                                        let session_data = session_data.clone();
-                                        let os_input = os_input.clone();
-                                        let to_server = to_server.clone();
-
-                                        move || {
-                                            route_thread_main(
-                                                session_data,
-                                                session_state,
-                                                os_input,
-                                                to_server,
-                                                receiver,
-                                                client_id,
-                                            )
-                                        }
+                                    .spawn(move || {
+                                        route_thread_main(
+                                            session_data,
+                                            session_state,
+                                            os_input,
+                                            to_server,
+                                            receiver,
+                                            client_id
+                                        )
                                     })
                                     .unwrap(),
                             );
@@ -259,15 +255,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 config_options,
                 layout,
                 client_id,
+                plugins,
             ) => {
                 let session = init_session(
                     os_input.clone(),
-                    opts,
-                    config_options.clone(),
                     to_server.clone(),
                     client_attributes,
                     session_state.clone(),
-                    layout.clone(),
+                    SessionOptions {
+                        opts,
+                        layout: layout.clone(),
+                        plugins,
+                        config_options: config_options.clone(),
+                    },
                 );
                 *session_data.write().unwrap() = Some(session);
                 session_state
@@ -417,6 +417,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             }
         }
     }
+
+    // Drop cached session data before exit.
+    *session_data.write().unwrap() = None;
+
     thread_handles
         .lock()
         .unwrap()
@@ -425,15 +429,26 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     drop(std::fs::remove_file(&socket_path));
 }
 
+pub struct SessionOptions {
+    pub opts: Box<CliArgs>,
+    pub config_options: Box<Options>,
+    pub layout: LayoutFromYaml,
+    pub plugins: Option<PluginsConfig>,
+}
+
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
-    opts: Box<CliArgs>,
-    config_options: Box<Options>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     session_state: Arc<RwLock<SessionState>>,
-    layout: LayoutFromYaml,
+    options: SessionOptions,
 ) -> SessionMetaData {
+    let SessionOptions {
+        opts,
+        config_options,
+        layout,
+        plugins,
+    } = options;
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
@@ -517,7 +532,7 @@ fn init_session(
             );
             let store = Store::default();
 
-            move || wasm_thread_main(plugin_bus, store, data_dir)
+            move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
         })
         .unwrap();
     SessionMetaData {

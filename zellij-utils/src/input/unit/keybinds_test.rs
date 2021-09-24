@@ -92,7 +92,7 @@ fn merge_keybinds_overwrites_same_keys() {
     let mut keybinds_self = Keybinds::new();
     keybinds_self
         .0
-        .insert(InputMode::Normal, mode_keybinds_self.clone());
+        .insert(InputMode::Normal, mode_keybinds_self);
     let mut keybinds_other = Keybinds::new();
     keybinds_other
         .0
@@ -152,7 +152,7 @@ fn no_unbind_unbinds_none() {
 fn last_keybind_is_taken() {
     let actions_1 = vec![Action::NoOp, Action::NewTab(None)];
     let keyaction_1 = KeyActionFromYaml {
-        action: actions_1.clone(),
+        action: actions_1,
         key: vec![Key::F(1), Key::Backspace, Key::Char('t')],
     };
     let actions_2 = vec![Action::GoToTab(1)];
@@ -184,7 +184,7 @@ fn last_keybind_overwrites() {
 
     let mut expected = ModeKeybinds::new();
     expected.0.insert(Key::F(1), actions_2.clone());
-    expected.0.insert(Key::Backspace, actions_1.clone());
+    expected.0.insert(Key::Backspace, actions_1);
     expected.0.insert(Key::Char('t'), actions_2);
 
     assert_eq!(expected, ModeKeybinds::from(vec![keyaction_1, keyaction_2]));

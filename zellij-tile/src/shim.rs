@@ -24,7 +24,7 @@ pub fn set_selectable(selectable: bool) {
 // Query Functions
 pub fn get_plugin_ids() -> PluginIds {
     unsafe { host_get_plugin_ids() };
-    object_from_stdin()
+    object_from_stdin().unwrap()
 }
 
 // Host Functions
@@ -37,14 +37,18 @@ pub fn open_file(path: &Path) {
 pub fn set_timeout(secs: f64) {
     unsafe { host_set_timeout(secs) };
 }
+pub fn exec_cmd(cmd: &[&str]) {
+    object_to_stdout(&cmd);
+    unsafe { host_exec_cmd() };
+}
 
 // Internal Functions
 
 #[doc(hidden)]
-pub fn object_from_stdin<T: DeserializeOwned>() -> T {
+pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
-    serde_json::from_str(&json).unwrap()
+    serde_json::from_str(&json)
 }
 
 #[doc(hidden)]
@@ -60,4 +64,5 @@ extern "C" {
     fn host_get_plugin_ids();
     fn host_open_file();
     fn host_set_timeout(secs: f64);
+    fn host_exec_cmd();
 }

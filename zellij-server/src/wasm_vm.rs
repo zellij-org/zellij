@@ -1,7 +1,7 @@
-use log::info;
+use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr;
 use std::sync::{mpsc::Sender, Arc, Mutex};
@@ -9,6 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::{de::DeserializeOwned, Serialize};
+use url::Url;
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
     WasmerEnv,
@@ -24,12 +25,17 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
 };
 use zellij_utils::errors::{ContextType, PluginContext};
-use zellij_utils::{input::command::TerminalAction, serde, zellij_tile};
+use zellij_utils::{
+    input::command::TerminalAction,
+    input::layout::RunPlugin,
+    input::plugins::{PluginConfig, PluginType, PluginsConfig},
+    serde, zellij_tile,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
-    Load(Sender<u32>, PathBuf, usize), // tx_pid, path_of_plugin , tab_index
-    Update(Option<u32>, Event),        // Focused plugin / broadcast, event data
+    Load(Sender<u32>, RunPlugin, usize), // tx_pid, plugin metadata, tab_index
+    Update(Option<u32>, Event),          // Focused plugin / broadcast, event data
     Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
     Unload(u32),
     Exit,
@@ -50,70 +56,62 @@ impl From<&PluginInstruction> for PluginContext {
 #[derive(WasmerEnv, Clone)]
 pub(crate) struct PluginEnv {
     pub plugin_id: u32,
-    pub tab_index: usize,
+    pub plugin: PluginConfig,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    plugin_own_data_dir: PathBuf,
 }
 
 // Thread main --------------------------------------------------------------------------------------------------------
-pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_dir: PathBuf) {
+pub(crate) fn wasm_thread_main(
+    bus: Bus<PluginInstruction>,
+    store: Store,
+    data_dir: PathBuf,
+    plugins: PluginsConfig,
+) {
     info!("Wasm main thread starts");
+
     let mut plugin_id = 0;
     let mut plugin_map = HashMap::new();
+    let plugin_dir = data_dir.join("plugins/");
+    let plugin_global_data_dir = plugin_dir.join("data");
+    fs::create_dir_all(plugin_global_data_dir.as_path()).unwrap();
+
+    for plugin in plugins.iter() {
+        if let PluginType::Headless = plugin.run {
+            let (instance, plugin_env) = start_plugin(
+                plugin_id,
+                plugin,
+                0,
+                &bus,
+                &store,
+                &data_dir,
+                &plugin_global_data_dir,
+            );
+            plugin_map.insert(plugin_id, (instance, plugin_env));
+            plugin_id += 1;
+        }
+    }
+
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(pid_tx, path, tab_index) => {
-                let plugin_dir = data_dir.join("plugins/");
-                let wasm_bytes = fs::read(&path)
-                    .or_else(|_| fs::read(&path.with_extension("wasm")))
-                    .or_else(|_| fs::read(&plugin_dir.join(&path).with_extension("wasm")))
-                    .unwrap_or_else(|_| panic!("cannot find plugin {}", &path.display()));
+            PluginInstruction::Load(pid_tx, run, tab_index) => {
+                let plugin = plugins
+                    .get(&run)
+                    .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
 
-                // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-                let module = Module::new(&store, &wasm_bytes).unwrap();
-
-                let output = Pipe::new();
-                let input = Pipe::new();
-                let stderr = LoggingPipe::new(
-                    path.as_path().file_name().unwrap().to_str().unwrap(),
+                let (instance, plugin_env) = start_plugin(
                     plugin_id,
-                );
-                let mut wasi_env = WasiState::new("Zellij")
-                    .env("CLICOLOR_FORCE", "1")
-                    .preopen(|p| {
-                        p.directory(".") // FIXME: Change this to a more meaningful dir
-                            .alias(".")
-                            .read(true)
-                            .write(true)
-                            .create(true)
-                    })
-                    .unwrap()
-                    .stdin(Box::new(input))
-                    .stdout(Box::new(output))
-                    .stderr(Box::new(stderr))
-                    .finalize()
-                    .unwrap();
-
-                let wasi = wasi_env.import_object(&module).unwrap();
-
-                let plugin_env = PluginEnv {
-                    plugin_id,
+                    &plugin,
                     tab_index,
-                    senders: bus.senders.clone(),
-                    wasi_env,
-                    subscriptions: Arc::new(Mutex::new(HashSet::new())),
-                };
-
-                let zellij = zellij_exports(&store, &plugin_env);
-                let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
-
-                let start = instance.exports.get_function("_start").unwrap();
-
-                // This eventually calls the `.load()` method
-                start.call(&[]).unwrap();
+                    &bus,
+                    &store,
+                    &data_dir,
+                    &plugin_global_data_dir,
+                );
 
                 plugin_map.insert(plugin_id, (instance, plugin_env));
                 pid_tx.send(plugin_id).unwrap();
@@ -137,7 +135,6 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                     buf_tx.send(String::new()).unwrap();
                 } else {
                     let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
-
                     let render = instance.exports.get_function("render").unwrap();
 
                     render
@@ -147,10 +144,81 @@ pub(crate) fn wasm_thread_main(bus: Bus<PluginInstruction>, store: Store, data_d
                     buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                 }
             }
-            PluginInstruction::Unload(pid) => drop(plugin_map.remove(&pid)),
+            PluginInstruction::Unload(pid) => {
+                info!("Bye from plugin {}", &pid);
+                // TODO: remove plugin's own data directory
+                drop(plugin_map.remove(&pid));
+            }
             PluginInstruction::Exit => break,
         }
     }
+    info!("wasm main thread exits");
+    fs::remove_dir_all(plugin_global_data_dir.as_path()).unwrap();
+}
+
+fn start_plugin(
+    plugin_id: u32,
+    plugin: &PluginConfig,
+    tab_index: usize,
+    bus: &Bus<PluginInstruction>,
+    store: &Store,
+    data_dir: &Path,
+    plugin_global_data_dir: &Path,
+) -> (Instance, PluginEnv) {
+    if plugin._allow_exec_host_cmd {
+        info!(
+            "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
+            plugin.path
+        );
+    }
+
+    let wasm_bytes = plugin
+        .resolve_wasm_bytes(&data_dir.join("plugins/"))
+        .unwrap_or_else(|| panic!("Cannot resolve wasm bytes for plugin {:?}", plugin));
+
+    // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
+    let module = Module::new(store, &wasm_bytes).unwrap();
+
+    let output = Pipe::new();
+    let input = Pipe::new();
+    let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
+    let plugin_own_data_dir = plugin_global_data_dir.join(Url::from(&plugin.location).to_string());
+    fs::create_dir_all(&plugin_own_data_dir).unwrap();
+
+    let mut wasi_env = WasiState::new("Zellij")
+        .env("CLICOLOR_FORCE", "1")
+        .map_dir("/host", ".")
+        .unwrap()
+        .map_dir("/data", plugin_own_data_dir.as_path())
+        .unwrap()
+        .stdin(Box::new(input))
+        .stdout(Box::new(output))
+        .stderr(Box::new(stderr))
+        .finalize()
+        .unwrap();
+
+    let wasi = wasi_env.import_object(&module).unwrap();
+    let mut plugin = plugin.clone();
+    plugin.set_tab_index(tab_index);
+
+    let plugin_env = PluginEnv {
+        plugin_id,
+        plugin,
+        senders: bus.senders.clone(),
+        wasi_env,
+        subscriptions: Arc::new(Mutex::new(HashSet::new())),
+        plugin_own_data_dir,
+    };
+
+    let zellij = zellij_exports(store, &plugin_env);
+    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+
+    let start = instance.exports.get_function("_start").unwrap();
+
+    // This eventually calls the `.load()` method
+    start.call(&[]).unwrap();
+
+    (instance, plugin_env)
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
@@ -174,6 +242,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_get_plugin_ids,
         host_open_file,
         host_set_timeout,
+        host_exec_cmd,
     }
 }
 
@@ -190,15 +259,25 @@ fn host_unsubscribe(plugin_env: &PluginEnv) {
 }
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
-    let selectable = selectable != 0;
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::SetSelectable(
-            PaneId::Plugin(plugin_env.plugin_id),
-            selectable,
-            plugin_env.tab_index,
-        ))
-        .unwrap()
+    match plugin_env.plugin.run {
+        PluginType::Pane(Some(tab_index)) => {
+            let selectable = selectable != 0;
+            plugin_env
+                .senders
+                .send_to_screen(ScreenInstruction::SetSelectable(
+                    PaneId::Plugin(plugin_env.plugin_id),
+                    selectable,
+                    tab_index,
+                ))
+                .unwrap()
+        }
+        _ => {
+            debug!(
+                "{} - Calling method 'host_set_selectable' does nothing for headless plugins",
+                plugin_env.plugin.location
+            )
+        }
+    }
 }
 
 fn host_get_plugin_ids(plugin_env: &PluginEnv) {
@@ -246,6 +325,24 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
             ))
             .unwrap();
     });
+}
+
+fn host_exec_cmd(plugin_env: &PluginEnv) {
+    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env);
+    let command = cmdline.remove(0);
+
+    // Bail out if we're forbidden to run command
+    if !plugin_env.plugin._allow_exec_host_cmd {
+        warn!("This plugin isn't allow to run command in host side, skip running this command: '{cmd} {args}'.",
+        	cmd = command, args = cmdline.join(" "));
+        return;
+    }
+
+    // Here, we don't wait the command to finish
+    process::Command::new(command)
+        .args(cmdline)
+        .spawn()
+        .unwrap();
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

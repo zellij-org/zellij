@@ -65,7 +65,7 @@ impl ZellijPlugin for State {
             self.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
-            cols,
+            cols.saturating_sub(1),
             self.mode_info.palette,
             self.mode_info.capabilities,
         );

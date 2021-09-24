@@ -5,14 +5,15 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
+
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
+use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
 use super::theme::ThemesFromYaml;
 use crate::cli::{CliArgs, Command};
 use crate::setup;
-
-use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
@@ -25,6 +26,8 @@ pub struct ConfigFromYaml {
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
     pub themes: Option<ThemesFromYaml>,
+    #[serde(default)]
+    pub plugins: PluginsConfigFromYaml,
 }
 
 /// Main configuration.
@@ -33,6 +36,7 @@ pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
+    pub plugins: PluginsConfig,
 }
 
 #[derive(Debug)]
@@ -45,9 +49,10 @@ pub enum ConfigError {
     IoPath(io::Error, PathBuf),
     // Internal Deserialization Error
     FromUtf8(std::string::FromUtf8Error),
-    // Missing the tab section in the layout.
-    Layout(LayoutMissingTabSectionError),
-    LayoutPartAndTab(LayoutPartAndTabError),
+    // Naming a part in a tab is unsupported
+    LayoutNameInTab(LayoutNameInTabError),
+    // Plugins have a semantic error, usually trying to parse two of the same tag
+    PluginsError(PluginsConfigError),
 }
 
 impl Default for Config {
@@ -55,11 +60,13 @@ impl Default for Config {
         let keybinds = Keybinds::default();
         let options = Options::default();
         let themes = None;
+        let plugins = PluginsConfig::default();
 
         Config {
             keybinds,
             options,
             themes,
+            plugins,
         }
     }
 }
@@ -99,16 +106,23 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: ConfigFromYaml = serde_yaml::from_str(yaml_config)?;
-        let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
-        let options = Options::from_yaml(config_from_yaml.options);
-        let themes = config_from_yaml.themes;
+        let config_from_yaml: Option<ConfigFromYaml> = serde_yaml::from_str(yaml_config)?;
 
-        Ok(Config {
-            keybinds,
-            options,
-            themes,
-        })
+        match config_from_yaml {
+            None => Ok(Config::default()),
+            Some(config) => {
+                let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
+                let options = Options::from_yaml(config.options);
+                let themes = config.themes;
+                let plugins = PluginsConfig::get_plugins_with_default(config.plugins.try_into()?);
+                Ok(Config {
+                    keybinds,
+                    options,
+                    plugins,
+                    themes,
+                })
+            }
+        }
     }
 
     /// Deserializes from given path.
@@ -125,79 +139,42 @@ impl Config {
     }
 
     /// Gets default configuration from assets
-    // TODO Deserialize the Configuration from bytes &[u8],
+    // TODO Deserialize the Config from bytes &[u8],
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
-        Self::from_yaml(String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?.as_str())
+        let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
+        Self::from_yaml(cfg.as_str())
     }
 }
 
 // TODO: Split errors up into separate modules
 #[derive(Debug, Clone)]
-pub struct LayoutMissingTabSectionError;
-#[derive(Debug, Clone)]
-pub struct LayoutPartAndTabError;
+pub struct LayoutNameInTabError;
 
-impl fmt::Display for LayoutMissingTabSectionError {
+impl fmt::Display for LayoutNameInTabError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "MissingTabSectionError:
-There needs to be exactly one `tabs` section specified in the layout file, for example:
+            "LayoutNameInTabError:
+The `parts` inside the `tabs` can't be named. For example:
 ---
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
-    tabs:
-      - direction: Vertical
-      - direction: Vertical
-  - direction: Vertical
-"
-        )
-    }
-}
-
-impl std::error::Error for LayoutMissingTabSectionError {
-    fn description(&self) -> &str {
-        "One tab must be specified per Layout."
-    }
-}
-
-impl fmt::Display for LayoutPartAndTabError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "LayoutPartAndTabError:
-The `tabs` and `parts` section should not be specified on the same level in the layout file, for example:
----
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
 tabs:
   - direction: Vertical
-  - direction: Vertical
-  - direction: Vertical
-
-should rather be specified as:
----
-direction: Horizontal
-parts:
-  - direction: Vertical
-  - direction: Vertical
-    tabs:
+    name: main
+    parts:
       - direction: Vertical
+        name: section # <== The part section can't be named.
       - direction: Vertical
-      - direction: Vertical
+  - direction: Vertical
+    name: test
 "
         )
     }
 }
 
-impl std::error::Error for LayoutPartAndTabError {
+impl std::error::Error for LayoutNameInTabError {
     fn description(&self) -> &str {
-        "The `tabs` and parts section should not be specified on the same level."
+        "The `parts` inside the `tabs` can't be named."
     }
 }
 
@@ -210,12 +187,10 @@ impl Display for ConfigError {
             }
             ConfigError::Serde(ref err) => write!(formatter, "Deserialization error: {}", err),
             ConfigError::FromUtf8(ref err) => write!(formatter, "FromUtf8Error: {}", err),
-            ConfigError::Layout(ref err) => {
+            ConfigError::LayoutNameInTab(ref err) => {
                 write!(formatter, "There was an error in the layout file, {}", err)
             }
-            ConfigError::LayoutPartAndTab(ref err) => {
-                write!(formatter, "There was an error in the layout file, {}", err)
-            }
+            ConfigError::PluginsError(ref err) => write!(formatter, "PluginsError: {}", err),
         }
     }
 }
@@ -227,8 +202,8 @@ impl std::error::Error for ConfigError {
             ConfigError::IoPath(ref err, _) => Some(err),
             ConfigError::Serde(ref err) => Some(err),
             ConfigError::FromUtf8(ref err) => Some(err),
-            ConfigError::Layout(ref err) => Some(err),
-            ConfigError::LayoutPartAndTab(ref err) => Some(err),
+            ConfigError::LayoutNameInTab(ref err) => Some(err),
+            ConfigError::PluginsError(ref err) => Some(err),
         }
     }
 }
@@ -251,15 +226,15 @@ impl From<std::string::FromUtf8Error> for ConfigError {
     }
 }
 
-impl From<LayoutMissingTabSectionError> for ConfigError {
-    fn from(err: LayoutMissingTabSectionError) -> ConfigError {
-        ConfigError::Layout(err)
+impl From<LayoutNameInTabError> for ConfigError {
+    fn from(err: LayoutNameInTabError) -> ConfigError {
+        ConfigError::LayoutNameInTab(err)
     }
 }
 
-impl From<LayoutPartAndTabError> for ConfigError {
-    fn from(err: LayoutPartAndTabError) -> ConfigError {
-        ConfigError::LayoutPartAndTab(err)
+impl From<PluginsConfigError> for ConfigError {
+    fn from(err: PluginsConfigError) -> ConfigError {
+        ConfigError::PluginsError(err)
     }
 }
 
@@ -275,8 +250,10 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_config() {
         let arbitrary_config = PathBuf::from("nonexistent.yaml");
-        let mut opts = CliArgs::default();
-        opts.config = Some(arbitrary_config);
+        let opts = CliArgs {
+            config: Some(arbitrary_config),
+            ..Default::default()
+        };
         println!("OPTS= {:?}", opts);
         let result = Config::try_from(&opts);
         assert!(result.is_err());
@@ -285,11 +262,13 @@ mod config_test {
     #[test]
     fn try_from_cli_args_with_option_clean() {
         use crate::setup::Setup;
-        let mut opts = CliArgs::default();
-        opts.command = Some(Command::Setup(Setup {
-            clean: true,
-            ..Setup::default()
-        }));
+        let opts = CliArgs {
+            command: Some(Command::Setup(Setup {
+                clean: true,
+                ..Setup::default()
+            })),
+            ..Default::default()
+        };
         let result = Config::try_from(&opts);
         assert!(result.is_ok());
     }

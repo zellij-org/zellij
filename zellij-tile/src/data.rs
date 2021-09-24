@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -35,6 +36,7 @@ pub enum Event {
     Timer(f64),
     CopyToClipboard,
     InputReceived,
+    Visible(bool),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
@@ -166,6 +168,28 @@ pub struct TabInfo {
 pub struct PluginIds {
     pub plugin_id: u32,
     pub zellij_pid: u32,
+}
+
+/// Tag used to identify the plugin in layout and config yaml files
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct PluginTag(String);
+
+impl PluginTag {
+    pub fn new(url: impl Into<String>) -> Self {
+        PluginTag(url.into())
+    }
+}
+
+impl From<PluginTag> for String {
+    fn from(tag: PluginTag) -> Self {
+        tag.0
+    }
+}
+
+impl fmt::Display for PluginTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

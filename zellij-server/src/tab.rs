@@ -268,7 +268,7 @@ impl Tab {
         let panes = BTreeMap::new();
 
         let name = if name.is_empty() {
-            format!("Tab #{}", position + 1)
+            format!("Tab #{}", index + 1)
         } else {
             name
         };
@@ -322,18 +322,18 @@ impl Tab {
 
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
-            if let Some(Run::Plugin(Some(plugin))) = &layout.run {
+            if let Some(Run::Plugin(run)) = layout.run.clone() {
                 let (pid_tx, pid_rx) = channel();
+                let pane_title = run.location.to_string();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, plugin.clone(), tab_index))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
-                let title = String::from(plugin.as_path().as_os_str().to_string_lossy());
                 let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
-                    title,
+                    pane_title,
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
@@ -684,20 +684,33 @@ impl Tab {
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
+        self.should_clear_display_before_rendering = true;
+        let viewport = self.viewport;
         for (pane_id, pane) in self.panes.iter_mut() {
-            pane.set_frame(draw_pane_frames);
-            if draw_pane_frames {
+            if !pane.borderless() {
+                pane.set_frame(draw_pane_frames);
+            }
+
+            #[allow(clippy::if_same_then_else)]
+            if draw_pane_frames & !pane.borderless() {
+                // there's definitely a frame around this pane, offset its contents
                 pane.set_content_offset(Offset::frame(1));
+            } else if draw_pane_frames && pane.borderless() {
+                // there's no frame around this pane, and the tab isn't handling the boundaries
+                // between panes (they each draw their own frames as they please)
+                // this one doesn't - do not offset its content
+                pane.set_content_offset(Offset::default());
+            } else if !is_inside_viewport(&viewport, pane) {
+                // this pane is outside the viewport and has no border - it should not have an offset
+                pane.set_content_offset(Offset::default());
             } else {
+                // no draw_pane_frames and this pane should have a separation to other panes
+                // according to its position in the viewport (eg. no separation if its at the
+                // viewport bottom) - offset its content accordingly
                 let position_and_size = pane.current_geom();
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &self.viewport);
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
-            }
-
-            // FIXME: this should also override the above logic
-            if pane.borderless() {
-                pane.set_content_offset(Offset::default());
             }
 
             // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
@@ -718,6 +731,9 @@ impl Tab {
             // or if there are no attached clients to this session
             return;
         }
+        self.senders
+            .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
+            .unwrap();
         let mut output = String::new();
         let mut boundaries = Boundaries::new(self.viewport);
         let hide_cursor = "\u{1b}[?25l";
@@ -1737,16 +1753,16 @@ impl Tab {
         }
         let active_terminal_id = self.get_active_pane_id().unwrap();
         let terminal_ids: Vec<PaneId> = self.get_selectable_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
-        let first_terminal = terminal_ids.get(0).unwrap();
         let active_terminal_id_position = terminal_ids
             .iter()
             .position(|id| id == &active_terminal_id)
             .unwrap();
-        if let Some(next_terminal) = terminal_ids.get(active_terminal_id_position + 1) {
-            self.active_terminal = Some(*next_terminal);
-        } else {
-            self.active_terminal = Some(*first_terminal);
-        }
+        let active_terminal = terminal_ids
+            .get(active_terminal_id_position + 1)
+            .or_else(|| terminal_ids.get(0))
+            .copied();
+
+        self.active_terminal = active_terminal;
         self.render();
     }
     pub fn focus_next_pane(&mut self) {
@@ -1765,16 +1781,17 @@ impl Tab {
                 a_pane.y().cmp(&b_pane.y())
             }
         });
-        let first_pane = panes.get(0).unwrap();
         let active_pane_position = panes
             .iter()
             .position(|(id, _)| *id == &active_pane_id) // TODO: better
             .unwrap();
-        if let Some(next_pane) = panes.get(active_pane_position + 1) {
-            self.active_terminal = Some(*next_pane.0);
-        } else {
-            self.active_terminal = Some(*first_pane.0);
-        }
+
+        let active_terminal = panes
+            .get(active_pane_position + 1)
+            .or_else(|| panes.get(0))
+            .map(|p| *p.0);
+
+        self.active_terminal = active_terminal;
         self.render();
     }
     pub fn focus_previous_pane(&mut self) {
@@ -1798,11 +1815,13 @@ impl Tab {
             .iter()
             .position(|(id, _)| *id == &active_pane_id) // TODO: better
             .unwrap();
-        if active_pane_position == 0 {
-            self.active_terminal = Some(*last_pane.0);
+
+        let active_terminal = if active_pane_position == 0 {
+            Some(*last_pane.0)
         } else {
-            self.active_terminal = Some(*panes.get(active_pane_position - 1).unwrap().0);
-        }
+            Some(*panes.get(active_pane_position - 1).unwrap().0)
+        };
+        self.active_terminal = active_terminal;
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1814,7 +1833,7 @@ impl Tab {
             return false;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1837,13 +1856,12 @@ impl Tab {
                     self.render();
                     return true;
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
         false
     }
     pub fn move_focus_down(&mut self) {
@@ -1854,7 +1872,7 @@ impl Tab {
             return;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1873,15 +1891,14 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    Some(p)
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
         self.render();
     }
     pub fn move_focus_up(&mut self) {
@@ -1892,7 +1909,7 @@ impl Tab {
             return;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1911,15 +1928,14 @@ impl Tab {
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    self.active_terminal = Some(p);
+                    Some(p)
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
         self.render();
     }
     // returns a boolean that indicates whether the focus moved
@@ -1931,7 +1947,7 @@ impl Tab {
             return false;
         }
         let active_terminal = self.get_active_pane();
-        if let Some(active) = active_terminal {
+        let updated_active_terminal = if let Some(active) = active_terminal {
             let terminals = self.get_selectable_panes();
             let next_index = terminals
                 .enumerate()
@@ -1954,13 +1970,12 @@ impl Tab {
                     self.render();
                     return true;
                 }
-                None => {
-                    self.active_terminal = Some(active.pid());
-                }
+                None => Some(active.pid()),
             }
         } else {
-            self.active_terminal = Some(active_terminal.unwrap().pid());
-        }
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
         false
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
@@ -1979,6 +1994,7 @@ impl Tab {
             borders
         })
     }
+
     fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
         if let Some(terminal) = self.panes.get(&id) {
             let upper_close_border = terminal.y();
@@ -2105,7 +2121,7 @@ impl Tab {
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.set_selectable(selectable);
             if self.get_active_pane_id() == Some(id) && !selectable {
-                self.active_terminal = self.next_active_pane(&self.get_pane_ids())
+                self.active_terminal = self.next_active_pane(&self.get_pane_ids());
             }
         }
         self.render();
@@ -2343,10 +2359,9 @@ impl Tab {
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
-        let pane_position_and_size = self.panes.get(pane_id).unwrap().current_geom();
-        pane_position_and_size.y >= self.viewport.y
-            && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
-                <= self.viewport.y + self.viewport.rows
+        // this is mostly separated to an outside function in order to allow us to pass a clone to
+        // it sometimes when we need to get around the borrow checker
+        is_inside_viewport(&self.viewport, self.panes.get(pane_id).unwrap())
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
         if position_and_size.x == self.viewport.x
@@ -2374,6 +2389,29 @@ impl Tab {
             }
         }
     }
+
+    pub fn visible(&self, visible: bool) {
+        let pids_in_this_tab = self.panes.keys().filter_map(|p| match p {
+            PaneId::Plugin(pid) => Some(pid),
+            _ => None,
+        });
+        for pid in pids_in_this_tab {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(
+                    Some(*pid),
+                    Event::Visible(visible),
+                ))
+                .unwrap();
+        }
+    }
+}
+
+#[allow(clippy::borrowed_box)]
+fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
+    let pane_position_and_size = pane.current_geom();
+    pane_position_and_size.y >= viewport.y
+        && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
+            <= viewport.y + viewport.rows
 }
 
 #[cfg(test)]

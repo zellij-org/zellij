@@ -7,6 +7,7 @@ template:
       split_size:
         Fixed: 1
       run:
-        plugin: tab-bar
+        plugin:
+          location: "zellij:tab-bar"
     - direction: Vertical
       body: true
