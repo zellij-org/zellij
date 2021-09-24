@@ -12,6 +12,7 @@ license = "MIT"
 mio = "0.7.11"
 termbg = "0.2.3"
 zellij-utils = { path = "../zellij-utils/", version = "0.17.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.17.0" }
 log = "0.4.14"
 
 [dev-dependencies]

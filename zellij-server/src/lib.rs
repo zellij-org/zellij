@@ -11,11 +11,13 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
+use std::collections::HashMap;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;
@@ -39,34 +41,29 @@ use zellij_utils::{
         layout::LayoutFromYaml,
         options::Options,
     },
-    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
     setup::get_default_data_dir,
 };
+
+pub(crate) type ClientId = u16;
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub(crate) enum ServerInstruction {
-    NewClient(ClientAttributes, Box<CliArgs>, Box<Options>, LayoutFromYaml),
+    NewClient(
+        ClientAttributes,
+        Box<CliArgs>,
+        Box<Options>,
+        LayoutFromYaml,
+        ClientId,
+    ),
     Render(Option<String>),
     UnblockInputThread,
-    ClientExit,
+    ClientExit(ClientId),
+    RemoveClient(ClientId),
     Error(String),
-    DetachSession,
-    AttachClient(ClientAttributes, bool, Options),
-}
-
-impl From<ClientToServerMsg> for ServerInstruction {
-    fn from(instruction: ClientToServerMsg) -> Self {
-        match instruction {
-            ClientToServerMsg::NewClient(attrs, opts, options, layout) => {
-                ServerInstruction::NewClient(attrs, opts, options, layout)
-            }
-            ClientToServerMsg::AttachClient(attrs, force, options) => {
-                ServerInstruction::AttachClient(attrs, force, options)
-            }
-            _ => unreachable!(),
-        }
-    }
+    DetachSession(ClientId),
+    AttachClient(ClientAttributes, bool, Options, ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -75,9 +72,10 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
-            ServerInstruction::ClientExit => ServerContext::ClientExit,
+            ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
+            ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
-            ServerInstruction::DetachSession => ServerContext::DetachSession,
+            ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
         }
     }
@@ -110,14 +108,67 @@ impl Drop for SessionMetaData {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum SessionState {
-    Attached,
-    Detached,
-    Uninitialized,
+macro_rules! remove_client {
+    ($client_id:expr, $os_input:expr, $session_state:expr) => {
+        $os_input.remove_client($client_id);
+        $session_state.write().unwrap().remove_client($client_id);
+    };
 }
 
-pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SessionState {
+    clients: HashMap<ClientId, Option<Size>>,
+}
+
+impl SessionState {
+    pub fn new() -> Self {
+        SessionState {
+            clients: HashMap::new(),
+        }
+    }
+    pub fn new_client(&mut self) -> ClientId {
+        let mut clients: Vec<ClientId> = self.clients.keys().copied().collect();
+        clients.sort_unstable();
+        let next_client_id = clients.last().unwrap_or(&0) + 1;
+        self.clients.insert(next_client_id, None);
+        next_client_id
+    }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        self.clients.remove(&client_id);
+    }
+    pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
+        self.clients.insert(client_id, Some(size));
+    }
+    pub fn min_client_terminal_size(&self) -> Option<Size> {
+        // None if there are no client sizes
+        let mut rows: Vec<usize> = self
+            .clients
+            .values()
+            .filter_map(|size| size.map(|size| size.rows))
+            .collect();
+        rows.sort_unstable();
+        let mut cols: Vec<usize> = self
+            .clients
+            .values()
+            .filter_map(|size| size.map(|size| size.cols))
+            .collect();
+        cols.sort_unstable();
+        let min_rows = rows.first();
+        let min_cols = cols.first();
+        match (min_rows, min_cols) {
+            (Some(min_rows), Some(min_cols)) => Some(Size {
+                rows: *min_rows,
+                cols: *min_cols,
+            }),
+            _ => None,
+        }
+    }
+    pub fn client_ids(&self) -> Vec<ClientId> {
+        self.clients.keys().copied().collect()
+    }
+}
+
+pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
@@ -130,7 +181,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
-    let session_state = Arc::new(RwLock::new(SessionState::Uninitialized));
+    let session_state = Arc::new(RwLock::new(SessionState::new()));
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -163,7 +214,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     match stream {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
-                            os_input.update_receiver(stream);
+                            let client_id = session_state.write().unwrap().new_client();
+                            let receiver = os_input.new_client(client_id, stream);
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
@@ -181,6 +233,8 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                                 session_state,
                                                 os_input,
                                                 to_server,
+                                                receiver,
+                                                client_id,
                                             )
                                         }
                                     })
@@ -199,7 +253,13 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(client_attributes, opts, config_options, layout) => {
+            ServerInstruction::NewClient(
+                client_attributes,
+                opts,
+                config_options,
+                layout,
+                client_id,
+            ) => {
                 let session = init_session(
                     os_input.clone(),
                     opts,
@@ -210,7 +270,10 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     layout.clone(),
                 );
                 *session_data.write().unwrap() = Some(session);
-                *session_state.write().unwrap() = SessionState::Attached;
+                session_state
+                    .write()
+                    .unwrap()
+                    .set_client_size(client_id, client_attributes.size);
 
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -238,17 +301,26 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     spawn_tabs(None);
                 }
             }
-            ServerInstruction::AttachClient(attrs, _, options) => {
-                *session_state.write().unwrap() = SessionState::Attached;
+            ServerInstruction::AttachClient(attrs, _, options, client_id) => {
                 let rlock = session_data.read().unwrap();
                 let session_data = rlock.as_ref().unwrap();
+                session_state
+                    .write()
+                    .unwrap()
+                    .set_client_size(client_id, attrs.size);
+                let min_size = session_state
+                    .read()
+                    .unwrap()
+                    .min_client_terminal_size()
+                    .unwrap();
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(attrs.size))
+                    .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
                     get_mode_info(default_mode, attrs.palette, session_data.capabilities);
+                let mode = mode_info.mode;
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone()))
@@ -260,38 +332,86 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Event::ModeUpdate(mode_info),
                     ))
                     .unwrap();
-            }
-            ServerInstruction::UnblockInputThread => {
-                if *session_state.read().unwrap() == SessionState::Attached {
-                    os_input.send_to_client(ServerToClientMsg::UnblockInputThread);
+                for client_id in session_state.read().unwrap().clients.keys() {
+                    os_input.send_to_client(*client_id, ServerToClientMsg::SwitchToMode(mode));
                 }
             }
-            ServerInstruction::ClientExit => {
-                *session_data.write().unwrap() = None;
-                os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
-                break;
+            ServerInstruction::UnblockInputThread => {
+                for client_id in session_state.read().unwrap().clients.keys() {
+                    os_input.send_to_client(*client_id, ServerToClientMsg::UnblockInputThread);
+                }
             }
-            ServerInstruction::DetachSession => {
-                *session_state.write().unwrap() = SessionState::Detached;
-                os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
-                os_input.remove_client_sender();
+            ServerInstruction::ClientExit(client_id) => {
+                os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                remove_client!(client_id, os_input, session_state);
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
+                if session_state.read().unwrap().clients.is_empty() {
+                    *session_data.write().unwrap() = None;
+                    break;
+                }
             }
-            ServerInstruction::Render(output) => {
-                if *session_state.read().unwrap() == SessionState::Attached {
-                    // Here output is of the type Option<String> sent by screen thread.
-                    // If `Some(_)`- unwrap it and forward it to the client to render.
-                    // If `None`- Send an exit instruction. This is the case when the user closes last Tab/Pane.
-                    if let Some(op) = output {
-                        os_input.send_to_client(ServerToClientMsg::Render(op));
-                    } else {
-                        os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Normal));
-                        break;
+            ServerInstruction::RemoveClient(client_id) => {
+                remove_client!(client_id, os_input, session_state);
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
+            }
+            ServerInstruction::DetachSession(client_id) => {
+                os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                remove_client!(client_id, os_input, session_state);
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
+            }
+            ServerInstruction::Render(mut output) => {
+                let client_ids = session_state.read().unwrap().client_ids();
+                // Here the output is of the type Option<String> sent by screen thread.
+                // If `Some(_)`- unwrap it and forward it to the clients to render.
+                // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
+                if let Some(op) = output.as_mut() {
+                    for client_id in client_ids {
+                        os_input.send_to_client(client_id, ServerToClientMsg::Render(op.clone()));
                     }
+                } else {
+                    for client_id in client_ids {
+                        os_input
+                            .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                        remove_client!(client_id, os_input, session_state);
+                    }
+                    break;
                 }
             }
             ServerInstruction::Error(backtrace) => {
-                if *session_state.read().unwrap() == SessionState::Attached {
-                    os_input.send_to_client(ServerToClientMsg::Exit(ExitReason::Error(backtrace)));
+                let client_ids = session_state.read().unwrap().client_ids();
+                for client_id in client_ids {
+                    os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::Exit(ExitReason::Error(backtrace.clone())),
+                    );
+                    remove_client!(client_id, os_input, session_state);
                 }
                 break;
             }

@@ -712,12 +712,10 @@ impl Tab {
         }
     }
     pub fn render(&mut self) {
-        if self.active_terminal.is_none()
-            || *self.session_state.read().unwrap() != SessionState::Attached
-        {
+        if self.active_terminal.is_none() || self.session_state.read().unwrap().clients.is_empty() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
-            // or if this session is not attached to a client, we do not have to render
+            // or if there are no attached clients to this session
             return;
         }
         let mut output = String::new();

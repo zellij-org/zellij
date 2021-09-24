@@ -10,7 +10,7 @@ use std::net::TcpStream;
 
 use std::path::Path;
 
-const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
+const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
@@ -24,7 +24,7 @@ fn ssh_connect() -> ssh2::Session {
     sess.handshake().unwrap();
     sess.userauth_password(CONNECTION_USERNAME, CONNECTION_PASSWORD)
         .unwrap();
-    sess.set_timeout(20000);
+    sess.set_timeout(3000);
     sess
 }
 
@@ -56,6 +56,27 @@ fn start_zellij(channel: &mut ssh2::Channel) {
             )
             .as_bytes(),
         )
+        .unwrap();
+    channel.flush().unwrap();
+}
+
+fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, session_name
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+}
+
+fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
+    channel
+        .write_all(format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, session_name).as_bytes())
         .unwrap();
     channel.flush().unwrap();
 }
@@ -190,6 +211,8 @@ pub struct RemoteRunner {
     win_size: Size,
     layout_file_name: Option<&'static str>,
     without_frames: bool,
+    session_name: Option<String>,
+    attach_to_existing: bool,
 }
 
 impl RemoteRunner {
@@ -218,10 +241,86 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: None,
             without_frames: false,
+            session_name: None,
+            attach_to_existing: false,
+        }
+    }
+    pub fn new_with_session_name(
+        test_name: &'static str,
+        win_size: Size,
+        session_name: &str,
+    ) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let vte_parser = vte::Parser::new();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+        };
+        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        setup_remote_environment(&mut channel, win_size);
+        start_zellij_in_session(&mut channel, &session_name);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            terminal_output,
+            vte_parser,
+            test_name,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: 10,
+            win_size,
+            layout_file_name: None,
+            without_frames: false,
+            session_name: Some(String::from(session_name)),
+            attach_to_existing: false,
+        }
+    }
+    pub fn new_existing_session(
+        test_name: &'static str,
+        win_size: Size,
+        session_name: &str,
+    ) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let vte_parser = vte::Parser::new();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+        };
+        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        setup_remote_environment(&mut channel, win_size);
+        attach_to_existing_session(&mut channel, &session_name);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            terminal_output,
+            vte_parser,
+            test_name,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: 10,
+            win_size,
+            layout_file_name: None,
+            without_frames: false,
+            session_name: Some(String::from(session_name)),
+            attach_to_existing: true,
         }
     }
     pub fn new_without_frames(test_name: &'static str, win_size: Size) -> Self {
@@ -249,10 +348,12 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: None,
             without_frames: true,
+            session_name: None,
+            attach_to_existing: false,
         }
     }
     pub fn new_with_layout(
@@ -285,10 +386,12 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: Some(layout_file_name),
             without_frames: false,
+            session_name: None,
+            attach_to_existing: false,
         }
     }
     pub fn add_step(mut self, step: Step) -> Self {
@@ -339,6 +442,24 @@ impl RemoteRunner {
             self.run_all_steps()
         } else if self.without_frames {
             let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size);
+            new_runner.retries_left = self.retries_left - 1;
+            new_runner.replace_steps(self.steps.clone());
+            drop(std::mem::replace(self, new_runner));
+            self.run_all_steps()
+        } else if self.session_name.is_some() {
+            let mut new_runner = if self.attach_to_existing {
+                RemoteRunner::new_existing_session(
+                    self.test_name,
+                    self.win_size,
+                    &self.session_name.as_ref().unwrap(),
+                )
+            } else {
+                RemoteRunner::new_with_session_name(
+                    self.test_name,
+                    self.win_size,
+                    &self.session_name.as_ref().unwrap(),
+                )
+            };
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));

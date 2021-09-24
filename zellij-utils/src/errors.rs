@@ -60,8 +60,37 @@ where
         ),
     };
 
+    let one_line_backtrace = match (info.location(), msg) {
+        (Some(location), Some(msg)) => format!(
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m",
+            err_ctx,
+            thread,
+            msg,
+            location.file(),
+            location.line(),
+        ),
+        (Some(location), None) => format!(
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m",
+            err_ctx,
+            thread,
+            location.file(),
+            location.line(),
+        ),
+        (None, Some(msg)) => format!(
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m",
+            err_ctx, thread, msg
+        ),
+        (None, None) => format!(
+            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m",
+            err_ctx, thread
+        ),
+    };
+
     if thread == "main" {
-        println!("{}", backtrace);
+        // here we only show the first line because the backtrace is not readable otherwise
+        // a better solution would be to escape raw mode before we do this, but it's not trivial
+        // to get os_input here
+        println!("\u{1b}[2J{}", one_line_backtrace);
         process::exit(1);
     } else {
         let _ = sender.send(T::error(backtrace));
@@ -261,6 +290,7 @@ pub enum ClientContext {
     UnblockInputThread,
     Render,
     ServerError,
+    SwitchToMode,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -270,6 +300,7 @@ pub enum ServerContext {
     Render,
     UnblockInputThread,
     ClientExit,
+    RemoveClient,
     Error,
     DetachSession,
     AttachClient,

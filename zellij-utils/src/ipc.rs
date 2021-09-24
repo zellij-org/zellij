@@ -16,7 +16,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-use zellij_tile::data::Palette;
+use zellij_tile::data::{InputMode, Palette};
 
 type SessionId = u64;
 
@@ -74,6 +74,7 @@ pub enum ServerToClientMsg {
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
+    SwitchToMode(InputMode),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -120,7 +121,9 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     pub fn send(&mut self, msg: T) {
         let err_ctx = get_current_ctx();
         bincode::serialize_into(&mut self.sender, &(msg, err_ctx)).unwrap();
-        self.sender.flush().unwrap();
+        // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
+        // do we need to handle errors here in other cases?
+        let _ = self.sender.flush();
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.

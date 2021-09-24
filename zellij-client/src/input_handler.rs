@@ -8,15 +8,16 @@ use zellij_utils::{
     termion, zellij_tile,
 };
 
-use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
+use crate::{
+    os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting, InputInstruction,
+};
 use zellij_utils::{
-    channels::{SenderWithContext, OPENCALLS},
-    errors::ContextType,
+    channels::{Receiver, SenderWithContext, OPENCALLS},
+    errors::{ContextType, ErrorContext},
     input::{actions::Action, cast_termion_key, config::Config, keybinds::Keybinds},
     ipc::{ClientToServerMsg, ExitReason},
 };
 
-use termion::input::TermReadEventsAndRaw;
 use zellij_tile::data::{InputMode, Key};
 
 /// Handles the dispatching of [`Action`]s according to the current
@@ -31,6 +32,7 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     pasting: bool,
+    receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
 }
 
 impl InputHandler {
@@ -42,6 +44,7 @@ impl InputHandler {
         options: Options,
         send_client_instructions: SenderWithContext<ClientInstruction>,
         mode: InputMode,
+        receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     ) -> Self {
         InputHandler {
             mode,
@@ -52,6 +55,7 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             pasting: false,
+            receive_input_instructions,
         }
     }
 
@@ -71,10 +75,9 @@ impl InputHandler {
             if self.should_exit {
                 break;
             }
-            let stdin_buffer = self.os_input.read_from_stdin();
-            for key_result in stdin_buffer.events_and_raw() {
-                match key_result {
-                    Ok((event, raw_bytes)) => match event {
+            match self.receive_input_instructions.recv() {
+                Ok((InputInstruction::KeyEvent(event, raw_bytes), _error_context)) => {
+                    match event {
                         termion::event::Event::Key(key) => {
                             let key = cast_termion_key(key);
                             self.handle_key(&key, raw_bytes);
@@ -101,9 +104,12 @@ impl InputHandler {
                                 self.handle_unknown_key(raw_bytes);
                             }
                         }
-                    },
-                    Err(err) => panic!("Encountered read error: {:?}", err),
+                    }
                 }
+                Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
+                    self.mode = input_mode;
+                }
+                Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }
     }
@@ -179,6 +185,8 @@ impl InputHandler {
                 should_break = true;
             }
             Action::SwitchToMode(mode) => {
+                // this is an optimistic update, we should get a SwitchMode instruction from the
+                // server later that atomically changes the mode as well
                 self.mode = mode;
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));
@@ -224,6 +232,7 @@ pub(crate) fn input_loop(
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
+    receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
 ) {
     let _handler = InputHandler::new(
         os_input,
@@ -232,6 +241,7 @@ pub(crate) fn input_loop(
         options,
         send_client_instructions,
         default_mode,
+        receive_input_instructions,
     )
     .handle_input();
 }

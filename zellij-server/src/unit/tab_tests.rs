@@ -4,10 +4,11 @@ use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
     thread_bus::ThreadSenders,
-    SessionState,
+    ClientId, SessionState,
 };
 use std::sync::{Arc, RwLock};
 use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 
 use std::os::unix::io::RawFd;
@@ -21,52 +22,48 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
+#[derive(Clone)]
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
+    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: Option<TerminalAction>) -> (RawFd, Pid) {
+    fn spawn_terminal(&self, terminal_action: Option<TerminalAction>) -> (RawFd, Pid) {
         unimplemented!()
     }
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
+    fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _fd: RawFd, _buf: &[u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn tcdrain(&self, _fd: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error> {
+        unimplemented!()
+    }
+    fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
+        unimplemented!()
+    }
+    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
+        Box::new((*self).clone())
+    }
+    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
         unimplemented!()
     }
-    fn force_kill(&self, _pid: Pid) -> Result<(), nix::Error> {
+    fn new_client(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+    ) -> IpcReceiverWithContext<ClientToServerMsg> {
         unimplemented!()
     }
-    fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {
-        unimplemented!()
-    }
-    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
-        unimplemented!()
-    }
-    fn send_to_client(&self, _msg: ServerToClientMsg) {
-        unimplemented!()
-    }
-    fn add_client_sender(&self) {
-        unimplemented!()
-    }
-    fn send_to_temp_client(&self, _msg: ServerToClientMsg) {
-        unimplemented!()
-    }
-    fn remove_client_sender(&self) {
-        unimplemented!()
-    }
-    fn update_receiver(&mut self, _stream: LocalSocketStream) {
+    fn remove_client(&mut self, client_id: ClientId) {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
@@ -83,7 +80,7 @@ fn create_new_tab(size: Size) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let colors = Palette::default();
-    let session_state = Arc::new(RwLock::new(SessionState::Attached));
+    let session_state = Arc::new(RwLock::new(SessionState::new()));
     let mut tab = Tab::new(
         index,
         position,

@@ -153,20 +153,12 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         },
     })
     .add_step(Step {
-        name: "Send text to terminal",
-        instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-            // this is just normal input that should be sent into the one terminal so that we can make
-            // sure we silently failed to split in the previous step
-            remote_terminal.send_key(&"Hi!".as_bytes());
-            true
-        },
-    })
-    .add_step(Step {
-        name: "Wait for text to appear",
+        name: "Make sure only one pane appears",
         instruction: |remote_terminal: RemoteTerminal| -> bool {
             let mut step_is_complete = false;
-            if remote_terminal.cursor_position_is(6, 2) && remote_terminal.snapshot_contains("Hi!")
+            if remote_terminal.cursor_position_is(3, 2) && remote_terminal.snapshot_contains("...")
             {
+                // ... is the truncated tip line
                 step_is_complete = true;
             }
             step_is_complete
@@ -917,3 +909,69 @@ pub fn start_without_pane_frames() {
         .run_all_steps();
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn mirrored_sessions() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let session_name = "mirrored_sessions";
+    let _ = RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
+        .add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                    // back to normal mode after split
+                    remote_terminal.send_key(&ENTER);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .add_step(Step {
+            name: "Wait for new pane to open",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .run_all_steps();
+
+    let last_snapshot =
+        RemoteRunner::new_existing_session("mirrored_sessions", fake_win_size, session_name)
+            .add_step(Step {
+                name: "Make sure session appears correctly",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                        // cursor is in the newly opened second pane
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .run_all_steps();
+
+    assert_snapshot!(last_snapshot);
+}
+
+// TODO: CONTINUE HERE (23/09) with refactoring - continue making a list with git diff, refactor
+// and make a pr
+// things to refactor:
+// 3. Add error contexts as needed to the new receivers (input receiver and stdin receiver) - Nah
+// 4. Add comment about switching to mode on the client side being an optimistic update - DONE
+// 5. remove debug_log_to_file statements from everywhere
+// 6. remove commented out code from everywhere
+// * rustfmt + clippy
+// * rerun e2e tests
+// 11. merge from main!!
