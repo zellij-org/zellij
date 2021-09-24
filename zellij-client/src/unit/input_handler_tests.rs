@@ -4,8 +4,11 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile::data::Palette;
+use zellij_utils::termion::event::Event;
+use zellij_utils::termion::event::Key;
 
 use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
+use crate::InputInstruction;
 
 use std::path::Path;
 
@@ -67,14 +70,12 @@ pub mod commands {
 }
 
 struct FakeClientOsApi {
-    stdin_events: Arc<Mutex<Vec<Vec<u8>>>>,
     events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
     command_is_executing: Arc<Mutex<CommandIsExecuting>>,
 }
 
 impl FakeClientOsApi {
     pub fn new(
-        mut stdin_events: Vec<Vec<u8>>,
         events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
         command_is_executing: CommandIsExecuting,
     ) -> Self {
@@ -82,10 +83,7 @@ impl FakeClientOsApi {
         // Arc<Mutex> here because we need interior mutability, otherwise we'll have to change the
         // ClientOsApi trait, and that will cause a lot of havoc
         let command_is_executing = Arc::new(Mutex::new(command_is_executing));
-        stdin_events.push(commands::QUIT.to_vec());
-        let stdin_events = Arc::new(Mutex::new(stdin_events)); // this is also done for interior mutability
         FakeClientOsApi {
-            stdin_events,
             events_sent_to_server,
             command_is_executing,
         }
@@ -106,11 +104,7 @@ impl ClientOsApi for FakeClientOsApi {
         unimplemented!()
     }
     fn read_from_stdin(&self) -> Vec<u8> {
-        let mut stdin_events = self.stdin_events.lock().unwrap();
-        if stdin_events.is_empty() {
-            panic!("ran out of stdin events!");
-        }
-        stdin_events.remove(0)
+        unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         unimplemented!()
@@ -156,11 +150,12 @@ fn extract_actions_sent_to_server(
 
 #[test]
 pub fn quit_breaks_input_loop() {
-    let stdin_events = vec![];
+    let stdin_events = vec![
+        (commands::QUIT.to_vec(), Event::Key(Key::Ctrl('q'))),
+    ];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
-        stdin_events,
         events_sent_to_server.clone(),
         command_is_executing.clone(),
     ));
@@ -172,6 +167,14 @@ pub fn quit_breaks_input_loop() {
     > = channels::bounded(50);
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
+    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
+        InputInstruction,
+    > = channels::bounded(50);
+    let send_input_instructions = SenderWithContext::new(send_input_instructions);
+    for event in stdin_events {
+        send_input_instructions.send(InputInstruction::KeyEvent(event.1, event.0)).unwrap();
+    }
+
     let default_mode = InputMode::Normal;
     input_loop(
         client_os_api,
@@ -180,6 +183,7 @@ pub fn quit_breaks_input_loop() {
         command_is_executing,
         send_client_instructions,
         default_mode,
+        receive_input_instructions,
     );
     let expected_actions_sent_to_server = vec![Action::Quit];
     let received_actions = extract_actions_sent_to_server(events_sent_to_server);
@@ -190,12 +194,15 @@ pub fn quit_breaks_input_loop() {
 }
 
 #[test]
-pub fn move_focus_left_in_pane_mode() {
-    let stdin_events = vec![commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec()];
+pub fn move_focus_left_in_normal_mode() {
+    let stdin_events = vec![
+        (commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec(), Event::Key(Key::Alt('h'))),
+        (commands::QUIT.to_vec(), Event::Key(Key::Ctrl('q'))),
+    ];
+
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
-        stdin_events,
         events_sent_to_server.clone(),
         command_is_executing.clone(),
     ));
@@ -207,6 +214,14 @@ pub fn move_focus_left_in_pane_mode() {
     > = channels::bounded(50);
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
+    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
+        InputInstruction,
+    > = channels::bounded(50);
+    let send_input_instructions = SenderWithContext::new(send_input_instructions);
+    for event in stdin_events {
+        send_input_instructions.send(InputInstruction::KeyEvent(event.1, event.0)).unwrap();
+    }
+
     let default_mode = InputMode::Normal;
     input_loop(
         client_os_api,
@@ -215,6 +230,7 @@ pub fn move_focus_left_in_pane_mode() {
         command_is_executing,
         send_client_instructions,
         default_mode,
+        receive_input_instructions,
     );
     let expected_actions_sent_to_server =
         vec![Action::MoveFocusOrTab(Direction::Left), Action::Quit];
@@ -228,14 +244,14 @@ pub fn move_focus_left_in_pane_mode() {
 #[test]
 pub fn bracketed_paste() {
     let stdin_events = vec![
-        commands::BRACKETED_PASTE_START.to_vec(),
-        commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec(),
-        commands::BRACKETED_PASTE_END.to_vec(),
+        (commands::BRACKETED_PASTE_START.to_vec(), Event::Unsupported(commands::BRACKETED_PASTE_START.to_vec())),
+        (commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec(), Event::Key(Key::Alt('h'))),
+        (commands::BRACKETED_PASTE_END.to_vec(), Event::Unsupported(commands::BRACKETED_PASTE_END.to_vec())),
+        (commands::QUIT.to_vec(), Event::Key(Key::Ctrl('q'))),
     ];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
-        stdin_events,
         events_sent_to_server.clone(),
         command_is_executing.clone(),
     ));
@@ -247,6 +263,14 @@ pub fn bracketed_paste() {
     > = channels::bounded(50);
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
+    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
+        InputInstruction,
+    > = channels::bounded(50);
+    let send_input_instructions = SenderWithContext::new(send_input_instructions);
+    for event in stdin_events {
+        send_input_instructions.send(InputInstruction::KeyEvent(event.1, event.0)).unwrap();
+    }
+
     let default_mode = InputMode::Normal;
     input_loop(
         client_os_api,
@@ -255,6 +279,7 @@ pub fn bracketed_paste() {
         command_is_executing,
         send_client_instructions,
         default_mode,
+        receive_input_instructions,
     );
     let expected_actions_sent_to_server = vec![
         Action::Write(commands::BRACKETED_PASTE_START.to_vec()),
