@@ -361,6 +361,7 @@ pub struct Grid {
     pub pending_messages_to_pty: Vec<Vec<u8>>,
     pub selection: Selection,
     pub title: Option<String>,
+    pub is_scrolled: bool,
 }
 
 impl Debug for Grid {
@@ -405,6 +406,7 @@ impl Grid {
             title_stack: vec![],
             title: None,
             changed_colors: None,
+            is_scrolled: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -537,6 +539,7 @@ impl Grid {
     }
     pub fn scroll_up_one_line(&mut self) {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+            self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
@@ -571,6 +574,9 @@ impl Grid {
 
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
+        }
+        if self.lines_below.is_empty() {
+            self.is_scrolled = false;
         }
     }
     fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {

@@ -205,6 +205,12 @@ impl Screen {
             new_tab.visible(true);
 
             let old_active_index = self.active_tab_index.replace(new_tab_index);
+            if let Some(ref i) = old_active_index {
+                if let Some(t) = self.tabs.get_mut(i) {
+                    t.is_active = false;
+                }
+            }
+            self.tabs.get_mut(&new_tab_index).unwrap().is_active = true;
             self.tab_history.retain(|&e| e != Some(new_tab_pos));
             self.tab_history.push(old_active_index);
 
@@ -264,6 +270,7 @@ impl Screen {
             for t in self.tabs.values_mut() {
                 if t.index == self.active_tab_index.unwrap() {
                     t.set_force_render();
+                    t.is_active = true;
                     t.visible(true);
                 }
                 if t.position > active_tab.position {
@@ -351,8 +358,9 @@ impl Screen {
             self.draw_pane_frames,
         );
         tab.apply_layout(layout, new_pids, tab_index);
-        if let Some(active_tab) = self.get_active_tab() {
+        if let Some(active_tab) = self.get_active_tab_mut() {
             active_tab.visible(false);
+            active_tab.is_active = false;
         }
         self.tab_history
             .push(self.active_tab_index.replace(tab_index));

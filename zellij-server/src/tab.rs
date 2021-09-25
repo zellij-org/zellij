@@ -16,7 +16,7 @@ use std::sync::{mpsc::channel, Arc, RwLock};
 use std::time::Instant;
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::input::layout::Direction;
@@ -38,6 +38,9 @@ const MIN_TERMINAL_HEIGHT: usize = 5;
 const MIN_TERMINAL_WIDTH: usize = 5;
 
 const RESIZE_PERCENT: f64 = 5.0;
+
+const MAX_PENDING_VTE_EVENTS: usize = 7000;
+const PENDING_EVENTS_SET_SIZE: usize = 100;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -112,7 +115,9 @@ pub(crate) struct Tab {
     session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
     pub colors: Palette,
+    pub is_active: bool,
     draw_pane_frames: bool,
+    pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -162,6 +167,7 @@ pub trait Pane {
     fn scroll_up(&mut self, count: usize);
     fn scroll_down(&mut self, count: usize);
     fn clear_scroll(&mut self);
+    fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
@@ -292,6 +298,8 @@ impl Tab {
             colors,
             session_state,
             draw_pane_frames,
+            pending_vte_events: HashMap::new(),
+            is_active: true,
         }
     }
 
@@ -542,6 +550,44 @@ impl Tab {
         self.panes.contains_key(&PaneId::Terminal(pid))
     }
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
+            // If the pane is scrolled buffer the vte events
+            if terminal_output.is_scrolled() {
+                self.pending_vte_events.entry(pid).or_default().push(bytes);
+                if let Some(evs) = self.pending_vte_events.get(&pid) {
+                    // Reset scroll and play the pending events if the buufer size exceeds the limit
+                    if evs.len() >= MAX_PENDING_VTE_EVENTS {
+                        terminal_output.clear_scroll();
+                        self.play_pending_vte_events(pid);
+                    }
+                }
+                return;
+            }
+        }
+        self.process_pty_bytes(pid, bytes);
+    }
+    fn play_pending_vte_events(&mut self, pid: RawFd) {
+        if self.pending_vte_events.get(&pid).is_some() {
+            if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
+                if terminal_output.is_scrolled() {
+                    return;
+                }
+            }
+            let mut events = self.pending_vte_events.remove(&pid).unwrap();
+            while events.len() >= PENDING_EVENTS_SET_SIZE {
+                events
+                    .drain(..PENDING_EVENTS_SET_SIZE)
+                    .for_each(|bytes| self.process_pty_bytes(pid, bytes));
+                // Render at regular intervals
+                self.render();
+            }
+            events
+                .drain(..)
+                .for_each(|bytes| self.process_pty_bytes(pid, bytes));
+            self.render();
+        }
+    }
+    fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         // if we don't have the terminal in self.terminals it's probably because
         // of a race condition where the terminal was created in pty but has not
         // yet been created in Screen. These events are currently not buffered, so
@@ -553,7 +599,6 @@ impl Tab {
             for message in messages_to_pty {
                 self.write_to_pane_id(message, PaneId::Terminal(pid));
             }
-            // self.render();
         }
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
@@ -728,7 +773,10 @@ impl Tab {
         }
     }
     pub fn render(&mut self) {
-        if self.active_terminal.is_none() || self.session_state.read().unwrap().clients.is_empty() {
+        if self.active_terminal.is_none()
+            || self.session_state.read().unwrap().clients.is_empty()
+            || !self.is_active
+        {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
             // or if there are no attached clients to this session
@@ -2218,6 +2266,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.scroll_down(1);
+            self.play_pending_vte_events(active_terminal_id);
             self.render();
         }
     }
@@ -2242,6 +2291,7 @@ impl Tab {
             // prevent overflow when row == 0
             let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_down(scroll_columns);
+            self.play_pending_vte_events(active_terminal_id);
             self.render();
         }
     }
@@ -2252,6 +2302,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.clear_scroll();
+            self.play_pending_vte_events(active_terminal_id);
             self.render();
         }
     }
@@ -2262,6 +2313,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.clear_scroll();
+            self.play_pending_vte_events(active_terminal_id);
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
@@ -2273,6 +2325,9 @@ impl Tab {
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
         if let Some(pane) = self.get_pane_at(point) {
             pane.scroll_down(lines);
+            if let PaneId::Terminal(id) = pane.pid() {
+                self.play_pending_vte_events(id);
+            }
             self.render();
         }
     }
