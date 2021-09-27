@@ -917,7 +917,7 @@ pub fn mirrored_sessions() {
         cols: 120,
         rows: 24,
     };
-    let mut test_attempts = 3;
+    let mut test_attempts = 10;
     let session_name = "mirrored_sessions";
     let mut last_snapshot = None;
     loop {

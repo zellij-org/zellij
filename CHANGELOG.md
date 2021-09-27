@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: Add ability to solely specify the tab name in the `tabs` section (https://github.com/zellij-org/zellij/pull/722)
 * Feature: Plugins can be configured and the groundwork for "Headless" plugins has been laid (https://github.com/zellij-org/zellij/pull/660)
 * Automatically update `example/default.yaml` on release (https://github.com/zellij-org/zellij/pull/736)
+* Feature: allow mirroring sessions in multiple terminal windows (https://github.com/zellij-org/zellij/pull/740)
 
 ## [0.17.0] - 2021-09-15
 * New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
