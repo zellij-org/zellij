@@ -3,24 +3,45 @@ pub mod prelude;
 pub mod shim;
 
 use data::*;
+use serde::de::DeserializeOwned;
 
 #[allow(unused_variables)]
-pub trait ZellijPlugin {
-    fn load(&mut self) {}
+pub trait ZellijPlugin: ZellijPluginOptions {
+    fn load(&mut self, _: Self::Options) {}
     fn update(&mut self, event: Event) {}
     fn render(&mut self, rows: usize, cols: usize) {}
+}
+
+#[doc(hidden)]
+pub trait ZellijPluginOptions {
+    type Options: Default + DeserializeOwned;
 }
 
 #[macro_export]
 macro_rules! register_plugin {
     ($t:ty) => {
+        register_plugin!($t, $crate::data::EmptyOptions);
+    };
+    ($t:ty, $o:ty) => {
         thread_local! {
             static STATE: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
         }
 
+        impl ZellijPluginOptions for $t {
+            type Options = $o;
+        }
+
         fn main() {
+            let options: Result<$o, _> = $crate::shim::object_from_stdin().map_err(|err| {
+                eprintln!(
+                    "Your plugins configuration had a derialization error: {:?}.",
+                    err
+                );
+                err
+            });
+
             STATE.with(|state| {
-                state.borrow_mut().load();
+                state.borrow_mut().load(options.unwrap_or_default());
             });
         }
 

@@ -51,6 +51,7 @@ impl PluginsConfig {
                 run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 location: run.location.clone(),
+                options: "{}".into()
             }),
             RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
@@ -96,6 +97,7 @@ impl From<PluginConfigFromYaml> for PluginConfig {
             },
             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
             location: RunPluginLocation::Zellij(plugin.tag),
+            options: serde_json::to_string(&plugin.options).unwrap_or_else(|_| "{}".into())
         }
     }
 }
@@ -111,6 +113,10 @@ pub struct PluginConfig {
     pub _allow_exec_host_cmd: bool,
     /// Original location of the
     pub location: RunPluginLocation,
+    /// Encoded JSON options string. This is a JSON string rather than a `serde_json::Value`
+    /// because the `bincode` crate that's used to serialize/deserialize messages between the
+    /// client and the server doesn't support unstructured data formats.
+    pub options: String
 }
 
 impl PluginConfig {
@@ -171,7 +177,7 @@ pub struct PluginConfigFromYaml {
     #[serde(default)]
     pub run: PluginTypeFromYaml,
     #[serde(default)]
-    pub config: serde_yaml::Value,
+    pub options: serde_yaml::Value,
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
 }
