@@ -10,7 +10,7 @@ use std::net::TcpStream;
 
 use std::path::Path;
 
-const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/debug/zellij";
+const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
@@ -24,7 +24,7 @@ fn ssh_connect() -> ssh2::Session {
     sess.handshake().unwrap();
     sess.userauth_password(CONNECTION_USERNAME, CONNECTION_PASSWORD)
         .unwrap();
-    sess.set_timeout(20000);
+    sess.set_timeout(3000);
     sess
 }
 
@@ -54,6 +54,27 @@ fn start_zellij(channel: &mut ssh2::Channel) {
             )
             .as_bytes(),
         )
+        .unwrap();
+    channel.flush().unwrap();
+}
+
+fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} --session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, session_name
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+}
+
+fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
+    channel
+        .write_all(format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, session_name).as_bytes())
         .unwrap();
     channel.flush().unwrap();
 }
@@ -188,6 +209,9 @@ pub struct RemoteRunner {
     win_size: Size,
     layout_file_name: Option<&'static str>,
     without_frames: bool,
+    session_name: Option<String>,
+    attach_to_existing: bool,
+    pub test_timed_out: bool,
 }
 
 impl RemoteRunner {
@@ -216,10 +240,89 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: None,
             without_frames: false,
+            session_name: None,
+            attach_to_existing: false,
+            test_timed_out: false,
+        }
+    }
+    pub fn new_with_session_name(
+        test_name: &'static str,
+        win_size: Size,
+        session_name: &str,
+    ) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let vte_parser = vte::Parser::new();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+        };
+        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        setup_remote_environment(&mut channel, win_size);
+        start_zellij_in_session(&mut channel, &session_name);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            terminal_output,
+            vte_parser,
+            test_name,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: 10,
+            win_size,
+            layout_file_name: None,
+            without_frames: false,
+            session_name: Some(String::from(session_name)),
+            attach_to_existing: false,
+            test_timed_out: false,
+        }
+    }
+    pub fn new_existing_session(
+        test_name: &'static str,
+        win_size: Size,
+        session_name: &str,
+    ) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let vte_parser = vte::Parser::new();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+        };
+        let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
+        setup_remote_environment(&mut channel, win_size);
+        attach_to_existing_session(&mut channel, &session_name);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            terminal_output,
+            vte_parser,
+            test_name,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: 10,
+            win_size,
+            layout_file_name: None,
+            without_frames: false,
+            session_name: Some(String::from(session_name)),
+            attach_to_existing: true,
+            test_timed_out: false,
         }
     }
     pub fn new_without_frames(test_name: &'static str, win_size: Size) -> Self {
@@ -247,10 +350,13 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: None,
             without_frames: true,
+            session_name: None,
+            attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn new_with_layout(
@@ -283,10 +389,13 @@ impl RemoteRunner {
             test_name,
             currently_running_step: None,
             current_step_index: 0,
-            retries_left: 3,
+            retries_left: 10,
             win_size,
             layout_file_name: Some(layout_file_name),
             without_frames: false,
+            session_name: None,
+            attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn add_step(mut self, step: Step) -> Self {
@@ -295,16 +404,6 @@ impl RemoteRunner {
     }
     pub fn replace_steps(&mut self, steps: Vec<Step>) {
         self.steps = steps;
-    }
-    fn current_remote_terminal_state(&mut self) -> RemoteTerminal {
-        let current_snapshot = self.get_current_snapshot();
-        let (cursor_x, cursor_y) = self.terminal_output.cursor_coordinates().unwrap_or((0, 0));
-        RemoteTerminal {
-            cursor_x,
-            cursor_y,
-            current_snapshot,
-            channel: &mut self.channel,
-        }
     }
     pub fn run_next_step(&mut self) {
         if let Some(next_step) = self.steps.get(self.current_step_index) {
@@ -341,28 +440,30 @@ impl RemoteRunner {
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
             self.run_all_steps()
+        } else if self.session_name.is_some() {
+            let mut new_runner = if self.attach_to_existing {
+                RemoteRunner::new_existing_session(
+                    self.test_name,
+                    self.win_size,
+                    &self.session_name.as_ref().unwrap(),
+                )
+            } else {
+                RemoteRunner::new_with_session_name(
+                    self.test_name,
+                    self.win_size,
+                    &self.session_name.as_ref().unwrap(),
+                )
+            };
+            new_runner.retries_left = self.retries_left - 1;
+            new_runner.replace_steps(self.steps.clone());
+            drop(std::mem::replace(self, new_runner));
+            self.run_all_steps()
         } else {
             let mut new_runner = RemoteRunner::new(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
             self.run_all_steps()
-        }
-    }
-    fn display_informative_error(&mut self) {
-        let test_name = self.test_name;
-        let current_step_name = self.currently_running_step.as_ref().cloned();
-        match current_step_name {
-            Some(current_step) => {
-                let remote_terminal = self.current_remote_terminal_state();
-                eprintln!("Timed out waiting for data on the SSH channel for test {}. Was waiting for step: {}", test_name, current_step);
-                eprintln!("{:?}", remote_terminal);
-            }
-            None => {
-                let remote_terminal = self.current_remote_terminal_state();
-                eprintln!("Timed out waiting for data on the SSH channel for test {}. Haven't begun running steps yet.", test_name);
-                eprintln!("{:?}", remote_terminal);
-            }
         }
     }
     pub fn run_all_steps(&mut self) -> String {
@@ -381,21 +482,14 @@ impl RemoteRunner {
                         break;
                     }
                 }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::TimedOut {
-                        if self.retries_left > 0 {
-                            return self.restart_test();
-                        }
-                        self.display_informative_error();
-                        panic!("Timed out waiting for test");
+                Err(_e) => {
+                    if self.retries_left > 0 {
+                        return self.restart_test();
                     }
-                    panic!("Error while reading remote session: {}", e);
+                    self.test_timed_out = true;
                 }
             }
         }
-        take_snapshot(&mut self.terminal_output)
-    }
-    pub fn get_current_snapshot(&mut self) -> String {
         take_snapshot(&mut self.terminal_output)
     }
 }

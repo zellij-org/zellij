@@ -153,20 +153,12 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
         },
     })
     .add_step(Step {
-        name: "Send text to terminal",
-        instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-            // this is just normal input that should be sent into the one terminal so that we can make
-            // sure we silently failed to split in the previous step
-            remote_terminal.send_key("Hi!".as_bytes());
-            true
-        },
-    })
-    .add_step(Step {
-        name: "Wait for text to appear",
+        name: "Make sure only one pane appears",
         instruction: |remote_terminal: RemoteTerminal| -> bool {
             let mut step_is_complete = false;
-            if remote_terminal.cursor_position_is(6, 2) && remote_terminal.snapshot_contains("Hi!")
+            if remote_terminal.cursor_position_is(3, 2) && remote_terminal.snapshot_contains("...")
             {
+                // ... is the truncated tip line
                 step_is_complete = true;
             }
             step_is_complete
@@ -916,4 +908,86 @@ pub fn start_without_pane_frames() {
         })
         .run_all_steps();
     assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn mirrored_sessions() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let session_name = "mirrored_sessions";
+    let mut last_snapshot = None;
+    loop {
+        // we run this test in a loop because there are some edge cases (especially in the CI)
+        // where the second runner times out and then we also need to restart the first runner
+        // if no test timed out, we break the loop and assert the snapshot
+        let mut first_runner =
+            RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
+                .add_step(Step {
+                    name: "Split pane to the right",
+                    instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.status_bar_appears()
+                            && remote_terminal.cursor_position_is(3, 2)
+                        {
+                            remote_terminal.send_key(&PANE_MODE);
+                            remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                            // back to normal mode after split
+                            remote_terminal.send_key(&ENTER);
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                })
+                .add_step(Step {
+                    name: "Wait for new pane to open",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.cursor_position_is(63, 2)
+                            && remote_terminal.tip_appears()
+                        {
+                            // cursor is in the newly opened second pane
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                });
+        first_runner.run_all_steps();
+
+        let mut second_runner =
+            RemoteRunner::new_existing_session("mirrored_sessions", fake_win_size, session_name)
+                .add_step(Step {
+                    name: "Make sure session appears correctly",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.cursor_position_is(63, 2)
+                            && remote_terminal.tip_appears()
+                        {
+                            // cursor is in the newly opened second pane
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                });
+        let last_test_snapshot = second_runner.run_all_steps();
+
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            last_snapshot = Some(last_test_snapshot);
+            break;
+        }
+    }
+    match last_snapshot {
+        Some(last_snapshot) => {
+            assert_snapshot!(last_snapshot);
+        }
+        None => {
+            panic!("test timed out before completing");
+        }
+    }
 }

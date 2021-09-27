@@ -2736,6 +2736,7 @@ dependencies = [
  "log",
  "mio",
  "termbg",
+ "zellij-tile",
  "zellij-utils",
 ]
 

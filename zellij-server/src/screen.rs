@@ -252,12 +252,10 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            if *self.session_state.read().unwrap() == SessionState::Attached {
-                self.bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(None))
-                    .unwrap();
-            }
+            self.bus
+                .senders
+                .send_to_server(ServerInstruction::Render(None))
+                .unwrap();
         } else {
             if let Some(tab) = self.get_active_tab() {
                 tab.visible(false);
@@ -288,9 +286,6 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        if *self.session_state.read().unwrap() != SessionState::Attached {
-            return;
-        }
         if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_pane().is_some() {
                 active_tab.render();
