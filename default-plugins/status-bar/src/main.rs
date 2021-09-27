@@ -8,7 +8,9 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
-use second_line::{keybinds, text_copied_hint};
+use second_line::{
+    fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, text_copied_hint,
+};
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
@@ -16,6 +18,7 @@ static MORE_MSG: &str = " ... ";
 
 #[derive(Default)]
 struct State {
+    tabs: Vec<TabInfo>,
     mode_info: ModeInfo,
     diplay_text_copied_hint: bool,
 }
@@ -137,6 +140,7 @@ impl ZellijPlugin for State {
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
+            EventType::TabUpdate,
             EventType::CopyToClipboard,
             EventType::InputReceived,
         ]);
@@ -146,6 +150,9 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = mode_info;
+            }
+            Event::TabUpdate(tabs) => {
+                self.tabs = tabs;
             }
             Event::CopyToClipboard => {
                 self.diplay_text_copied_hint = true;
@@ -173,11 +180,54 @@ impl ZellijPlugin for State {
         );
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-        let second_line = if self.diplay_text_copied_hint {
-            text_copied_hint(&self.mode_info.palette)
-        } else {
-            keybinds(&self.mode_info, cols)
-        };
+
+        let mut second_line = LinePart::default();
+        for t in self.tabs.iter_mut() {
+            if t.active {
+                match self.mode_info.mode {
+                    InputMode::Normal => {
+                        if t.is_fullscreen_active {
+                            second_line = if self.diplay_text_copied_hint {
+                                text_copied_hint(&self.mode_info.palette)
+                            } else {
+                                fullscreen_panes_to_hide(&self.mode_info.palette, t.panes_to_hide)
+                            }
+                        } else {
+                            second_line = if self.diplay_text_copied_hint {
+                                text_copied_hint(&self.mode_info.palette)
+                            } else {
+                                keybinds(&self.mode_info, cols)
+                            }
+                        }
+                    }
+                    InputMode::Locked => {
+                        if t.is_fullscreen_active {
+                            second_line = if self.diplay_text_copied_hint {
+                                text_copied_hint(&self.mode_info.palette)
+                            } else {
+                                locked_fullscreen_panes_to_hide(
+                                    &self.mode_info.palette,
+                                    t.panes_to_hide,
+                                )
+                            }
+                        } else {
+                            second_line = if self.diplay_text_copied_hint {
+                                text_copied_hint(&self.mode_info.palette)
+                            } else {
+                                keybinds(&self.mode_info, cols)
+                            }
+                        }
+                    }
+                    _ => {
+                        second_line = if self.diplay_text_copied_hint {
+                            text_copied_hint(&self.mode_info.palette)
+                        } else {
+                            keybinds(&self.mode_info, cols)
+                        }
+                    }
+                }
+            }
+        }
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
