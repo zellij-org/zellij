@@ -917,40 +917,31 @@ pub fn mirrored_sessions() {
         cols: 120,
         rows: 24,
     };
+    let mut test_attempts = 3;
     let session_name = "mirrored_sessions";
-    let _ = RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
-        .add_step(Step {
-            name: "Split pane to the right",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                {
-                    remote_terminal.send_key(&PANE_MODE);
-                    remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                    // back to normal mode after split
-                    remote_terminal.send_key(&ENTER);
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .add_step(Step {
-            name: "Wait for new pane to open",
-            instruction: |remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                    // cursor is in the newly opened second pane
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .run_all_steps();
-
-    let last_snapshot =
-        RemoteRunner::new_existing_session("mirrored_sessions", fake_win_size, session_name)
+    let mut last_snapshot = None;
+    loop {
+        // we run this test in a loop because there are some edge cases (especially in the CI)
+        // where the second runner times out and then we also need to restart the first runner
+        // if no test timed out, we break the loop and assert the snapshot
+        let mut first_runner = RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
             .add_step(Step {
-                name: "Make sure session appears correctly",
+                name: "Split pane to the right",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        remote_terminal.send_key(&PANE_MODE);
+                        remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                        // back to normal mode after split
+                        remote_terminal.send_key(&ENTER);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for new pane to open",
                 instruction: |remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
@@ -959,19 +950,38 @@ pub fn mirrored_sessions() {
                     }
                     step_is_complete
                 },
-            })
-            .run_all_steps();
+            });
+        first_runner.run_all_steps();
 
-    assert_snapshot!(last_snapshot);
+        let mut second_runner =
+            RemoteRunner::new_existing_session("mirrored_sessions", fake_win_size, session_name)
+                .add_step(Step {
+                    name: "Make sure session appears correctly",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                            // cursor is in the newly opened second pane
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                });
+        let last_test_snapshot = second_runner.run_all_steps();;
+
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            last_snapshot = Some(last_test_snapshot);
+            break;
+        }
+    }
+    match last_snapshot {
+        Some(last_snapshot) => {
+            assert_snapshot!(last_snapshot);
+        },
+        None => {
+            panic!("test timed out before completing");
+        }
+    }
 }
-
-// TODO: CONTINUE HERE (23/09) with refactoring - continue making a list with git diff, refactor
-// and make a pr
-// things to refactor:
-// 3. Add error contexts as needed to the new receivers (input receiver and stdin receiver) - Nah
-// 4. Add comment about switching to mode on the client side being an optimistic update - DONE
-// 5. remove debug_log_to_file statements from everywhere
-// 6. remove commented out code from everywhere
-// * rustfmt + clippy
-// * rerun e2e tests
-// 11. merge from main!!

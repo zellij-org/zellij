@@ -211,6 +211,7 @@ pub struct RemoteRunner {
     without_frames: bool,
     session_name: Option<String>,
     attach_to_existing: bool,
+    pub test_timed_out: bool,
 }
 
 impl RemoteRunner {
@@ -245,6 +246,7 @@ impl RemoteRunner {
             without_frames: false,
             session_name: None,
             attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn new_with_session_name(
@@ -282,6 +284,7 @@ impl RemoteRunner {
             without_frames: false,
             session_name: Some(String::from(session_name)),
             attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn new_existing_session(
@@ -319,6 +322,7 @@ impl RemoteRunner {
             without_frames: false,
             session_name: Some(String::from(session_name)),
             attach_to_existing: true,
+            test_timed_out: false,
         }
     }
     pub fn new_without_frames(test_name: &'static str, win_size: Size) -> Self {
@@ -352,6 +356,7 @@ impl RemoteRunner {
             without_frames: true,
             session_name: None,
             attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn new_with_layout(
@@ -390,6 +395,7 @@ impl RemoteRunner {
             without_frames: false,
             session_name: None,
             attach_to_existing: false,
+            test_timed_out: false,
         }
     }
     pub fn add_step(mut self, step: Step) -> Self {
@@ -398,16 +404,6 @@ impl RemoteRunner {
     }
     pub fn replace_steps(&mut self, steps: Vec<Step>) {
         self.steps = steps;
-    }
-    fn current_remote_terminal_state(&mut self) -> RemoteTerminal {
-        let current_snapshot = self.get_current_snapshot();
-        let (cursor_x, cursor_y) = self.terminal_output.cursor_coordinates().unwrap_or((0, 0));
-        RemoteTerminal {
-            cursor_x,
-            cursor_y,
-            current_snapshot,
-            channel: &mut self.channel,
-        }
     }
     pub fn run_next_step(&mut self) {
         if let Some(next_step) = self.steps.get(self.current_step_index) {
@@ -470,22 +466,6 @@ impl RemoteRunner {
             self.run_all_steps()
         }
     }
-    fn display_informative_error(&mut self) {
-        let test_name = self.test_name;
-        let current_step_name = self.currently_running_step.as_ref().cloned();
-        match current_step_name {
-            Some(current_step) => {
-                let remote_terminal = self.current_remote_terminal_state();
-                eprintln!("Timed out waiting for data on the SSH channel for test {}. Was waiting for step: {}", test_name, current_step);
-                eprintln!("{:?}", remote_terminal);
-            }
-            None => {
-                let remote_terminal = self.current_remote_terminal_state();
-                eprintln!("Timed out waiting for data on the SSH channel for test {}. Haven't begun running steps yet.", test_name);
-                eprintln!("{:?}", remote_terminal);
-            }
-        }
-    }
     pub fn run_all_steps(&mut self) -> String {
         // returns the last snapshot
         loop {
@@ -507,16 +487,12 @@ impl RemoteRunner {
                         if self.retries_left > 0 {
                             return self.restart_test();
                         }
-                        self.display_informative_error();
-                        panic!("Timed out waiting for test");
+                        self.test_timed_out = true;
                     }
                     panic!("Error while reading remote session: {}", e);
                 }
             }
         }
-        take_snapshot(&mut self.terminal_output)
-    }
-    pub fn get_current_snapshot(&mut self) -> String {
         take_snapshot(&mut self.terminal_output)
     }
 }
