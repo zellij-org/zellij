@@ -65,7 +65,7 @@ pub(crate) enum ServerInstruction {
     RemoveClient(ClientId),
     Error(String),
     DetachSession(ClientId),
-    AttachClient(ClientAttributes, bool, Options, ClientId),
+    AttachClient(ClientAttributes, Options, ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -301,7 +301,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     spawn_tabs(None);
                 }
             }
-            ServerInstruction::AttachClient(attrs, _, options, client_id) => {
+            ServerInstruction::AttachClient(attrs, options, client_id) => {
                 let rlock = session_data.read().unwrap();
                 let session_data = rlock.as_ref().unwrap();
                 session_state

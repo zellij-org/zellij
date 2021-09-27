@@ -65,7 +65,7 @@ pub enum ClientToServerMsg {
         LayoutFromYaml,
         Option<PluginsConfig>,
     ),
-    AttachClient(ClientAttributes, bool, Options),
+    AttachClient(ClientAttributes, Options),
     Action(Action),
     ClientExited,
 }

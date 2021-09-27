@@ -347,9 +347,9 @@ pub(crate) fn route_thread_main(
                 );
                 to_server.send(new_client_instruction).unwrap();
             }
-            ClientToServerMsg::AttachClient(client_attributes, force, opts) => {
+            ClientToServerMsg::AttachClient(client_attributes, opts) => {
                 let attach_client_instruction =
-                    ServerInstruction::AttachClient(client_attributes, force, opts, client_id);
+                    ServerInstruction::AttachClient(client_attributes, opts, client_id);
                 to_server.send(attach_client_instruction).unwrap();
             }
             ClientToServerMsg::ClientExited => {

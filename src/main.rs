@@ -56,7 +56,6 @@ pub fn main() {
         };
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
-            force,
             create,
             options,
         })) = opts.command.clone()
@@ -75,7 +74,6 @@ pub fn main() {
                             (
                                 ClientInfo::Attach(
                                     session_name.unwrap(),
-                                    force,
                                     config_options.clone(),
                                 ),
                                 None,
@@ -86,7 +84,6 @@ pub fn main() {
                         (
                             ClientInfo::Attach(
                                 session_name.unwrap(),
-                                force,
                                 config_options.clone(),
                             ),
                             None,
@@ -106,7 +103,7 @@ pub fn main() {
                         }
                     }
                     ActiveSession::One(session_name) => (
-                        ClientInfo::Attach(session_name, force, config_options.clone()),
+                        ClientInfo::Attach(session_name, config_options.clone()),
                         None,
                     ),
                     ActiveSession::Many => {
