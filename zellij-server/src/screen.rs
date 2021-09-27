@@ -369,6 +369,8 @@ impl Screen {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,
+                panes_to_hide: tab.panes_to_hide.len(),
+                is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
             });
         }
@@ -487,6 +489,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::HorizontalSplit(pid) => {
                 screen.get_active_tab_mut().unwrap().horizontal_split(pid);
@@ -495,6 +498,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::VerticalSplit(pid) => {
                 screen.get_active_tab_mut().unwrap().vertical_split(pid);
@@ -503,6 +507,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::WriteCharacter(bytes) => {
                 let active_tab = screen.get_active_tab_mut().unwrap();
@@ -633,6 +638,7 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .toggle_active_pane_fullscreen();
+                screen.update_tabs();
             }
             ScreenInstruction::TogglePaneFrames => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
