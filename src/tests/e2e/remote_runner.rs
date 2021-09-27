@@ -482,14 +482,11 @@ impl RemoteRunner {
                         break;
                     }
                 }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::TimedOut {
-                        if self.retries_left > 0 {
-                            return self.restart_test();
-                        }
-                        self.test_timed_out = true;
+                Err(_e) => {
+                    if self.retries_left > 0 {
+                        return self.restart_test();
                     }
-                    panic!("Error while reading remote session: {}", e);
+                    self.test_timed_out = true;
                 }
             }
         }
