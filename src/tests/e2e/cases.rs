@@ -924,33 +924,37 @@ pub fn mirrored_sessions() {
         // we run this test in a loop because there are some edge cases (especially in the CI)
         // where the second runner times out and then we also need to restart the first runner
         // if no test timed out, we break the loop and assert the snapshot
-        let mut first_runner = RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
-            .add_step(Step {
-                name: "Split pane to the right",
-                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                    let mut step_is_complete = false;
-                    if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                    {
-                        remote_terminal.send_key(&PANE_MODE);
-                        remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
-                        step_is_complete = true;
-                    }
-                    step_is_complete
-                },
-            })
-            .add_step(Step {
-                name: "Wait for new pane to open",
-                instruction: |remote_terminal: RemoteTerminal| -> bool {
-                    let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                        // cursor is in the newly opened second pane
-                        step_is_complete = true;
-                    }
-                    step_is_complete
-                },
-            });
+        let mut first_runner =
+            RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
+                .add_step(Step {
+                    name: "Split pane to the right",
+                    instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.status_bar_appears()
+                            && remote_terminal.cursor_position_is(3, 2)
+                        {
+                            remote_terminal.send_key(&PANE_MODE);
+                            remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                            // back to normal mode after split
+                            remote_terminal.send_key(&ENTER);
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                })
+                .add_step(Step {
+                    name: "Wait for new pane to open",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        let mut step_is_complete = false;
+                        if remote_terminal.cursor_position_is(63, 2)
+                            && remote_terminal.tip_appears()
+                        {
+                            // cursor is in the newly opened second pane
+                            step_is_complete = true;
+                        }
+                        step_is_complete
+                    },
+                });
         first_runner.run_all_steps();
 
         let mut second_runner =
@@ -959,14 +963,16 @@ pub fn mirrored_sessions() {
                     name: "Make sure session appears correctly",
                     instruction: |remote_terminal: RemoteTerminal| -> bool {
                         let mut step_is_complete = false;
-                        if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                        if remote_terminal.cursor_position_is(63, 2)
+                            && remote_terminal.tip_appears()
+                        {
                             // cursor is in the newly opened second pane
                             step_is_complete = true;
                         }
                         step_is_complete
                     },
                 });
-        let last_test_snapshot = second_runner.run_all_steps();;
+        let last_test_snapshot = second_runner.run_all_steps();
 
         if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
             test_attempts -= 1;
@@ -979,7 +985,7 @@ pub fn mirrored_sessions() {
     match last_snapshot {
         Some(last_snapshot) => {
             assert_snapshot!(last_snapshot);
-        },
+        }
         None => {
             panic!("test timed out before completing");
         }

@@ -72,20 +72,14 @@ pub fn main() {
                             (ClientInfo::New(session_name.unwrap()), layout)
                         } else {
                             (
-                                ClientInfo::Attach(
-                                    session_name.unwrap(),
-                                    config_options.clone(),
-                                ),
+                                ClientInfo::Attach(session_name.unwrap(), config_options.clone()),
                                 None,
                             )
                         }
                     } else {
                         assert_session(session);
                         (
-                            ClientInfo::Attach(
-                                session_name.unwrap(),
-                                config_options.clone(),
-                            ),
+                            ClientInfo::Attach(session_name.unwrap(), config_options.clone()),
                             None,
                         )
                     }
