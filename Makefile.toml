@@ -142,7 +142,7 @@ args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"
 workspace = false
 dependencies = ["build-plugins", "build-dev-data-dir"]
 command = "cargo"
-args = ["build", "--verbose", "--target", "x86_64-unknown-linux-musl"]
+args = ["build", "--verbose", "--release", "--target", "x86_64-unknown-linux-musl"]
 
 # Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
 [tasks.e2e-test]

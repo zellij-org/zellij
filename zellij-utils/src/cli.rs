@@ -81,11 +81,6 @@ pub enum Sessions {
         /// Name of the session to attach to.
         session_name: Option<String>,
 
-        /// Force attach- session will detach from the other
-        /// zellij client (if any) and attach to this.
-        #[structopt(long, short)]
-        force: bool,
-
         /// Create a session if one does not exist.
         #[structopt(short, long)]
         create: bool,

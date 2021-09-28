@@ -14,12 +14,15 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi,
 };
+use termion::input::TermReadEventsAndRaw;
+use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    termion,
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
@@ -30,6 +33,7 @@ pub(crate) enum ClientInstruction {
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
+    SwitchToMode(InputMode),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -38,6 +42,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SwitchToMode(input_mode) => {
+                ClientInstruction::SwitchToMode(input_mode)
+            }
         }
     }
 }
@@ -49,6 +56,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
+            ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
         }
     }
 }
@@ -78,8 +86,14 @@ fn spawn_server(socket_path: &Path) -> io::Result<()> {
 
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
-    Attach(String, bool, Options),
+    Attach(String, Options),
     New(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum InputInstruction {
+    KeyEvent(termion::event::Event, Vec<u8>),
+    SwitchToMode(InputMode),
 }
 
 pub fn start_client(
@@ -121,11 +135,11 @@ pub fn start_client(
     };
 
     let first_msg = match info {
-        ClientInfo::Attach(name, force, config_options) => {
+        ClientInfo::Attach(name, config_options) => {
             SESSION_NAME.set(name).unwrap();
             std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
 
-            ClientToServerMsg::AttachClient(client_attributes, force, config_options)
+            ClientToServerMsg::AttachClient(client_attributes, config_options)
         }
         ClientInfo::New(name) => {
             SESSION_NAME.set(name).unwrap();
@@ -159,6 +173,11 @@ pub fn start_client(
     > = channels::bounded(50);
     let send_client_instructions = SenderWithContext::new(send_client_instructions);
 
+    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
+        InputInstruction,
+    > = channels::bounded(50);
+    let send_input_instructions = SenderWithContext::new(send_input_instructions);
+
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
@@ -172,6 +191,22 @@ pub fn start_client(
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
+            let os_input = os_input.clone();
+            let send_input_instructions = send_input_instructions.clone();
+            move || loop {
+                let stdin_buffer = os_input.read_from_stdin();
+                for key_result in stdin_buffer.events_and_raw() {
+                    let (key_event, raw_bytes) = key_result.unwrap();
+                    send_input_instructions
+                        .send(InputInstruction::KeyEvent(key_event, raw_bytes))
+                        .unwrap();
+                }
+            }
+        });
+
+    let _input_thread = thread::Builder::new()
+        .name("input_handler".to_string())
+        .spawn({
             let send_client_instructions = send_client_instructions.clone();
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
@@ -184,6 +219,7 @@ pub fn start_client(
                     command_is_executing,
                     send_client_instructions,
                     default_mode,
+                    receive_input_instructions,
                 )
             }
         });
@@ -239,12 +275,13 @@ pub fn start_client(
         os_input.disable_mouse();
         let error = format!(
             "{}\n{}{}",
-            goto_start_of_last_line, restore_snapshot, backtrace
+            restore_snapshot, goto_start_of_last_line, backtrace
         );
         let _ = os_input
             .get_stdout_writer()
             .write(error.as_bytes())
             .unwrap();
+        let _ = os_input.get_stdout_writer().flush().unwrap();
         std::process::exit(1);
     };
 
@@ -279,6 +316,11 @@ pub fn start_client(
             }
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
+            }
+            ClientInstruction::SwitchToMode(input_mode) => {
+                send_input_instructions
+                    .send(InputInstruction::SwitchToMode(input_mode))
+                    .unwrap();
             }
         }
     }

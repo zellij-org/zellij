@@ -99,7 +99,7 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
-    panes_to_hide: HashSet<PaneId>,
+    pub panes_to_hide: HashSet<PaneId>,
     active_terminal: Option<PaneId>,
     max_panes: Option<usize>,
     viewport: Viewport, // includes all non-UI panes
@@ -658,6 +658,9 @@ impl Tab {
             self.toggle_fullscreen_is_active();
         }
     }
+    pub fn is_fullscreen_active(&self) -> bool {
+        self.fullscreen_is_active
+    }
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }
@@ -725,12 +728,10 @@ impl Tab {
         }
     }
     pub fn render(&mut self) {
-        if self.active_terminal.is_none()
-            || *self.session_state.read().unwrap() != SessionState::Attached
-        {
+        if self.active_terminal.is_none() || self.session_state.read().unwrap().clients.is_empty() {
             // we might not have an active terminal if we closed the last pane
             // in that case, we should not render as the app is exiting
-            // or if this session is not attached to a client, we do not have to render
+            // or if there are no attached clients to this session
             return;
         }
         self.senders

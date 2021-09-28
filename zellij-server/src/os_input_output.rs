@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[cfg(target_os = "macos")]
 use darwin_libproc;
 
@@ -22,12 +24,8 @@ use nix::unistd::{self, ForkResult};
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
-    errors::ErrorContext,
     input::command::{RunCommand, TerminalAction},
-    ipc::{
-        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
-    },
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,
 };
 
@@ -36,6 +34,8 @@ pub use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 
 pub use nix::unistd::Pid;
+
+use crate::ClientId;
 
 pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
@@ -230,8 +230,7 @@ pub fn spawn_terminal(
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
-    receive_instructions_from_client: Option<Arc<Mutex<IpcReceiverWithContext<ClientToServerMsg>>>>,
-    send_instructions_to_client: Arc<Mutex<Option<IpcSenderWithContext<ServerToClientMsg>>>>,
+    client_senders: Arc<Mutex<HashMap<ClientId, IpcSenderWithContext<ServerToClientMsg>>>>,
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -285,22 +284,13 @@ pub trait ServerOsApi: Send + Sync {
     fn force_kill(&self, pid: Pid) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
-    /// Receives a message on server-side IPC channel
-    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext);
-    /// Sends a message to client
-    fn send_to_client(&self, msg: ServerToClientMsg);
-    /// Adds a sender to client
-    fn add_client_sender(&self);
-    /// Send to the temporary client
-    // A temporary client is the one that hasn't been registered as a client yet.
-    // Only the corresponding router thread has access to send messages to it.
-    // This can be the case when the client cannot attach to the session,
-    // so it tries to connect and then exits, hence temporary.
-    fn send_to_temp_client(&self, msg: ServerToClientMsg);
-    /// Removes the sender to client
-    fn remove_client_sender(&self);
-    /// Update the receiver socket for the client
-    fn update_receiver(&mut self, stream: LocalSocketStream);
+    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg);
+    fn new_client(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+    ) -> IpcReceiverWithContext<ClientToServerMsg>;
+    fn remove_client(&mut self, client_id: ClientId);
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
@@ -340,55 +330,29 @@ impl ServerOsApi for ServerOsInputOutput {
         let _ = kill(pid, Some(Signal::SIGKILL));
         Ok(())
     }
-    fn recv_from_client(&self) -> (ClientToServerMsg, ErrorContext) {
-        self.receive_instructions_from_client
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .recv()
-    }
-    fn send_to_client(&self, msg: ServerToClientMsg) {
-        self.send_instructions_to_client
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .send(msg);
-    }
-    fn add_client_sender(&self) {
-        let sender = self
-            .receive_instructions_from_client
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .get_sender();
-        let old_sender = self
-            .send_instructions_to_client
-            .lock()
-            .unwrap()
-            .replace(sender);
-        if let Some(mut sender) = old_sender {
-            sender.send(ServerToClientMsg::Exit(ExitReason::ForceDetached));
+    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
+        if let Some(sender) = self.client_senders.lock().unwrap().get_mut(&client_id) {
+            sender.send(msg);
         }
     }
-    fn send_to_temp_client(&self, msg: ServerToClientMsg) {
-        self.receive_instructions_from_client
-            .as_ref()
-            .unwrap()
+    fn new_client(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+    ) -> IpcReceiverWithContext<ClientToServerMsg> {
+        let receiver = IpcReceiverWithContext::new(stream);
+        let sender = receiver.get_sender();
+        self.client_senders
             .lock()
             .unwrap()
-            .get_sender()
-            .send(msg);
+            .insert(client_id, sender);
+        receiver
     }
-    fn remove_client_sender(&self) {
-        assert!(self.send_instructions_to_client.lock().unwrap().is_some());
-        *self.send_instructions_to_client.lock().unwrap() = None;
-    }
-    fn update_receiver(&mut self, stream: LocalSocketStream) {
-        self.receive_instructions_from_client =
-            Some(Arc::new(Mutex::new(IpcReceiverWithContext::new(stream))));
+    fn remove_client(&mut self, client_id: ClientId) {
+        let mut client_senders = self.client_senders.lock().unwrap();
+        if client_senders.contains_key(&client_id) {
+            client_senders.remove(&client_id);
+        }
     }
     fn load_palette(&self) -> Palette {
         default_palette()
@@ -418,8 +382,7 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
     let orig_termios = Arc::new(Mutex::new(current_termios));
     Ok(ServerOsInputOutput {
         orig_termios,
-        receive_instructions_from_client: None,
-        send_instructions_to_client: Arc::new(Mutex::new(None)),
+        client_senders: Arc::new(Mutex::new(HashMap::new())),
     })
 }
 

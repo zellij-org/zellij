@@ -252,12 +252,10 @@ impl Screen {
             .unwrap();
         if self.tabs.is_empty() {
             self.active_tab_index = None;
-            if *self.session_state.read().unwrap() == SessionState::Attached {
-                self.bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(None))
-                    .unwrap();
-            }
+            self.bus
+                .senders
+                .send_to_server(ServerInstruction::Render(None))
+                .unwrap();
         } else {
             if let Some(tab) = self.get_active_tab() {
                 tab.visible(false);
@@ -288,9 +286,6 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        if *self.session_state.read().unwrap() != SessionState::Attached {
-            return;
-        }
         if let Some(active_tab) = self.get_active_tab_mut() {
             if active_tab.get_active_pane().is_some() {
                 active_tab.render();
@@ -374,6 +369,8 @@ impl Screen {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: active_tab_index == tab.index,
+                panes_to_hide: tab.panes_to_hide.len(),
+                is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
             });
         }
@@ -492,6 +489,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::HorizontalSplit(pid) => {
                 screen.get_active_tab_mut().unwrap().horizontal_split(pid);
@@ -500,6 +498,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::VerticalSplit(pid) => {
                 screen.get_active_tab_mut().unwrap().vertical_split(pid);
@@ -508,6 +507,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs();
             }
             ScreenInstruction::WriteCharacter(bytes) => {
                 let active_tab = screen.get_active_tab_mut().unwrap();
@@ -638,6 +638,7 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut()
                     .unwrap()
                     .toggle_active_pane_fullscreen();
+                screen.update_tabs();
             }
             ScreenInstruction::TogglePaneFrames => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
