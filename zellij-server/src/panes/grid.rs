@@ -1055,13 +1055,11 @@ impl Grid {
                 };
                 if y >= scroll_region_top && y <= scroll_region_bottom {
                     self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
-                    self.pad_lines_until(self.cursor.y, pad_character);
-                    self.pad_current_line_until(self.cursor.x);
                 } else {
                     self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
-                    self.pad_lines_until(self.cursor.y, pad_character);
-                    self.pad_current_line_until(self.cursor.x);
                 }
+                self.pad_lines_until(self.cursor.y, pad_character);
+                self.pad_current_line_until(self.cursor.x);
             }
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
