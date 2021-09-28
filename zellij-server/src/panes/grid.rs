@@ -883,14 +883,16 @@ impl Grid {
             self.viewport.push(new_row);
         }
         if self.cursor.y == self.height - 1 {
-            let row_count_to_transfer = 1;
-            transfer_rows_from_viewport_to_lines_above(
-                &mut self.viewport,
-                &mut self.lines_above,
-                row_count_to_transfer,
-                self.width,
-            );
-            self.selection.move_up(1);
+            if self.scroll_region.is_none() {
+                let row_count_to_transfer = 1;
+                transfer_rows_from_viewport_to_lines_above(
+                    &mut self.viewport,
+                    &mut self.lines_above,
+                    row_count_to_transfer,
+                    self.width,
+                );
+                self.selection.move_up(1);
+            }
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -1051,9 +1053,15 @@ impl Grid {
                 } else {
                     0
                 };
-                self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
-                self.pad_lines_until(self.cursor.y, pad_character);
-                self.pad_current_line_until(self.cursor.x);
+                if y >= scroll_region_top && y <= scroll_region_bottom {
+                    self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
+                    self.pad_lines_until(self.cursor.y, pad_character);
+                    self.pad_current_line_until(self.cursor.x);
+                } else {
+                    self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
+                    self.pad_lines_until(self.cursor.y, pad_character);
+                    self.pad_current_line_until(self.cursor.x);
+                }
             }
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
