@@ -5,8 +5,8 @@ mod tests;
 
 use crate::install::populate_data_dir;
 use sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions, list_sessions,
-    print_sessions, session_exists, ActiveSession,
+    assert_session, assert_session_ne, get_active_session, get_sessions, kill_session,
+    list_sessions, print_sessions, session_exists, ActiveSession,
 };
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
@@ -25,6 +25,41 @@ pub fn main() {
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
         list_sessions();
+    }
+
+    if let Some(Command::Sessions(Sessions::KillSession {
+        all,
+        target_session,
+    })) = opts.command.clone() {
+        if all {
+            match get_sessions() {
+                Ok(sessions) => {
+                    match target_session {
+                        Some(target) => {
+                            for session in sessions.iter() {
+                                if session == &target {
+                                    continue;
+                                }
+                                kill_session(session);
+                            }
+                        },
+                        None => {
+                            for session in sessions.iter() {
+                                kill_session(session);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error occured: {:?}", e);
+                    process::exit(1);
+                }
+            }
+        } else {
+            kill_session(target_session.as_ref().unwrap());
+        }
+        
+        process::exit(0);
     }
 
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
