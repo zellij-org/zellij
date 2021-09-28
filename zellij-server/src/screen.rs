@@ -16,7 +16,7 @@ use crate::{
     wasm_vm::PluginInstruction,
     ServerInstruction, SessionState,
 };
-use zellij_tile::data::{Event, ModeInfo, Palette, PluginCapabilities, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
@@ -406,6 +406,11 @@ impl Screen {
         self.update_tabs();
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo) {
+        if self.mode_info.mode == InputMode::Scroll {
+            self.get_active_tab_mut()
+                .unwrap()
+                .clear_active_terminal_scroll();
+        }
         self.colors = mode_info.palette;
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
