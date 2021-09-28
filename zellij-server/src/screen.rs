@@ -406,7 +406,9 @@ impl Screen {
         self.update_tabs();
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo) {
-        if self.mode_info.mode == InputMode::Scroll {
+        if self.mode_info.mode == InputMode::Scroll
+            && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
+        {
             self.get_active_tab_mut()
                 .unwrap()
                 .clear_active_terminal_scroll();
