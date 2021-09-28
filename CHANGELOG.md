@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Automatically update `example/default.yaml` on release (https://github.com/zellij-org/zellij/pull/736)
 * Feature: allow mirroring sessions in multiple terminal windows (https://github.com/zellij-org/zellij/pull/740)
 * Feature: display a message when the current pane is in full-screen (https://github.com/zellij-org/zellij/pull/450)
+* Terminal compatibility: handle cursor movements outside scroll region (https://github.com/zellij-org/zellij/pull/746)
 
 ## [0.17.0] - 2021-09-15
 * New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
