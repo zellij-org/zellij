@@ -496,6 +496,6 @@ impl RemoteRunner {
 
 impl Drop for RemoteRunner {
     fn drop(&mut self) {
-        self.channel.close().unwrap();
+        let _ = self.channel.close();
     }
 }

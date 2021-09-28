@@ -843,7 +843,13 @@ impl Grid {
         }
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
-        self.viewport.clear();
+        let row_count_to_transfer = self.viewport.len();
+        transfer_rows_from_viewport_to_lines_above(
+            &mut self.viewport,
+            &mut self.lines_above,
+            row_count_to_transfer,
+            self.width,
+        );
         for _ in 0..self.height {
             let columns = vec![character; self.width];
             self.viewport.push(Row::from_columns(columns).canonical());
