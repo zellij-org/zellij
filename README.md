@@ -43,7 +43,7 @@ To get the best experience either install nerdfonts, or use the simplified ui by
 
 Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level, so long as they adhere to our [code of conduct](CODE_OF_CONDUCT.md).
 
-Please report any code of conduct violations to [aram@poor.dev](aram@poor.dev)
+Please report any code of conduct violations to [aram@poor.dev](mailto:aram@poor.dev)
 
 To get started, you can:
 1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
