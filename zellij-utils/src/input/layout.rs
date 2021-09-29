@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::plugins::{PluginOptions, PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -80,6 +80,8 @@ pub struct RunPluginFromYaml {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
     pub location: Url,
+    #[serde(default)]
+    pub options: PluginOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -88,6 +90,8 @@ pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
+    #[serde(default)]
+    pub options: PluginOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -503,6 +507,7 @@ impl TryFrom<RunFromYaml> for Run {
             RunFromYaml::Command(command) => Ok(Run::Command(command)),
             RunFromYaml::Plugin(plugin) => Ok(Run::Plugin(RunPlugin {
                 _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+                options: plugin.options,
                 location: plugin.location.try_into()?,
             })),
         }

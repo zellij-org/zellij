@@ -7,12 +7,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::config::ConfigFromYaml;
 use super::layout::{RunPlugin, RunPluginLocation};
-use crate::setup;
+use crate::{serde, serde_yaml, setup};
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use serde_yaml::Mapping;
 pub use zellij_tile::data::PluginTag;
 
 lazy_static! {
@@ -51,10 +52,11 @@ impl PluginsConfig {
                 run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 location: run.location.clone(),
-                options: "{}".into()
+                options: run.options.clone(),
             }),
             RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                options: plugin.options.merge(run.options.clone()),
                 ..plugin
             }),
         }
@@ -97,7 +99,7 @@ impl From<PluginConfigFromYaml> for PluginConfig {
             },
             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
             location: RunPluginLocation::Zellij(plugin.tag),
-            options: serde_json::to_string(&plugin.options).unwrap_or_else(|_| "{}".into())
+            options: PluginOptions::Map(plugin.options),
         }
     }
 }
@@ -113,10 +115,9 @@ pub struct PluginConfig {
     pub _allow_exec_host_cmd: bool,
     /// Original location of the
     pub location: RunPluginLocation,
-    /// Encoded JSON options string. This is a JSON string rather than a `serde_json::Value`
-    /// because the `bincode` crate that's used to serialize/deserialize messages between the
-    /// client and the server doesn't support unstructured data formats.
-    pub options: String
+    /// Custom plugin options
+    #[serde(default)]
+    pub options: PluginOptions,
 }
 
 impl PluginConfig {
@@ -177,7 +178,7 @@ pub struct PluginConfigFromYaml {
     #[serde(default)]
     pub run: PluginTypeFromYaml,
     #[serde(default)]
-    pub options: serde_yaml::Value,
+    pub options: Mapping,
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
 }
@@ -192,6 +193,82 @@ pub enum PluginTypeFromYaml {
 impl Default for PluginTypeFromYaml {
     fn default() -> Self {
         Self::Pane
+    }
+}
+
+/// PluginOptions are arbitrary options passed into plugins as they are instantiated. The variants
+/// of this enum are designed to work around a limitation Zellij has in client/server
+/// communications. Zellij uses the `bincode` crate to send messages between the client and server
+/// but it does not support serializing/deserializing `serde_yaml::Mapping` values. Therefore we
+/// have to implement custom Serialize/Deserialize traits that transcode the `PluginOptions::Map`
+/// variant to a `PluginOptions::Serialized` as it's being serialized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluginOptions {
+    Serialized(String),
+    Map(Mapping),
+}
+
+impl PluginOptions {
+    /// Merges two `PluginOptions` together to produce a new `PluginOptions` that is a union of the
+    /// two. If a `PluginOptions::Serialized` variant is used, it is converted into a
+    /// `PluginOptions::Map` variant, and a `PluginOptions::Map` is returned. If two maps have the
+    /// same field than the later map will override the first map.
+    fn merge(self, other: Self) -> Self {
+        let a = Mapping::from(self);
+        let b = Mapping::from(other);
+
+        PluginOptions::Map(a.into_iter().chain(b.into_iter()).collect())
+    }
+}
+
+impl Default for PluginOptions {
+    fn default() -> Self {
+        Self::Map(Mapping::default())
+    }
+}
+
+impl From<PluginOptions> for String {
+    fn from(options: PluginOptions) -> Self {
+        match options {
+            PluginOptions::Serialized(string) => string,
+            PluginOptions::Map(mapping) => serde_yaml::to_string(&mapping).unwrap(),
+        }
+    }
+}
+
+impl From<PluginOptions> for Mapping {
+    fn from(options: PluginOptions) -> Self {
+        match options {
+            PluginOptions::Serialized(string) => serde_yaml::from_str(&string).unwrap(),
+            PluginOptions::Map(mapping) => mapping,
+        }
+    }
+}
+
+impl Serialize for PluginOptions {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Serialized(string) => string.serialize(serializer),
+            Self::Map(mappings) => serde_yaml::to_string(&mappings)
+                .unwrap()
+                .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PluginOptions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            serde_yaml::Mapping::deserialize(deserializer).map(PluginOptions::Map)
+        } else {
+            String::deserialize(deserializer).map(PluginOptions::Serialized)
+        }
     }
 }
 
@@ -231,6 +308,34 @@ mod tests {
     use std::convert::TryInto;
 
     #[test]
+    fn plugin_options_merge_together() -> Result<(), ConfigError> {
+        let a = PluginOptions::Map(serde_yaml::from_str(
+            "
+            foo: bar
+            new: car
+            ",
+        )?);
+        let b = PluginOptions::Map(serde_yaml::from_str(
+            "
+            boo: bar
+            foo: boo
+            ",
+        )?);
+
+        assert_eq!(
+            a.merge(b),
+            PluginOptions::Map(serde_yaml::from_str(
+                "
+                new: car
+                boo: bar
+                foo: boo
+                "
+            )?)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn run_plugin_permissions_are_inherited() -> Result<(), ConfigError> {
         let yaml_plugins: PluginsConfigFromYaml = serde_yaml::from_str(
             "
@@ -244,12 +349,14 @@ mod tests {
         assert_eq!(
             plugins.get(RunPlugin {
                 _allow_exec_host_cmd: true,
-                location: RunPluginLocation::Zellij(PluginTag::new("boo"))
+                location: RunPluginLocation::Zellij(PluginTag::new("boo")),
+                options: PluginOptions::default(),
             }),
             Some(PluginConfig {
                 _allow_exec_host_cmd: true,
                 path: PathBuf::from("boo.wasm"),
                 location: RunPluginLocation::Zellij(PluginTag::new("boo")),
+                options: PluginOptions::default(),
                 run: PluginType::Pane(None),
             })
         );
@@ -306,12 +413,14 @@ mod tests {
         assert_eq!(
             plugins.get(RunPlugin {
                 _allow_exec_host_cmd: false,
-                location: RunPluginLocation::Zellij(PluginTag::new("tab-bar"))
+                location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                options: PluginOptions::default(),
             }),
             Some(PluginConfig {
                 _allow_exec_host_cmd: false,
                 path: PathBuf::from("boo.wasm"),
                 location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                options: PluginOptions::default(),
                 run: PluginType::Pane(None),
             })
         );
