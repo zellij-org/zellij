@@ -100,5 +100,5 @@ pub enum Sessions {
         /// Destroys the given session.
         #[structopt(long, short)]
         target_session: Option<String>,
-    }
+    },
 }

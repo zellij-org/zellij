@@ -2,8 +2,8 @@ use std::os::unix::fs::FileTypeExt;
 use std::{fs, io, process};
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
-    interprocess::local_socket::LocalSocketStream,
     input::actions::Action,
+    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
 

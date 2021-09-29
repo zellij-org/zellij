@@ -30,26 +30,25 @@ pub fn main() {
     if let Some(Command::Sessions(Sessions::KillSession {
         all,
         target_session,
-    })) = opts.command.clone() {
+    })) = opts.command.clone()
+    {
         if all {
             match get_sessions() {
-                Ok(sessions) => {
-                    match target_session {
-                        Some(target) => {
-                            for session in sessions.iter() {
-                                if session == &target {
-                                    continue;
-                                }
-                                kill_session(session);
+                Ok(sessions) => match target_session {
+                    Some(target) => {
+                        for session in sessions.iter() {
+                            if session == &target {
+                                continue;
                             }
-                        },
-                        None => {
-                            for session in sessions.iter() {
-                                kill_session(session);
-                            }
+                            kill_session(session);
                         }
                     }
-                }
+                    None => {
+                        for session in sessions.iter() {
+                            kill_session(session);
+                        }
+                    }
+                },
                 Err(e) => {
                     eprintln!("Error occured: {:?}", e);
                     process::exit(1);
@@ -58,7 +57,7 @@ pub fn main() {
         } else {
             kill_session(target_session.as_ref().unwrap());
         }
-        
+
         process::exit(0);
     }
 
