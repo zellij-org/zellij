@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
- Tip: Alt + n => open new pane. Alt + [] or hjkl => navigate between panes.                                             
+ (FULLSCREEN): + 1 hidden panes                                                                                         
