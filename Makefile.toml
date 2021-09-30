@@ -159,7 +159,7 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit"]
+dependencies = [ "update-default-config", "build-plugins-release", "wasm-opt-plugins", "release-commit"]
 run_task = "publish-zellij"
 
 [tasks.release-commit]
@@ -205,6 +205,6 @@ cwd = "zellij-tile-utils"
 script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
-dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils", "update-default-config"]
+dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils",]
 command = "cargo"
 args = ["publish"]
