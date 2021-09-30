@@ -104,7 +104,7 @@ pub fn get_current_ctx() -> ErrorContext {
 }
 
 /// A representation of the call stack.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct ErrorContext {
     calls: [ContextType; MAX_THREAD_CALL_STACK],
 }
@@ -161,7 +161,7 @@ impl Display for ErrorContext {
 /// Complex variants store a variant of a related enum, whose variants can be built from
 /// the corresponding Zellij MSPC instruction enum variants ([`ScreenInstruction`],
 /// [`PtyInstruction`], [`ClientInstruction`], etc).
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum ContextType {
     /// A screen-related call.
     Screen(ScreenContext),

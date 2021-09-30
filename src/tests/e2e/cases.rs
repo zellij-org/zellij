@@ -926,6 +926,7 @@ pub fn mirrored_sessions() {
         // if no test timed out, we break the loop and assert the snapshot
         let mut first_runner =
             RemoteRunner::new_with_session_name("mirrored_sessions", fake_win_size, session_name)
+                .dont_panic()
                 .add_step(Step {
                     name: "Split pane to the right",
                     instruction: |mut remote_terminal: RemoteTerminal| -> bool {

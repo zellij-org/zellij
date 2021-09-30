@@ -8,7 +8,7 @@ use zellij_utils::termion::event::Key;
 use zellij_utils::zellij_tile::data::Palette;
 
 use crate::InputInstruction;
-use crate::{os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting};
+use crate::{os_input_output::{ClientOsApi, StdinPoller}, ClientInstruction, CommandIsExecuting};
 
 use std::path::Path;
 
@@ -133,7 +133,9 @@ impl ClientOsApi for FakeClientOsApi {
     }
     fn enable_mouse(&self) {}
     fn disable_mouse(&self) {}
-    fn start_action_repeater(&mut self, _action: Action) {}
+    fn stdin_poller(&self) -> StdinPoller {
+        unimplemented!()
+    }
 }
 
 fn extract_actions_sent_to_server(
