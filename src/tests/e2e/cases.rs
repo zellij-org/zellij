@@ -960,6 +960,7 @@ pub fn mirrored_sessions() {
 
         let mut second_runner =
             RemoteRunner::new_existing_session("mirrored_sessions", fake_win_size, session_name)
+                .dont_panic()
                 .add_step(Step {
                     name: "Make sure session appears correctly",
                     instruction: |remote_terminal: RemoteTerminal| -> bool {
