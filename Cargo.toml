@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.19.0"
+version = "0.18.1"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2018"
 description = "A terminal workspace with batteries included"
@@ -14,9 +14,9 @@ resolver = "2"
 
 [dependencies]
 names = "0.11.0"
-zellij-client = { path = "zellij-client/", version = "0.19.0" }
-zellij-server = { path = "zellij-server/", version = "0.19.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.19.0" }
+zellij-client = { path = "zellij-client/", version = "0.18.1" }
+zellij-server = { path = "zellij-server/", version = "0.18.1" }
+zellij-utils = { path = "zellij-utils/", version = "0.18.1" }
 log = "0.4.14"
 
 [dev-dependencies]
