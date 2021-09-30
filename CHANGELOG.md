@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 * HOTFIX: mouse selection now working (https://github.com/zellij-org/zellij/pull/752)
+* HOTFIX: prevent strider from descending into /host folder (https://github.com/zellij-org/zellij/pull/753)
 
 ## [0.18.0] - 2021-09-29
 * Fix: Properly open new pane with CWD also when switching to a new tab (https://github.com/zellij-org/zellij/pull/729)
