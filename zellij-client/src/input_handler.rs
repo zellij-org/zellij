@@ -157,8 +157,6 @@ impl InputHandler {
             }
             MouseEvent::Hold(point) => {
                 self.dispatch_action(Action::MouseHold(point));
-                self.os_input
-                    .start_action_repeater(Action::MouseHold(point));
             }
         }
     }

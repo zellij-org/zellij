@@ -1,4 +1,3 @@
-use zellij_utils::input::actions::Action;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
 
@@ -97,7 +96,7 @@ pub trait ClientOsApi: Send + Sync {
     fn enable_mouse(&self);
     fn disable_mouse(&self);
     // Repeatedly send action, until stdin is readable again
-    fn start_action_repeater(&mut self, action: Action);
+    fn stdin_poller(&self) -> StdinPoller;
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -204,16 +203,8 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
 
-    fn start_action_repeater(&mut self, action: Action) {
-        let mut poller = StdinPoller::default();
-
-        loop {
-            let ready = poller.ready();
-            if ready {
-                break;
-            }
-            self.send_to_server(ClientToServerMsg::Action(action.clone()));
-        }
+    fn stdin_poller(&self) -> StdinPoller {
+        StdinPoller::default()
     }
 }
 
@@ -237,7 +228,7 @@ pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
 
-struct StdinPoller {
+pub struct StdinPoller {
     poll: Poll,
     events: Events,
     timeout: time::Duration,
@@ -245,7 +236,7 @@ struct StdinPoller {
 
 impl StdinPoller {
     // use mio poll to check if stdin is readable without blocking
-    fn ready(&mut self) -> bool {
+    pub fn ready(&mut self) -> bool {
         self.poll
             .poll(&mut self.events, Some(self.timeout))
             .expect("could not poll stdin for readiness");
