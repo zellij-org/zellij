@@ -20,7 +20,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{mouse::MouseEvent, actions::Action, config::Config, options::Options},
+    input::{actions::Action, config::Config, mouse::MouseEvent, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termion,
 };
@@ -206,7 +206,10 @@ pub fn start_client(
                             // place
                             let mut poller = os_input.stdin_poller();
                             send_input_instructions
-                                .send(InputInstruction::KeyEvent(key_event.clone(), raw_bytes.clone()))
+                                .send(InputInstruction::KeyEvent(
+                                    key_event.clone(),
+                                    raw_bytes.clone(),
+                                ))
                                 .unwrap();
                             loop {
                                 let ready = poller.ready();
@@ -214,7 +217,10 @@ pub fn start_client(
                                     break;
                                 }
                                 send_input_instructions
-                                    .send(InputInstruction::KeyEvent(key_event.clone(), raw_bytes.clone()))
+                                    .send(InputInstruction::KeyEvent(
+                                        key_event.clone(),
+                                        raw_bytes.clone(),
+                                    ))
                                     .unwrap();
                             }
                             continue;

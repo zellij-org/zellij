@@ -8,7 +8,10 @@ use zellij_utils::termion::event::Key;
 use zellij_utils::zellij_tile::data::Palette;
 
 use crate::InputInstruction;
-use crate::{os_input_output::{ClientOsApi, StdinPoller}, ClientInstruction, CommandIsExecuting};
+use crate::{
+    os_input_output::{ClientOsApi, StdinPoller},
+    ClientInstruction, CommandIsExecuting,
+};
 
 use std::path::Path;
 

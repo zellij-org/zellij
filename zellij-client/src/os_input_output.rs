@@ -1,4 +1,3 @@
-use zellij_utils::input::actions::Action;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
 
