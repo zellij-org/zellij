@@ -263,6 +263,9 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         //unimplemented!()
     }
+    fn is_scrolled(&self) -> bool {
+        false
+    }
 
     fn active_at(&self) -> Instant {
         self.active_at

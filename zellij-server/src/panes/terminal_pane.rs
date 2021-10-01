@@ -320,6 +320,9 @@ impl Pane for TerminalPane {
         self.grid.reset_viewport();
         self.set_should_render(true);
     }
+    fn is_scrolled(&self) -> bool {
+        self.grid.is_scrolled
+    }
 
     fn active_at(&self) -> Instant {
         self.active_at
