@@ -40,7 +40,7 @@ const MIN_TERMINAL_WIDTH: usize = 5;
 const RESIZE_PERCENT: f64 = 5.0;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
-const PENDING_EVENTS_SET_SIZE: usize = 100;
+const PENDING_EVENTS_SET_SIZE: usize = 200;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
