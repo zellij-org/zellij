@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
 
 ## [0.18.1] - 2021-09-30
 
@@ -230,7 +231,7 @@ This version is mostly an installation hotfix.
 * Terminal compatibility: fix support for CSI subparameters (https://github.com/zellij-org/zellij/pull/469)
 * Move the sync command to tab mode (https://github.com/zellij-org/zellij/pull/412)
 * Fix exit code of `dump-default-config` (https://github.com/zellij-org/zellij/pull/480)
-* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471) 
+* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471)
 * Terminal Compatibility: various behaviour fixes (https://github.com/zellij-org/zellij/pull/486)
 * Fix handling of `$HOME` `config` directory, especially relevant for darwin systems (https://github.com/zellij-org/zellij/pull/487)
 
