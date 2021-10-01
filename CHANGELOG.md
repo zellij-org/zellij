@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
+* Add: Treat empty config files as empty yaml documents (https://github.com/zellij-org/zellij/pull/720)
 
 ## [0.18.1] - 2021-09-30
 
