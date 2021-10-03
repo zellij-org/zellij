@@ -2031,6 +2031,210 @@ impl Tab {
         self.active_terminal = updated_active_terminal;
         false
     }
+    pub fn move_active_pane_down(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_pane();
+        let updated_active_terminal = if let Some(active) = active_terminal {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(&p) => {
+                    let previously_active_position =
+                        self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                    let prev_geom = previously_active_position.position_and_size();
+                    let prev_geom_override = previously_active_position.geom_override();
+
+                    let next_active_position = self.panes.get_mut(&p).unwrap();
+                    let next_geom = next_active_position.position_and_size();
+                    let next_geom_override = next_active_position.geom_override();
+                    next_active_position.set_geom(prev_geom);
+                    if let Some(geom) = prev_geom_override {
+                        next_active_position.get_geom_override(geom);
+                    }
+                    next_active_position.set_should_render(true);
+
+                    let previously_active_position =
+                        self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                    previously_active_position.set_geom(next_geom);
+                    if let Some(geom) = next_geom_override {
+                        previously_active_position.get_geom_override(geom);
+                    }
+                    previously_active_position.set_should_render(true);
+
+                    Some(p)
+                }
+                None => Some(active.pid()),
+            }
+        } else {
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
+        self.render();
+    }
+    pub fn move_active_pane_up(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_pane();
+        let updated_active_terminal = if let Some(active) = active_terminal {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(&p) => {
+                    let previously_active_position =
+                        self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                    let prev_geom = previously_active_position.position_and_size();
+                    let prev_geom_override = previously_active_position.geom_override();
+
+                    let next_active_position = self.panes.get_mut(&p).unwrap();
+                    let next_geom = next_active_position.position_and_size();
+                    let next_geom_override = next_active_position.geom_override();
+                    next_active_position.set_geom(prev_geom);
+                    if let Some(geom) = prev_geom_override {
+                        next_active_position.get_geom_override(geom);
+                    }
+                    next_active_position.set_should_render(true);
+
+                    let previously_active_position =
+                        self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                    previously_active_position.set_geom(next_geom);
+                    if let Some(geom) = next_geom_override {
+                        previously_active_position.get_geom_override(geom);
+                    }
+                    previously_active_position.set_should_render(true);
+
+                    Some(p)
+                }
+                None => Some(active.pid()),
+            }
+        } else {
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
+        self.render();
+    }
+    pub fn move_active_pane_right(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_pane();
+        let updated_active_terminal = if let Some(active) = active_terminal {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(&p) => {
+                    let previously_active_position =
+                        self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                    let prev_geom = previously_active_position.position_and_size();
+                    let prev_geom_override = previously_active_position.geom_override();
+
+                    let next_active_position = self.panes.get_mut(&p).unwrap();
+                    let next_geom = next_active_position.position_and_size();
+                    let next_geom_override = next_active_position.geom_override();
+                    next_active_position.set_geom(prev_geom);
+                    if let Some(geom) = prev_geom_override {
+                        next_active_position.get_geom_override(geom);
+                    }
+                    next_active_position.set_should_render(true);
+
+                    let previously_active_position =
+                        self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                    previously_active_position.set_geom(next_geom);
+                    if let Some(geom) = next_geom_override {
+                        previously_active_position.get_geom_override(geom);
+                    }
+                    previously_active_position.set_should_render(true);
+
+                    Some(p)
+                }
+                None => Some(active.pid()),
+            }
+        } else {
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
+        self.render();
+    }
+    pub fn move_active_pane_left(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_terminal = self.get_active_pane();
+        let updated_active_terminal = if let Some(active) = active_terminal {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            match next_index {
+                Some(&p) => {
+                    let previously_active_position =
+                        self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                    let prev_geom = previously_active_position.position_and_size();
+                    let prev_geom_override = previously_active_position.geom_override();
+
+                    let next_active_position = self.panes.get_mut(&p).unwrap();
+                    let next_geom = next_active_position.position_and_size();
+                    let next_geom_override = next_active_position.geom_override();
+                    next_active_position.set_geom(prev_geom);
+                    if let Some(geom) = prev_geom_override {
+                        next_active_position.get_geom_override(geom);
+                    }
+                    next_active_position.set_should_render(true);
+
+                    let previously_active_position =
+                        self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                    previously_active_position.set_geom(next_geom);
+                    if let Some(geom) = next_geom_override {
+                        previously_active_position.get_geom_override(geom);
+                    }
+                    previously_active_position.set_should_render(true);
+
+                    Some(p)
+                }
+                None => Some(active.pid()),
+            }
+        } else {
+            Some(active_terminal.unwrap().pid())
+        };
+        self.active_terminal = updated_active_terminal;
+        self.render();
+    }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
             let terminal = self.panes.get(t).unwrap();
