@@ -631,7 +631,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::CloseFocusedPane => {
                 screen.get_active_tab_mut().unwrap().close_focused_pane();
                 screen.update_tabs();
-                screen.render();
             }
             ScreenInstruction::SetSelectable(id, selectable, tab_index) => {
                 screen.get_indexed_tab_mut(tab_index).map_or_else(
@@ -648,7 +647,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id) => {
                 screen.get_active_tab_mut().unwrap().close_pane(id);
                 screen.update_tabs();
-                screen.render();
             }
             ScreenInstruction::ToggleActiveTerminalFullscreen => {
                 screen
