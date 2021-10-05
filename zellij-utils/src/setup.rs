@@ -159,6 +159,17 @@ impl Setup {
             _ => false,
         };
 
+        // setup functions that don't require deserialisation of the config
+        if let Some(Command::Setup(ref setup)) = &opts.command {
+            setup.from_cli().map_or_else(
+                |e| {
+                    eprintln!("{:?}", e);
+                    process::exit(1);
+                },
+                |_| {},
+            );
+        };
+
         let config = if !clean {
             match Config::try_from(opts) {
                 Ok(config) => config,
@@ -190,31 +201,28 @@ impl Setup {
         };
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
-            setup.from_cli(opts, &config_options).map_or_else(
-                |e| {
-                    eprintln!("{:?}", e);
-                    process::exit(1);
-                },
-                |_| {},
-            );
+            setup
+                .from_cli_with_options(opts, &config_options)
+                .map_or_else(
+                    |e| {
+                        eprintln!("{:?}", e);
+                        process::exit(1);
+                    },
+                    |_| {},
+                );
         };
 
         Ok((config, layout, config_options))
     }
 
     /// General setup helpers
-    pub fn from_cli(&self, opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
+    pub fn from_cli(&self) -> std::io::Result<()> {
         if self.clean {
             return Ok(());
         }
 
         if self.dump_config {
             dump_default_config()?;
-            std::process::exit(0);
-        }
-
-        if self.check {
-            Setup::check_defaults_config(opts, config_options)?;
             std::process::exit(0);
         }
 
@@ -228,6 +236,19 @@ impl Setup {
             std::process::exit(0);
         }
 
+        Ok(())
+    }
+
+    /// Checks the merged configuration
+    pub fn from_cli_with_options(
+        &self,
+        opts: &CliArgs,
+        config_options: &Options,
+    ) -> std::io::Result<()> {
+        if self.check {
+            Setup::check_defaults_config(opts, config_options)?;
+            std::process::exit(0);
+        }
         Ok(())
     }
 
