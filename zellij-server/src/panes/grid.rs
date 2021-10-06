@@ -361,6 +361,7 @@ pub struct Grid {
     pub pending_messages_to_pty: Vec<Vec<u8>>,
     pub selection: Selection,
     pub title: Option<String>,
+    pub is_scrolled: bool,
 }
 
 impl Debug for Grid {
@@ -405,6 +406,7 @@ impl Grid {
             title_stack: vec![],
             title: None,
             changed_colors: None,
+            is_scrolled: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -537,6 +539,7 @@ impl Grid {
     }
     pub fn scroll_up_one_line(&mut self) {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+            self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
@@ -571,6 +574,9 @@ impl Grid {
 
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
+        }
+        if self.lines_below.is_empty() {
+            self.is_scrolled = false;
         }
     }
     fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
@@ -843,7 +849,13 @@ impl Grid {
         }
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
-        self.viewport.clear();
+        let row_count_to_transfer = self.viewport.len();
+        transfer_rows_from_viewport_to_lines_above(
+            &mut self.viewport,
+            &mut self.lines_above,
+            row_count_to_transfer,
+            self.width,
+        );
         for _ in 0..self.height {
             let columns = vec![character; self.width];
             self.viewport.push(Row::from_columns(columns).canonical());
@@ -883,14 +895,16 @@ impl Grid {
             self.viewport.push(new_row);
         }
         if self.cursor.y == self.height - 1 {
-            let row_count_to_transfer = 1;
-            transfer_rows_from_viewport_to_lines_above(
-                &mut self.viewport,
-                &mut self.lines_above,
-                row_count_to_transfer,
-                self.width,
-            );
-            self.selection.move_up(1);
+            if self.scroll_region.is_none() {
+                let row_count_to_transfer = 1;
+                transfer_rows_from_viewport_to_lines_above(
+                    &mut self.viewport,
+                    &mut self.lines_above,
+                    row_count_to_transfer,
+                    self.width,
+                );
+                self.selection.move_up(1);
+            }
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -1051,7 +1065,11 @@ impl Grid {
                 } else {
                     0
                 };
-                self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
+                if y >= scroll_region_top && y <= scroll_region_bottom {
+                    self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
+                } else {
+                    self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
+                }
                 self.pad_lines_until(self.cursor.y, pad_character);
                 self.pad_current_line_until(self.cursor.x);
             }

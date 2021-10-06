@@ -39,7 +39,19 @@ Or you can download a prebuilt binary from our [Releases](https://github.com/zel
 The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
 To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui`, or putting `simplified_ui: true` in the config file.
 
-## How do I hack on it? (Contributing)
+## How do I get involved?
+
+Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level, so long as they adhere to our [code of conduct](CODE_OF_CONDUCT.md).
+
+Please report any code of conduct violations to [aram@poor.dev](mailto:aram@poor.dev)
+
+To get started, you can:
+1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
+2. Drop by our [chat](https://discord.gg/CrUAFH3) and ask what you can work on, or how to get started.
+3. Open an issue with your idea(s) for the project or tell us about them in our chat.
+
+## How do I start a development environment?
+
 * Clone the project
 * Install cargo-make with `cargo install --force cargo-make`
 * In the project folder, for debug builds run: `cargo make run`
@@ -54,16 +66,7 @@ For configuring Zellij, please see the [Configuration documentation](https://zel
 
 Zellij should be ready for everyday use, but it's still classified as a beta. This means that there might be a rare crash or wrong behaviour here and there, but that once found it should be fixed rather quickly. If this happens to you, we would be very happy if you could open an issue and tell us how to reproduce it as best you can.
 
-## How do I get involved?
 
-Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level.
-
-To get started, you can:
-1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
-2. Drop by our [chat](https://discord.gg/CrUAFH3) and ask what you can work on, or how to get started.
-3. Open an issue with your idea(s) for the project or tell us about them in our chat.
-
-And most importantly, please read our [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Roadmap
 This section contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.

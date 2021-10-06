@@ -2,11 +2,8 @@
 
 Thanks for considering to contribute to Zellij!
 
-**First**: if you're unsure or afraid of anything, just ask on our [Discord
-server](https://discord.gg/MHV3n76PDq) or submit the issue or pull request anyway. You
-won't be yelled at for giving it your best effort. The worst that can happen is
-that you'll be politely asked to change something. We appreciate any sort of
-contributions, and don't want a wall of rules to get in the way of that.
+**First**: if you're unsure of anything, feel free to ask on our [Discord
+server](https://discord.gg/MHV3n76PDq). We're a friendly and welcoming bunch!
 
 # Code of Conduct
 
@@ -15,7 +12,9 @@ all contributors are expected to adhere to.
 
 ## Building
 To build Zellij, we're using cargo-make – you can install it by running `cargo
-install --force cargo-make`. To edit a manpage mandown crate (`cargo install
+install --force cargo-make`. 
+
+To edit our manpage, the mandown crate (`cargo install
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
 Here are some of the commands currently supported by the build system:

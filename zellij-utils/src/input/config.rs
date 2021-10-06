@@ -106,7 +106,17 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: Option<ConfigFromYaml> = serde_yaml::from_str(yaml_config)?;
+        let config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if yaml_config.is_empty() {
+                    return Ok(Config::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
 
         match config_from_yaml {
             None => Ok(Config::default()),

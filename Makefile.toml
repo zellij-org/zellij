@@ -47,13 +47,15 @@ args = ["build"]
 args = ["build", "--release"]
 
 [tasks.build-dev-data-dir]
+dependencies = ["build-plugins"]
 script_runner = "@duckscript"
 script = '''
-asset_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets
 target_dir = set ${CARGO_TARGET_DIR}
 data_dir = set ${target_dir}/dev-data
 rm -r ${data_dir}
 plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
+mkdir ${data_dir}
+mkdir ${data_dir}/plugins
 for plugin in ${plugins}
     plugin_name = basename ${plugin}
     cp ${plugin} ${data_dir}/plugins/${plugin_name}
@@ -159,7 +161,7 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = ["build-plugins-release", "wasm-opt-plugins", "release-commit"]
+dependencies = [ "update-default-config", "build-plugins-release", "wasm-opt-plugins", "release-commit"]
 run_task = "publish-zellij"
 
 [tasks.release-commit]
@@ -205,6 +207,6 @@ cwd = "zellij-tile-utils"
 script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
-dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils", "update-default-config"]
+dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils",]
 command = "cargo"
 args = ["publish"]

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
+* Add: Treat empty config files as empty yaml documents (https://github.com/zellij-org/zellij/pull/720)
+* Fix: Commands that don't interact with the config file don't throw errors on malformed config files (https://github.com/zellij-org/zellij/pull/765)
+* Add: Add config options to default config file (https://github.com/zellij-org/zellij/pull/766)
+
+## [0.18.1] - 2021-09-30
+
+* HOTFIX: mouse selection now working (https://github.com/zellij-org/zellij/pull/752)
+* HOTFIX: prevent strider from descending into /host folder (https://github.com/zellij-org/zellij/pull/753)
+
+## [0.18.0] - 2021-09-29
 * Fix: Properly open new pane with CWD also when switching to a new tab (https://github.com/zellij-org/zellij/pull/729)
 * Feature: Option to create a new session if attach fails (`zellij attach --create`) (https://github.com/zellij-org/zellij/pull/731)
 * Feature: Added the new `Visible` event, allowing plugins to detect if they are visible in the current tab (https://github.com/zellij-org/zellij/pull/717)
@@ -14,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Automatically update `example/default.yaml` on release (https://github.com/zellij-org/zellij/pull/736)
 * Feature: allow mirroring sessions in multiple terminal windows (https://github.com/zellij-org/zellij/pull/740)
 * Feature: display a message when the current pane is in full-screen (https://github.com/zellij-org/zellij/pull/450)
+* Terminal compatibility: handle cursor movements outside scroll region (https://github.com/zellij-org/zellij/pull/746)
+* Terminal compatibility: scroll lines into scrollback when clearing viewport (https://github.com/zellij-org/zellij/pull/747)
 
 ## [0.17.0] - 2021-09-15
 * New panes/tabs now open in CWD of focused pane (https://github.com/zellij-org/zellij/pull/691)
@@ -221,7 +234,7 @@ This version is mostly an installation hotfix.
 * Terminal compatibility: fix support for CSI subparameters (https://github.com/zellij-org/zellij/pull/469)
 * Move the sync command to tab mode (https://github.com/zellij-org/zellij/pull/412)
 * Fix exit code of `dump-default-config` (https://github.com/zellij-org/zellij/pull/480)
-* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471) 
+* Feature: Switch tabs using `Alt + h/l` in normal mode if there are no panes in the direction (https://github.com/zellij-org/zellij/pull/471)
 * Terminal Compatibility: various behaviour fixes (https://github.com/zellij-org/zellij/pull/486)
 * Fix handling of `$HOME` `config` directory, especially relevant for darwin systems (https://github.com/zellij-org/zellij/pull/487)
 

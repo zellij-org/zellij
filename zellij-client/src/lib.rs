@@ -20,7 +20,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, options::Options},
+    input::{actions::Action, config::Config, mouse::MouseEvent, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termion,
 };
@@ -197,6 +197,35 @@ pub fn start_client(
                 let stdin_buffer = os_input.read_from_stdin();
                 for key_result in stdin_buffer.events_and_raw() {
                     let (key_event, raw_bytes) = key_result.unwrap();
+                    if let termion::event::Event::Mouse(me) = key_event {
+                        let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+                        if let MouseEvent::Hold(_) = mouse_event {
+                            // as long as the user is holding the mouse down (no other stdin, eg.
+                            // MouseRelease) we need to keep sending this instruction to the app,
+                            // because the app itself doesn't have an event loop in the proper
+                            // place
+                            let mut poller = os_input.stdin_poller();
+                            send_input_instructions
+                                .send(InputInstruction::KeyEvent(
+                                    key_event.clone(),
+                                    raw_bytes.clone(),
+                                ))
+                                .unwrap();
+                            loop {
+                                let ready = poller.ready();
+                                if ready {
+                                    break;
+                                }
+                                send_input_instructions
+                                    .send(InputInstruction::KeyEvent(
+                                        key_event.clone(),
+                                        raw_bytes.clone(),
+                                    ))
+                                    .unwrap();
+                            }
+                            continue;
+                        }
+                    }
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(key_event, raw_bytes))
                         .unwrap();
