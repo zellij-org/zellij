@@ -303,6 +303,7 @@ pub enum ServerContext {
     ClientExit,
     RemoveClient,
     Error,
+    KillSession,
     DetachSession,
     AttachClient,
 }

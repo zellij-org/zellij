@@ -2,7 +2,6 @@ use std::os::unix::fs::FileTypeExt;
 use std::{fs, io, process};
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
-    input::actions::Action,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
@@ -89,7 +88,7 @@ pub(crate) fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            IpcSenderWithContext::new(stream).send(ClientToServerMsg::Action(Action::Quit));
+            IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
         }
         Err(e) => {
             eprintln!("Error occured: {:?}", e);
