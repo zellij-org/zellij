@@ -4,7 +4,7 @@ use crate::{
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::PluginInstruction,
-    ServerInstruction,
+    ClientId, ServerInstruction,
 };
 use async_std::{
     future::timeout as async_timeout,
@@ -36,7 +36,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminalVertically(Option<TerminalAction>),
     SpawnTerminalHorizontally(Option<TerminalAction>),
     UpdateActivePane(Option<PaneId>),
-    NewTab(Option<TerminalAction>, Option<TabLayout>),
+    NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -96,7 +96,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
             PtyInstruction::UpdateActivePane(pane_id) => {
                 pty.set_active_pane(pane_id);
             }
-            PtyInstruction::NewTab(terminal_action, tab_layout) => {
+            PtyInstruction::NewTab(terminal_action, tab_layout, client_id) => {
                 let tab_name = tab_layout.as_ref().and_then(|layout| {
                     if layout.name.is_empty() {
                         None
@@ -109,7 +109,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                 let layout: Layout =
                     Layout::try_from(merged_layout).unwrap_or_else(|err| panic!("{}", err));
 
-                pty.spawn_terminals_for_layout(layout, terminal_action.clone());
+                pty.spawn_terminals_for_layout(layout, terminal_action.clone(), client_id);
 
                 if let Some(tab_name) = tab_name {
                     // clear current name at first
@@ -284,6 +284,7 @@ impl Pty {
         &mut self,
         layout: Layout,
         default_shell: Option<TerminalAction>,
+        client_id: ClientId,
     ) {
         let default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
         let extracted_run_instructions = layout.extract_run_instructions();
@@ -313,9 +314,10 @@ impl Pty {
         }
         self.bus
             .senders
-            .send_to_screen(ScreenInstruction::ApplyLayout(
+            .send_to_screen(ScreenInstruction::NewTab(
                 layout,
                 new_pane_pids.clone(),
+                client_id,
             ))
             .unwrap();
         for id in new_pane_pids {

@@ -8,11 +8,11 @@ use crate::{
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     wasm_vm::PluginInstruction,
-    ServerInstruction, SessionState,
+    ClientId, ServerInstruction,
 };
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::RawFd;
-use std::sync::{mpsc::channel, Arc, RwLock};
+use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::{
     cmp::Reverse,
@@ -40,7 +40,6 @@ const MIN_TERMINAL_WIDTH: usize = 5;
 const RESIZE_PERCENT: f64 = 5.0;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
-const PENDING_EVENTS_SET_SIZE: usize = 200;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -97,6 +96,28 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     (columns_offset, rows_offset)
 }
 
+#[derive(Clone, Debug)]
+pub struct Output {
+    pub client_render_instructions: HashMap<ClientId, String>,
+}
+
+impl Output {
+    pub fn new(client_ids: &HashSet<ClientId>) -> Self {
+        let mut client_render_instructions = HashMap::new();
+        for client_id in client_ids {
+            client_render_instructions.insert(*client_id, String::new());
+        }
+        Output {
+            client_render_instructions,
+        }
+    }
+    pub fn push_str_to_all_clients(&mut self, to_push: &str) {
+        for render_instruction in self.client_render_instructions.values_mut() {
+            render_instruction.push_str(to_push)
+        }
+    }
+}
+
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
@@ -112,10 +133,10 @@ pub(crate) struct Tab {
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
-    session_state: Arc<RwLock<SessionState>>,
     pub mode_info: ModeInfo,
     pub colors: Palette,
     pub is_active: bool,
+    connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
 }
@@ -268,8 +289,8 @@ impl Tab {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         colors: Palette,
-        session_state: Arc<RwLock<SessionState>>,
         draw_pane_frames: bool,
+        client_id: ClientId,
     ) -> Self {
         let panes = BTreeMap::new();
 
@@ -278,6 +299,9 @@ impl Tab {
         } else {
             name
         };
+
+        let mut connected_clients = HashSet::new();
+        connected_clients.insert(client_id);
 
         Tab {
             index,
@@ -296,10 +320,10 @@ impl Tab {
             should_clear_display_before_rendering: false,
             mode_info,
             colors,
-            session_state,
             draw_pane_frames,
             pending_vte_events: HashMap::new(),
             is_active: true,
+            connected_clients,
         }
     }
 
@@ -397,7 +421,23 @@ impl Tab {
         // This is the end of the nasty viewport hack...
         // FIXME: Active / new / current terminal, should be pane
         self.active_terminal = self.panes.iter().map(|(id, _)| id.to_owned()).next();
-        self.render();
+    }
+    pub fn add_client(&mut self, client_id: ClientId) {
+        self.connected_clients.insert(client_id);
+        // TODO: we might be able to avoid this, we do this so that newly connected clients will
+        // necessarily get a full render
+        self.set_force_render();
+    }
+    pub fn add_multiple_clients(&mut self, client_ids: &[ClientId]) {
+        for client_id in client_ids {
+            self.connected_clients.insert(*client_id);
+        }
+    }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        self.connected_clients.remove(&client_id);
+    }
+    pub fn drain_connected_clients(&mut self) -> Vec<ClientId> {
+        self.connected_clients.drain().collect()
     }
     pub fn new_pane(&mut self, pid: PaneId) {
         self.close_down_to_max_terminals();
@@ -470,7 +510,6 @@ impl Tab {
             }
         }
         self.active_terminal = Some(pid);
-        self.render();
     }
     pub fn horizontal_split(&mut self, pid: PaneId) {
         self.close_down_to_max_terminals();
@@ -500,7 +539,6 @@ impl Tab {
                 self.panes.insert(pid, Box::new(new_terminal));
                 self.active_terminal = Some(pid);
                 self.relayout_tab(Direction::Vertical);
-                self.render();
             }
         }
     }
@@ -529,7 +567,6 @@ impl Tab {
             }
             self.active_terminal = Some(pid);
             self.relayout_tab(Direction::Horizontal);
-            self.render();
         }
     }
     pub fn get_active_pane(&self) -> Option<&dyn Pane> {
@@ -555,10 +592,10 @@ impl Tab {
             if terminal_output.is_scrolled() {
                 self.pending_vte_events.entry(pid).or_default().push(bytes);
                 if let Some(evs) = self.pending_vte_events.get(&pid) {
-                    // Reset scroll and play the pending events if the buufer size exceeds the limit
+                    // Reset scroll - and process all pending events for this pane
                     if evs.len() >= MAX_PENDING_VTE_EVENTS {
                         terminal_output.clear_scroll();
-                        self.play_pending_vte_events(pid);
+                        self.process_pending_vte_events(pid);
                     }
                 }
                 return;
@@ -566,25 +603,12 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes);
     }
-    fn play_pending_vte_events(&mut self, pid: RawFd) {
-        if self.pending_vte_events.get(&pid).is_some() {
-            if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
-                if terminal_output.is_scrolled() {
-                    return;
-                }
+    pub fn process_pending_vte_events(&mut self, pid: RawFd) {
+        if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
+            let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
+            for vte_event in vte_events {
+                self.process_pty_bytes(pid, vte_event);
             }
-            let mut events = self.pending_vte_events.remove(&pid).unwrap();
-            while events.len() >= PENDING_EVENTS_SET_SIZE {
-                events
-                    .drain(..PENDING_EVENTS_SET_SIZE)
-                    .for_each(|bytes| self.process_pty_bytes(pid, bytes));
-                // Render at regular intervals
-                self.render();
-            }
-            events
-                .drain(..)
-                .for_each(|bytes| self.process_pty_bytes(pid, bytes));
-            self.render();
         }
     }
     fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
@@ -699,7 +723,6 @@ impl Tab {
             }
             self.set_force_render();
             self.resize_whole_tab(self.display_area);
-            self.render();
             self.toggle_fullscreen_is_active();
         }
     }
@@ -772,26 +795,20 @@ impl Tab {
             }
         }
     }
-    pub fn render(&mut self) {
-        if self.active_terminal.is_none()
-            || self.session_state.read().unwrap().clients.is_empty()
-            || !self.is_active
-        {
-            // we might not have an active terminal if we closed the last pane
-            // in that case, we should not render as the app is exiting
-            // or if there are no attached clients to this session
-            return;
+    pub fn render(&mut self) -> Option<Output> {
+        if self.connected_clients.is_empty() || self.active_terminal.is_none() {
+            return None;
         }
         self.senders
             .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
             .unwrap();
-        let mut output = String::new();
+        let mut output = Output::new(&self.connected_clients);
         let mut boundaries = Boundaries::new(self.viewport);
         let hide_cursor = "\u{1b}[?25l";
-        output.push_str(hide_cursor);
+        output.push_str_to_all_clients(hide_cursor);
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
-            output.push_str(clear_display);
+            output.push_str_to_all_clients(clear_display);
             self.should_clear_display_before_rendering = false;
         }
         for (_kind, pane) in self.panes.iter_mut() {
@@ -824,7 +841,7 @@ impl Tab {
                 }
                 if let Some(vte_output) = pane.render() {
                     // FIXME: Use Termion for cursor and style clearing?
-                    output.push_str(&format!(
+                    output.push_str_to_all_clients(&format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         pane.y() + 1,
                         pane.x() + 1,
@@ -835,7 +852,7 @@ impl Tab {
         }
 
         if !self.draw_pane_frames {
-            output.push_str(&boundaries.vte_output());
+            output.push_str_to_all_clients(&boundaries.vte_output());
         }
 
         match self.get_active_terminal_cursor_position() {
@@ -848,18 +865,15 @@ impl Tab {
                     cursor_position_x + 1,
                     change_cursor_shape
                 ); // goto row/col
-                output.push_str(show_cursor);
-                output.push_str(goto_cursor_position);
+                output.push_str_to_all_clients(show_cursor);
+                output.push_str_to_all_clients(goto_cursor_position);
             }
             None => {
                 let hide_cursor = "\u{1b}[?25l";
-                output.push_str(hide_cursor);
+                output.push_str_to_all_clients(hide_cursor);
             }
         }
-
-        self.senders
-            .send_to_server(ServerInstruction::Render(Some(output)))
-            .unwrap();
+        Some(output)
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
@@ -1757,7 +1771,6 @@ impl Tab {
             }
         }
         self.relayout_tab(Direction::Horizontal);
-        self.render();
     }
     pub fn resize_right(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1769,7 +1782,6 @@ impl Tab {
             }
         }
         self.relayout_tab(Direction::Horizontal);
-        self.render();
     }
     pub fn resize_down(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1781,7 +1793,6 @@ impl Tab {
             }
         }
         self.relayout_tab(Direction::Vertical);
-        self.render();
     }
     pub fn resize_up(&mut self) {
         // TODO: find out by how much we actually reduced and only reduce by that much
@@ -1793,7 +1804,6 @@ impl Tab {
             }
         }
         self.relayout_tab(Direction::Vertical);
-        self.render();
     }
     pub fn move_focus(&mut self) {
         if !self.has_selectable_panes() {
@@ -1814,7 +1824,6 @@ impl Tab {
             .copied();
 
         self.active_terminal = active_terminal;
-        self.render();
     }
     pub fn focus_next_pane(&mut self) {
         if !self.has_selectable_panes() {
@@ -1843,7 +1852,6 @@ impl Tab {
             .map(|p| *p.0);
 
         self.active_terminal = active_terminal;
-        self.render();
     }
     pub fn focus_previous_pane(&mut self) {
         if !self.has_selectable_panes() {
@@ -1873,7 +1881,6 @@ impl Tab {
             Some(*panes.get(active_pane_position - 1).unwrap().0)
         };
         self.active_terminal = active_terminal;
-        self.render();
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self) -> bool {
@@ -1904,7 +1911,6 @@ impl Tab {
                     next_active_pane.set_should_render(true);
 
                     self.active_terminal = Some(p);
-                    self.render();
                     return true;
                 }
                 None => Some(active.pid()),
@@ -1950,7 +1956,6 @@ impl Tab {
             Some(active_terminal.unwrap().pid())
         };
         self.active_terminal = updated_active_terminal;
-        self.render();
     }
     pub fn move_focus_up(&mut self) {
         if !self.has_selectable_panes() {
@@ -1987,7 +1992,6 @@ impl Tab {
             Some(active_terminal.unwrap().pid())
         };
         self.active_terminal = updated_active_terminal;
-        self.render();
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self) -> bool {
@@ -2018,7 +2022,6 @@ impl Tab {
                     next_active_pane.set_should_render(true);
 
                     self.active_terminal = Some(p);
-                    self.render();
                     return true;
                 }
                 None => Some(active.pid()),
@@ -2175,7 +2178,6 @@ impl Tab {
                 self.active_terminal = self.next_active_pane(&self.get_pane_ids());
             }
         }
-        self.render();
     }
     pub fn close_pane(&mut self, id: PaneId) {
         if self.fullscreen_is_active {
@@ -2256,7 +2258,6 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.scroll_up(1);
-            self.render();
         }
     }
     pub fn scroll_active_terminal_down(&mut self) {
@@ -2266,8 +2267,9 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.scroll_down(1);
-            self.play_pending_vte_events(active_terminal_id);
-            self.render();
+            if !active_terminal.is_scrolled() {
+                self.process_pending_vte_events(active_terminal_id);
+            }
         }
     }
     pub fn scroll_active_terminal_up_page(&mut self) {
@@ -2279,7 +2281,6 @@ impl Tab {
             // prevent overflow when row == 0
             let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_up(scroll_columns);
-            self.render();
         }
     }
     pub fn scroll_active_terminal_down_page(&mut self) {
@@ -2291,8 +2292,9 @@ impl Tab {
             // prevent overflow when row == 0
             let scroll_columns = active_terminal.rows().max(1) - 1;
             active_terminal.scroll_down(scroll_columns);
-            self.play_pending_vte_events(active_terminal_id);
-            self.render();
+            if !active_terminal.is_scrolled() {
+                self.process_pending_vte_events(active_terminal_id);
+            }
         }
     }
     pub fn scroll_active_terminal_to_bottom(&mut self) {
@@ -2302,8 +2304,9 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.clear_scroll();
-            self.play_pending_vte_events(active_terminal_id);
-            self.render();
+            if !active_terminal.is_scrolled() {
+                self.process_pending_vte_events(active_terminal_id);
+            }
         }
     }
     pub fn clear_active_terminal_scroll(&mut self) {
@@ -2313,22 +2316,24 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             active_terminal.clear_scroll();
-            self.play_pending_vte_events(active_terminal_id);
+            if !active_terminal.is_scrolled() {
+                self.process_pending_vte_events(active_terminal_id);
+            }
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
         if let Some(pane) = self.get_pane_at(point) {
             pane.scroll_up(lines);
-            self.render();
         }
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
         if let Some(pane) = self.get_pane_at(point) {
             pane.scroll_down(lines);
-            if let PaneId::Terminal(id) = pane.pid() {
-                self.play_pending_vte_events(id);
+            if !pane.is_scrolled() {
+                if let PaneId::Terminal(pid) = pane.pid() {
+                    self.process_pending_vte_events(pid);
+                }
             }
-            self.render();
         }
     }
     fn get_pane_at(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
@@ -2353,13 +2358,11 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
-            self.render();
         };
     }
     fn focus_pane_at(&mut self, point: &Position) {
         if let Some(clicked_pane) = self.get_pane_id_at(point) {
             self.active_terminal = Some(clicked_pane);
-            self.render();
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position) {
@@ -2372,7 +2375,6 @@ impl Tab {
                     active_pane.end_selection(None);
                     selected_text = active_pane.get_selected_text();
                     active_pane.reset_selection();
-                    self.render();
                 }
             }
         } else if let Some(pane) = self.get_pane_at(position) {
@@ -2380,7 +2382,6 @@ impl Tab {
             pane.end_selection(Some(&relative_position));
             selected_text = pane.get_selected_text();
             pane.reset_selection();
-            self.render();
         }
 
         if let Some(selected_text) = selected_text {
@@ -2394,7 +2395,6 @@ impl Tab {
                 active_pane.update_selection(&relative_position);
             }
         }
-        self.render();
     }
 
     pub fn copy_selection(&self) {
@@ -2408,7 +2408,13 @@ impl Tab {
     }
 
     fn write_selection_to_clipboard(&self, selection: &str) {
-        let output = format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection));
+        let mut output = Output::new(&self.connected_clients);
+        output.push_str_to_all_clients(&format!(
+            "\u{1b}]52;c;{}\u{1b}\\",
+            base64::encode(selection)
+        ));
+
+        // TODO: ideally we should be sending the Render instruction from the screen
         self.senders
             .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
