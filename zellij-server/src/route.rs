@@ -204,7 +204,7 @@ fn route_action(
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout))
+                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, client_id))
                 .unwrap();
         }
         Action::GoToNextTab => {
