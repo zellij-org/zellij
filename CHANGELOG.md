@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
 * Add: Treat empty config files as empty yaml documents (https://github.com/zellij-org/zellij/pull/720)
 * Fix: Commands that don't interact with the config file don't throw errors on malformed config files (https://github.com/zellij-org/zellij/pull/765)
+* Add: Add config options to default config file (https://github.com/zellij-org/zellij/pull/766)
+* Fix: Properly clear "FULLSCREEN" status when a pane exits on its own (https://github.com/zellij-org/zellij/pull/757)
 
 ## [0.18.1] - 2021-09-30
 
