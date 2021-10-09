@@ -34,8 +34,14 @@ impl ZellijPlugin for State {
                     self.ev_history.clear();
                 }
                 Key::Left | Key::Char('h') => {
-                    self.path.pop();
-                    refresh_directory(self);
+                    if self.path.components().count() > 2 {
+                        // don't descend into /host
+                        // the reason this is a hard-coded number (2) and not "== ROOT"
+                        // or some such is that there are certain cases in which self.path
+                        // is empty and this will work then too
+                        self.path.pop();
+                        refresh_directory(self);
+                    }
                 }
                 Key::Char('.') => {
                     self.toggle_hidden_files();
