@@ -47,7 +47,7 @@ impl ZellijPlugin for State {
             Event::Mouse(mouse_event) => match mouse_event {
                 Mouse::ScrollDown(_) => {
                     let next = self.selected().saturating_add(1);
-                    *self.selected_mut() = min(self.files.len() - 1, next);
+                    *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
                 }
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);

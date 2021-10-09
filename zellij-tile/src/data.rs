@@ -28,9 +28,8 @@ pub enum Key {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 
 pub enum Mouse {
-    ScrollUp(usize),   // number of lines
-    ScrollDown(usize), // number of lines
-    ClearScroll,
+    ScrollUp(usize),                      // number of lines
+    ScrollDown(usize),                    // number of lines
     LeftClick(isize, usize),              // line and column
     MouseHold(isize, usize),              // line and column
     MouseRelease(Option<(isize, usize)>), // line and column

@@ -1,6 +1,7 @@
 mod line;
 mod tab;
 
+use std::cmp::{max, min};
 use std::convert::TryInto;
 
 use zellij_tile::prelude::*;
@@ -17,6 +18,7 @@ pub struct LinePart {
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
+    active_tab_idx: usize,
     mode_info: ModeInfo,
     mouse_click_pos: usize,
     should_render: bool,
@@ -39,13 +41,24 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) {
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
-            Event::TabUpdate(tabs) => self.tabs = tabs,
-            Event::Mouse(me) => {
-                if let Mouse::LeftClick(_, col) = me {
+            Event::TabUpdate(tabs) => {
+                // tabs are indexed starting from 1 so we need to add 1
+                self.active_tab_idx = (&tabs).into_iter().position(|t| t.active).unwrap() + 1;
+                self.tabs = tabs;
+            }
+            Event::Mouse(me) => match me {
+                Mouse::LeftClick(_, col) => {
                     self.mouse_click_pos = col;
                     self.should_render = true;
                 }
-            }
+                Mouse::ScrollUp(_) => {
+                    switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
+                }
+                Mouse::ScrollDown(_) => {
+                    switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
+                }
+                _ => {}
+            },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
     }

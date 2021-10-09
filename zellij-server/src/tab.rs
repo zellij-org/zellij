@@ -2321,12 +2321,12 @@ impl Tab {
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
-        if let Some(pane) = self.get_pane_at(point, true) {
+        if let Some(pane) = self.get_pane_at(point, false) {
             pane.scroll_up(lines);
         }
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
-        if let Some(pane) = self.get_pane_at(point, true) {
+        if let Some(pane) = self.get_pane_at(point, false) {
             pane.scroll_down(lines);
             if !pane.is_scrolled() {
                 if let PaneId::Terminal(pid) = pane.pid() {
@@ -2346,6 +2346,7 @@ impl Tab {
             None
         }
     }
+
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.fullscreen_is_active {
             return self.get_active_pane_id();

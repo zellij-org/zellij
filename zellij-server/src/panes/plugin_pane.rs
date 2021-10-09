@@ -272,12 +272,7 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn clear_scroll(&mut self) {
-        self.send_plugin_instructions
-            .send(PluginInstruction::Update(
-                Some(self.pid),
-                Event::Mouse(Mouse::ClearScroll),
-            ))
-            .unwrap();
+        unimplemented!();
     }
     fn start_selection(&mut self, start: &Position) {
         self.send_plugin_instructions
