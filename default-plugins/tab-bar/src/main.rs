@@ -43,7 +43,7 @@ impl ZellijPlugin for State {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => {
                 // tabs are indexed starting from 1 so we need to add 1
-                self.active_tab_idx = (&tabs).into_iter().position(|t| t.active).unwrap() + 1;
+                self.active_tab_idx = (&tabs).iter().position(|t| t.active).unwrap() + 1;
                 self.tabs = tabs;
             }
             Event::Mouse(me) => match me {
