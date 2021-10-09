@@ -90,15 +90,18 @@ pub enum Sessions {
         options: Option<SessionCommand>,
     },
 
-    /// Kill to session
+    /// Kill the specific session
     #[structopt(alias = "k")]
     KillSession {
-        /// Destroy all sessions but the specified one is killed.
-        #[structopt(long, short)]
-        all: bool,
-
-        /// Destroys the given session.
-        #[structopt(long, short)]
+        /// Name of target session
         target_session: Option<String>,
+    },
+
+    /// Kill all sessions
+    #[structopt(alias = "ka")]
+    KillAllSessions {
+        /// Automatic yes to prompts
+        #[structopt(short, long)]
+        yes: bool,
     },
 }

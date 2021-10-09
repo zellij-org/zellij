@@ -27,38 +27,63 @@ pub fn main() {
         list_sessions();
     }
 
-    if let Some(Command::Sessions(Sessions::KillSession {
-        all,
-        target_session,
-    })) = opts.command.clone()
-    {
-        if all {
-            match get_sessions() {
-                Ok(sessions) => match target_session {
-                    Some(target) => {
-                        for session in sessions.iter() {
-                            if session == &target {
-                                continue;
-                            }
-                            kill_session(session);
-                        }
-                    }
-                    None => {
-                        for session in sessions.iter() {
-                            kill_session(session);
-                        }
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Error occured: {:?}", e);
+    if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command.clone() {
+        match get_sessions() {
+            Ok(sessions) => {
+                if sessions.is_empty() {
+                    println!("No active zellij sessions found.");
                     process::exit(1);
+                } else {
+                    let kill_all_sessions = |sessions: Vec<std::string::String>| {
+                        for session in sessions.iter() {
+                            kill_session(session);
+                        }
+                        process::exit(0)
+                    };
+
+                    if yes {
+                        kill_all_sessions(sessions);
+                    } else {
+                        use std::io::{stdin, stdout, Write};
+
+                        let mut answer = String::new();
+                        println!(
+                            "WARNING: this action will kill the all active and detach sessions."
+                        );
+                        print!("Do you want to continue? [y/N] ");
+                        let _ = stdout().flush();
+                        stdin().read_line(&mut answer).unwrap();
+
+                        match answer.as_str().trim() {
+                            "y" | "Y" | "yes" | "Yes" => kill_all_sessions(sessions),
+                            _ => {
+                                println!("Abort.");
+                                process::exit(1);
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            kill_session(target_session.as_ref().unwrap());
+            Err(e) => {
+                eprintln!("Error occured: {:?}", e);
+                process::exit(1);
+            }
         }
+    }
 
-        process::exit(0);
+    if let Some(Command::Sessions(Sessions::KillSession { target_session })) = opts.command.clone()
+    {
+        match target_session.as_ref() {
+            Some(target_session) => {
+                assert_session(target_session);
+                kill_session(target_session);
+                process::exit(0);
+            }
+            None => {
+                println!("Please specify the session name to kill.");
+                process::exit(1);
+            }
+        }
     }
 
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
