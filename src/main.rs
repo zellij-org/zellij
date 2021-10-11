@@ -27,7 +27,7 @@ pub fn main() {
         list_sessions();
     }
 
-    if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command.clone() {
+    if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         match get_sessions() {
             Ok(sessions) => {
                 if sessions.is_empty() {
