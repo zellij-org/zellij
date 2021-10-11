@@ -48,7 +48,7 @@ pub fn main() {
 
                         let mut answer = String::new();
                         println!(
-                            "WARNING: this action will kill the all active and detach sessions."
+                            "WARNING: this action will kill all sessions."
                         );
                         print!("Do you want to continue? [y/N] ");
                         let _ = stdout().flush();
