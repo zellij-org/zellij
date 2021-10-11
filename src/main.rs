@@ -47,9 +47,7 @@ pub fn main() {
                         use std::io::{stdin, stdout, Write};
 
                         let mut answer = String::new();
-                        println!(
-                            "WARNING: this action will kill all sessions."
-                        );
+                        println!("WARNING: this action will kill all sessions.");
                         print!("Do you want to continue? [y/N] ");
                         let _ = stdout().flush();
                         stdin().read_line(&mut answer).unwrap();
