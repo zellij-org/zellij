@@ -27,6 +27,7 @@ use crate::{
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
+    tab::Output,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
@@ -59,7 +60,7 @@ pub(crate) enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<String>),
+    Render(Option<Output>),
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -263,7 +264,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     os_input.clone(),
                     to_server.clone(),
                     client_attributes,
-                    session_state.clone(),
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
@@ -291,7 +291,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_pty(PtyInstruction::NewTab(default_shell.clone(), tab_layout))
+                        .send_to_pty(PtyInstruction::NewTab(
+                            default_shell.clone(),
+                            tab_layout,
+                            client_id,
+                        ))
                         .unwrap()
                 };
 
@@ -318,6 +322,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                    .unwrap();
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
@@ -355,6 +363,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                         .unwrap();
+                    // we only do this inside this if because it means there are still connected
+                    // clients
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
                 }
                 if session_state.read().unwrap().clients.is_empty() {
                     *session_data.write().unwrap() = None;
@@ -371,6 +389,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                    // we only do this inside this if because it means there are still connected
+                    // clients
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
             }
@@ -394,6 +422,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                         .unwrap();
+                    // we only do this inside this if because it means there are still connected
+                    // clients
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
                 }
             }
             ServerInstruction::Render(mut output) => {
@@ -402,8 +440,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(op) = output.as_mut() {
-                    for client_id in client_ids {
-                        os_input.send_to_client(client_id, ServerToClientMsg::Render(op.clone()));
+                    for (client_id, client_render_instruction) in
+                        op.client_render_instructions.iter_mut()
+                    {
+                        os_input.send_to_client(
+                            *client_id,
+                            ServerToClientMsg::Render(client_render_instruction.clone()),
+                        );
                     }
                 } else {
                     for client_id in client_ids {
@@ -450,7 +493,6 @@ fn init_session(
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
-    session_state: Arc<RwLock<SessionState>>,
     options: SessionOptions,
 ) -> SessionMetaData {
     let SessionOptions {
@@ -518,13 +560,7 @@ fn init_session(
             let max_panes = opts.max_panes;
 
             move || {
-                screen_thread_main(
-                    screen_bus,
-                    max_panes,
-                    client_attributes,
-                    config_options,
-                    session_state,
-                );
+                screen_thread_main(screen_bus, max_panes, client_attributes, config_options);
             }
         })
         .unwrap();

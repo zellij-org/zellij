@@ -244,7 +244,6 @@ pub enum ScreenContext {
     SetFixedHeight,
     SetFixedWidth,
     ClosePane,
-    ApplyLayout,
     NewTab,
     SwitchTabNext,
     SwitchTabPrev,
@@ -258,6 +257,8 @@ pub enum ScreenContext {
     MouseHold,
     Copy,
     ToggleTab,
+    AddClient,
+    RemoveClient,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
