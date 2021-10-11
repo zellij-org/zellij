@@ -5,8 +5,8 @@ mod tests;
 
 use crate::install::populate_data_dir;
 use sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions, list_sessions,
-    print_sessions, session_exists, ActiveSession,
+    assert_session, assert_session_ne, get_active_session, get_sessions, kill_session,
+    list_sessions, print_sessions, session_exists, ActiveSession,
 };
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
@@ -25,6 +25,63 @@ pub fn main() {
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
         list_sessions();
+    }
+
+    if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
+        match get_sessions() {
+            Ok(sessions) => {
+                if sessions.is_empty() {
+                    println!("No active zellij sessions found.");
+                    process::exit(1);
+                } else {
+                    let kill_all_sessions = |sessions: Vec<std::string::String>| {
+                        for session in sessions.iter() {
+                            kill_session(session);
+                        }
+                        process::exit(0)
+                    };
+
+                    if yes {
+                        kill_all_sessions(sessions);
+                    } else {
+                        use std::io::{stdin, stdout, Write};
+
+                        let mut answer = String::new();
+                        println!("WARNING: this action will kill all sessions.");
+                        print!("Do you want to continue? [y/N] ");
+                        let _ = stdout().flush();
+                        stdin().read_line(&mut answer).unwrap();
+
+                        match answer.as_str().trim() {
+                            "y" | "Y" | "yes" | "Yes" => kill_all_sessions(sessions),
+                            _ => {
+                                println!("Abort.");
+                                process::exit(1);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Error occured: {:?}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    if let Some(Command::Sessions(Sessions::KillSession { target_session })) = opts.command.clone()
+    {
+        match target_session.as_ref() {
+            Some(target_session) => {
+                assert_session(target_session);
+                kill_session(target_session);
+                process::exit(0);
+            }
+            None => {
+                println!("Please specify the session name to kill.");
+                process::exit(1);
+            }
+        }
     }
 
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();

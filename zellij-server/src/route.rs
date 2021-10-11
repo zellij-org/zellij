@@ -358,6 +358,9 @@ pub(crate) fn route_thread_main(
                 let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                 break;
             }
+            ClientToServerMsg::KillSession => {
+                to_server.send(ServerInstruction::KillSession).unwrap();
+            }
         }
     }
 }

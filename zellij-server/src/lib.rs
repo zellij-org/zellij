@@ -65,6 +65,7 @@ pub(crate) enum ServerInstruction {
     ClientExit(ClientId),
     RemoveClient(ClientId),
     Error(String),
+    KillSession,
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
 }
@@ -78,6 +79,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
+            ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
         }
@@ -399,6 +401,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
+            }
+            ServerInstruction::KillSession => {
+                let client_ids = session_state.read().unwrap().client_ids();
+                for client_id in client_ids {
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    remove_client!(client_id, os_input, session_state);
+                }
+                break;
             }
             ServerInstruction::DetachSession(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
