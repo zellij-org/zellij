@@ -648,7 +648,7 @@ impl Tab {
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
+                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::Key(key)))
                         .unwrap()
                 }
             }

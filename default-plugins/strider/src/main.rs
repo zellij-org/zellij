@@ -10,7 +10,7 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         refresh_directory(self);
-        subscribe(&[EventType::KeyPress, EventType::Mouse]);
+        subscribe(&[EventType::Key, EventType::Mouse]);
     }
 
     fn update(&mut self, event: Event) {
@@ -21,7 +21,7 @@ impl ZellijPlugin for State {
         };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
-            Event::KeyPress(key) => match key {
+            Event::Key(key) => match key {
                 Key::Up | Key::Char('k') => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 }
@@ -58,12 +58,12 @@ impl ZellijPlugin for State {
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 }
-                Mouse::MouseRelease(Some((line, _))) => {
+                Mouse::Release(Some((line, _))) => {
                     if line < 0 {
                         return;
                     }
                     let mut should_select = true;
-                    if let Some((Event::Mouse(Mouse::MouseRelease(Some((prev_line, _)))), t)) =
+                    if let Some((Event::Mouse(Mouse::Release(Some((prev_line, _)))), t)) =
                         prev_event
                     {
                         if prev_line == line
@@ -88,7 +88,6 @@ impl ZellijPlugin for State {
 
     fn render(&mut self, rows: usize, cols: usize) {
         for i in 0..rows {
-            // If the key was pressed, set selected so that we can see the cursor
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
             }

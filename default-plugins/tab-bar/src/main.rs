@@ -98,7 +98,6 @@ impl ZellijPlugin for State {
         );
         let mut s = String::new();
         let mut len_cnt = 0;
-        dbg!(&tab_line);
         for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
 

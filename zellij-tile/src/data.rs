@@ -27,12 +27,15 @@ pub enum Key {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 
+// FIXME: This should be extended to handle different button clicks (not just
+// left click) and the `ScrollUp` and `ScrollDown` events could probably be
+// merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),                      // number of lines
-    ScrollDown(usize),                    // number of lines
-    LeftClick(isize, usize),              // line and column
-    MouseHold(isize, usize),              // line and column
-    MouseRelease(Option<(isize, usize)>), // line and column
+    ScrollUp(usize),                 // number of lines
+    ScrollDown(usize),               // number of lines
+    LeftClick(isize, usize),         // line and column
+    Hold(isize, usize),              // line and column
+    Release(Option<(isize, usize)>), // line and column
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -42,7 +45,7 @@ pub enum Mouse {
 pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
-    KeyPress(Key),
+    Key(Key),
     Mouse(Mouse),
     Timer(f64),
     CopyToClipboard,

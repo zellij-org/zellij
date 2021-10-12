@@ -286,7 +286,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                Event::Mouse(Mouse::MouseHold(position.line.0, position.column.0)),
+                Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
             ))
             .unwrap();
     }
@@ -294,7 +294,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                Event::Mouse(Mouse::MouseRelease(
+                Event::Mouse(Mouse::Release(
                     end.map(|Position { line, column }| (line.0, column.0)),
                 )),
             ))
