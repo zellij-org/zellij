@@ -13,7 +13,6 @@ use zellij_client::{os_input_output::get_client_os_input, start_client, ClientIn
 use zellij_server::{os_input_output::get_server_os_input, start_server};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
-    consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR},
     logging::*,
     setup::{get_default_data_dir, Setup},
     structopt::StructOpt,
@@ -84,8 +83,6 @@ pub fn main() {
         }
     }
 
-    atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
-    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
     if let Some(path) = opts.server {
         let os_input = match get_server_os_input() {
             Ok(server_os_input) => server_os_input,
