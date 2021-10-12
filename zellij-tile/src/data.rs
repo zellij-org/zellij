@@ -81,6 +81,9 @@ pub enum InputMode {
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
+    /// `Move` mode allows moving the different existing panes within a tab
+    #[serde(alias = "move")]
+    Move,
 }
 
 impl Default for InputMode {
@@ -124,6 +127,7 @@ impl FromStr for InputMode {
             "scroll" => Ok(InputMode::Scroll),
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
+            "move" => Ok(InputMode::Move),
             e => Err(e.to_string().into()),
         }
     }
