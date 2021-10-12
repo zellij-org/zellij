@@ -17,6 +17,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
 
@@ -175,9 +176,13 @@ impl SessionState {
 
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
+
+    // preserve the current umask: read current value by setting to another mode, and then restoring it
+    let current_umask = umask(Mode::all());
+    umask(current_umask);
     daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
-        .umask(0o077)
+        .umask(current_umask.bits())
         .start()
         .expect("could not daemonize the server process");
 
