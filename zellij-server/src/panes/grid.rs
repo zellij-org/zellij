@@ -15,7 +15,7 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
-use zellij_utils::{consts::VERSION, logging::debug_log_to_file, shared::version_number};
+use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::terminal_character::{
@@ -1943,10 +1943,7 @@ impl Perform for Grid {
                 _ => {}
             }
         } else {
-            drop(debug_log_to_file(format!(
-                "Unhandled csi: {}->{:?}",
-                c, params
-            )));
+            log::warn!("Unhandled csi: {}->{:?}", c, params);
         }
     }
 
