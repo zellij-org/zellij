@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Properly clear "FULLSCREEN" status when a pane exits on its own (https://github.com/zellij-org/zellij/pull/757)
 * Refactor: handle clients in tabs/screen (https://github.com/zellij-org/zellij/pull/770)
 * Feature: kill-session and kill-all-sessions cli commands (https://github.com/zellij-org/zellij/pull/745)
+* Fix: Keep default file permissions for new files (https://github.com/zellij-org/zellij/pull/777)
 
 ## [0.18.1] - 2021-09-30
 
