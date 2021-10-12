@@ -241,6 +241,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_set_selectable,
         host_get_plugin_ids,
         host_open_file,
+        host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
     }
@@ -295,6 +296,13 @@ fn host_open_file(plugin_env: &PluginEnv) {
         .send_to_pty(PtyInstruction::SpawnTerminal(Some(
             TerminalAction::OpenFile(path),
         )))
+        .unwrap();
+}
+
+fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
+    plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::GoToTab(tab_idx))
         .unwrap();
 }
 

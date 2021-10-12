@@ -25,6 +25,16 @@ pub enum Key {
     Esc,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+
+pub enum Mouse {
+    ScrollUp(usize),                      // number of lines
+    ScrollDown(usize),                    // number of lines
+    LeftClick(isize, usize),              // line and column
+    MouseHold(isize, usize),              // line and column
+    MouseRelease(Option<(isize, usize)>), // line and column
+}
+
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
@@ -33,6 +43,7 @@ pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
     KeyPress(Key),
+    Mouse(Mouse),
     Timer(f64),
     CopyToClipboard,
     InputReceived,
