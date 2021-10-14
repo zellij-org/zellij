@@ -279,7 +279,7 @@ impl Pty {
                 .and_then(|client_id| self.active_panes.get(&client_id))
                 .and_then(|pane| match pane {
                     PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).and_then(|id| id.shell),
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|id| id.shell),
                 })
                 .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
                 .flatten(),

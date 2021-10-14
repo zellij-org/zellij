@@ -325,7 +325,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let mut output = Output::new();
+        let mut output = Output::default();
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in self.tabs.iter_mut() {
             if tab.get_active_pane().is_some() {
@@ -351,7 +351,7 @@ impl Screen {
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Option<&Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get(&tab),
+            Some(tab) => self.tabs.get(tab),
             None => None,
         }
     }
@@ -368,7 +368,7 @@ impl Screen {
     /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Option<&mut Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get_mut(&tab),
+            Some(tab) => self.tabs.get_mut(tab),
             None => None,
         }
     }
@@ -812,7 +812,7 @@ pub(crate) fn screen_thread_main(
                     }
                     None => {
                         for (_index, tab) in screen.tabs.iter_mut() {
-                            if tab.get_pane_ids().iter().find(|pid| **pid == id).is_some() {
+                            if tab.get_pane_ids().iter().any(|pid| *pid == id) {
                                 tab.close_pane(id);
                                 break;
                             }

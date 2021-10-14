@@ -96,17 +96,12 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     (columns_offset, rows_offset)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Output {
     pub client_render_instructions: HashMap<ClientId, String>,
 }
 
 impl Output {
-    pub fn new() -> Self {
-        Output {
-            client_render_instructions: HashMap::new(),
-        }
-    }
     pub fn add_clients(&mut self, client_ids: &HashSet<ClientId>) {
         for client_id in client_ids {
             self.client_render_instructions
@@ -2414,7 +2409,7 @@ impl Tab {
     }
 
     fn write_selection_to_clipboard(&self, selection: &str) {
-        let mut output = Output::new();
+        let mut output = Output::default();
         output.add_clients(&self.connected_clients);
         output.push_str_to_all_clients(&format!(
             "\u{1b}]52;c;{}\u{1b}\\",
