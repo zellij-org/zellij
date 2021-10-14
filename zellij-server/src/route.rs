@@ -3,8 +3,11 @@ use std::sync::{Arc, RwLock};
 use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
-    os_input_output::ServerOsApi, pty::{PtyInstruction, ClientOrTabIndex}, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData, SessionState,
+    os_input_output::ServerOsApi,
+    pty::{ClientOrTabIndex, PtyInstruction},
+    screen::ScreenInstruction,
+    wasm_vm::PluginInstruction,
+    ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
@@ -61,11 +64,10 @@ fn route_action(
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
-                    mode,
-                    palette,
-                    session.capabilities,
-                ), client_id))
+                .send_to_screen(ScreenInstruction::ChangeMode(
+                    get_mode_info(mode, palette, session.capabilities),
+                    client_id,
+                ))
                 .unwrap();
             session
                 .senders
@@ -176,7 +178,9 @@ fn route_action(
                 Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
                 Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
                 Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell, client_id),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(shell, client_id),
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(shell, client_id)
+                }
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(shell, ClientOrTabIndex::ClientId(client_id)),
             };
@@ -185,12 +189,22 @@ fn route_action(
         Action::Run(command) => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(run_cmd, client_id),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(run_cmd, client_id),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id),
+                Some(Direction::Left) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                }
+                Some(Direction::Right) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                }
+                Some(Direction::Up) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                }
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                }
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id)),
+                None => {
+                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
+                }
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }

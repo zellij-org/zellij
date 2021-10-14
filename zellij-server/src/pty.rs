@@ -82,21 +82,32 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                 let pid = pty.spawn_terminal(terminal_action, client_or_tab_index);
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid), client_or_tab_index))
+                    .send_to_screen(ScreenInstruction::NewPane(
+                        PaneId::Terminal(pid),
+                        client_or_tab_index,
+                    ))
                     .unwrap();
             }
             PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
-                let pid = pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
+                let pid =
+                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid), client_id))
+                    .send_to_screen(ScreenInstruction::VerticalSplit(
+                        PaneId::Terminal(pid),
+                        client_id,
+                    ))
                     .unwrap();
             }
             PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
-                let pid = pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
+                let pid =
+                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid), client_id))
+                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                        PaneId::Terminal(pid),
+                        client_id,
+                    ))
                     .unwrap();
             }
             PtyInstruction::UpdateActivePane(pane_id, client_id) => {
@@ -125,7 +136,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                         .unwrap();
                     pty.bus
                         .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(tab_name.into_bytes(), client_id))
+                        .send_to_screen(ScreenInstruction::UpdateTabName(
+                            tab_name.into_bytes(),
+                            client_id,
+                        ))
                         .unwrap();
                 }
             }
@@ -238,8 +252,11 @@ fn stream_terminal_bytes(
             // we send ClosePane here so that the screen knows to close this tab if the process
             // inside the terminal exited on its own (eg. the user typed "exit<ENTER>" inside a
             // bash shell)
-            async_send_to_screen(senders, ScreenInstruction::ClosePane(PaneId::Terminal(pid), None))
-                .await;
+            async_send_to_screen(
+                senders,
+                ScreenInstruction::ClosePane(PaneId::Terminal(pid), None),
+            )
+            .await;
         }
     })
 }
@@ -259,10 +276,7 @@ impl Pty {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
             cwd: client_id
-                .and_then(|client_id| self
-                    .active_panes
-                    .get(&client_id)
-                )
+                .and_then(|client_id| self.active_panes.get(&client_id))
                 .and_then(|pane| match pane {
                     PaneId::Plugin(..) => None,
                     PaneId::Terminal(id) => self.id_to_child_pid.get(&id).and_then(|id| id.shell),
@@ -271,10 +285,18 @@ impl Pty {
                 .flatten(),
         })
     }
-    pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>, client_or_tab_index: ClientOrTabIndex) -> RawFd {
+    pub fn spawn_terminal(
+        &mut self,
+        terminal_action: Option<TerminalAction>,
+        client_or_tab_index: ClientOrTabIndex,
+    ) -> RawFd {
         let terminal_action = match client_or_tab_index {
-            ClientOrTabIndex::ClientId(client_id) => terminal_action.unwrap_or_else(|| self.get_default_terminal(Some(client_id))),
-            ClientOrTabIndex::TabIndex(_) => terminal_action.unwrap_or_else(|| self.get_default_terminal(None)),
+            ClientOrTabIndex::ClientId(client_id) => {
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(Some(client_id)))
+            }
+            ClientOrTabIndex::TabIndex(_) => {
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
+            }
         };
         let (pid_primary, child_id): (RawFd, ChildId) = self
             .bus
@@ -298,7 +320,8 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {
-        let default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(Some(client_id)));
+        let default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(Some(client_id)));
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {

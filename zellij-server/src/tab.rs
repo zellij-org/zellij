@@ -109,7 +109,8 @@ impl Output {
     }
     pub fn add_clients(&mut self, client_ids: &HashSet<ClientId>) {
         for client_id in client_ids {
-            self.client_render_instructions.insert(*client_id, String::new());
+            self.client_render_instructions
+                .insert(*client_id, String::new());
         }
     }
     pub fn push_str_to_all_clients(&mut self, to_push: &str) {
@@ -801,7 +802,10 @@ impl Tab {
         for connected_client in self.connected_clients.iter() {
             // TODO: move this out of the render function
             self.senders
-                .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal, *connected_client))
+                .send_to_pty(PtyInstruction::UpdateActivePane(
+                    self.active_terminal,
+                    *connected_client,
+                ))
                 .unwrap();
         }
         output.add_clients(&self.connected_clients);

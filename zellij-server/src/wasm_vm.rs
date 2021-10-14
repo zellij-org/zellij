@@ -20,7 +20,7 @@ use zellij_tile::data::{Event, EventType, PluginIds};
 use crate::{
     logging_pipe::LoggingPipe,
     panes::PaneId,
-    pty::{PtyInstruction, ClientOrTabIndex},
+    pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
 };
@@ -294,9 +294,10 @@ fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
         .senders
-        .send_to_pty(PtyInstruction::SpawnTerminal(Some(
-            TerminalAction::OpenFile(path),
-        ), ClientOrTabIndex::TabIndex(plugin_env.tab_index)))
+        .send_to_pty(PtyInstruction::SpawnTerminal(
+            Some(TerminalAction::OpenFile(path)),
+            ClientOrTabIndex::TabIndex(plugin_env.tab_index),
+        ))
         .unwrap();
 }
 
