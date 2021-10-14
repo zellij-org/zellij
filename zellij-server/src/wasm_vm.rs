@@ -20,7 +20,7 @@ use zellij_tile::data::{Event, EventType, PluginIds};
 use crate::{
     logging_pipe::LoggingPipe,
     panes::PaneId,
-    pty::PtyInstruction,
+    pty::{PtyInstruction, ClientOrTabIndex},
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
 };
@@ -60,6 +60,7 @@ pub(crate) struct PluginEnv {
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    pub tab_index: usize,
     plugin_own_data_dir: PathBuf,
 }
 
@@ -208,6 +209,7 @@ fn start_plugin(
         wasi_env,
         subscriptions: Arc::new(Mutex::new(HashSet::new())),
         plugin_own_data_dir,
+        tab_index,
     };
 
     let zellij = zellij_exports(store, &plugin_env);
@@ -294,7 +296,7 @@ fn host_open_file(plugin_env: &PluginEnv) {
         .senders
         .send_to_pty(PtyInstruction::SpawnTerminal(Some(
             TerminalAction::OpenFile(path),
-        )))
+        ), ClientOrTabIndex::TabIndex(plugin_env.tab_index)))
         .unwrap();
 }
 
