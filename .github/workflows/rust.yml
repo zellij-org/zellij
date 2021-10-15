@@ -66,6 +66,8 @@ jobs:
       #           ~/.cargo/git
       #           target
       #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: debug github
+      run: git log --name-status HEAD^..HEAD
     - name: Install cargo-make
       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Check Lints
