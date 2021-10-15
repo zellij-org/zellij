@@ -878,7 +878,9 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::GoToTab(tab_index, client_id) => {
-                if let Some(client_id) = client_id.or_else(|| screen.active_tab_indices.keys().next().copied()) {
+                if let Some(client_id) =
+                    client_id.or_else(|| screen.active_tab_indices.keys().next().copied())
+                {
                     screen.go_to_tab(tab_index as usize, client_id);
                     screen
                         .bus
