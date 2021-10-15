@@ -144,6 +144,8 @@ pub struct Layout {
 #[serde(default)]
 pub struct LayoutFromYaml {
     #[serde(default)]
+    pub session: SessionFromYaml,
+    #[serde(default)]
     pub template: LayoutTemplate,
     #[serde(default)]
     pub borderless: bool,
@@ -243,6 +245,15 @@ impl LayoutFromYaml {
             serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
         Ok(layout)
     }
+}
+
+// The struct that is used to deserialize the session from
+// a yaml configuration file
+// TODO: think again about the structure name.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(crate = "self::serde")]
+pub struct SessionFromYaml {
+    pub name: Option<String>,
 }
 
 // The struct that carries the information template that is used to
@@ -588,9 +599,16 @@ impl Default for LayoutTemplate {
     }
 }
 
+impl Default for SessionFromYaml {
+    fn default() -> Self {
+        Self { name: None }
+    }
+}
+
 impl Default for LayoutFromYaml {
     fn default() -> Self {
         Self {
+            session: SessionFromYaml::default(),
             template: LayoutTemplate::default(),
             borderless: false,
             tabs: vec![],
