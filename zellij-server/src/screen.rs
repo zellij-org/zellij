@@ -63,7 +63,7 @@ pub(crate) enum ScreenInstruction {
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
     CloseTab(ClientId),
-    GoToTab(u32, ClientId),
+    GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy thie behaviour
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     TerminalResize(Size),
@@ -878,14 +878,16 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::GoToTab(tab_index, client_id) => {
-                screen.go_to_tab(tab_index as usize, client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                if let Some(client_id) = client_id.or_else(|| screen.active_tab_indices.keys().next().copied()) {
+                    screen.go_to_tab(tab_index as usize, client_id);
+                    screen
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::UnblockInputThread)
+                        .unwrap();
 
-                screen.render();
+                    screen.render();
+                }
             }
             ScreenInstruction::UpdateTabName(c, client_id) => {
                 screen.update_active_tab_name(c, client_id);

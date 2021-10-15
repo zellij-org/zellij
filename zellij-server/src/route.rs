@@ -248,7 +248,7 @@ fn route_action(
         Action::GoToTab(i) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::GoToTab(i, client_id))
+                .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
                 .unwrap();
         }
         Action::TabNameInput(c) => {
