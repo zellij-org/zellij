@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: Add config options to default config file (https://github.com/zellij-org/zellij/pull/766)
 * Fix: Properly clear "FULLSCREEN" status when a pane exits on its own (https://github.com/zellij-org/zellij/pull/757)
 * Refactor: handle clients in tabs/screen (https://github.com/zellij-org/zellij/pull/770)
+* Feature: kill-session and kill-all-sessions cli commands (https://github.com/zellij-org/zellij/pull/745)
+* Fix: Keep default file permissions for new files (https://github.com/zellij-org/zellij/pull/777)
+* Feature: Add mouse events to plugins – including strider and the tab-bar (https://github.com/zellij-org/zellij/pull/629)
 
 ## [0.18.1] - 2021-09-30
 

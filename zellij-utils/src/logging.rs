@@ -13,10 +13,14 @@ use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 
-use crate::consts::{ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
+use crate::consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 use crate::shared::set_permissions;
 
 pub fn configure_logger() {
+    atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
+    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
+    atomic_create_file(&*ZELLIJ_TMP_LOG_DIR.join("zellij.log")).unwrap();
+
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
     let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{thread:<10.15}] [{file}:{line}]: {message} {n}";

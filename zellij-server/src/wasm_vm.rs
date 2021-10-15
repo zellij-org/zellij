@@ -243,6 +243,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_set_selectable,
         host_get_plugin_ids,
         host_open_file,
+        host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
     }
@@ -305,6 +306,13 @@ fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
     plugin_env
         .senders
         .send_to_screen(ScreenInstruction::GoToTab(tab_idx, None)) // this is a hack, we should be able to return the client id here
+        .unwrap();
+}
+
+fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
+    plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::GoToTab(tab_idx))
         .unwrap();
 }
 

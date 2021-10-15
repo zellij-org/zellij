@@ -68,6 +68,7 @@ pub enum ClientToServerMsg {
     AttachClient(ClientAttributes, Options),
     Action(Action),
     ClientExited,
+    KillSession,
 }
 
 // Types of messages sent from the server to the client

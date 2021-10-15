@@ -1,5 +1,8 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
+
+use zellij_utils::{position::Position, serde, zellij_tile};
+
 use crate::ui::pane_resizer::PaneResizer;
 use crate::{
     os_input_output::ServerOsApi,
@@ -19,16 +22,12 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
-use zellij_utils::input::layout::Direction;
-use zellij_utils::pane_size::{Offset, Size, Viewport};
 use zellij_utils::{
     input::{
-        layout::{Layout, Run},
+        layout::{Direction, Layout, Run},
         parse_keys,
     },
-    pane_size::{Dimension, PaneGeom},
-    position::Position,
-    serde, zellij_tile,
+    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
@@ -644,7 +643,7 @@ impl Tab {
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::KeyPress(key)))
+                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::Key(key)))
                         .unwrap()
                 }
             }
@@ -2323,12 +2322,12 @@ impl Tab {
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
-        if let Some(pane) = self.get_pane_at(point) {
+        if let Some(pane) = self.get_pane_at(point, false) {
             pane.scroll_up(lines);
         }
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
-        if let Some(pane) = self.get_pane_at(point) {
+        if let Some(pane) = self.get_pane_at(point, false) {
             pane.scroll_down(lines);
             if !pane.is_scrolled() {
                 if let PaneId::Terminal(pid) = pane.pid() {
@@ -2337,32 +2336,42 @@ impl Tab {
             }
         }
     }
-    fn get_pane_at(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
-        if let Some(pane_id) = self.get_pane_id_at(point) {
+    fn get_pane_at(
+        &mut self,
+        point: &Position,
+        search_selectable: bool,
+    ) -> Option<&mut Box<dyn Pane>> {
+        if let Some(pane_id) = self.get_pane_id_at(point, search_selectable) {
             self.panes.get_mut(&pane_id)
         } else {
             None
         }
     }
-    fn get_pane_id_at(&self, point: &Position) -> Option<PaneId> {
+
+    fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.fullscreen_is_active {
             return self.get_active_pane_id();
         }
-
-        self.get_selectable_panes()
-            .find(|(_, p)| p.contains(point))
-            .map(|(&id, _)| id)
+        if search_selectable {
+            self.get_selectable_panes()
+                .find(|(_, p)| p.contains(point))
+                .map(|(&id, _)| id)
+        } else {
+            self.get_panes()
+                .find(|(_, p)| p.contains(point))
+                .map(|(&id, _)| id)
+        }
     }
     pub fn handle_left_click(&mut self, position: &Position) {
         self.focus_pane_at(position);
 
-        if let Some(pane) = self.get_pane_at(position) {
+        if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
         };
     }
     fn focus_pane_at(&mut self, point: &Position) {
-        if let Some(clicked_pane) = self.get_pane_id_at(point) {
+        if let Some(clicked_pane) = self.get_pane_id_at(point, true) {
             self.active_terminal = Some(clicked_pane);
         }
     }
@@ -2370,7 +2379,7 @@ impl Tab {
         let active_pane_id = self.get_active_pane_id();
         // on release, get the selected text from the active pane, and reset it's selection
         let mut selected_text = None;
-        if active_pane_id != self.get_pane_id_at(position) {
+        if active_pane_id != self.get_pane_id_at(position, true) {
             if let Some(active_pane_id) = active_pane_id {
                 if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
                     active_pane.end_selection(None);
@@ -2378,7 +2387,7 @@ impl Tab {
                     active_pane.reset_selection();
                 }
             }
-        } else if let Some(pane) = self.get_pane_at(position) {
+        } else if let Some(pane) = self.get_pane_at(position, true) {
             let relative_position = pane.relative_position(position);
             pane.end_selection(Some(&relative_position));
             selected_text = pane.get_selected_text();

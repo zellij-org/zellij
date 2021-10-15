@@ -1,12 +1,20 @@
 use pretty_bytes::converter as pb;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::read_dir,
+    path::{Path, PathBuf},
+    time::Instant,
+};
+use zellij_tile::prelude::*;
 
+const ROOT: &str = "/host";
 #[derive(Default)]
 pub struct State {
     pub path: PathBuf,
     pub files: Vec<FsEntry>,
     pub cursor_hist: HashMap<PathBuf, (usize, usize)>,
     pub hide_hidden_files: bool,
+    pub ev_history: VecDeque<(Event, Instant)>, // stores last event, can be expanded in future
 }
 
 impl State {
@@ -24,6 +32,15 @@ impl State {
     }
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
+    }
+    pub fn traverse_dir_or_open_file(&mut self) {
+        match self.files[self.selected()].clone() {
+            FsEntry::Dir(p, _) => {
+                self.path = p;
+                refresh_directory(self);
+            }
+            FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
+        }
     }
 }
 
@@ -60,4 +77,25 @@ impl FsEntry {
     pub fn is_hidden_file(&self) -> bool {
         self.name().starts_with('.')
     }
+}
+
+pub(crate) fn refresh_directory(state: &mut State) {
+    state.files = read_dir(Path::new(ROOT).join(&state.path))
+        .unwrap()
+        .filter_map(|res| {
+            res.and_then(|d| {
+                if d.metadata()?.is_dir() {
+                    let children = read_dir(d.path())?.count();
+                    Ok(FsEntry::Dir(d.path(), children))
+                } else {
+                    let size = d.metadata()?.len();
+                    Ok(FsEntry::File(d.path(), size))
+                }
+            })
+            .ok()
+            .filter(|d| !d.is_hidden_file() || !state.hide_hidden_files)
+        })
+        .collect();
+
+    state.files.sort_unstable();
 }
