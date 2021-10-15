@@ -309,13 +309,6 @@ fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
         .unwrap();
 }
 
-fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
-    plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx))
-        .unwrap();
-}
-
 fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     // There is a fancy, high-performance way to do this with zero additional threads:
     // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
