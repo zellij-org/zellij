@@ -2065,7 +2065,7 @@ impl Tab {
                 if let Some(geom) = prev_geom_override {
                     new_position.get_geom_override(geom);
                 }
-                resize_pty!(new_position,self.os_api);
+                resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
@@ -2107,7 +2107,7 @@ impl Tab {
                 if let Some(geom) = prev_geom_override {
                     new_position.get_geom_override(geom);
                 }
-                resize_pty!(new_position,self.os_api);
+                resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
@@ -2149,7 +2149,7 @@ impl Tab {
                 if let Some(geom) = prev_geom_override {
                     new_position.get_geom_override(geom);
                 }
-                resize_pty!(new_position,self.os_api);
+                resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
@@ -2191,7 +2191,7 @@ impl Tab {
                 if let Some(geom) = prev_geom_override {
                     new_position.get_geom_override(geom);
                 }
-                resize_pty!(new_position,self.os_api);
+                resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
