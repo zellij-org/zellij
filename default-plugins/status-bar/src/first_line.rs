@@ -54,7 +54,7 @@ impl CtrlKeyShortcut {
             CtrlKeyAction::Scroll => 's',
             CtrlKeyAction::Quit => 'q',
             CtrlKeyAction::Session => 'o',
-            CtrlKeyAction::Move => 'f',
+            CtrlKeyAction::Move => 'h',
         }
     }
 }
