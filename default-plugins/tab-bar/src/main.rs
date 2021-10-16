@@ -29,7 +29,9 @@ static ARROW_SEPARATOR: &str = "";
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _: EmptyOptions) {
+    type Options = ();
+
+    fn load(&mut self, _: ()) {
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,

@@ -2,6 +2,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ lazy_static! {
         PluginsConfig::try_from(cfg_yaml.plugins).unwrap()
     };
 }
+type JsonObject = serde_json::Map<String, serde_json::Value>;
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct PluginsConfigFromYaml(Vec<PluginConfigFromYaml>);
@@ -82,16 +84,18 @@ impl TryFrom<PluginsConfigFromYaml> for PluginsConfig {
             if plugins.contains_key(&plugin.tag) {
                 return Err(PluginsConfigError::DuplicatePlugins(plugin.tag));
             }
-            plugins.insert(plugin.tag.clone(), plugin.into());
+            plugins.insert(plugin.tag.clone(), plugin.try_into()?);
         }
 
         Ok(PluginsConfig(plugins))
     }
 }
 
-impl From<PluginConfigFromYaml> for PluginConfig {
-    fn from(plugin: PluginConfigFromYaml) -> Self {
-        PluginConfig {
+impl TryFrom<PluginConfigFromYaml> for PluginConfig {
+    type Error = PluginsConfigError;
+
+    fn try_from(plugin: PluginConfigFromYaml) -> Result<Self, Self::Error> {
+        Ok(PluginConfig {
             path: plugin.path,
             run: match plugin.run {
                 PluginTypeFromYaml::Pane => PluginType::Pane(None),
@@ -99,8 +103,10 @@ impl From<PluginConfigFromYaml> for PluginConfig {
             },
             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
             location: RunPluginLocation::Zellij(plugin.tag),
-            options: PluginOptions::Map(plugin.options),
-        }
+            options: PluginOptions::Map({
+                serde_yaml::from_value(serde_yaml::Value::Mapping(plugin.options))?
+            }),
+        })
     }
 }
 
@@ -199,13 +205,13 @@ impl Default for PluginTypeFromYaml {
 /// PluginOptions are arbitrary options passed into plugins as they are instantiated. The variants
 /// of this enum are designed to work around a limitation Zellij has in client/server
 /// communications. Zellij uses the `bincode` crate to send messages between the client and server
-/// but it does not support serializing/deserializing `serde_yaml::Mapping` values. Therefore we
+/// but it does not support serializing/deserializing `serde_json::Map` values. Therefore we
 /// have to implement custom Serialize/Deserialize traits that transcode the `PluginOptions::Map`
 /// variant to a `PluginOptions::Serialized` as it's being serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginOptions {
     Serialized(String),
-    Map(Mapping),
+    Map(JsonObject),
 }
 
 impl PluginOptions {
@@ -214,8 +220,8 @@ impl PluginOptions {
     /// `PluginOptions::Map` variant, and a `PluginOptions::Map` is returned. If two maps have the
     /// same field than the later map will override the first map.
     fn merge(self, other: Self) -> Self {
-        let a = Mapping::from(self);
-        let b = Mapping::from(other);
+        let a = JsonObject::from(self);
+        let b = JsonObject::from(other);
 
         PluginOptions::Map(a.into_iter().chain(b.into_iter()).collect())
     }
@@ -223,7 +229,7 @@ impl PluginOptions {
 
 impl Default for PluginOptions {
     fn default() -> Self {
-        Self::Map(Mapping::default())
+        Self::Map(serde_json::Map::default())
     }
 }
 
@@ -231,15 +237,15 @@ impl From<PluginOptions> for String {
     fn from(options: PluginOptions) -> Self {
         match options {
             PluginOptions::Serialized(string) => string,
-            PluginOptions::Map(mapping) => serde_yaml::to_string(&mapping).unwrap(),
+            PluginOptions::Map(mapping) => serde_json::to_string(&mapping).unwrap(),
         }
     }
 }
 
-impl From<PluginOptions> for Mapping {
+impl From<PluginOptions> for JsonObject {
     fn from(options: PluginOptions) -> Self {
         match options {
-            PluginOptions::Serialized(string) => serde_yaml::from_str(&string).unwrap(),
+            PluginOptions::Serialized(string) => serde_json::from_str(&string).unwrap(),
             PluginOptions::Map(mapping) => mapping,
         }
     }
@@ -252,7 +258,7 @@ impl Serialize for PluginOptions {
     {
         match self {
             Self::Serialized(string) => string.serialize(serializer),
-            Self::Map(mappings) => serde_yaml::to_string(&mappings)
+            Self::Map(mappings) => serde_json::to_string(&mappings)
                 .unwrap()
                 .serialize(serializer),
         }
@@ -265,18 +271,26 @@ impl<'de> Deserialize<'de> for PluginOptions {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            serde_yaml::Mapping::deserialize(deserializer).map(PluginOptions::Map)
+            let options_yaml = serde_yaml::Mapping::deserialize(deserializer);
+            let options_json: JsonObject = options_yaml.map(|mapping| {
+                serde_yaml::from_value(serde_yaml::Value::Mapping(mapping.clone())).unwrap_or_else(|_| {
+                    panic!("Could not serialize the Yaml options into a JSON object. This can happen because Yaml supports keys that are not strings, and JSON does not. The Yaml options that couldn't be reserialized are: {:?}", mapping)
+                })
+            })?;
+
+            Ok(PluginOptions::Map(options_json))
         } else {
             String::deserialize(deserializer).map(PluginOptions::Serialized)
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum PluginsConfigError {
     DuplicatePlugins(PluginTag),
     InvalidUrl(Url),
     InvalidPluginLocation(PathBuf),
+    YamlError(serde_yaml::Error),
 }
 
 impl std::error::Error for PluginsConfigError {}
@@ -297,7 +311,17 @@ impl Display for PluginsConfigError {
                 formatter,
                 "Could not find plugin at the path: '{:?}'", path
             ),
+            PluginsConfigError::YamlError(err) => write!(
+                formatter,
+                "{}", err
+            ),
         }
+    }
+}
+
+impl From<serde_yaml::Error> for PluginsConfigError {
+    fn from(err: serde_yaml::Error) -> Self {
+        Self::YamlError(err)
     }
 }
 
@@ -376,11 +400,9 @@ mod tests {
         ",
         )?;
 
-        assert_eq!(
-            PluginsConfig::try_from(plugins),
-            Err(PluginsConfigError::DuplicatePlugins(PluginTag::new("boo")))
-        );
-
+        assert!(matches!(
+                PluginsConfig::try_from(plugins).unwrap_err(),
+                PluginsConfigError::DuplicatePlugins(p) if p == PluginTag::new("boo")));
         Ok(())
     }
 

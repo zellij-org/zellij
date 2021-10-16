@@ -214,11 +214,8 @@ fn start_plugin(
     let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
     let start = instance.exports.get_function("_start").unwrap();
-    let options_string: String = plugin_env.plugin.options.clone().into();
-    let options_json: serde_json::Value = serde_yaml::from_str(&options_string).unwrap_or_else(|err| {
-        panic!("Could not serialize the Yaml options passed for plugin \"{}\" into a JSON object. This can happen because Yaml supports keys that are not strings, and JSON does not. The exact given by the parser is: {}", plugin_env.plugin.location, err)
-    });
-    wasi_write_object(&plugin_env.wasi_env, &options_json);
+    let json_options_string: String = plugin_env.plugin.options.clone().into();
+    wasi_write_string(&plugin_env.wasi_env, &json_options_string);
 
     // This eventually calls the `.load()` method
     start.call(&[]).unwrap();
