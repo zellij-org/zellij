@@ -5,11 +5,12 @@ use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};
 use nix::pty::Winsize;
 use nix::sys::termios;
+use parking_lot::Mutex;
 use signal_hook::{consts::signal::*, iterator::Signals};
 use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{io, time};
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -107,7 +108,7 @@ impl ClientOsApi for ClientOsInputOutput {
         into_raw_mode(fd);
     }
     fn unset_raw_mode(&self, fd: RawFd) {
-        let orig_termios = self.orig_termios.lock().unwrap();
+        let orig_termios = self.orig_termios.lock();
         unset_raw_mode(fd, orig_termios.clone());
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
@@ -129,7 +130,6 @@ impl ClientOsApi for ClientOsInputOutput {
     fn send_to_server(&self, msg: ClientToServerMsg) {
         self.send_instructions_to_server
             .lock()
-            .unwrap()
             .as_mut()
             .unwrap()
             .send(msg);
@@ -137,7 +137,6 @@ impl ClientOsApi for ClientOsInputOutput {
     fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext) {
         self.receive_instructions_from_server
             .lock()
-            .unwrap()
             .as_mut()
             .unwrap()
             .recv()
@@ -172,8 +171,8 @@ impl ClientOsApi for ClientOsInputOutput {
         }
         let sender = IpcSenderWithContext::new(socket);
         let receiver = sender.get_receiver();
-        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        *self.send_instructions_to_server.lock() = Some(sender);
+        *self.receive_instructions_from_server.lock() = Some(receiver);
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of
@@ -190,14 +189,14 @@ impl ClientOsApi for ClientOsInputOutput {
         default_palette()
     }
     fn enable_mouse(&self) {
-        let mut mouse_term = self.mouse_term.lock().unwrap();
+        let mut mouse_term = self.mouse_term.lock();
         if mouse_term.is_none() {
             *mouse_term = Some(termion::input::MouseTerminal::from(std::io::stdout()));
         }
     }
 
     fn disable_mouse(&self) {
-        let mut mouse_term = self.mouse_term.lock().unwrap();
+        let mut mouse_term = self.mouse_term.lock();
         if mouse_term.is_some() {
             *mouse_term = None;
         }

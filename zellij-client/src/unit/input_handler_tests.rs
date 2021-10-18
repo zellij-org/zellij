@@ -17,9 +17,10 @@ use std::path::Path;
 
 use zellij_utils::zellij_tile;
 
+use parking_lot::Mutex;
 use std::io;
 use std::os::unix::io::RawFd;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
@@ -114,11 +115,11 @@ impl ClientOsApi for FakeClientOsApi {
     }
     fn send_to_server(&self, msg: ClientToServerMsg) {
         {
-            let mut events_sent_to_server = self.events_sent_to_server.lock().unwrap();
+            let mut events_sent_to_server = self.events_sent_to_server.lock();
             events_sent_to_server.push(msg);
         }
         {
-            let mut command_is_executing = self.command_is_executing.lock().unwrap();
+            let mut command_is_executing = self.command_is_executing.lock();
             command_is_executing.unblock_input_thread();
         }
     }
@@ -144,7 +145,7 @@ impl ClientOsApi for FakeClientOsApi {
 fn extract_actions_sent_to_server(
     events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
 ) -> Vec<Action> {
-    let events_sent_to_server = events_sent_to_server.lock().unwrap();
+    let events_sent_to_server = events_sent_to_server.lock();
     events_sent_to_server.iter().fold(vec![], |mut acc, event| {
         if let ClientToServerMsg::Action(action) = event {
             acc.push(action.clone());

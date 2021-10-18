@@ -9,7 +9,7 @@ use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
 
@@ -21,6 +21,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult};
+use parking_lot::Mutex;
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -303,7 +304,7 @@ impl ServerOsApi for ServerOsInputOutput {
         }
     }
     fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, ChildId) {
-        let orig_termios = self.orig_termios.lock().unwrap();
+        let orig_termios = self.orig_termios.lock();
         spawn_terminal(terminal_action, orig_termios.clone())
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -331,7 +332,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
-        if let Some(sender) = self.client_senders.lock().unwrap().get_mut(&client_id) {
+        if let Some(sender) = self.client_senders.lock().get_mut(&client_id) {
             sender.send(msg);
         }
     }
@@ -342,14 +343,11 @@ impl ServerOsApi for ServerOsInputOutput {
     ) -> IpcReceiverWithContext<ClientToServerMsg> {
         let receiver = IpcReceiverWithContext::new(stream);
         let sender = receiver.get_sender();
-        self.client_senders
-            .lock()
-            .unwrap()
-            .insert(client_id, sender);
+        self.client_senders.lock().insert(client_id, sender);
         receiver
     }
     fn remove_client(&mut self, client_id: ClientId) {
-        let mut client_senders = self.client_senders.lock().unwrap();
+        let mut client_senders = self.client_senders.lock();
         if client_senders.contains_key(&client_id) {
             client_senders.remove(&client_id);
         }

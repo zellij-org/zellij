@@ -11,10 +11,11 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
+use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc},
     thread,
 };
 use zellij_utils::nix::sys::stat::{umask, Mode};
@@ -117,7 +118,7 @@ impl Drop for SessionMetaData {
 macro_rules! remove_client {
     ($client_id:expr, $os_input:expr, $session_state:expr) => {
         $os_input.remove_client($client_id);
-        $session_state.write().unwrap().remove_client($client_id);
+        $session_state.write().remove_client($client_id);
     };
 }
 
@@ -224,12 +225,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     match stream {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
-                            let client_id = session_state.write().unwrap().new_client();
+                            let client_id = session_state.write().new_client();
                             let receiver = os_input.new_client(client_id, stream);
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread_handles.lock().unwrap().push(
+                            thread_handles.lock().push(
                                 thread::Builder::new()
                                     .name("server_router".to_string())
                                     .spawn(move || {
@@ -276,10 +277,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         config_options: config_options.clone(),
                     },
                 );
-                *session_data.write().unwrap() = Some(session);
+                *session_data.write() = Some(session);
                 session_state
                     .write()
-                    .unwrap()
                     .set_client_size(client_id, client_attributes.size);
 
                 let default_shell = config_options.default_shell.map(|shell| {
@@ -292,7 +292,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let spawn_tabs = |tab_layout| {
                     session_data
                         .read()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -313,15 +312,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             }
             ServerInstruction::AttachClient(attrs, options, client_id) => {
-                let rlock = session_data.read().unwrap();
+                let rlock = session_data.read();
                 let session_data = rlock.as_ref().unwrap();
                 session_state
                     .write()
-                    .unwrap()
                     .set_client_size(client_id, attrs.size);
                 let min_size = session_state
                     .read()
-                    .unwrap()
                     .min_client_terminal_size()
                     .unwrap();
                 session_data
@@ -347,22 +344,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Event::ModeUpdate(mode_info),
                     ))
                     .unwrap();
-                for client_id in session_state.read().unwrap().clients.keys() {
+                for client_id in session_state.read().clients.keys() {
                     os_input.send_to_client(*client_id, ServerToClientMsg::SwitchToMode(mode));
                 }
             }
             ServerInstruction::UnblockInputThread => {
-                for client_id in session_state.read().unwrap().clients.keys() {
+                for client_id in session_state.read().clients.keys() {
                     os_input.send_to_client(*client_id, ServerToClientMsg::UnblockInputThread);
                 }
             }
             ServerInstruction::ClientExit(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                if let Some(min_size) = session_state.read().min_client_terminal_size() {
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -372,24 +368,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // clients
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
-                if session_state.read().unwrap().clients.is_empty() {
-                    *session_data.write().unwrap() = None;
+                if session_state.read().clients.is_empty() {
+                    *session_data.write() = None;
                     break;
                 }
             }
             ServerInstruction::RemoveClient(client_id) => {
                 remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                if let Some(min_size) = session_state.read().min_client_terminal_size() {
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -399,7 +393,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // clients
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -408,7 +401,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             }
             ServerInstruction::KillSession => {
-                let client_ids = session_state.read().unwrap().client_ids();
+                let client_ids = session_state.read().client_ids();
                 for client_id in client_ids {
                     os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                     remove_client!(client_id, os_input, session_state);
@@ -418,10 +411,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::DetachSession(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                if let Some(min_size) = session_state.read().min_client_terminal_size() {
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -431,7 +423,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // clients
                     session_data
                         .write()
-                        .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
@@ -440,7 +431,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             }
             ServerInstruction::Render(mut output) => {
-                let client_ids = session_state.read().unwrap().client_ids();
+                let client_ids = session_state.read().client_ids();
                 // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
@@ -463,7 +454,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             }
             ServerInstruction::Error(backtrace) => {
-                let client_ids = session_state.read().unwrap().client_ids();
+                let client_ids = session_state.read().client_ids();
                 for client_id in client_ids {
                     os_input.send_to_client(
                         client_id,
@@ -477,11 +468,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     }
 
     // Drop cached session data before exit.
-    *session_data.write().unwrap() = None;
+    *session_data.write() = None;
 
     thread_handles
         .lock()
-        .unwrap()
         .drain(..)
         .for_each(|h| drop(h.join()));
     drop(std::fs::remove_file(&socket_path));

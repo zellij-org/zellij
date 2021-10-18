@@ -4,10 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr;
-use std::sync::{mpsc::Sender, Arc, Mutex};
+use std::sync::{mpsc::Sender, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 use wasmer::{
@@ -119,7 +120,7 @@ pub(crate) fn wasm_thread_main(
             }
             PluginInstruction::Update(pid, event) => {
                 for (&i, (instance, plugin_env)) in &plugin_map {
-                    let subs = plugin_env.subscriptions.lock().unwrap();
+                    let subs = plugin_env.subscriptions.lock();
                     // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                     let event_type = EventType::from_str(&event.to_string()).unwrap();
                     if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
@@ -248,13 +249,13 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
 }
 
 fn host_subscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let mut subscriptions = plugin_env.subscriptions.lock();
     let new: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
     subscriptions.extend(new);
 }
 
 fn host_unsubscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
+    let mut subscriptions = plugin_env.subscriptions.lock();
     let old: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
     subscriptions.retain(|k| !old.contains(k));
 }

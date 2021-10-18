@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 use zellij_utils::zellij_tile::data::Event;
 
@@ -295,13 +296,13 @@ pub(crate) fn route_thread_main(
     loop {
         let (instruction, err_ctx) = receiver.recv();
         err_ctx.update_thread_ctx();
-        let rlocked_sessions = session_data.read().unwrap();
+        let rlocked_sessions = session_data.read();
 
         match instruction {
             ClientToServerMsg::Action(action) => {
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                     if let Action::SwitchToMode(input_mode) = action {
-                        for client_id in session_state.read().unwrap().clients.keys() {
+                        for client_id in session_state.read().clients.keys() {
                             os_input.send_to_client(
                                 *client_id,
                                 ServerToClientMsg::SwitchToMode(input_mode),
@@ -314,15 +315,8 @@ pub(crate) fn route_thread_main(
                 }
             }
             ClientToServerMsg::TerminalResize(new_size) => {
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_size(client_id, new_size);
-                let min_size = session_state
-                    .read()
-                    .unwrap()
-                    .min_client_terminal_size()
-                    .unwrap();
+                session_state.write().set_client_size(client_id, new_size);
+                let min_size = session_state.read().min_client_terminal_size().unwrap();
                 rlocked_sessions
                     .as_ref()
                     .unwrap()

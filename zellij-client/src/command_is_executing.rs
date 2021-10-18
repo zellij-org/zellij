@@ -1,5 +1,5 @@
-#![allow(clippy::mutex_atomic)]
-use std::sync::{Arc, Condvar, Mutex};
+use parking_lot::{Condvar, Mutex};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct CommandIsExecuting {
@@ -14,20 +14,20 @@ impl CommandIsExecuting {
     }
     pub fn blocking_input_thread(&mut self) {
         let (lock, _cvar) = &*self.input_thread;
-        let mut input_thread = lock.lock().unwrap();
+        let mut input_thread = lock.lock();
         *input_thread = true;
     }
     pub fn unblock_input_thread(&mut self) {
         let (lock, cvar) = &*self.input_thread;
-        let mut input_thread = lock.lock().unwrap();
+        let mut input_thread = lock.lock();
         *input_thread = false;
         cvar.notify_all();
     }
     pub fn wait_until_input_thread_is_unblocked(&self) {
         let (lock, cvar) = &*self.input_thread;
-        let mut input_thread = lock.lock().unwrap();
+        let mut input_thread = lock.lock();
         while *input_thread {
-            input_thread = cvar.wait(input_thread).unwrap();
+            cvar.wait(&mut input_thread);
         }
     }
 }
