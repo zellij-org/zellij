@@ -13,11 +13,7 @@ mod wasm_vm;
 use log::info;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
-use std::{
-    path::PathBuf,
-    sync::{Arc},
-    thread,
-};
+use std::{path::PathBuf, sync::Arc, thread};
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
@@ -314,13 +310,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::AttachClient(attrs, options, client_id) => {
                 let rlock = session_data.read();
                 let session_data = rlock.as_ref().unwrap();
-                session_state
-                    .write()
-                    .set_client_size(client_id, attrs.size);
-                let min_size = session_state
-                    .read()
-                    .min_client_terminal_size()
-                    .unwrap();
+                session_state.write().set_client_size(client_id, attrs.size);
+                let min_size = session_state.read().min_client_terminal_size().unwrap();
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::TerminalResize(min_size))
@@ -470,10 +461,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     // Drop cached session data before exit.
     *session_data.write() = None;
 
-    thread_handles
-        .lock()
-        .drain(..)
-        .for_each(|h| drop(h.join()));
+    thread_handles.lock().drain(..).for_each(|h| drop(h.join()));
     drop(std::fs::remove_file(&socket_path));
 }
 
