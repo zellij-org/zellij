@@ -275,6 +275,20 @@ pub trait Pane {
     fn borderless(&self) -> bool;
 }
 
+macro_rules! resize_pty {
+    ($pane:expr, $os_input:expr) => {
+        if let PaneId::Terminal(ref pid) = $pane.pid() {
+            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // `TerminalPane::reflow_lines`
+            $os_input.set_terminal_size_using_fd(
+                *pid,
+                $pane.get_content_columns() as u16,
+                $pane.get_content_rows() as u16,
+            );
+        }
+    };
+}
+
 impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
@@ -756,7 +770,7 @@ impl Tab {
         self.draw_pane_frames = draw_pane_frames;
         self.should_clear_display_before_rendering = true;
         let viewport = self.viewport;
-        for (pane_id, pane) in self.panes.iter_mut() {
+        for pane in self.panes.values_mut() {
             if !pane.borderless() {
                 pane.set_frame(draw_pane_frames);
             }
@@ -783,15 +797,7 @@ impl Tab {
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
             }
 
-            // FIXME: This, and all other `set_terminal_size_using_fd` calls, would be best in
-            // `TerminalPane::reflow_lines`
-            if let PaneId::Terminal(pid) = pane_id {
-                self.os_api.set_terminal_size_using_fd(
-                    *pid,
-                    pane.get_content_columns() as u16,
-                    pane.get_content_rows() as u16,
-                );
-            }
+            resize_pty!(pane, self.os_api);
         }
     }
     pub fn render(&mut self) -> Option<Output> {
@@ -2030,6 +2036,170 @@ impl Tab {
         };
         self.active_terminal = updated_active_terminal;
         false
+    }
+    pub fn move_active_pane_down(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        if let Some(active) = self.get_active_pane() {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            if let Some(&p) = next_index {
+                let current_position = self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                let prev_geom = current_position.position_and_size();
+                let prev_geom_override = current_position.geom_override();
+
+                let new_position = self.panes.get_mut(&p).unwrap();
+                let next_geom = new_position.position_and_size();
+                let next_geom_override = new_position.geom_override();
+                new_position.set_geom(prev_geom);
+                if let Some(geom) = prev_geom_override {
+                    new_position.get_geom_override(geom);
+                }
+                resize_pty!(new_position, self.os_api);
+                new_position.set_should_render(true);
+
+                let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                current_position.set_geom(next_geom);
+                if let Some(geom) = next_geom_override {
+                    current_position.get_geom_override(geom);
+                }
+                resize_pty!(current_position, self.os_api);
+                current_position.set_should_render(true);
+            }
+        }
+    }
+    pub fn move_active_pane_up(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        if let Some(active) = self.get_active_pane() {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            if let Some(&p) = next_index {
+                let current_position = self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                let prev_geom = current_position.position_and_size();
+                let prev_geom_override = current_position.geom_override();
+
+                let new_position = self.panes.get_mut(&p).unwrap();
+                let next_geom = new_position.position_and_size();
+                let next_geom_override = new_position.geom_override();
+                new_position.set_geom(prev_geom);
+                if let Some(geom) = prev_geom_override {
+                    new_position.get_geom_override(geom);
+                }
+                resize_pty!(new_position, self.os_api);
+                new_position.set_should_render(true);
+
+                let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                current_position.set_geom(next_geom);
+                if let Some(geom) = next_geom_override {
+                    current_position.get_geom_override(geom);
+                }
+                resize_pty!(current_position, self.os_api);
+                current_position.set_should_render(true);
+            }
+        }
+    }
+    pub fn move_active_pane_right(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        if let Some(active) = self.get_active_pane() {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            if let Some(&p) = next_index {
+                let current_position = self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                let prev_geom = current_position.position_and_size();
+                let prev_geom_override = current_position.geom_override();
+
+                let new_position = self.panes.get_mut(&p).unwrap();
+                let next_geom = new_position.position_and_size();
+                let next_geom_override = new_position.geom_override();
+                new_position.set_geom(prev_geom);
+                if let Some(geom) = prev_geom_override {
+                    new_position.get_geom_override(geom);
+                }
+                resize_pty!(new_position, self.os_api);
+                new_position.set_should_render(true);
+
+                let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                current_position.set_geom(next_geom);
+                if let Some(geom) = next_geom_override {
+                    current_position.get_geom_override(geom);
+                }
+                resize_pty!(current_position, self.os_api);
+                current_position.set_should_render(true);
+            }
+        }
+    }
+    pub fn move_active_pane_left(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        if let Some(active) = self.get_active_pane() {
+            let terminals = self.get_selectable_panes();
+            let next_index = terminals
+                .enumerate()
+                .filter(|(_, (_, c))| {
+                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
+                })
+                .max_by_key(|(_, (_, c))| c.active_at())
+                .map(|(_, (pid, _))| pid);
+            if let Some(&p) = next_index {
+                let current_position = self.panes.get(&self.active_terminal.unwrap()).unwrap();
+                let prev_geom = current_position.position_and_size();
+                let prev_geom_override = current_position.geom_override();
+
+                let new_position = self.panes.get_mut(&p).unwrap();
+                let next_geom = new_position.position_and_size();
+                let next_geom_override = new_position.geom_override();
+                new_position.set_geom(prev_geom);
+                if let Some(geom) = prev_geom_override {
+                    new_position.get_geom_override(geom);
+                }
+                resize_pty!(new_position, self.os_api);
+                new_position.set_should_render(true);
+
+                let current_position = self.panes.get_mut(&self.active_terminal.unwrap()).unwrap();
+                current_position.set_geom(next_geom);
+                if let Some(geom) = next_geom_override {
+                    current_position.get_geom_override(geom);
+                }
+                resize_pty!(current_position, self.os_api);
+                current_position.set_should_render(true);
+            }
+        }
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {
