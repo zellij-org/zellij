@@ -719,3 +719,20 @@ fn no_layout_template_merged_correctly() {
 
     assert_eq!(merged_layout, tab_layout.try_into().unwrap());
 }
+
+#[test]
+fn session_name_to_layout_is_ok() {
+    let path = layout_test_dir("session-name-to-layout.yaml".into());
+    let layout_from_yaml = LayoutFromYaml::new(&path);
+    assert!(layout_from_yaml.is_ok());
+}
+
+#[test]
+fn session_name_to_layout_has_name() {
+    let path = layout_test_dir("session-name-to-layout.yaml".into());
+    let layout_from_yaml = LayoutFromYaml::new(&path);
+    let layout_template = layout_from_yaml.unwrap();
+
+    let expected_name = String::from("zelllij-session");
+    assert_eq!(layout_template.session.name, Some(expected_name));
+}
