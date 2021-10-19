@@ -18,9 +18,9 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::plugins::{PluginOptions, PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{
     cmp::max,
@@ -67,31 +67,15 @@ pub enum Run {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
-pub enum RunFromYaml {
-    #[serde(rename = "plugin")]
-    Plugin(RunPluginFromYaml),
-    #[serde(rename = "command")]
-    Command(RunCommand),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
-pub struct RunPluginFromYaml {
-    #[serde(default)]
-    pub _allow_exec_host_cmd: bool,
-    pub location: Url,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
+    #[serde(default)]
+    pub options: PluginOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
@@ -258,7 +242,7 @@ pub struct LayoutTemplate {
     #[serde(default)]
     pub body: bool,
     pub split_size: Option<SplitSize>,
-    pub run: Option<RunFromYaml>,
+    pub run: Option<Run>,
 }
 
 impl LayoutTemplate {
@@ -302,7 +286,7 @@ pub struct TabLayout {
     pub split_size: Option<SplitSize>,
     #[serde(default)]
     pub name: String,
-    pub run: Option<RunFromYaml>,
+    pub run: Option<Run>,
 }
 
 impl TabLayout {
@@ -495,20 +479,6 @@ impl TryFrom<Url> for RunPluginLocation {
     }
 }
 
-impl TryFrom<RunFromYaml> for Run {
-    type Error = PluginsConfigError;
-
-    fn try_from(run: RunFromYaml) -> Result<Self, Self::Error> {
-        match run {
-            RunFromYaml::Command(command) => Ok(Run::Command(command)),
-            RunFromYaml::Plugin(plugin) => Ok(Run::Plugin(RunPlugin {
-                _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
-                location: plugin.location.try_into()?,
-            })),
-        }
-    }
-}
-
 impl TryFrom<TabLayout> for Layout {
     type Error = ConfigError;
 
@@ -518,7 +488,7 @@ impl TryFrom<TabLayout> for Layout {
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
-            run: tab.run.map(Run::try_from).transpose()?,
+            run: tab.run,
         })
     }
 }
@@ -545,12 +515,7 @@ impl TryFrom<LayoutTemplate> for Layout {
             borderless: template.borderless,
             parts: Self::from_vec_template_layout(template.parts)?,
             split_size: template.split_size,
-            run: template
-                .run
-                .map(Run::try_from)
-                // FIXME: This is just Result::transpose but that method is unstable, when it
-                // stabalizes we should swap this out.
-                .map_or(Ok(None), |r| r.map(Some))?,
+            run: template.run,
         })
     }
 }
@@ -601,6 +566,25 @@ impl Default for LayoutFromYaml {
 impl Default for Direction {
     fn default() -> Self {
         Direction::Horizontal
+    }
+}
+
+impl Serialize for RunPluginLocation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: self::serde::ser::Serializer,
+    {
+        Url::from(self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for RunPluginLocation {
+    fn deserialize<D>(d: D) -> Result<RunPluginLocation, D::Error>
+    where
+        D: self::serde::de::Deserializer<'de>,
+    {
+        let url: Url = Url::deserialize(d)?;
+        Ok(RunPluginLocation::try_from(url).unwrap_or_else(|err| panic!("{}", err)))
     }
 }
 

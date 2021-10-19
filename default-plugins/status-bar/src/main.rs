@@ -136,7 +136,9 @@ fn color_elements(palette: Palette) -> ColoredElements {
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    type Options = ();
+
+    fn load(&mut self, _: ()) {
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,

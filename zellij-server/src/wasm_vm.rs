@@ -214,6 +214,8 @@ fn start_plugin(
     let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
     let start = instance.exports.get_function("_start").unwrap();
+    let json_options_string: String = plugin_env.plugin.options.clone().into();
+    wasi_write_string(&plugin_env.wasi_env, &json_options_string);
 
     // This eventually calls the `.load()` method
     start.call(&[]).unwrap();

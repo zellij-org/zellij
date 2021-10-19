@@ -2755,6 +2755,7 @@ dependencies = [
  "insta",
  "log",
  "serde_json",
+ "serde_yaml",
  "typetag",
  "unicode-width",
  "url",
