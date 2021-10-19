@@ -2077,7 +2077,6 @@ impl Tab {
                 current_position.set_should_render(true);
             }
         }
-        self.render();
     }
     pub fn move_active_pane_up(&mut self) {
         if !self.has_selectable_panes() {
@@ -2119,7 +2118,6 @@ impl Tab {
                 current_position.set_should_render(true);
             }
         }
-        self.render();
     }
     pub fn move_active_pane_right(&mut self) {
         if !self.has_selectable_panes() {
@@ -2161,7 +2159,6 @@ impl Tab {
                 current_position.set_should_render(true);
             }
         }
-        self.render();
     }
     pub fn move_active_pane_left(&mut self) {
         if !self.has_selectable_panes() {
@@ -2203,7 +2200,6 @@ impl Tab {
                 current_position.set_should_render(true);
             }
         }
-        self.render();
     }
     fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
         terminals.iter().fold(HashSet::new(), |mut borders, t| {

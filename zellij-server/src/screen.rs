@@ -647,18 +647,26 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::MovePaneDown => {
                 screen.get_active_tab_mut().unwrap().move_active_pane_down();
+
+                screen.render();
             }
             ScreenInstruction::MovePaneUp => {
                 screen.get_active_tab_mut().unwrap().move_active_pane_up();
+
+                screen.render();
             }
             ScreenInstruction::MovePaneRight => {
                 screen
                     .get_active_tab_mut()
                     .unwrap()
                     .move_active_pane_right();
+
+                screen.render();
             }
             ScreenInstruction::MovePaneLeft => {
                 screen.get_active_tab_mut().unwrap().move_active_pane_left();
+
+                screen.render();
             }
             ScreenInstruction::ScrollUp => {
                 screen
