@@ -95,19 +95,16 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     (columns_offset, rows_offset)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Output {
     pub client_render_instructions: HashMap<ClientId, String>,
 }
 
 impl Output {
-    pub fn new(client_ids: &HashSet<ClientId>) -> Self {
-        let mut client_render_instructions = HashMap::new();
+    pub fn add_clients(&mut self, client_ids: &HashSet<ClientId>) {
         for client_id in client_ids {
-            client_render_instructions.insert(*client_id, String::new());
-        }
-        Output {
-            client_render_instructions,
+            self.client_render_instructions
+                .insert(*client_id, String::new());
         }
     }
     pub fn push_str_to_all_clients(&mut self, to_push: &str) {
@@ -134,7 +131,6 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     pub mode_info: ModeInfo,
     pub colors: Palette,
-    pub is_active: bool,
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
@@ -335,7 +331,6 @@ impl Tab {
             colors,
             draw_pane_frames,
             pending_vte_events: HashMap::new(),
-            is_active: true,
             connected_clients,
         }
     }
@@ -800,14 +795,20 @@ impl Tab {
             resize_pty!(pane, self.os_api);
         }
     }
-    pub fn render(&mut self) -> Option<Output> {
+    pub fn render(&mut self, output: &mut Output) {
         if self.connected_clients.is_empty() || self.active_terminal.is_none() {
-            return None;
+            return;
         }
-        self.senders
-            .send_to_pty(PtyInstruction::UpdateActivePane(self.active_terminal))
-            .unwrap();
-        let mut output = Output::new(&self.connected_clients);
+        for connected_client in self.connected_clients.iter() {
+            // TODO: move this out of the render function
+            self.senders
+                .send_to_pty(PtyInstruction::UpdateActivePane(
+                    self.active_terminal,
+                    *connected_client,
+                ))
+                .unwrap();
+        }
+        output.add_clients(&self.connected_clients);
         let mut boundaries = Boundaries::new(self.viewport);
         let hide_cursor = "\u{1b}[?25l";
         output.push_str_to_all_clients(hide_cursor);
@@ -878,7 +879,6 @@ impl Tab {
                 output.push_str_to_all_clients(hide_cursor);
             }
         }
-        Some(output)
     }
     fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
@@ -2409,6 +2409,7 @@ impl Tab {
             // if we reached here, this is either the last pane or there's some sort of
             // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
             self.panes.remove(&id);
+            self.active_terminal = None;
             self.resize_whole_tab(self.display_area);
         }
     }
@@ -2587,7 +2588,8 @@ impl Tab {
     }
 
     fn write_selection_to_clipboard(&self, selection: &str) {
-        let mut output = Output::new(&self.connected_clients);
+        let mut output = Output::default();
+        output.add_clients(&self.connected_clients);
         output.push_str_to_all_clients(&format!(
             "\u{1b}]52;c;{}\u{1b}\\",
             base64::encode(selection)
