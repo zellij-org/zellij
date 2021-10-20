@@ -737,12 +737,18 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::MovePaneDown(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_down();
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_down();
 
                 screen.render();
             }
             ScreenInstruction::MovePaneUp(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_up();
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_up();
 
                 screen.render();
             }
@@ -755,7 +761,10 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::MovePaneLeft(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_left();
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_left();
 
                 screen.render();
             }
