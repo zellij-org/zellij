@@ -1,4 +1,10 @@
 ---
+# Configuration for zellij.
+
+# In order to troubleshoot your configuration try using the following command:
+# `zellij setup --check`
+# It should show current config locations and features that are enabled.
+
 keybinds:
     unbind: true
     normal:
@@ -14,6 +20,8 @@ keybinds:
           key: [Ctrl: 's',]
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [NewPane: ]
@@ -46,6 +54,8 @@ keybinds:
           key: [Ctrl: 's']
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [Quit]
           key: [Ctrl: 'q']
         - action: [Resize: Left,]
@@ -83,6 +93,8 @@ keybinds:
           key: [Ctrl: 's']
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [MoveFocus: Left,]
@@ -111,6 +123,45 @@ keybinds:
           key: [ Alt: '[',]
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
+    move:
+        - action: [SwitchToMode: Locked,]
+          key: [Ctrl: 'g']
+        - action: [SwitchToMode: Pane,]
+          key: [Ctrl: 'p',]
+        - action: [SwitchToMode: Tab,]
+          key: [Ctrl: 't',]
+        - action: [SwitchToMode: Resize,]
+          key: [Ctrl: 'n',]
+        - action: [SwitchToMode: Normal,]
+          key: [Ctrl: 'h', Char: "\n", Char: ' ',]
+        - action: [SwitchToMode: Scroll,]
+          key: [Ctrl: 's']
+        - action: [SwitchToMode: Session,]
+          key: [Ctrl: 'o',]
+        - action: [Quit]
+          key: [Ctrl: 'q']
+        - action: [MovePane: Left,]
+          key: [Char: 'h', Left,]
+        - action: [MovePane: Down,]
+          key: [Char: 'j', Down,]
+        - action: [MovePane: Up,]
+          key: [Char: 'k', Up, ]
+        - action: [MovePane: Right,]
+          key: [Char: 'l', Right,]
+        - action: [NewPane: ,]
+          key: [ Alt: 'n',]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+        - action: [FocusPreviousPane,]
+          key: [ Alt: '[',]
+        - action: [FocusNextPane,]
+          key: [ Alt: ']',]
     tab:
         - action: [SwitchToMode: Locked,]
           key: [Ctrl: 'g']
@@ -122,6 +173,8 @@ keybinds:
           key: [Ctrl: 't', Char: "\n", Char: ' ',]
         - action: [SwitchToMode: Scroll,]
           key: [Ctrl: 's']
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
         - action: [SwitchToMode: RenameTab, TabNameInput: [0],]
@@ -180,6 +233,8 @@ keybinds:
           key: [Ctrl: 'g',]
         - action: [SwitchToMode: Pane,]
           key: [Ctrl: 'p',]
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
         - action: [SwitchToMode: Resize,]
@@ -238,6 +293,8 @@ keybinds:
           key: [Ctrl: 'n',]
         - action: [SwitchToMode: Pane,]
           key: [Ctrl: 'p',]
+        - action: [SwitchToMode: Move,]
+          key: [Ctrl: 'h',]
         - action: [SwitchToMode: Tab,]
           key: [Ctrl: 't',]
         - action: [SwitchToMode: Normal,]
@@ -262,3 +319,35 @@ plugins:
 #   - detach (Default)
 #   - quit
 #on_force_close: quit
+
+# Send a request for a simplified ui (without arrow fonts) to plugins
+# Options:
+#   - true
+#   - false (Default)
+#simplified_ui: true
+
+# Choose the path to the default shell that zellij will use for opening new panes
+# Default: $SHELL
+# default_shell: fish
+
+# Toggle between having pane frames around the panes
+# Options:
+#   - true
+#   - false (default)
+#no_pane_frames: true
+
+# Choose the theme that is specified in the themes section.
+# Default: default
+#theme: default
+
+# Choose the mode that zellij uses when starting up.
+# Default: normal
+#default_mode: locked
+
+# Toggle enabling the mouse mode.
+# On certain configurations, or terminals this could
+# potentially interfere with copying text.
+# Options:
+#   - true
+#   - false (default)
+#disable_mouse_mode: true
