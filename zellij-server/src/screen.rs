@@ -44,6 +44,10 @@ pub(crate) enum ScreenInstruction {
     MoveFocusUp(ClientId),
     MoveFocusRight(ClientId),
     MoveFocusRightOrNextTab(ClientId),
+    MovePaneUp(ClientId),
+    MovePaneDown(ClientId),
+    MovePaneRight(ClientId),
+    MovePaneLeft(ClientId),
     Exit,
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -102,6 +106,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusRightOrNextTab(..) => {
                 ScreenContext::MoveFocusRightOrNextTab
             }
+            ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
+            ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
+            ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
+            ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -725,6 +733,29 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut(client_id)
                     .unwrap()
                     .scroll_active_terminal_up();
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneDown(client_id) => {
+                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_down();
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneUp(client_id) => {
+                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_up();
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneRight(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_right();
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneLeft(client_id) => {
+                screen.get_active_tab_mut(client_id).unwrap().move_active_pane_left();
 
                 screen.render();
             }

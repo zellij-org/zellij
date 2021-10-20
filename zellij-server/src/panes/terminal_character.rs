@@ -1,7 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 
-use zellij_utils::logging::debug_log_to_file;
 use zellij_utils::vte::ParamsIter;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
@@ -464,7 +463,7 @@ impl CharacterStyles {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
                 }
                 _ => {
-                    let _ = debug_log_to_file(format!("unhandled csi m code {:?}", param));
+                    log::warn!("unhandled csi m code {:?}", param);
                     return;
                 }
             }
