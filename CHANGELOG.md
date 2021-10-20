@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Keep default file permissions for new files (https://github.com/zellij-org/zellij/pull/777)
 * Feature: Add mouse events to plugins – including strider and the tab-bar (https://github.com/zellij-org/zellij/pull/629)
 * Feature: Directional movement of panes (https://github.com/zellij-org/zellij/pull/762)
+* Refactor: More groundwork to support multiple-clients in tabs (https://github.com/zellij-org/zellij/pull/788)
 
 ## [0.18.1] - 2021-09-30
 
