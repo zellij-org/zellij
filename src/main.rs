@@ -171,10 +171,14 @@ pub fn main() {
                 attach_layout,
             );
         } else {
-            let session_name = opts
-                .session
-                .clone()
-                .unwrap_or_else(|| names::Generator::default().next().unwrap());
+            let session_name = opts.session.clone().unwrap_or_else(|| {
+                if let Some(l) = layout.clone() {
+                    if let Some(name) = l.session.name {
+                        return name;
+                    }
+                }
+                names::Generator::default().next().unwrap()
+            });
             assert_session_ne(&session_name);
 
             // Determine and initialize the data directory
