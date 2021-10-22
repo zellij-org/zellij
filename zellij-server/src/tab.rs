@@ -1738,14 +1738,10 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
-        // FIXME: I *think* that Rust 2021 will let me just write this:
-        // let panes = self.panes.iter_mut().filter(|(pid, _)| !self.panes_to_hide.contains(pid));
-        // In the meantime, let's appease our borrow-checker overlords:
-        let temp_panes_to_hide = &self.panes_to_hide;
         let panes = self
             .panes
             .iter_mut()
-            .filter(|(pid, _)| !temp_panes_to_hide.contains(pid));
+            .filter(|(pid, _)| !self.panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
         let mut resizer = PaneResizer::new(panes);
         if resizer.layout(Direction::Horizontal, cols).is_ok() {

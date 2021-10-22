@@ -2,7 +2,7 @@
 name = "zellij"
 version = "0.20.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
-edition = "2018"
+edition = "2021"
 description = "A terminal workspace with batteries included"
 license = "MIT"
 repository = "https://github.com/zellij-org/zellij"

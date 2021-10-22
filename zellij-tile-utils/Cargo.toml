@@ -2,7 +2,7 @@
 name = "zellij-tile-utils"
 version = "0.20.0"
 authors = ["denis <denismaximov98@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A utility library for Zellij plugins"
 license = "MIT"
 
