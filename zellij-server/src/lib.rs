@@ -338,7 +338,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let mode = mode_info.mode;
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone()))
+                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
                     .unwrap();
                 session_data
                     .senders

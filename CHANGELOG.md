@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
 * Add: Treat empty config files as empty yaml documents (https://github.com/zellij-org/zellij/pull/720)
 * Fix: Commands that don't interact with the config file don't throw errors on malformed config files (https://github.com/zellij-org/zellij/pull/765)
@@ -14,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: kill-session and kill-all-sessions cli commands (https://github.com/zellij-org/zellij/pull/745)
 * Fix: Keep default file permissions for new files (https://github.com/zellij-org/zellij/pull/777)
 * Feature: Add mouse events to plugins – including strider and the tab-bar (https://github.com/zellij-org/zellij/pull/629)
+* Feature: Directional movement of panes (https://github.com/zellij-org/zellij/pull/762)
+* Refactor: More groundwork to support multiple-clients in tabs (https://github.com/zellij-org/zellij/pull/788)
 
 ## [0.18.1] - 2021-09-30
 

@@ -1,8 +1,8 @@
 [package]
 name = "zellij-client"
-version = "0.19.0"
+version = "0.20.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "The client-side library for Zellij"
 license = "MIT"
 
@@ -11,8 +11,8 @@ license = "MIT"
 [dependencies]
 mio = "0.7.11"
 termbg = "0.2.3"
-zellij-utils = { path = "../zellij-utils/", version = "0.19.0" }
-zellij-tile = { path = "../zellij-tile/", version = "0.19.0" }
+zellij-utils = { path = "../zellij-utils/", version = "0.20.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.20.0" }
 log = "0.4.14"
 
 [dev-dependencies]

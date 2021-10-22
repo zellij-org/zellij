@@ -20,7 +20,7 @@ use zellij_tile::data::{Event, EventType, PluginIds};
 use crate::{
     logging_pipe::LoggingPipe,
     panes::PaneId,
-    pty::PtyInstruction,
+    pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
 };
@@ -60,6 +60,7 @@ pub(crate) struct PluginEnv {
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    pub tab_index: usize,
     plugin_own_data_dir: PathBuf,
 }
 
@@ -208,6 +209,7 @@ fn start_plugin(
         wasi_env,
         subscriptions: Arc::new(Mutex::new(HashSet::new())),
         plugin_own_data_dir,
+        tab_index,
     };
 
     let zellij = zellij_exports(store, &plugin_env);
@@ -293,16 +295,17 @@ fn host_open_file(plugin_env: &PluginEnv) {
     let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
     plugin_env
         .senders
-        .send_to_pty(PtyInstruction::SpawnTerminal(Some(
-            TerminalAction::OpenFile(path),
-        )))
+        .send_to_pty(PtyInstruction::SpawnTerminal(
+            Some(TerminalAction::OpenFile(path)),
+            ClientOrTabIndex::TabIndex(plugin_env.tab_index),
+        ))
         .unwrap();
 }
 
 fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
     plugin_env
         .senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx))
+        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, None)) // this is a hack, we should be able to return the client id here
         .unwrap();
 }
 

@@ -29,13 +29,19 @@ use zellij_utils::{
 
 pub type VteBytes = Vec<u8>;
 
+#[derive(Clone, Copy, Debug)]
+pub enum ClientOrTabIndex {
+    ClientId(ClientId),
+    TabIndex(usize),
+}
+
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
-    SpawnTerminal(Option<TerminalAction>),
-    SpawnTerminalVertically(Option<TerminalAction>),
-    SpawnTerminalHorizontally(Option<TerminalAction>),
-    UpdateActivePane(Option<PaneId>),
+    SpawnTerminal(Option<TerminalAction>, ClientOrTabIndex),
+    SpawnTerminalVertically(Option<TerminalAction>, ClientId),
+    SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
+    UpdateActivePane(Option<PaneId>, ClientId),
     NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -45,10 +51,10 @@ pub(crate) enum PtyInstruction {
 impl From<&PtyInstruction> for PtyContext {
     fn from(pty_instruction: &PtyInstruction) -> Self {
         match *pty_instruction {
-            PtyInstruction::SpawnTerminal(_) => PtyContext::SpawnTerminal,
-            PtyInstruction::SpawnTerminalVertically(_) => PtyContext::SpawnTerminalVertically,
-            PtyInstruction::SpawnTerminalHorizontally(_) => PtyContext::SpawnTerminalHorizontally,
-            PtyInstruction::UpdateActivePane(_) => PtyContext::UpdateActivePane,
+            PtyInstruction::SpawnTerminal(..) => PtyContext::SpawnTerminal,
+            PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
+            PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
+            PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
@@ -58,7 +64,7 @@ impl From<&PtyInstruction> for PtyContext {
 }
 
 pub(crate) struct Pty {
-    pub active_pane: Option<PaneId>,
+    pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<RawFd, ChildId>,
     debug_to_file: bool,
@@ -72,29 +78,40 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
-            PtyInstruction::SpawnTerminal(terminal_action) => {
-                let pid = pty.spawn_terminal(terminal_action);
+            PtyInstruction::SpawnTerminal(terminal_action, client_or_tab_index) => {
+                let pid = pty.spawn_terminal(terminal_action, client_or_tab_index);
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::NewPane(PaneId::Terminal(pid)))
+                    .send_to_screen(ScreenInstruction::NewPane(
+                        PaneId::Terminal(pid),
+                        client_or_tab_index,
+                    ))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalVertically(terminal_action) => {
-                let pid = pty.spawn_terminal(terminal_action);
+            PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
+                let pid =
+                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::VerticalSplit(PaneId::Terminal(pid)))
+                    .send_to_screen(ScreenInstruction::VerticalSplit(
+                        PaneId::Terminal(pid),
+                        client_id,
+                    ))
                     .unwrap();
             }
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action) => {
-                let pid = pty.spawn_terminal(terminal_action);
+            PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
+                let pid =
+                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id));
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::HorizontalSplit(PaneId::Terminal(pid)))
+                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                        PaneId::Terminal(pid),
+                        client_id,
+                    ))
                     .unwrap();
             }
-            PtyInstruction::UpdateActivePane(pane_id) => {
-                pty.set_active_pane(pane_id);
+            PtyInstruction::UpdateActivePane(pane_id, client_id) => {
+                pty.set_active_pane(pane_id, client_id);
             }
             PtyInstruction::NewTab(terminal_action, tab_layout, client_id) => {
                 let tab_name = tab_layout.as_ref().and_then(|layout| {
@@ -115,11 +132,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
                     // clear current name at first
                     pty.bus
                         .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0]))
+                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0], client_id))
                         .unwrap();
                     pty.bus
                         .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(tab_name.into_bytes()))
+                        .send_to_screen(ScreenInstruction::UpdateTabName(
+                            tab_name.into_bytes(),
+                            client_id,
+                        ))
                         .unwrap();
                 }
             }
@@ -229,11 +249,14 @@ fn stream_terminal_bytes(
             }
             async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
 
-            // this is a little hacky, and is because the tests end the file as soon as
-            // we read everything, rather than hanging until there is new data
-            // a better solution would be to fix the test fakes, but this will do for now
-            async_send_to_screen(senders, ScreenInstruction::ClosePane(PaneId::Terminal(pid)))
-                .await;
+            // we send ClosePane here so that the screen knows to close this tab if the process
+            // inside the terminal exited on its own (eg. the user typed "exit<ENTER>" inside a
+            // bash shell)
+            async_send_to_screen(
+                senders,
+                ScreenInstruction::ClosePane(PaneId::Terminal(pid), None),
+            )
+            .await;
         }
     })
 }
@@ -241,29 +264,40 @@ fn stream_terminal_bytes(
 impl Pty {
     pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
         Pty {
-            active_pane: None,
+            active_panes: HashMap::new(),
             bus,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
             task_handles: HashMap::new(),
         }
     }
-    pub fn get_default_terminal(&self) -> TerminalAction {
+    pub fn get_default_terminal(&self, client_id: Option<ClientId>) -> TerminalAction {
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
-            cwd: self
-                .active_pane
+            cwd: client_id
+                .and_then(|client_id| self.active_panes.get(&client_id))
                 .and_then(|pane| match pane {
                     PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(&id).and_then(|id| id.shell),
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|id| id.shell),
                 })
                 .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(id)))
                 .flatten(),
         })
     }
-    pub fn spawn_terminal(&mut self, terminal_action: Option<TerminalAction>) -> RawFd {
-        let terminal_action = terminal_action.unwrap_or_else(|| self.get_default_terminal());
+    pub fn spawn_terminal(
+        &mut self,
+        terminal_action: Option<TerminalAction>,
+        client_or_tab_index: ClientOrTabIndex,
+    ) -> RawFd {
+        let terminal_action = match client_or_tab_index {
+            ClientOrTabIndex::ClientId(client_id) => {
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(Some(client_id)))
+            }
+            ClientOrTabIndex::TabIndex(_) => {
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
+            }
+        };
         let (pid_primary, child_id): (RawFd, ChildId) = self
             .bus
             .os_input
@@ -286,7 +320,8 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {
-        let default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
+        let default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(Some(client_id)));
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {
@@ -368,8 +403,10 @@ impl Pty {
             self.close_pane(id);
         });
     }
-    pub fn set_active_pane(&mut self, pane_id: Option<PaneId>) {
-        self.active_pane = pane_id;
+    pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
+        if let Some(pane_id) = pane_id {
+            self.active_panes.insert(client_id, pane_id);
+        }
     }
 }
 
