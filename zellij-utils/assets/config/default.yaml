@@ -30,6 +30,10 @@ keybinds:
           key: [ Alt: '[',]
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
+        - action: [Resize: Increase,]
+          key: [ Alt: '=']
+        - action: [Resize: Decrease,]
+          key: [ Alt: '-']
     locked:
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 'g',]

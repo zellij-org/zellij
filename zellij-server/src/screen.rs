@@ -549,9 +549,13 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::ResizeIncrease => {
                 screen.get_active_tab_mut().unwrap().resize_increase();
+
+                screen.render();
             }
             ScreenInstruction::ResizeDecrease => {
                 screen.get_active_tab_mut().unwrap().resize_decrease();
+
+                screen.render();
             }
             ScreenInstruction::SwitchFocus => {
                 screen.get_active_tab_mut().unwrap().move_focus();
