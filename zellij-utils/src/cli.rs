@@ -89,4 +89,19 @@ pub enum Sessions {
         #[structopt(subcommand, name = "options")]
         options: Option<SessionCommand>,
     },
+
+    /// Kill the specific session
+    #[structopt(alias = "k")]
+    KillSession {
+        /// Name of target session
+        target_session: Option<String>,
+    },
+
+    /// Kill all sessions
+    #[structopt(alias = "ka")]
+    KillAllSessions {
+        /// Automatic yes to prompts
+        #[structopt(short, long)]
+        yes: bool,
+    },
 }

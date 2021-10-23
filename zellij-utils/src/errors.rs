@@ -228,6 +228,10 @@ pub enum ScreenContext {
     MoveFocusUp,
     MoveFocusRight,
     MoveFocusRightOrNextTab,
+    MovePaneDown,
+    MovePaneUp,
+    MovePaneRight,
+    MovePaneLeft,
     Exit,
     ScrollUp,
     ScrollUpAt,
@@ -246,7 +250,6 @@ pub enum ScreenContext {
     SetFixedHeight,
     SetFixedWidth,
     ClosePane,
-    ApplyLayout,
     NewTab,
     SwitchTabNext,
     SwitchTabPrev,
@@ -260,6 +263,8 @@ pub enum ScreenContext {
     MouseHold,
     Copy,
     ToggleTab,
+    AddClient,
+    RemoveClient,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -305,6 +310,7 @@ pub enum ServerContext {
     ClientExit,
     RemoveClient,
     Error,
+    KillSession,
     DetachSession,
     AttachClient,
 }

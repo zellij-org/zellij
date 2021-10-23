@@ -4,11 +4,10 @@ use crate::{
     os_input_output::{AsyncReader, ChildId, Pid, ServerOsApi},
     panes::PaneId,
     thread_bus::ThreadSenders,
-    ClientId, SessionState,
+    ClientId,
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
@@ -27,44 +26,44 @@ use zellij_utils::{
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
+    fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
     fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, ChildId) {
         unimplemented!()
     }
-    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
+    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, _fd: RawFd, _buf: &[u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, _fd: RawFd) -> Result<(), nix::Error> {
         unimplemented!()
     }
-    fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
+    fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {
         unimplemented!()
     }
-    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
+    fn force_kill(&self, _pid: Pid) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
+    fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) {
         unimplemented!()
     }
     fn new_client(
         &mut self,
-        client_id: ClientId,
-        stream: LocalSocketStream,
+        _client_id: ClientId,
+        _stream: LocalSocketStream,
     ) -> IpcReceiverWithContext<ClientToServerMsg> {
         unimplemented!()
     }
-    fn remove_client(&mut self, client_id: ClientId) {
+    fn remove_client(&mut self, _client_id: ClientId) {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
@@ -84,7 +83,8 @@ fn create_new_tab(size: Size) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let colors = Palette::default();
-    let session_state = Arc::new(RwLock::new(SessionState::new()));
+    let draw_pane_frames = true;
+    let client_id = 1;
     let mut tab = Tab::new(
         index,
         position,
@@ -95,8 +95,8 @@ fn create_new_tab(size: Size) -> Tab {
         max_panes,
         mode_info,
         colors,
-        session_state,
-        true, // draw pane frames
+        draw_pane_frames,
+        client_id,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -2522,6 +2522,244 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
         tab.get_active_pane().unwrap().x(),
         61,
         "Active pane x position"
+    );
+}
+
+#[test]
+pub fn move_active_pane_down() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id);
+    tab.move_focus_up();
+    tab.move_active_pane_down();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        10,
+        "Active pane is the bottom one"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane is the bottom one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_down_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.vertical_split(new_pane_id_2);
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_up();
+    tab.move_active_pane_down();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        10,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        91,
+        "Active pane x position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_up() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id);
+    tab.move_active_pane_up();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        0,
+        "Active pane is the top one"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane is the top one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_up_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1);
+    tab.move_focus_up();
+    tab.vertical_split(new_pane_id_2);
+    tab.vertical_split(new_pane_id_3);
+    tab.move_focus_down();
+    tab.move_active_pane_up();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        0,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        91,
+        "Active pane x position"
+    );
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id);
+    tab.move_active_pane_left();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        0,
+        "Active pane is the left one"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane is the left one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_left_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.move_focus_left();
+    tab.horizontal_split(new_pane_id_2);
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_right();
+    tab.move_active_pane_left();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        15,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        0,
+        "Active pane x position"
+    );
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_right() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id);
+    tab.move_focus_left();
+    tab.move_active_pane_right();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        61,
+        "Active pane is the right one"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane is the right one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_right_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1);
+    tab.horizontal_split(new_pane_id_2);
+    tab.horizontal_split(new_pane_id_3);
+    tab.move_focus_left();
+    tab.move_active_pane_right();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().y(),
+        15,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().x(),
+        61,
+        "Active pane x position"
+    );
+    assert_eq!(
+        tab.get_active_pane().unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane Paneid"
     );
 }
 

@@ -25,5 +25,5 @@ $                                                          │$ █
                                                            │                                                            
                                                            │                                                            
                                                            │                                                            
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SCROLL  <o> SESSION  <q> QUIT           
  Tip: Alt + n => open new pane. Alt + [] or hjkl => navigate between panes.                                             

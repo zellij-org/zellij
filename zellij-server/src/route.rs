@@ -3,8 +3,11 @@ use std::sync::{Arc, RwLock};
 use zellij_utils::zellij_tile::data::Event;
 
 use crate::{
-    os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction, SessionMetaData, SessionState,
+    os_input_output::ServerOsApi,
+    pty::{ClientOrTabIndex, PtyInstruction},
+    screen::ScreenInstruction,
+    wasm_vm::PluginInstruction,
+    ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
@@ -34,17 +37,17 @@ fn route_action(
         Action::ToggleTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ToggleTab)
+                .send_to_screen(ScreenInstruction::ToggleTab(client_id))
                 .unwrap();
         }
         Action::Write(val) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ClearScroll)
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::WriteCharacter(val))
+                .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
                 .unwrap();
         }
         Action::SwitchToMode(mode) => {
@@ -61,11 +64,10 @@ fn route_action(
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ChangeMode(get_mode_info(
-                    mode,
-                    palette,
-                    session.capabilities,
-                )))
+                .send_to_screen(ScreenInstruction::ChangeMode(
+                    get_mode_info(mode, palette, session.capabilities),
+                    client_id,
+                ))
                 .unwrap();
             session
                 .senders
@@ -74,96 +76,105 @@ fn route_action(
         }
         Action::Resize(direction) => {
             let screen_instr = match direction {
-                ResizeDirection::Left => ScreenInstruction::ResizeLeft,
-                ResizeDirection::Right => ScreenInstruction::ResizeRight,
-                ResizeDirection::Up => ScreenInstruction::ResizeUp,
-                ResizeDirection::Down => ScreenInstruction::ResizeDown,
-                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease,
-                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease,
+                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
+                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id),
+                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id),
+                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id),
+                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
+                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
         Action::SwitchFocus => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::SwitchFocus)
+                .send_to_screen(ScreenInstruction::SwitchFocus(client_id))
                 .unwrap();
         }
         Action::FocusNextPane => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::FocusNextPane)
+                .send_to_screen(ScreenInstruction::FocusNextPane(client_id))
                 .unwrap();
         }
         Action::FocusPreviousPane => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::FocusPreviousPane)
+                .send_to_screen(ScreenInstruction::FocusPreviousPane(client_id))
                 .unwrap();
         }
         Action::MoveFocus(direction) => {
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::MoveFocusLeft,
-                Direction::Right => ScreenInstruction::MoveFocusRight,
-                Direction::Up => ScreenInstruction::MoveFocusUp,
-                Direction::Down => ScreenInstruction::MoveFocusDown,
+                Direction::Left => ScreenInstruction::MoveFocusLeft(client_id),
+                Direction::Right => ScreenInstruction::MoveFocusRight(client_id),
+                Direction::Up => ScreenInstruction::MoveFocusUp(client_id),
+                Direction::Down => ScreenInstruction::MoveFocusDown(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
         Action::MoveFocusOrTab(direction) => {
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab,
-                Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab,
+                Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id),
+                Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab(client_id),
                 _ => unreachable!(),
+            };
+            session.senders.send_to_screen(screen_instr).unwrap();
+        }
+        Action::MovePane(direction) => {
+            let screen_instr = match direction {
+                Direction::Left => ScreenInstruction::MovePaneLeft(client_id),
+                Direction::Right => ScreenInstruction::MovePaneRight(client_id),
+                Direction::Up => ScreenInstruction::MovePaneUp(client_id),
+                Direction::Down => ScreenInstruction::MovePaneDown(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
         Action::ScrollUp => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ScrollUp)
+                .send_to_screen(ScreenInstruction::ScrollUp(client_id))
                 .unwrap();
         }
         Action::ScrollUpAt(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ScrollUpAt(point))
+                .send_to_screen(ScreenInstruction::ScrollUpAt(point, client_id))
                 .unwrap();
         }
         Action::ScrollDown => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ScrollDown)
+                .send_to_screen(ScreenInstruction::ScrollDown(client_id))
                 .unwrap();
         }
         Action::ScrollDownAt(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ScrollDownAt(point))
+                .send_to_screen(ScreenInstruction::ScrollDownAt(point, client_id))
                 .unwrap();
         }
         Action::ScrollToBottom => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ScrollToBottom)
+                .send_to_screen(ScreenInstruction::ScrollToBottom(client_id))
                 .unwrap();
         }
         Action::PageScrollUp => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::PageScrollUp)
+                .send_to_screen(ScreenInstruction::PageScrollUp(client_id))
                 .unwrap();
         }
         Action::PageScrollDown => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::PageScrollDown)
+                .send_to_screen(ScreenInstruction::PageScrollDown(client_id))
                 .unwrap();
         }
         Action::ToggleFocusFullscreen => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen)
+                .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(client_id))
                 .unwrap();
         }
         Action::TogglePaneFrames => {
@@ -175,74 +186,86 @@ fn route_action(
         Action::NewPane(direction) => {
             let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(shell),
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell, client_id),
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(shell, client_id)
+                }
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(shell),
+                None => PtyInstruction::SpawnTerminal(shell, ClientOrTabIndex::ClientId(client_id)),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
         Action::Run(command) => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(run_cmd),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(run_cmd),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
-                Some(Direction::Down) => PtyInstruction::SpawnTerminalHorizontally(run_cmd),
+                Some(Direction::Left) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                }
+                Some(Direction::Right) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                }
+                Some(Direction::Up) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                }
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                }
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(run_cmd),
+                None => {
+                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
+                }
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
         Action::CloseFocus => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::CloseFocusedPane)
+                .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .unwrap();
         }
         Action::NewTab(tab_layout) => {
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout))
+                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, client_id))
                 .unwrap();
         }
         Action::GoToNextTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::SwitchTabNext)
+                .send_to_screen(ScreenInstruction::SwitchTabNext(client_id))
                 .unwrap();
         }
         Action::GoToPreviousTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::SwitchTabPrev)
+                .send_to_screen(ScreenInstruction::SwitchTabPrev(client_id))
                 .unwrap();
         }
         Action::ToggleActiveSyncTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ToggleActiveSyncTab)
+                .send_to_screen(ScreenInstruction::ToggleActiveSyncTab(client_id))
                 .unwrap();
         }
         Action::CloseTab => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::CloseTab)
+                .send_to_screen(ScreenInstruction::CloseTab(client_id))
                 .unwrap();
         }
         Action::GoToTab(i) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::GoToTab(i))
+                .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
                 .unwrap();
         }
         Action::TabNameInput(c) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::UpdateTabName(c))
+                .send_to_screen(ScreenInstruction::UpdateTabName(c, client_id))
                 .unwrap();
         }
         Action::Quit => {
@@ -260,25 +283,25 @@ fn route_action(
         Action::LeftClick(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::LeftClick(point))
+                .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
                 .unwrap();
         }
         Action::MouseRelease(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::MouseRelease(point))
+                .send_to_screen(ScreenInstruction::MouseRelease(point, client_id))
                 .unwrap();
         }
         Action::MouseHold(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::MouseHold(point))
+                .send_to_screen(ScreenInstruction::MouseHold(point, client_id))
                 .unwrap();
         }
         Action::Copy => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::Copy)
+                .send_to_screen(ScreenInstruction::Copy(client_id))
                 .unwrap();
         }
         Action::NoOp => {}
@@ -359,6 +382,9 @@ pub(crate) fn route_thread_main(
                 // if the main server thread exited before this router thread did)
                 let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                 break;
+            }
+            ClientToServerMsg::KillSession => {
+                to_server.send(ServerInstruction::KillSession).unwrap();
             }
         }
     }

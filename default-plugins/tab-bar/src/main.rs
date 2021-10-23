@@ -1,6 +1,9 @@
 mod line;
 mod tab;
 
+use std::cmp::{max, min};
+use std::convert::TryInto;
+
 use zellij_tile::prelude::*;
 
 use crate::line::tab_line;
@@ -15,7 +18,10 @@ pub struct LinePart {
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
+    active_tab_idx: usize,
     mode_info: ModeInfo,
+    mouse_click_pos: usize,
+    should_render: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -25,13 +31,34 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         set_selectable(false);
-        subscribe(&[EventType::TabUpdate, EventType::ModeUpdate]);
+        subscribe(&[
+            EventType::TabUpdate,
+            EventType::ModeUpdate,
+            EventType::Mouse,
+        ]);
     }
 
     fn update(&mut self, event: Event) {
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
-            Event::TabUpdate(tabs) => self.tabs = tabs,
+            Event::TabUpdate(tabs) => {
+                // tabs are indexed starting from 1 so we need to add 1
+                self.active_tab_idx = (&tabs).iter().position(|t| t.active).unwrap() + 1;
+                self.tabs = tabs;
+            }
+            Event::Mouse(me) => match me {
+                Mouse::LeftClick(_, col) => {
+                    self.mouse_click_pos = col;
+                    self.should_render = true;
+                }
+                Mouse::ScrollUp(_) => {
+                    switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
+                }
+                Mouse::ScrollDown(_) => {
+                    switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
+                }
+                _ => {}
+            },
             _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
         }
     }
@@ -70,8 +97,20 @@ impl ZellijPlugin for State {
             self.mode_info.capabilities,
         );
         let mut s = String::new();
-        for bar_part in tab_line {
-            s = format!("{}{}", s, bar_part.part);
+        let mut len_cnt = 0;
+        for (idx, bar_part) in tab_line.iter().enumerate() {
+            s = format!("{}{}", s, &bar_part.part);
+
+            if self.should_render
+                && self.mouse_click_pos > len_cnt
+                && self.mouse_click_pos <= len_cnt + bar_part.len
+                && idx > 2
+            {
+                // First three elements of tab_line are "Zellij", session name and empty thing, hence the idx > 2 condition.
+                // Tabs are indexed starting from 1, therefore we need subtract 2 below.
+                switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 2);
+            }
+            len_cnt += bar_part.len;
         }
         match self.mode_info.palette.cyan {
             PaletteColor::Rgb((r, g, b)) => {
@@ -81,5 +120,6 @@ impl ZellijPlugin for State {
                 println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
             }
         }
+        self.should_render = false;
     }
 }

@@ -34,6 +34,10 @@ pub fn open_file(path: &Path) {
     unsafe { host_open_file() };
 }
 
+pub fn switch_tab_to(tab_idx: u32) {
+    unsafe { host_switch_tab_to(tab_idx) };
+}
+
 pub fn set_timeout(secs: f64) {
     unsafe { host_set_timeout(secs) };
 }
@@ -63,6 +67,7 @@ extern "C" {
     fn host_set_selectable(selectable: i32);
     fn host_get_plugin_ids();
     fn host_open_file();
+    fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
     fn host_exec_cmd();
 }

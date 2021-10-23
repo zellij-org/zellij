@@ -13,10 +13,14 @@ use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 
-use crate::consts::{ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
+use crate::consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 use crate::shared::set_permissions;
 
 pub fn configure_logger() {
+    atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
+    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
+    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE).unwrap();
+
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
     let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{thread:<10.15}] [{file}:{line}]: {message} {n}";
@@ -25,7 +29,7 @@ pub fn configure_logger() {
     let log_file = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(file_pattern)))
         .append(true)
-        .build(ZELLIJ_TMP_LOG_DIR.join("zellij.log"))
+        .build(&*ZELLIJ_TMP_LOG_FILE)
         .unwrap();
 
     // plugin appender. To be used in loggin_pipe to forward stderr output from plugins. We do some formatting
@@ -35,7 +39,7 @@ pub fn configure_logger() {
             "{highlight({level:<6})} {message} {n}",
         )))
         .append(true)
-        .build(ZELLIJ_TMP_LOG_DIR.join("zellij.log"))
+        .build(&*ZELLIJ_TMP_LOG_FILE)
         .unwrap();
 
     // Set the default logging level to "info" and log it to zellij.log file
@@ -83,43 +87,6 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
         set_permissions(dir_name)?;
     }
     result
-}
-
-pub fn debug_log_to_file(mut message: String) -> io::Result<()> {
-    message.push('\n');
-    debug_log_to_file_without_newline(message)
-}
-
-pub fn debug_log_to_file_without_newline(message: String) -> io::Result<()> {
-    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE)?;
-    let mut file = fs::OpenOptions::new()
-        .append(true)
-        .open(&*ZELLIJ_TMP_LOG_FILE)?;
-    file.write_all(message.as_bytes())
-}
-
-pub fn _debug_log_to_file_pid_3(message: String, pid: RawFd) -> io::Result<()> {
-    if pid == 3 {
-        debug_log_to_file(message)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn _delete_log_file() -> io::Result<()> {
-    if fs::metadata(&*ZELLIJ_TMP_LOG_FILE).is_ok() {
-        fs::remove_file(&*ZELLIJ_TMP_LOG_FILE)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn _delete_log_dir() -> io::Result<()> {
-    if fs::metadata(&*ZELLIJ_TMP_LOG_DIR).is_ok() {
-        fs::remove_dir_all(&*ZELLIJ_TMP_LOG_DIR)
-    } else {
-        Ok(())
-    }
 }
 
 pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {

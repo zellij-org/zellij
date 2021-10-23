@@ -84,6 +84,19 @@ pub(crate) fn get_active_session() -> ActiveSession {
     }
 }
 
+pub(crate) fn kill_session(name: &str) {
+    let path = &*ZELLIJ_SOCK_DIR.join(name);
+    match LocalSocketStream::connect(path) {
+        Ok(stream) => {
+            IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+        }
+        Err(e) => {
+            eprintln!("Error occured: {:?}", e);
+            process::exit(1);
+        }
+    };
+}
+
 pub(crate) fn list_sessions() {
     let exit_code = match get_sessions() {
         Ok(sessions) => {

@@ -378,7 +378,7 @@ fn unbind_multiple_keybinds_all_modes() {
     let result_normal_2 = mode_keybinds_normal
         .expect("ModeKeybinds shouldn't be empty")
         .0
-        .get(&Key::Ctrl('h'));
+        .get(&Key::Ctrl('f'));
     let result_resize_1 = mode_keybinds_resize
         .expect("ModeKeybinds shouldn't be empty")
         .0
@@ -386,7 +386,7 @@ fn unbind_multiple_keybinds_all_modes() {
     let result_resize_2 = mode_keybinds_resize
         .expect("ModeKeybinds shouldn't be empty")
         .0
-        .get(&Key::Ctrl('h'));
+        .get(&Key::Ctrl('f'));
     assert!(result_normal_1.is_none());
     assert!(result_resize_1.is_none());
     assert!(result_normal_2.is_none());
