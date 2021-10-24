@@ -150,6 +150,9 @@ impl InputHandler {
                 MouseButton::Left => {
                     self.dispatch_action(Action::LeftClick(point));
                 }
+                MouseButton::Right => {
+                    self.dispatch_action(Action::RightClick(point));
+                }
                 _ => {}
             },
             MouseEvent::Release(point) => {

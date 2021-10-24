@@ -284,6 +284,13 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
                 .unwrap();
         }
+        Action::RightClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RightClick(point, client_id))
+                .unwrap();
+        }
+
         Action::MouseRelease(point) => {
             session
                 .senders

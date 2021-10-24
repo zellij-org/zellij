@@ -269,6 +269,7 @@ pub trait Pane {
     fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    fn handle_right_click(&mut self, _to: &Position) {}
 }
 
 macro_rules! resize_pty {
@@ -2534,6 +2535,14 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
+        };
+    }
+    pub fn handle_right_click(&mut self, position: &Position) {
+        self.focus_pane_at(position);
+
+        if let Some(pane) = self.get_pane_at(position, false) {
+            let relative_position = pane.relative_position(position);
+            pane.handle_right_click(&relative_position);
         };
     }
     fn focus_pane_at(&mut self, point: &Position) {
