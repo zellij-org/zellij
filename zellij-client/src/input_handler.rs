@@ -176,6 +176,7 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
+            Action::NoOp => {}
             Action::Quit | Action::Detach => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));

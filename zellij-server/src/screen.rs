@@ -44,6 +44,7 @@ pub(crate) enum ScreenInstruction {
     MoveFocusUp(ClientId),
     MoveFocusRight(ClientId),
     MoveFocusRightOrNextTab(ClientId),
+    MovePane(ClientId),
     MovePaneUp(ClientId),
     MovePaneDown(ClientId),
     MovePaneRight(ClientId),
@@ -106,6 +107,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusRightOrNextTab(..) => {
                 ScreenContext::MoveFocusRightOrNextTab
             }
+            ScreenInstruction::MovePane(..) => ScreenContext::MovePane,
             ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
             ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
@@ -733,6 +735,14 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut(client_id)
                     .unwrap()
                     .scroll_active_terminal_up();
+
+                screen.render();
+            }
+            ScreenInstruction::MovePane(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane();
 
                 screen.render();
             }
