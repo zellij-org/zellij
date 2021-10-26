@@ -732,7 +732,12 @@ fn session_name_to_layout_has_name() {
     let path = layout_test_dir("session-name-to-layout.yaml".into());
     let layout_from_yaml = LayoutFromYaml::new(&path);
     let layout_template = layout_from_yaml.unwrap();
+    let session_layout = layout_template.session;
 
-    let expected_name = String::from("zelllij-session");
-    assert_eq!(layout_template.session.name, Some(expected_name));
+    let expected_session = SessionFromYaml {
+        name: Some(String::from("zellij-session")),
+        attach: None,
+    };
+
+    assert_eq!(expected_session, session_layout);
 }

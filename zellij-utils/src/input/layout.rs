@@ -249,11 +249,11 @@ impl LayoutFromYaml {
 
 // The struct that is used to deserialize the session from
 // a yaml configuration file
-// TODO: think again about the structure name.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
 pub struct SessionFromYaml {
     pub name: Option<String>,
+    pub attach: Option<bool>,
 }
 
 // The struct that carries the information template that is used to
@@ -596,12 +596,6 @@ impl Default for LayoutTemplate {
             split_size: None,
             run: None,
         }
-    }
-}
-
-impl Default for SessionFromYaml {
-    fn default() -> Self {
-        Self { name: None }
     }
 }
 
