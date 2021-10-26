@@ -271,7 +271,7 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_in_session(&mut channel, &session_name);
+        start_zellij_in_session(&mut channel, session_name);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -310,7 +310,7 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        attach_to_existing_session(&mut channel, &session_name);
+        attach_to_existing_session(&mut channel, session_name);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -484,13 +484,13 @@ impl RemoteRunner {
                 RemoteRunner::new_existing_session(
                     self.test_name,
                     self.win_size,
-                    &self.session_name.as_ref().unwrap(),
+                    self.session_name.as_ref().unwrap(),
                 )
             } else {
                 RemoteRunner::new_with_session_name(
                     self.test_name,
                     self.win_size,
-                    &self.session_name.as_ref().unwrap(),
+                    self.session_name.as_ref().unwrap(),
                 )
             };
             new_runner.retries_left = self.retries_left - 1;
