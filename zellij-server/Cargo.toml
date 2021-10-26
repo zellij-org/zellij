@@ -2,7 +2,7 @@
 name = "zellij-server"
 version = "0.20.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "The server-side library for Zellij"
 license = "MIT"
 

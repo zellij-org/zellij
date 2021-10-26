@@ -1515,7 +1515,6 @@ impl Perform for Grid {
                             }
                             dynamic_code += 1;
                         }
-                        return;
                     }
                 }
             }

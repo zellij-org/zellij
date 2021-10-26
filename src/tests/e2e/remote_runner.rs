@@ -472,13 +472,11 @@ impl RemoteRunner {
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else if self.without_frames {
             let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else if self.session_name.is_some() {
             let mut new_runner = if self.attach_to_existing {
                 RemoteRunner::new_existing_session(
@@ -496,14 +494,13 @@ impl RemoteRunner {
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else {
             let mut new_runner = RemoteRunner::new(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         }
+        self.run_all_steps()
     }
     pub fn run_all_steps(&mut self) -> String {
         // returns the last snapshot

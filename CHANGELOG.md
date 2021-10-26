@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: improve performance of echoed keystrokes (https://github.com/zellij-org/zellij/pull/798)
+* Add: Use hyperlinks for the setup information (https://github.com/zellij-org/zellij/pull/768)
+* Feature: Rotate Pane location (https://github.com/zellij-org/zellij/pull/802)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
