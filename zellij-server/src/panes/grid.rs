@@ -2127,7 +2127,7 @@ impl Row {
                                 self.columns.remove(position_to_remove);
                             }
                         }
-                    },
+                    }
                     Ordering::Less => {
                         let width_difference = replaced_character.width - character_width;
                         for _ in 0..width_difference {
