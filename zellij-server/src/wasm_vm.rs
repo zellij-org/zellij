@@ -1,22 +1,3 @@
-use log::{debug, info, warn};
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
-use std::str::FromStr;
-use std::sync::{mpsc::Sender, Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
-
-use serde::{de::DeserializeOwned, Serialize};
-use url::Url;
-use wasmer::{
-    imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
-    WasmerEnv,
-};
-use wasmer_wasi::{Pipe, WasiEnv, WasiState};
-use zellij_tile::data::{Event, EventType, PluginIds};
-
 use crate::{
     logging_pipe::LoggingPipe,
     panes::PaneId,
@@ -24,7 +5,30 @@ use crate::{
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
 };
-use zellij_utils::errors::{ContextType, PluginContext};
+use highway::{HighwayHash, PortableHash};
+use log::{debug, info, warn};
+use serde::{de::DeserializeOwned, Serialize};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+    process,
+    str::FromStr,
+    sync::{mpsc::Sender, Arc, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
+use url::Url;
+use wasmer::{
+    imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
+    WasmerEnv,
+};
+use wasmer_wasi::{Pipe, WasiEnv, WasiState};
+use zellij_tile::data::{Event, EventType, PluginIds};
+use zellij_utils::{
+    consts::ZELLIJ_PROJ_DIR,
+    errors::{ContextType, PluginContext},
+};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::RunPlugin,
@@ -177,8 +181,22 @@ fn start_plugin(
         .resolve_wasm_bytes(&data_dir.join("plugins/"))
         .unwrap_or_else(|| panic!("Cannot resolve wasm bytes for plugin {:?}", plugin));
 
-    // FIXME: Cache this compiled module on disk. I could use `(de)serialize_to_file()` for that
-    let module = Module::new(store, &wasm_bytes).unwrap();
+    let hash: String = PortableHash::default()
+        .hash256(&wasm_bytes)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+
+    let cached_path = ZELLIJ_PROJ_DIR.cache_dir().join(&hash);
+
+    let module = unsafe {
+        Module::deserialize_from_file(store, &cached_path).unwrap_or_else(|_| {
+            let m = Module::new(store, &wasm_bytes).unwrap();
+            fs::create_dir_all(ZELLIJ_PROJ_DIR.cache_dir()).unwrap();
+            m.serialize_to_file(&cached_path).unwrap();
+            m
+        })
+    };
 
     let output = Pipe::new();
     let input = Pipe::new();
