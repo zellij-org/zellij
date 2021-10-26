@@ -2088,6 +2088,19 @@ impl Row {
         }
         acc
     }
+    pub fn absolute_character_index(&self, x: usize) -> usize {
+        // return x's width aware index
+        let mut absolute_index = x;
+        for (i, terminal_character) in self.columns.iter().enumerate().take(x) {
+            if i == absolute_index {
+                break;
+            }
+            if terminal_character.width > 1 {
+                absolute_index = absolute_index.saturating_sub(1);
+            }
+        }
+        absolute_index
+    }
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width().cmp(&x) {
             Ordering::Equal => {
@@ -2100,17 +2113,21 @@ impl Row {
                 self.columns.push(terminal_character);
             }
             Ordering::Greater => {
-                let width_offset = self.excess_width_until(x);
+                // wide-character-aware index, where each character is counted once
+                let absolute_x_index = self.absolute_character_index(x);
                 let character_width = terminal_character.width;
                 let replaced_character = std::mem::replace(
-                    &mut self.columns[x.saturating_sub(width_offset)],
+                    &mut self.columns[absolute_x_index],
                     terminal_character,
                 );
                 if character_width > replaced_character.width {
                     // this is done in a verbose manner because of performance
                     let width_difference = character_width - replaced_character.width;
                     for _ in 0..width_difference {
-                        self.columns.pop();
+                        let position_to_remove = absolute_x_index + 1;
+                        if self.columns.get(position_to_remove).is_some() {
+                            self.columns.remove(position_to_remove);
+                        }
                     }
                 }
             }
