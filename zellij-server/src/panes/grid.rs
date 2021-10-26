@@ -2117,21 +2117,25 @@ impl Row {
                 let character_width = terminal_character.width;
                 let replaced_character =
                     std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
-                if character_width > replaced_character.width {
-                    // this is done in a verbose manner because of performance
-                    let width_difference = character_width - replaced_character.width;
-                    for _ in 0..width_difference {
-                        let position_to_remove = absolute_x_index + 1;
-                        if self.columns.get(position_to_remove).is_some() {
-                            self.columns.remove(position_to_remove);
+                match character_width.cmp(&replaced_character.width) {
+                    Ordering::Greater => {
+                        // this is done in a verbose manner because of performance
+                        let width_difference = character_width - replaced_character.width;
+                        for _ in 0..width_difference {
+                            let position_to_remove = absolute_x_index + 1;
+                            if self.columns.get(position_to_remove).is_some() {
+                                self.columns.remove(position_to_remove);
+                            }
+                        }
+                    },
+                    Ordering::Less => {
+                        let width_difference = replaced_character.width - character_width;
+                        for _ in 0..width_difference {
+                            self.columns
+                                .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                         }
                     }
-                } else if replaced_character.width > character_width {
-                    let width_difference = replaced_character.width - character_width;
-                    for _ in 0..width_difference {
-                        self.columns
-                            .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
-                    }
+                    _ => {}
                 }
             }
         }
