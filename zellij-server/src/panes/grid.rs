@@ -2116,23 +2116,22 @@ impl Row {
                 // wide-character-aware index, where each character is counted once
                 let absolute_x_index = self.absolute_character_index(x);
                 let character_width = terminal_character.width;
-                let replaced_character = std::mem::replace(
-                    &mut self.columns[absolute_x_index],
-                    terminal_character,
-                );
+                let replaced_character =
+                    std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
                 if character_width > replaced_character.width {
-                  // this is done in a verbose manner because of performance
-                  let width_difference = character_width - replaced_character.width;
-                  for _ in 0..width_difference {
-                      let position_to_remove = absolute_x_index + 1;
-                      if self.columns.get(position_to_remove).is_some() {
-                          self.columns.remove(position_to_remove);
-                      }
-                  }
+                    // this is done in a verbose manner because of performance
+                    let width_difference = character_width - replaced_character.width;
+                    for _ in 0..width_difference {
+                        let position_to_remove = absolute_x_index + 1;
+                        if self.columns.get(position_to_remove).is_some() {
+                            self.columns.remove(position_to_remove);
+                        }
+                    }
                 } else if replaced_character.width > character_width {
                     let width_difference = replaced_character.width - character_width;
                     for _ in 0..width_difference {
-                        self.columns.insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
+                        self.columns
+                            .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                     }
                 }
             }
