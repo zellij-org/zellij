@@ -226,6 +226,7 @@ pub enum ScreenContext {
     MoveFocusUp,
     MoveFocusRight,
     MoveFocusRightOrNextTab,
+    MovePane,
     MovePaneDown,
     MovePaneUp,
     MovePaneRight,
