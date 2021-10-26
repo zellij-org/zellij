@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: Use hyperlinks for the setup information (https://github.com/zellij-org/zellij/pull/768)
 * Feature: Rotate Pane location (https://github.com/zellij-org/zellij/pull/802)
 * Terminal compatibility: improve handling of wide-characters when inserted mid-line (https://github.com/zellij-org/zellij/pull/806)
+* Fix: plugins are now only compiled once and cached on disk (https://github.com/zellij-org/zellij/pull/807)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
