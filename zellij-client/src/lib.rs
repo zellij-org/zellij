@@ -12,10 +12,8 @@ use std::process::Command;
 use std::thread;
 
 use crate::{
-    command_is_executing::CommandIsExecuting,
-    stdin_handler::stdin_loop,
-    input_handler::input_loop,
-    os_input_output::ClientOsApi,
+    command_is_executing::CommandIsExecuting, input_handler::input_loop,
+    os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use zellij_tile::data::InputMode;
 use zellij_utils::{
@@ -197,7 +195,7 @@ pub fn start_client(
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
             move || stdin_loop(os_input, send_input_instructions)
-    });
+        });
 
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())

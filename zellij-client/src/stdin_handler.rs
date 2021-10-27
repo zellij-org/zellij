@@ -1,9 +1,9 @@
 use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
-use zellij_utils::channels::SenderWithContext;
-use zellij_utils::termion;
-use zellij_utils::input::mouse::MouseEvent;
 use termion::input::TermReadEventsAndRaw;
+use zellij_utils::channels::SenderWithContext;
+use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::termion;
 
 fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
     let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
@@ -20,7 +20,6 @@ fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
             bp_position = 0;
             position = None;
         }
-
     }
     if bp_position == bracketed_paste_end.len() - 1 {
         position
@@ -37,26 +36,29 @@ pub(crate) fn stdin_loop(
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
-        if pasting || (
-                stdin_buffer.len() > bracketed_paste_start.len() &&
-                stdin_buffer.iter().take(bracketed_paste_start.len()).eq(bracketed_paste_start.iter()) 
-            ) {
-                match bracketed_paste_end_position(&stdin_buffer) {
-                    Some(paste_end_position) => {
-                        let pasted_input = stdin_buffer.drain(..=paste_end_position).collect();
-                        send_input_instructions
-                            .send(InputInstruction::PastedText(pasted_input))
-                            .unwrap();
-                        pasting = false;
-                    },
-                    None => {
-                        send_input_instructions
-                            .send(InputInstruction::PastedText(stdin_buffer))
-                            .unwrap();
-                        pasting = true;
-                        continue;
-                    }
+        if pasting
+            || (stdin_buffer.len() > bracketed_paste_start.len()
+                && stdin_buffer
+                    .iter()
+                    .take(bracketed_paste_start.len())
+                    .eq(bracketed_paste_start.iter()))
+        {
+            match bracketed_paste_end_position(&stdin_buffer) {
+                Some(paste_end_position) => {
+                    let pasted_input = stdin_buffer.drain(..=paste_end_position).collect();
+                    send_input_instructions
+                        .send(InputInstruction::PastedText(pasted_input))
+                        .unwrap();
+                    pasting = false;
                 }
+                None => {
+                    send_input_instructions
+                        .send(InputInstruction::PastedText(stdin_buffer))
+                        .unwrap();
+                    pasting = true;
+                    continue;
+                }
+            }
         }
         if stdin_buffer.is_empty() {
             continue;
