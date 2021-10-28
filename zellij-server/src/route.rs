@@ -170,6 +170,18 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::PageScrollDown(client_id))
                 .unwrap();
         }
+        Action::HalfPageScrollUp => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollUp(client_id))
+                .unwrap();
+        }
+        Action::HalfPageScrollDown => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollDown(client_id))
+                .unwrap();
+        }
         Action::ToggleFocusFullscreen => {
             session
                 .senders

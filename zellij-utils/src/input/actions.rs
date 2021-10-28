@@ -56,6 +56,10 @@ pub enum Action {
     PageScrollUp,
     /// Scroll down one page in focus pane.
     PageScrollDown,
+    /// Scroll up half page in focus pane.
+    HalfPageScrollUp,
+    /// Scroll down half page in focus pane.
+    HalfPageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
     /// Toggle frames around panes in the UI

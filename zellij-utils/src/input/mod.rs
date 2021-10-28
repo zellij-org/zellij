@@ -48,6 +48,7 @@ pub fn get_mode_info(
         InputMode::Scroll => vec![
             ("↓↑".to_string(), "Scroll".to_string()),
             ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
+            ("u/d".to_string(), "Scroll Half Page".to_string()),
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],

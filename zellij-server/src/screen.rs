@@ -57,6 +57,8 @@ pub(crate) enum ScreenInstruction {
     ScrollToBottom(ClientId),
     PageScrollUp(ClientId),
     PageScrollDown(ClientId),
+    HalfPageScrollUp(ClientId),
+    HalfPageScrollDown(ClientId),
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId),
     ToggleActiveTerminalFullscreen(ClientId),
@@ -118,6 +120,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
             ScreenInstruction::PageScrollUp(..) => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown(..) => ScreenContext::PageScrollDown,
+            ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
+            ScreenInstruction::HalfPageScrollDown(..) => ScreenContext::HalfPageScrollDown,
             ScreenInstruction::ClearScroll(..) => ScreenContext::ClearScroll,
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
@@ -823,6 +827,22 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut(client_id)
                     .unwrap()
                     .scroll_active_terminal_down_page();
+
+                screen.render();
+            }
+            ScreenInstruction::HalfPageScrollUp(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .scroll_active_terminal_up_half_page();
+
+                screen.render();
+            }
+            ScreenInstruction::HalfPageScrollDown(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .scroll_active_terminal_down_half_page();
 
                 screen.render();
             }
