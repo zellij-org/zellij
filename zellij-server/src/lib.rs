@@ -48,11 +48,11 @@ use zellij_utils::{
     setup::get_default_data_dir,
 };
 
-pub(crate) type ClientId = u16;
+pub type ClientId = u16;
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
-pub(crate) enum ServerInstruction {
+pub enum ServerInstruction {
     NewClient(
         ClientAttributes,
         Box<CliArgs>,

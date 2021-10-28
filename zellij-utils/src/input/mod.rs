@@ -21,7 +21,7 @@ pub fn get_mode_info(
     capabilities: PluginCapabilities,
 ) -> ModeInfo {
     let keybinds = match mode {
-        InputMode::Normal | InputMode::Locked => Vec::new(),
+        InputMode::Normal | InputMode::Locked | InputMode::Prompt => Vec::new(),
         InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],
         InputMode::Move => vec![
             ("←↓↑→".to_string(), "Move".to_string()),

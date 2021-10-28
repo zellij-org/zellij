@@ -264,6 +264,10 @@ pub enum ScreenContext {
     ToggleTab,
     AddClient,
     RemoveClient,
+    AddOverlay,
+    RemoveOverlay,
+    ConfirmPrompt,
+    DenyPrompt,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
