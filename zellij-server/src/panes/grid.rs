@@ -1321,7 +1321,8 @@ impl Grid {
                 continue;
             }
 
-            let empty_row = Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
+            let empty_row =
+                Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
 
             // get the row from lines_above, viewport, or lines below depending on index
             let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
@@ -2216,7 +2217,7 @@ impl Row {
                         self.columns.push_front(next_character); // put it back
                         break;
                     }
-                },
+                }
                 None => {
                     // columns is empty
                     break;
@@ -2232,7 +2233,8 @@ impl Row {
             .get(to_position_accounting_for_widechars)
             .map(|character| character.width)
             .unwrap_or(1);
-        let mut replace_with = VecDeque::from(vec![terminal_character; to + width_of_current_character]);
+        let mut replace_with =
+            VecDeque::from(vec![terminal_character; to + width_of_current_character]);
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
         } else if to_position_accounting_for_widechars >= self.columns.len() {
