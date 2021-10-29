@@ -205,7 +205,9 @@ impl Keybinds {
                 .unwrap_or_else(|| vec![action])
         };
         match *mode {
-            InputMode::Normal | InputMode::Locked => mode_keybind_or_action(Action::Write(raw_bytes)),
+            InputMode::Normal | InputMode::Locked => {
+                mode_keybind_or_action(Action::Write(raw_bytes))
+            }
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
             _ => mode_keybind_or_action(Action::NoOp),
         }

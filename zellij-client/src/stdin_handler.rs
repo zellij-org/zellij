@@ -1,8 +1,8 @@
 use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
-use termion::input::TermReadEventsAndRaw;
-use terminfo::{Database as TerminfoDatabase, capability as cap, capability::Value};
 use std::collections::HashMap;
+use terminfo::{capability as cap, capability::Value, Database as TerminfoDatabase};
+use termion::input::TermReadEventsAndRaw;
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::termion;
@@ -13,10 +13,16 @@ fn keys_to_adjust() -> HashMap<Vec<u8>, Vec<u8>> {
         // TODO: there might be more adjustments we can do here, but I held off on them because I'm
         // not sure they're a thing in these modern times. It should be pretty straightforward to
         // implement them if they are...
-        if let Some(adjusted_home_key) = terminfo_db.get::<cap::KeyHome>().and_then(|k| k.expand().to_vec().ok()) {
+        if let Some(adjusted_home_key) = terminfo_db
+            .get::<cap::KeyHome>()
+            .and_then(|k| k.expand().to_vec().ok())
+        {
             keys_to_adjust.insert(vec![27, 91, 72], adjusted_home_key);
         }
-        if let Some(adjusted_end_key) = terminfo_db.get::<cap::KeyEnd>().and_then(|k| k.expand().to_vec().ok()) {
+        if let Some(adjusted_end_key) = terminfo_db
+            .get::<cap::KeyEnd>()
+            .and_then(|k| k.expand().to_vec().ok())
+        {
             keys_to_adjust.insert(vec![27, 91, 70], adjusted_end_key);
         }
     }
