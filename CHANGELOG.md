@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: improve handling of wide-characters when inserted mid-line (https://github.com/zellij-org/zellij/pull/806)
 * Fix: plugins are now only compiled once and cached on disk (https://github.com/zellij-org/zellij/pull/807)
 * Fix: pasted text performs much faster and doesn't kill Termion (https://github.com/zellij-org/zellij/pull/810)
+* Fix: resizing/scrolling through heavily wrapped panes no longer hangs (https://github.com/zellij-org/zellij/pull/814)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
