@@ -1,7 +1,7 @@
 use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
 use std::collections::HashMap;
-use terminfo::{capability as cap, capability::Value, Database as TerminfoDatabase};
+use terminfo::{capability as cap, Database as TerminfoDatabase};
 use termion::input::TermReadEventsAndRaw;
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::input::mouse::MouseEvent;
