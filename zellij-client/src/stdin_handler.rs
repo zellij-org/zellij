@@ -1,9 +1,33 @@
 use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
+use std::collections::HashMap;
+use terminfo::{capability as cap, Database as TerminfoDatabase};
 use termion::input::TermReadEventsAndRaw;
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::termion;
+
+fn keys_to_adjust() -> HashMap<Vec<u8>, Vec<u8>> {
+    let mut keys_to_adjust = HashMap::new();
+    if let Ok(terminfo_db) = TerminfoDatabase::from_env() {
+        // TODO: there might be more adjustments we can do here, but I held off on them because I'm
+        // not sure they're a thing in these modern times. It should be pretty straightforward to
+        // implement them if they are...
+        if let Some(adjusted_home_key) = terminfo_db
+            .get::<cap::KeyHome>()
+            .and_then(|k| k.expand().to_vec().ok())
+        {
+            keys_to_adjust.insert(vec![27, 91, 72], adjusted_home_key);
+        }
+        if let Some(adjusted_end_key) = terminfo_db
+            .get::<cap::KeyEnd>()
+            .and_then(|k| k.expand().to_vec().ok())
+        {
+            keys_to_adjust.insert(vec![27, 91, 70], adjusted_end_key);
+        }
+    }
+    keys_to_adjust
+}
 
 fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
     let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
@@ -34,6 +58,7 @@ pub(crate) fn stdin_loop(
 ) {
     let mut pasting = false;
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let adjusted_keys = keys_to_adjust();
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
         if pasting
@@ -65,6 +90,7 @@ pub(crate) fn stdin_loop(
         }
         for key_result in stdin_buffer.events_and_raw() {
             let (key_event, raw_bytes) = key_result.unwrap();
+            let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
             if let termion::event::Event::Mouse(me) = key_event {
                 let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
                 if let MouseEvent::Hold(_) = mouse_event {
