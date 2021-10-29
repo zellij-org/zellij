@@ -2207,21 +2207,13 @@ impl Row {
     pub fn drain_until(&mut self, x: usize) -> VecDeque<TerminalCharacter> {
         let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
-        loop {
-            match self.columns.remove(0) {
-                Some(next_character) => {
-                    if drained_part_len + next_character.width <= x {
-                        drained_part.push_back(next_character);
-                        drained_part_len += next_character.width;
-                    } else {
-                        self.columns.push_front(next_character); // put it back
-                        break;
-                    }
-                }
-                None => {
-                    // columns is empty
-                    break;
-                }
+        while let Some(next_character) = self.columns.remove(0) {
+            if drained_part_len + next_character.width <= x {
+                drained_part.push_back(next_character);
+                drained_part_len += next_character.width;
+            } else {
+                self.columns.push_front(next_character); // put it back
+                break;
             }
         }
         drained_part
