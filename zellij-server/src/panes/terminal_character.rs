@@ -21,6 +21,7 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
         dim: Some(AnsiCode::Reset),
         italic: Some(AnsiCode::Reset),
     },
+    link_anchor: None,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -622,6 +623,12 @@ impl Display for CharacterStyles {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum LinkAnchor {
+    Start(u16),
+    End,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum CharsetIndex {
     G0,
@@ -755,6 +762,7 @@ pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
     pub width: usize,
+    pub link_anchor: Option<LinkAnchor>,
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {

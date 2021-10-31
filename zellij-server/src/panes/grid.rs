@@ -18,12 +18,12 @@ use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::link_handler::LinkHandler;
+use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-
-use super::selection::Selection;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -362,6 +362,7 @@ pub struct Grid {
     pub selection: Selection,
     pub title: Option<String>,
     pub is_scrolled: bool,
+    pub link_handler: LinkHandler,
 }
 
 impl Debug for Grid {
@@ -407,6 +408,7 @@ impl Grid {
             title: None,
             changed_colors: None,
             is_scrolled: false,
+            link_handler: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1399,6 +1401,7 @@ impl Perform for Grid {
             character: c,
             width: c.width().unwrap_or(0),
             styles: self.cursor.pending_styles,
+            link_anchor: self.link_handler.pending_link_anchor(),
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -1422,6 +1425,12 @@ impl Perform for Grid {
             }
             13 => {
                 // 0d, carriage return
+
+                // Workaround for osc8 links ending followed immediately by a newline
+                // this avoids links that fill up the whole line
+                if let Some(anchor_end) = self.link_handler.insert_anchor_end() {
+                    self.add_character(anchor_end);
+                }
                 self.move_cursor_to_beginning_of_line();
             }
             14 => {
@@ -1549,6 +1558,17 @@ impl Perform for Grid {
                         // TBD: copy to own clipboard - currently unsupported
                     }
                 }
+            }
+
+            b"8" => {
+                if params.len() < 3 {
+                    return;
+                }
+
+                let (link_params, uri) = (params[1], params[2]);
+
+                self.link_handler
+                    .dispatch_osc8(link_params, uri, bell_terminated);
             }
 
             // Reset color index.

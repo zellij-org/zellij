@@ -237,6 +237,11 @@ impl Pane for TerminalPane {
                     {
                         vte_output.push_str(&new_styles.to_string());
                     }
+
+                    if let Some(osc8_seq) = self.grid.link_handler.output_osc8(t_character) {
+                        vte_output.push_str(&osc8_seq);
+                    }
+
                     vte_output.push(t_character.character);
                 }
                 character_styles.clear();
