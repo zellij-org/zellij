@@ -188,7 +188,7 @@ pub fn main() {
                         Some(s) => {
                             if let Some(l) = layout.clone() {
                                 let attach = l.session.attach.unwrap_or(true);
-                                if attach {
+                                if attach && opts.layout_path.is_some() {
                                     let client =
                                         ClientInfo::Attach(s.to_owned(), config_options.clone());
                                     start_client(
