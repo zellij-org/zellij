@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: pasted text performs much faster and doesn't kill Termion (https://github.com/zellij-org/zellij/pull/810)
 * Fix: resizing/scrolling through heavily wrapped panes no longer hangs (https://github.com/zellij-org/zellij/pull/814)
 * Terminal compatibility: properly handle HOME/END keys in eg. vim/zsh (https://github.com/zellij-org/zellij/pull/815)
+* Fix: Typo (https://github.com/zellij-org/zellij/pull/821)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
