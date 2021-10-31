@@ -62,7 +62,7 @@ pub fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("Error occured: {:?}", e);
+                eprintln!("Error occurred: {:?}", e);
                 process::exit(1);
             }
         }

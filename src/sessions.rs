@@ -78,7 +78,7 @@ pub(crate) fn get_active_session() -> ActiveSession {
             }
         }
         Err(e) => {
-            eprintln!("Error occured: {:?}", e);
+            eprintln!("Error occurred: {:?}", e);
             process::exit(1);
         }
     }
@@ -91,7 +91,7 @@ pub(crate) fn kill_session(name: &str) {
             IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
         }
         Err(e) => {
-            eprintln!("Error occured: {:?}", e);
+            eprintln!("Error occurred: {:?}", e);
             process::exit(1);
         }
     };
@@ -108,7 +108,7 @@ pub(crate) fn list_sessions() {
             0
         }
         Err(e) => {
-            eprintln!("Error occured: {:?}", e);
+            eprintln!("Error occurred: {:?}", e);
             1
         }
     };
@@ -137,7 +137,7 @@ pub(crate) fn assert_session(name: &str) {
             }
         }
         Err(e) => {
-            eprintln!("Error occured: {:?}", e);
+            eprintln!("Error occurred: {:?}", e);
         }
     };
     process::exit(1);
@@ -151,7 +151,7 @@ pub(crate) fn assert_session_ne(name: &str) {
             }
             println!("Session with name {:?} aleady exists. Use attach command to connect to it or specify a different name.", name);
         }
-        Err(e) => eprintln!("Error occured: {:?}", e),
+        Err(e) => eprintln!("Error occurred: {:?}", e),
     };
     process::exit(1);
 }
