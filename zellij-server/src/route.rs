@@ -50,6 +50,17 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
                 .unwrap();
         }
+        Action::WriteChars(val) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .unwrap();
+            let val = Vec::from(val.as_bytes());
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
+                .unwrap();
+        }
         Action::SwitchToMode(mode) => {
             let palette = session.palette;
             // TODO: use the palette from the client and remove it from the server os api
@@ -285,6 +296,13 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
                 .unwrap();
         }
+        Action::RightClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RightClick(point, client_id))
+                .unwrap();
+        }
+
         Action::MouseRelease(point) => {
             session
                 .senders

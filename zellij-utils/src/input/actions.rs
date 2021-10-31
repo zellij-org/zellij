@@ -28,6 +28,8 @@ pub enum Action {
     Quit,
     /// Write to the terminal.
     Write(Vec<u8>),
+    /// Write Characters to the terminal.
+    WriteChars(String),
     /// Switch to the specified input mode.
     SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
@@ -85,6 +87,7 @@ pub enum Action {
     /// Detach session and exit
     Detach,
     LeftClick(Position),
+    RightClick(Position),
     MouseRelease(Position),
     MouseHold(Position),
     Copy,

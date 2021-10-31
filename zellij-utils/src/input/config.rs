@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::convert::{TryFrom, TryInto};
 
 use super::keybinds::{Keybinds, KeybindsFromYaml};
@@ -20,7 +20,7 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 type ConfigResult = Result<Config, ConfigError>;
 
 /// Intermediate deserialization config struct
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<Options>,
@@ -31,7 +31,7 @@ pub struct ConfigFromYaml {
 }
 
 /// Main configuration.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
@@ -106,7 +106,8 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config) {
+        let maybe_config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config)
+        {
             Err(e) => {
                 // needs direct check, as `[ErrorImpl]` is private
                 // https://github.com/dtolnay/serde-yaml/issues/121
@@ -118,20 +119,9 @@ impl Config {
             Ok(config) => config,
         };
 
-        match config_from_yaml {
+        match maybe_config_from_yaml {
             None => Ok(Config::default()),
-            Some(config) => {
-                let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
-                let options = Options::from_yaml(config.options);
-                let themes = config.themes;
-                let plugins = PluginsConfig::get_plugins_with_default(config.plugins.try_into()?);
-                Ok(Config {
-                    keybinds,
-                    options,
-                    plugins,
-                    themes,
-                })
-            }
+            Some(config) => config.try_into(),
         }
     }
 
@@ -154,6 +144,23 @@ impl Config {
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
         Self::from_yaml(cfg.as_str())
+    }
+}
+
+impl TryFrom<ConfigFromYaml> for Config {
+    type Error = ConfigError;
+
+    fn try_from(config_from_yaml: ConfigFromYaml) -> ConfigResult {
+        let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
+        let options = Options::from_yaml(config_from_yaml.options);
+        let themes = config_from_yaml.themes;
+        let plugins = PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into()?);
+        Ok(Self {
+            keybinds,
+            options,
+            plugins,
+            themes,
+        })
     }
 }
 

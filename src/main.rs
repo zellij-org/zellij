@@ -5,8 +5,9 @@ mod tests;
 
 use crate::install::populate_data_dir;
 use sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions, kill_session,
-    list_sessions, print_sessions, session_exists, ActiveSession,
+    assert_session, assert_session_ne, get_active_session, get_sessions,
+    get_sessions_sorted_by_creation_date, kill_session, list_sessions, print_sessions,
+    print_sessions_with_index, session_exists, ActiveSession,
 };
 use std::process;
 use zellij_client::{os_input_output::get_client_os_input, start_client, ClientInfo};
@@ -62,7 +63,7 @@ pub fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("Error occured: {:?}", e);
+                eprintln!("Error occurred: {:?}", e);
                 process::exit(1);
             }
         }
@@ -111,6 +112,7 @@ pub fn main() {
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,
+            index,
             options,
         })) = opts.command.clone()
         {
@@ -119,47 +121,94 @@ pub fn main() {
                 None => config_options,
             };
 
-            let (client, attach_layout) = match session_name.as_ref() {
-                Some(session) => {
-                    if create {
-                        if !session_exists(session).unwrap() {
-                            (ClientInfo::New(session_name.unwrap()), layout)
+            let (client, attach_layout) = if let Some(idx) = index {
+                // Ignore session_name when `--index` is provided
+                match get_sessions_sorted_by_creation_date() {
+                    Ok(sessions) => {
+                        if sessions.is_empty() {
+                            if create {
+                                (
+                                    ClientInfo::New(names::Generator::default().next().unwrap()),
+                                    layout,
+                                )
+                            } else {
+                                println!("No active zellij sessions found.");
+                                process::exit(1);
+                            }
                         } else {
+                            match sessions.get(idx) {
+                                Some(session) => (
+                                    ClientInfo::Attach(session.clone(), config_options.clone()),
+                                    None,
+                                ),
+                                None => {
+                                    if create {
+                                        (
+                                            ClientInfo::New(
+                                                names::Generator::default().next().unwrap(),
+                                            ),
+                                            layout,
+                                        )
+                                    } else {
+                                        println!("No session indexed by {} found. The following sessions are active:", idx);
+                                        print_sessions_with_index(sessions);
+                                        process::exit(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error occurred: {:?}", e);
+                        process::exit(1);
+                    }
+                }
+            } else {
+                match session_name.as_ref() {
+                    Some(session) => {
+                        if create {
+                            if !session_exists(session).unwrap() {
+                                (ClientInfo::New(session_name.unwrap()), layout)
+                            } else {
+                                (
+                                    ClientInfo::Attach(
+                                        session_name.unwrap(),
+                                        config_options.clone(),
+                                    ),
+                                    None,
+                                )
+                            }
+                        } else {
+                            assert_session(session);
                             (
                                 ClientInfo::Attach(session_name.unwrap(), config_options.clone()),
                                 None,
                             )
                         }
-                    } else {
-                        assert_session(session);
-                        (
-                            ClientInfo::Attach(session_name.unwrap(), config_options.clone()),
-                            None,
-                        )
                     }
-                }
-                None => match get_active_session() {
-                    ActiveSession::None => {
-                        if create {
-                            (
-                                ClientInfo::New(names::Generator::default().next().unwrap()),
-                                layout,
-                            )
-                        } else {
-                            println!("No active zellij sessions found.");
+                    None => match get_active_session() {
+                        ActiveSession::None => {
+                            if create {
+                                (
+                                    ClientInfo::New(names::Generator::default().next().unwrap()),
+                                    layout,
+                                )
+                            } else {
+                                println!("No active zellij sessions found.");
+                                process::exit(1);
+                            }
+                        }
+                        ActiveSession::One(session_name) => (
+                            ClientInfo::Attach(session_name, config_options.clone()),
+                            None,
+                        ),
+                        ActiveSession::Many => {
+                            println!("Please specify the session name to attach to. The following sessions are active:");
+                            print_sessions(get_sessions().unwrap());
                             process::exit(1);
                         }
-                    }
-                    ActiveSession::One(session_name) => (
-                        ClientInfo::Attach(session_name, config_options.clone()),
-                        None,
-                    ),
-                    ActiveSession::Many => {
-                        println!("Please specify the session name to attach to. The following sessions are active:");
-                        print_sessions(get_sessions().unwrap());
-                        process::exit(1);
-                    }
-                },
+                    },
+                }
             };
 
             start_client(
