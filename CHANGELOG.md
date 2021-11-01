@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: improve performance of echoed keystrokes (https://github.com/zellij-org/zellij/pull/798)
+* Add: Use hyperlinks for the setup information (https://github.com/zellij-org/zellij/pull/768)
+* Feature: Rotate Pane location (https://github.com/zellij-org/zellij/pull/802)
+* Terminal compatibility: improve handling of wide-characters when inserted mid-line (https://github.com/zellij-org/zellij/pull/806)
+* Fix: plugins are now only compiled once and cached on disk (https://github.com/zellij-org/zellij/pull/807)
+* Fix: pasted text performs much faster and doesn't kill Termion (https://github.com/zellij-org/zellij/pull/810)
+* Fix: resizing/scrolling through heavily wrapped panes no longer hangs (https://github.com/zellij-org/zellij/pull/814)
+* Terminal compatibility: properly handle HOME/END keys in eg. vim/zsh (https://github.com/zellij-org/zellij/pull/815)
+* Fix: Typo (https://github.com/zellij-org/zellij/pull/821)
+* Fix: Update `cargo-make` instructions post `v0.35.3` (https://github.com/zellij-org/zellij/pull/819)
+* Fix: Unused import for darwin systems (https://github.com/zellij-org/zellij/pull/820)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)

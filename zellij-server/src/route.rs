@@ -122,10 +122,11 @@ fn route_action(
         }
         Action::MovePane(direction) => {
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::MovePaneLeft(client_id),
-                Direction::Right => ScreenInstruction::MovePaneRight(client_id),
-                Direction::Up => ScreenInstruction::MovePaneUp(client_id),
-                Direction::Down => ScreenInstruction::MovePaneDown(client_id),
+                Some(Direction::Left) => ScreenInstruction::MovePaneLeft(client_id),
+                Some(Direction::Right) => ScreenInstruction::MovePaneRight(client_id),
+                Some(Direction::Up) => ScreenInstruction::MovePaneUp(client_id),
+                Some(Direction::Down) => ScreenInstruction::MovePaneDown(client_id),
+                None => ScreenInstruction::MovePane(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }

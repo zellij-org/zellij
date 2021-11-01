@@ -3,8 +3,10 @@ use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use darwin_libproc;
 
-use std::env;
+#[cfg(target_os = "linux")]
 use std::fs;
+
+use std::env;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;

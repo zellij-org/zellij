@@ -8,23 +8,23 @@ expression: "format!(\"{:?}\", grid)"
 02 (C): Character set B (US ASCII)                                                                                    
 03 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
 04 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
-05 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                               
+05 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                                 
 06 (C): Character set A (British)                                                                                     
 07 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
 08 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
-09 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                               
+09 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                                 
 10 (C): Character set 0 (DEC Special graphics and line drawing)                                                       
 11 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
 12 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
-13 (C):          ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·      ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·                               
+13 (C):          ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·      ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·                                 
 14 (C): Character set 1 (DEC Alternate character ROM standard characters)                                             
 15 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
 16 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
-17 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                               
+17 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                                 
 18 (C): Character set 2 (DEC Alternate character ROM special graphics)                                                
 19 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
 20 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
-21 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                               
+21 (C):          `abcdefghijklmnopqrstuvwxyz{|}~      `abcdefghijklmnopqrstuvwxyz{|}~                                 
 22 (C):                                                                                                               
 23 (C): These are the installed character sets. Push <RETURN>                                                         
 24 (C):                                                                                                               

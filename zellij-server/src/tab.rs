@@ -2516,6 +2516,56 @@ impl Tab {
         self.active_terminal = updated_active_terminal;
         false
     }
+    pub fn move_active_pane(&mut self) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.fullscreen_is_active {
+            return;
+        }
+        let active_pane_id = self.get_active_pane_id().unwrap();
+        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| *id == &active_pane_id) // TODO: better
+            .unwrap();
+
+        let new_position_id = panes
+            .get(active_pane_position + 1)
+            .or_else(|| panes.get(0))
+            .map(|p| *p.0);
+
+        if let Some(p) = new_position_id {
+            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let prev_geom = current_position.position_and_size();
+            let prev_geom_override = current_position.geom_override();
+
+            let new_position = self.panes.get_mut(&p).unwrap();
+            let next_geom = new_position.position_and_size();
+            let next_geom_override = new_position.geom_override();
+            new_position.set_geom(prev_geom);
+            if let Some(geom) = prev_geom_override {
+                new_position.get_geom_override(geom);
+            }
+            resize_pty!(new_position, self.os_api);
+            new_position.set_should_render(true);
+
+            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            current_position.set_geom(next_geom);
+            if let Some(geom) = next_geom_override {
+                current_position.get_geom_override(geom);
+            }
+            resize_pty!(current_position, self.os_api);
+            current_position.set_should_render(true);
+        }
+    }
     pub fn move_active_pane_down(&mut self) {
         if !self.has_selectable_panes() {
             return;

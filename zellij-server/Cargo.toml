@@ -9,6 +9,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+highway = "0.6.4"
 ansi_term = "0.12.1"
 async-trait = "0.1.50"
 base64 = "0.13.0"

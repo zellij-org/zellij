@@ -148,6 +148,8 @@ keybinds:
           key: [Ctrl: 'o',]
         - action: [Quit]
           key: [Ctrl: 'q']
+        - action: [MovePane: ,]
+          key: [Char: 'n', Char: "\t",]
         - action: [MovePane: Left,]
           key: [Char: 'h', Left,]
         - action: [MovePane: Down,]

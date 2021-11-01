@@ -51,7 +51,7 @@ pub enum Action {
     /// Tries to move the focus pane in specified direction.
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
-    MovePane(Direction),
+    MovePane(Option<Direction>),
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point

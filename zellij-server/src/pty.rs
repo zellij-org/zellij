@@ -216,10 +216,13 @@ fn stream_terminal_bytes(
             err_ctx.add_call(ContextType::AsyncTask);
 
             // After a successful read, we keep on reading additional data up to a duration of
-            // `render_pause`. This is in order to batch up PtyBytes before rendering them.
+            // `RENDER_PAUSE`. This is in order to batch up PtyBytes before rendering them.
             // Once `render_deadline` has elapsed, we send Render.
-            let render_pause = Duration::from_millis(30);
+            const RENDER_PAUSE: Duration = Duration::from_millis(30);
             let mut render_deadline = None;
+            // Keep track of the last render time so we can render immediately if something shows
+            // up after a period of inactivity. This reduces input latency perception.
+            let mut last_render = Instant::now();
 
             let mut buf = [0u8; 65536];
             let mut async_reader = os_input.async_file_reader(pid);
@@ -230,6 +233,7 @@ fn stream_terminal_bytes(
                         async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
                         // next read does not need a deadline as we just rendered everything
                         render_deadline = None;
+                        last_render = Instant::now();
                     }
                     ReadResult::Ok(n_bytes) => {
                         let bytes = &buf[..n_bytes];
@@ -242,8 +246,8 @@ fn stream_terminal_bytes(
                         )
                         .await;
                         // if we already have a render_deadline we keep it, otherwise we set it
-                        // to the duration of `render_pause`.
-                        render_deadline.get_or_insert(Instant::now() + render_pause);
+                        // to RENDER_PAUSE since the last time we rendered.
+                        render_deadline.get_or_insert(last_render + RENDER_PAUSE);
                     }
                 }
             }
