@@ -30,7 +30,11 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: TerminalAction, _quit_db: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd) {
+    fn spawn_terminal(
+        &self,
+        _file_to_open: TerminalAction,
+        _quit_db: Box<dyn Fn(PaneId) + Send>,
+    ) -> (RawFd, RawFd) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {

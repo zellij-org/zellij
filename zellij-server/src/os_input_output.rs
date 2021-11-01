@@ -18,12 +18,12 @@ use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile}
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
-use nix::pty::{openpty, forkpty, ForkptyResult, OpenptyResult, Winsize};
+use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+use nix::pty::{forkpty, openpty, ForkptyResult, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult};
-use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -104,7 +104,8 @@ fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
-) -> (RawFd, RawFd) { // primary side of pty and child fd
+) -> (RawFd, RawFd) {
+    // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
     let pid_secondary = open_pty_res.slave;
 
@@ -141,7 +142,11 @@ fn handle_openpty(
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd) {
+fn handle_terminal(
+    cmd: RunCommand,
+    orig_termios: termios::Termios,
+    quit_cb: Box<dyn Fn(PaneId) + Send>,
+) -> (RawFd, RawFd) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
     // parent.
     match openpty(None, Some(&orig_termios)) {
@@ -235,7 +240,11 @@ pub trait ServerOsApi: Send + Sync {
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
-    fn spawn_terminal(&self, terminal_action: TerminalAction, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd);
+    fn spawn_terminal(
+        &self,
+        terminal_action: TerminalAction,
+        quit_cb: Box<dyn Fn(PaneId) + Send>,
+    ) -> (RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -268,7 +277,11 @@ impl ServerOsApi for ServerOsInputOutput {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
-    fn spawn_terminal(&self, terminal_action: TerminalAction, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd) {
+    fn spawn_terminal(
+        &self,
+        terminal_action: TerminalAction,
+        quit_cb: Box<dyn Fn(PaneId) + Send>,
+    ) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(terminal_action, orig_termios.clone(), quit_cb)
     }

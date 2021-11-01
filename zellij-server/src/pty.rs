@@ -6,7 +6,6 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
-use zellij_utils::nix::unistd::Pid;
 use async_std::{
     future::timeout as async_timeout,
     task::{self, JoinHandle},
@@ -18,6 +17,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
     errors::{get_current_ctx, ContextType, PtyContext},
@@ -277,7 +277,12 @@ impl Pty {
                     PaneId::Plugin(..) => None,
                     PaneId::Terminal(id) => self.id_to_child_pid.get(id),
                 })
-                .and_then(|id| self.bus.os_input.as_ref().map(|input| input.get_cwd(Pid::from_raw(*id))))
+                .and_then(|id| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .map(|input| input.get_cwd(Pid::from_raw(*id)))
+                })
                 .flatten(),
         })
     }
@@ -295,14 +300,9 @@ impl Pty {
             }
         };
         let quit_cb = Box::new({
-            let senders = self.bus
-                .senders
-                .clone();
+            let senders = self.bus.senders.clone();
             move |pane_id| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
-                    pane_id,
-                    None,
-                ));
+                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
             }
         });
         let (pid_primary, child_fd): (RawFd, RawFd) = self
@@ -333,21 +333,20 @@ impl Pty {
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {
             let quit_cb = Box::new({
-                let senders = self.bus
-                    .senders
-                    .clone();
+                let senders = self.bus.senders.clone();
                 move |pane_id| {
-                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
-                        pane_id,
-                        None,
-                    ));
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
                 }
             });
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, child_fd): (RawFd, RawFd) =
-                        self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd, quit_cb);
+                    let (pid_primary, child_fd): (RawFd, RawFd) = self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .unwrap()
+                        .spawn_terminal(cmd, quit_cb);
                     self.id_to_child_pid.insert(pid_primary, child_fd);
                     new_pane_pids.push(pid_primary);
                 }
@@ -386,7 +385,7 @@ impl Pty {
     pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
-                let child_fd= self.id_to_child_pid.remove(&id).unwrap();
+                let child_fd = self.id_to_child_pid.remove(&id).unwrap();
                 self.task_handles.remove(&id).unwrap();
                 task::block_on(async {
                     self.bus
