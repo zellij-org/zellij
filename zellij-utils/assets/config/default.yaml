@@ -71,7 +71,7 @@ keybinds:
         - action: [Resize: Right,]
           key: [Char: 'l', Right,]
         - action: [Resize: Increase,]
-          key: [Char: '+']
+          key: [Char: '=']
         - action: [Resize: Decrease,]
           key: [Char: '-']
         - action: [NewPane: ,]
