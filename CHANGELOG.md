@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Typo (https://github.com/zellij-org/zellij/pull/821)
 * Fix: Update `cargo-make` instructions post `v0.35.3` (https://github.com/zellij-org/zellij/pull/819)
 * Fix: Unused import for darwin systems (https://github.com/zellij-org/zellij/pull/820)
+* Add: `WriteChars` action (https://github.com/zellij-org/zellij/pull/825)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
