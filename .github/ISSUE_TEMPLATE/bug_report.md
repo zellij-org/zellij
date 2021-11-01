@@ -3,7 +3,7 @@ name: "\U0001F41B Bug Report"
 about: "If something isn't working as expected."
 labels: bug
 ---
-Thank you for taking the time to file this issue! Please follow the instructions and fill the missing parts below the instructions, if it is meaningful. Try to be brief and concise.
+Thank you for taking the time to file this issue! Please follow the instructions and fill in the missing parts below the instructions, if it is meaningful. Try to be brief and concise.
 
 **In Case of Graphical or Performance Issues**
 
@@ -26,4 +26,4 @@ List of programs you interact with as, `PROGRAM --version`: output cropped meani
 `alacritty --version`: alacritty 0.7.2 (5ac8060b)
 
 **Further information**
-Reproduction steps, noticable behavior, related issues etc
+Reproduction steps, noticeable behavior, related issues, etc
