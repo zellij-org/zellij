@@ -12383,3 +12383,267 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
         "pane 2 height stayed the same"
     );
 }
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let mut tab = create_new_tab(size);
+    tab.resize_increase();
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().position_and_size().y,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+
+    assert_eq!(
+        tab.get_active_pane().unwrap().position_and_size().x,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id_1);
+    tab.resize_increase();
+
+    // should behave like `resize_left_with_pane_to_the_left`
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "pane 2 x position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "pane 2 y position"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_2_panes_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2));
+    tab.move_focus_left();
+    tab.horizontal_split(PaneId::Terminal(3));
+    tab.move_focus_right();
+    tab.resize_increase();
+
+    // should behave like `resize_left_with_multiple_panes_to_the_left`
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "pane 2 x position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "pane 2 y position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        67,
+        "pane 2 column count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "pane 2 row count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2));
+    tab.move_focus_left();
+    tab.horizontal_split(PaneId::Terminal(3));
+    tab.resize_increase();
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .y,
+        9,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .x,
+        0,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        11,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        67,
+        "Pane 3 col count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2));
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.move_focus_left();
+    tab.resize_increase();
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        42,
+        "Pane 3 col count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2));
+    tab.vertical_split(PaneId::Terminal(3));
+    tab.move_focus_left();
+    tab.resize_increase();
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        42,
+        "Pane 3 col count"
+    );
+}
