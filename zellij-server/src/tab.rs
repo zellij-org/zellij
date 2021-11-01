@@ -2186,10 +2186,10 @@ impl Tab {
                         return;
                     }
 
-                    self.checked_increase_pane_and_surroundings_one_direction(
-                        &active_pane_id,
-                        RESIZE_PERCENT,
-                    );
+                    self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
+                    self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
+                    self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                    self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
                 }
             }
         }
@@ -2441,10 +2441,10 @@ impl Tab {
                         return;
                     }
 
-                    self.checked_reduce_pane_and_surroundings_one_direction(
-                        &active_pane_id,
-                        RESIZE_PERCENT,
-                    );
+                    self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
+                    self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
+                    self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                    self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
                 }
             }
         }
