@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::panes::PaneId;
+
 #[cfg(target_os = "macos")]
 use darwin_libproc;
 
@@ -8,7 +10,7 @@ use std::fs;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
@@ -16,11 +18,12 @@ use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile}
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
-use nix::pty::{forkpty, ForkptyResult, Winsize};
+use nix::pty::{openpty, forkpty, ForkptyResult, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
 use nix::sys::wait::waitpid;
 use nix::unistd::{self, ForkResult};
+use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -97,94 +100,56 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
-fn handle_fork_pty(
-    fork_pty_res: ForkptyResult,
+fn handle_openpty(
+    open_pty_res: OpenptyResult,
     cmd: RunCommand,
-    parent_fd: RawFd,
-    child_fd: RawFd,
-) -> (RawFd, ChildId) {
-    let pid_primary = fork_pty_res.master;
-    let (pid_secondary, pid_shell) = match fork_pty_res.fork_result {
-        ForkResult::Parent { child } => {
-            let pid_shell = read_from_pipe(parent_fd, child_fd);
-            (child, pid_shell)
+    quit_cb: Box<dyn Fn(PaneId) + Send>,
+) -> (RawFd, RawFd) { // primary side of pty and child fd
+    let pid_primary = open_pty_res.master;
+    let pid_secondary = open_pty_res.slave;
+
+    let mut child = unsafe {
+        let command = &mut Command::new(cmd.command);
+        if let Some(current_dir) = cmd.cwd {
+            command.current_dir(current_dir);
         }
-        ForkResult::Child => {
-            let child = unsafe {
-                let command = &mut Command::new(cmd.command);
-                if let Some(current_dir) = cmd.cwd {
-                    command.current_dir(current_dir);
+        command
+            .args(&cmd.args)
+            .pre_exec(move || -> std::io::Result<()> {
+                if libc::login_tty(pid_secondary) != 0 {
+                    panic!("failed to set controlling terminal");
                 }
-                command
-                    .args(&cmd.args)
-                    .pre_exec(|| -> std::io::Result<()> {
-                        // this is the "unsafe" part, for more details please see:
-                        // https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#notes-and-safety
-                        unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0))
-                            .expect("failed to create a new process group");
-                        Ok(())
-                    })
-                    .spawn()
-                    .expect("failed to spawn")
-            };
-            unistd::tcsetpgrp(0, Pid::from_raw(child.id() as i32))
-                .expect("faled to set child's forceground process group");
-            write_to_pipe(child.id(), parent_fd, child_fd);
-            handle_command_exit(child);
-            ::std::process::exit(0);
-        }
+                close_fds::close_open_fds(3, &[]);
+                Ok(())
+            })
+            .spawn()
+            .expect("failed to spawn")
     };
 
-    (
-        pid_primary,
-        ChildId {
-            primary: pid_secondary,
-            shell: pid_shell.map(|pid| Pid::from_raw(pid as i32)),
-        },
-    )
+    let child_id = child.id();
+    std::thread::spawn(move || {
+        child.wait().unwrap();
+        handle_command_exit(child);
+        let _ = nix::unistd::close(pid_primary);
+        let _ = nix::unistd::close(pid_secondary);
+        quit_cb(PaneId::Terminal(pid_primary));
+    });
+
+    (pid_primary, child_id as RawFd)
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
-fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios) -> (RawFd, ChildId) {
+fn handle_terminal(cmd: RunCommand, orig_termios: termios::Termios, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
     // parent.
-    let (parent_fd, child_fd) = unistd::pipe().expect("failed to create pipe");
-    match forkpty(None, Some(&orig_termios)) {
-        Ok(fork_pty_res) => handle_fork_pty(fork_pty_res, cmd, parent_fd, child_fd),
+    match openpty(None, Some(&orig_termios)) {
+        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb),
         Err(e) => {
-            panic!("failed to fork {:?}", e);
+            panic!("failed to start pty{:?}", e);
         }
     }
-}
-
-/// Write to a pipe given both file descriptors
-fn write_to_pipe(data: u32, parent_fd: RawFd, child_fd: RawFd) {
-    let mut buff = [0; 4];
-    BigEndian::write_u32(&mut buff, data);
-    if unistd::close(parent_fd).is_err() {
-        return;
-    }
-    if unistd::write(child_fd, &buff).is_err() {
-        return;
-    }
-    unistd::close(child_fd).unwrap_or_default();
-}
-
-/// Read from a pipe given both file descriptors
-fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> Option<u32> {
-    let mut buffer = [0; 4];
-    if unistd::close(child_fd).is_err() {
-        return None;
-    }
-    if unistd::read(parent_fd, &mut buffer).is_err() {
-        return None;
-    }
-    if unistd::close(parent_fd).is_err() {
-        return None;
-    }
-    Some(u32::from_be_bytes(buffer))
 }
 
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
@@ -202,7 +167,8 @@ fn read_from_pipe(parent_fd: RawFd, child_fd: RawFd) -> Option<u32> {
 pub fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
-) -> (RawFd, ChildId) {
+    quit_cb: Box<dyn Fn(PaneId) + Send>,
+) -> (RawFd, RawFd) {
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open) => {
             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
@@ -224,7 +190,7 @@ pub fn spawn_terminal(
         TerminalAction::RunCommand(command) => command,
     };
 
-    handle_terminal(cmd, orig_termios)
+    handle_terminal(cmd, orig_termios, quit_cb)
 }
 
 #[derive(Clone)]
@@ -269,7 +235,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, ChildId);
+    fn spawn_terminal(&self, terminal_action: TerminalAction, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd);
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -302,9 +268,9 @@ impl ServerOsApi for ServerOsInputOutput {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
-    fn spawn_terminal(&self, terminal_action: TerminalAction) -> (RawFd, ChildId) {
+    fn spawn_terminal(&self, terminal_action: TerminalAction, quit_cb: Box<dyn Fn(PaneId) + Send>) -> (RawFd, RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(terminal_action, orig_termios.clone())
+        spawn_terminal(terminal_action, orig_termios.clone(), quit_cb)
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
@@ -322,8 +288,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Box::new((*self).clone())
     }
     fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
-        kill(pid, Some(Signal::SIGTERM)).unwrap();
-        waitpid(pid, None).unwrap();
+        let _ = kill(pid, Some(Signal::SIGTERM));
         Ok(())
     }
     fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
