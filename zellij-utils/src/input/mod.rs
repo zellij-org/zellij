@@ -24,7 +24,7 @@ pub fn get_mode_info(
         InputMode::Normal | InputMode::Locked => Vec::new(),
         InputMode::Resize => vec![
             ("←↓↑→".to_string(), "Resize".to_string()),
-            ("+-".to_string(), "Increase/Decrease size".to_string())
+            ("+-".to_string(), "Increase/Decrease size".to_string()),
         ],
         InputMode::Move => vec![
             ("←↓↑→".to_string(), "Move".to_string()),

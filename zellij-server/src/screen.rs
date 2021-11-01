@@ -662,12 +662,18 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::ResizeIncrease(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_increase();
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_increase();
 
                 screen.render();
             }
             ScreenInstruction::ResizeDecrease(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_decrease();
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_decrease();
 
                 screen.render();
             }

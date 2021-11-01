@@ -1921,9 +1921,16 @@ impl Tab {
         };
     }
     // TODO: Find a way to reduce duplication between `resize_increase` and `resize_decrease`
+    // When there are 1 or 2 panes in viewport logic is simple enough
+    // But when there are more then 2 panes inside viewport first we
+    // Check for `+` cross section and resize accordingly.
+    // If it was not found try to check for `T` cross section and resize accordingly
     pub fn resize_increase(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            match self.get_plugin_ids_inside_viewport().len() {
+            let total_panes_inside_viewport = self.get_plugin_ids_inside_viewport().len();
+
+            // if there is only 1 pane in viewport resizing is not required
+            match total_panes_inside_viewport {
                 1 => {}
                 2 => {
                     self.checked_increase_pane_and_surroundings_one_direction(
@@ -1931,14 +1938,273 @@ impl Tab {
                         RESIZE_PERCENT,
                     );
                 }
+                _ => {
+                    let active_pane_id = self.get_active_pane_id().unwrap();
 
-                _ => self.nondirectional_resize_increase_helper(),
+                    let pane_directly_left_of =
+                        self.viewport_plugin_pane_ids_directly_left_of(&active_pane_id);
+                    let pane_directly_right_of =
+                        self.viewport_plugin_pane_ids_directly_right_of(&active_pane_id);
+                    let pane_directly_above =
+                        self.viewport_plugin_pane_ids_directly_above(&active_pane_id);
+                    let pane_directly_below =
+                        self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
+
+                    let left_top_border_aligned_pane =
+                        pane_directly_left_of.iter().find(|&pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.y() == pane.y()
+                        });
+
+                    let right_top_border_aligned_pane =
+                        pane_directly_right_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.y() == pane.y()
+                        });
+
+                    let left_bottom_border_aligned_pane =
+                        pane_directly_left_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
+                        });
+
+                    let right_bottom_border_aligned_pane =
+                        pane_directly_right_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
+                        });
+
+                    let above_left_border_aligned_pane =
+                        pane_directly_above.iter().find(|&pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.x() == pane.x()
+                        });
+
+                    let above_right_border_aligned_pane =
+                        pane_directly_above.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                        });
+
+                    let below_right_border_aligned_pane =
+                        pane_directly_below.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                        });
+
+                    let below_left_border_aligned_pane =
+                        pane_directly_below.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            let active_pane = self.panes.get(&active_pane_id).unwrap();
+                            active_pane.x() == pane.x()
+                        });
+
+                    // Checking for `+` cross section
+                    let mut is_cross_or_t_section = false;
+                    if let (Some(_), Some(above_left)) =
+                        (left_top_border_aligned_pane, above_left_border_aligned_pane)
+                    {
+                        self.try_increase_pane_and_surroundings_left(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                        self.try_increase_pane_and_surroundings_left(above_left, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(above_right)) = (
+                        right_top_border_aligned_pane,
+                        above_right_border_aligned_pane,
+                    ) {
+                        self.try_increase_pane_and_surroundings_right(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                        self.try_increase_pane_and_surroundings_right(above_right, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(below_right)) = (
+                        right_bottom_border_aligned_pane,
+                        below_right_border_aligned_pane,
+                    ) {
+                        self.try_increase_pane_and_surroundings_right(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_down(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_right(below_right, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(below_left)) = (
+                        left_bottom_border_aligned_pane,
+                        below_left_border_aligned_pane,
+                    ) {
+                        self.try_increase_pane_and_surroundings_left(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_down(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_increase_pane_and_surroundings_left(below_left, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if is_cross_or_t_section {
+                        return;
+                    }
+
+                    // Checking for `T` cross section
+                    match (left_top_border_aligned_pane, above_left_border_aligned_pane) {
+                        (None, Some(_)) if !pane_directly_left_of.is_empty() => {
+                            self.try_increase_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_above.is_empty() => {
+                            self.try_increase_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+                    match (
+                        right_top_border_aligned_pane,
+                        above_right_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_right_of.is_empty() => {
+                            self.try_increase_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_above.is_empty() => {
+                            self.try_increase_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    match (
+                        left_bottom_border_aligned_pane,
+                        below_left_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_left_of.is_empty() => {
+                            self.try_increase_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_below.is_empty() => {
+                            self.try_increase_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    match (
+                        right_bottom_border_aligned_pane,
+                        below_right_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_right_of.is_empty() => {
+                            self.try_increase_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_below.is_empty() => {
+                            self.try_increase_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_increase_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    if is_cross_or_t_section {
+                        return;
+                    }
+
+                    self.checked_increase_pane_and_surroundings_one_direction(
+                        &active_pane_id,
+                        RESIZE_PERCENT,
+                    );
+                }
             }
         }
     }
+
+    // When there are 1 or 2 panes in viewport logic is simple enough
+    // But when there are more then 2 panes inside viewport first we
+    // Check for `+` cross section and resize accordingly.
+    // If it was not found try to check for `T` cross section and resize accordingly
     pub fn resize_decrease(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            match self.get_plugin_ids_inside_viewport().len() {
+            let total_panes_inside_viewport = self.get_plugin_ids_inside_viewport().len();
+
+            // if there is only 1 pane in viewport resizing is not required
+            match total_panes_inside_viewport {
                 1 => {}
                 2 => {
                     self.checked_reduce_pane_and_surroundings_one_direction(
@@ -1946,349 +2212,244 @@ impl Tab {
                         RESIZE_PERCENT,
                     );
                 }
-                _ => self.nondirectional_resize_reduce_helper(),
+                _ => {
+                    let active_pane_id = self.get_active_pane_id().unwrap();
+                    let active_pane = self.panes.get(&active_pane_id).unwrap();
+
+                    let pane_directly_left_of =
+                        self.viewport_plugin_pane_ids_directly_left_of(&active_pane_id);
+                    let pane_directly_right_of =
+                        self.viewport_plugin_pane_ids_directly_right_of(&active_pane_id);
+                    let pane_directly_above =
+                        self.viewport_plugin_pane_ids_directly_above(&active_pane_id);
+                    let pane_directly_below =
+                        self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
+
+                    let left_top_border_aligned_pane =
+                        pane_directly_left_of.iter().find(|&pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.y() == pane.y()
+                        });
+
+                    let right_top_border_aligned_pane =
+                        pane_directly_right_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.y() == pane.y()
+                        });
+
+                    let left_bottom_border_aligned_pane =
+                        pane_directly_left_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
+                        });
+
+                    let right_bottom_border_aligned_pane =
+                        pane_directly_right_of.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
+                        });
+
+                    let above_left_border_aligned_pane =
+                        pane_directly_above.iter().find(|&pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.x() == pane.x()
+                        });
+
+                    let above_right_border_aligned_pane =
+                        pane_directly_above.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                        });
+
+                    let below_right_border_aligned_pane =
+                        pane_directly_below.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                        });
+
+                    let below_left_border_aligned_pane =
+                        pane_directly_below.iter().find(|pane_id| {
+                            let pane = self.panes.get(pane_id).unwrap();
+                            active_pane.x() == pane.x()
+                        });
+
+                    // Checking for `+` cross section
+                    let mut is_cross_or_t_section = false;
+                    if let (Some(_), Some(above_left)) =
+                        (left_top_border_aligned_pane, above_left_border_aligned_pane)
+                    {
+                        self.try_reduce_pane_and_surroundings_right(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_right(above_left, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(above_right)) = (
+                        right_top_border_aligned_pane,
+                        above_right_border_aligned_pane,
+                    ) {
+                        self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_left(above_right, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(below_right)) = (
+                        right_bottom_border_aligned_pane,
+                        below_right_border_aligned_pane,
+                    ) {
+                        self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_left(below_right, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if let (Some(_), Some(below_left)) = (
+                        left_bottom_border_aligned_pane,
+                        below_left_border_aligned_pane,
+                    ) {
+                        self.try_reduce_pane_and_surroundings_right(
+                            &active_pane_id,
+                            RESIZE_PERCENT,
+                        );
+                        self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
+                        self.try_reduce_pane_and_surroundings_right(below_left, RESIZE_PERCENT);
+                        is_cross_or_t_section = true;
+                    }
+
+                    if is_cross_or_t_section {
+                        return;
+                    }
+
+                    // Checking for `T` cross section
+                    match (left_top_border_aligned_pane, above_left_border_aligned_pane) {
+                        (None, Some(_)) if !pane_directly_left_of.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_above.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+                    match (
+                        right_top_border_aligned_pane,
+                        above_right_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_right_of.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_above.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_down(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    match (
+                        left_bottom_border_aligned_pane,
+                        below_left_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_left_of.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_below.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_right(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    match (
+                        right_bottom_border_aligned_pane,
+                        below_right_border_aligned_pane,
+                    ) {
+                        (None, Some(_)) if !pane_directly_right_of.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        (Some(_), None) if !pane_directly_below.is_empty() => {
+                            self.try_reduce_pane_and_surroundings_up(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            self.try_reduce_pane_and_surroundings_left(
+                                &active_pane_id,
+                                RESIZE_PERCENT,
+                            );
+                            is_cross_or_t_section = true;
+                        }
+                        _ => {}
+                    }
+
+                    if is_cross_or_t_section {
+                        return;
+                    }
+
+                    self.checked_reduce_pane_and_surroundings_one_direction(
+                        &active_pane_id,
+                        RESIZE_PERCENT,
+                    );
+                }
             }
         }
     }
-    fn nondirectional_resize_increase_helper(&mut self) {
-        let active_pane_id = self.get_active_pane_id().unwrap();
 
-        let pane_directly_left_of = self.viewport_plugin_pane_ids_directly_left_of(&active_pane_id);
-        let pane_directly_right_of = self.viewport_plugin_pane_ids_directly_right_of(&active_pane_id);
-        let pane_directly_above = self.viewport_plugin_pane_ids_directly_above(&active_pane_id);
-        let pane_directly_below = self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
-
-        let left_top_border_aligned_pane = pane_directly_left_of.iter().find(|&pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.y() == pane.y()
-        });
-
-        let right_top_border_aligned_pane = pane_directly_right_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.y() == pane.y()
-        });
-
-        let left_bottom_border_aligned_pane = pane_directly_left_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
-        });
-
-        let right_bottom_border_aligned_pane = pane_directly_right_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
-        });
-
-        let above_left_border_aligned_pane = pane_directly_above.iter().find(|&pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.x() == pane.x()
-        });
-
-        let above_right_border_aligned_pane = pane_directly_above.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
-        });
-
-        let below_right_border_aligned_pane = pane_directly_below.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
-        });
-
-        let below_left_border_aligned_pane = pane_directly_below.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            let active_pane = self.panes.get(&active_pane_id).unwrap();
-            active_pane.x() == pane.x()
-        });
-
-        let mut is_cross_or_t_section = false;
-        if let (Some(_), Some(above_left)) =
-            (left_top_border_aligned_pane, above_left_border_aligned_pane)
-        {
-            self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_left(above_left, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(above_right)) = (
-            right_top_border_aligned_pane,
-            above_right_border_aligned_pane,
-        ) {
-            self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_right(above_right, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(below_right)) = (
-            right_bottom_border_aligned_pane,
-            below_right_border_aligned_pane,
-        ) {
-            self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_right(below_right, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(below_left)) = (
-            left_bottom_border_aligned_pane,
-            below_left_border_aligned_pane,
-        ) {
-            self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_left(below_left, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if is_cross_or_t_section {
-            return;
-        }
-
-        // If cross section `+` was not found try to
-        // check for cross section `T`
-        match (left_top_border_aligned_pane, above_left_border_aligned_pane) {
-            (None, Some(_)) if !pane_directly_left_of.is_empty() => {
-                self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_above.is_empty() => {
-                self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-        match (
-            right_top_border_aligned_pane,
-            above_right_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_right_of.is_empty() => {
-                self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_above.is_empty() => {
-                self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-
-        match (
-            left_bottom_border_aligned_pane,
-            below_left_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_left_of.is_empty() => {
-                self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_below.is_empty() => {
-                self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-
-        match (
-            right_bottom_border_aligned_pane,
-            below_right_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_right_of.is_empty() => {
-                self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_below.is_empty() => {
-                self.try_increase_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_increase_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-
-        if is_cross_or_t_section {
-            return;
-        }
-
-        self.checked_increase_pane_and_surroundings_one_direction(&active_pane_id, RESIZE_PERCENT);
-    }
-
-    fn nondirectional_resize_reduce_helper(&mut self) {
-        let active_pane_id = self.get_active_pane_id().unwrap();
-        let active_pane = self.panes.get(&active_pane_id).unwrap();
-
-        let pane_directly_left_of = self.viewport_plugin_pane_ids_directly_left_of(&active_pane_id);
-        let pane_directly_right_of = self.viewport_plugin_pane_ids_directly_right_of(&active_pane_id);
-        let pane_directly_above = self.viewport_plugin_pane_ids_directly_above(&active_pane_id);
-        let pane_directly_below = self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
-
-        let left_top_border_aligned_pane = pane_directly_left_of.iter().find(|&pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.y() == pane.y()
-        });
-
-        let right_top_border_aligned_pane = pane_directly_right_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.y() == pane.y()
-        });
-
-        let left_bottom_border_aligned_pane = pane_directly_left_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
-        });
-
-        let right_bottom_border_aligned_pane = pane_directly_right_of.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.y() + active_pane.rows() + 1 == pane.y() + pane.rows() + 1
-        });
-
-        let above_left_border_aligned_pane = pane_directly_above.iter().find(|&pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.x() == pane.x()
-        });
-
-        let above_right_border_aligned_pane = pane_directly_above.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
-        });
-
-        let below_right_border_aligned_pane = pane_directly_below.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
-        });
-
-        let below_left_border_aligned_pane = pane_directly_below.iter().find(|pane_id| {
-            let pane = self.panes.get(pane_id).unwrap();
-            active_pane.x() == pane.x()
-        });
-
-        // Check for `+` section
-        let mut is_cross_or_t_section = false;
-        if let (Some(_), Some(above_left)) =
-            (left_top_border_aligned_pane, above_left_border_aligned_pane)
-        {
-            self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_right(above_left, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(above_right)) = (
-            right_top_border_aligned_pane,
-            above_right_border_aligned_pane,
-        ) {
-            self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_left(above_right, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(below_right)) = (
-            right_bottom_border_aligned_pane,
-            below_right_border_aligned_pane,
-        ) {
-            self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_left(below_right, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if let (Some(_), Some(below_left)) = (
-            left_bottom_border_aligned_pane,
-            below_left_border_aligned_pane,
-        ) {
-            self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_right(below_left, RESIZE_PERCENT);
-            is_cross_or_t_section = true;
-        }
-
-        if is_cross_or_t_section {
-            return;
-        }
-
-        // If cross section `+` was not found try to
-        // check for cross section `T`
-        match (left_top_border_aligned_pane, above_left_border_aligned_pane) {
-            (None, Some(_)) if !pane_directly_left_of.is_empty() => {
-                self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_above.is_empty() => {
-                self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-        match (
-            right_top_border_aligned_pane,
-            above_right_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_right_of.is_empty() => {
-                self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_above.is_empty() => {
-                self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-
-        match (
-            left_bottom_border_aligned_pane,
-            below_left_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_left_of.is_empty() => {
-                self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_below.is_empty() => {
-                self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_right(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
-
-        match (
-            right_bottom_border_aligned_pane,
-            below_right_border_aligned_pane,
-        ) {
-            (None, Some(_)) if !pane_directly_right_of.is_empty() => {
-                self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            (Some(_), None) if !pane_directly_below.is_empty() => {
-                self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
-                self.try_reduce_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT);
-                is_cross_or_t_section = true;
-            }
-            _ => {}
-        }
- 
-        if is_cross_or_t_section {
-            return;
-        }
-
-        self.checked_reduce_pane_and_surroundings_one_direction(&active_pane_id, RESIZE_PERCENT);
-    }
     pub fn move_focus(&mut self) {
         if !self.has_selectable_panes() {
             return;
@@ -2870,11 +3031,9 @@ impl Tab {
         self.get_panes().map(|(&pid, _)| pid).collect()
     }
     pub fn get_plugin_ids_inside_viewport(&self) -> Vec<PaneId> {
-        self
-            .get_pane_ids()
+        self.get_pane_ids()
             .into_iter()
             .filter(|id| self.is_inside_viewport(id))
-            .map(|pid| pid)
             .collect()
     }
     fn viewport_plugin_pane_ids_directly_left_of(&self, active_pane_id: &PaneId) -> Vec<PaneId> {

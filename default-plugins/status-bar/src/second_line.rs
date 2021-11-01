@@ -144,7 +144,10 @@ fn quicknav_full(palette: Palette) -> LinePart {
             text_sixths_part,
             Style::new().fg(orange_color).bold().paint(third_alt),
             text_seventh_parth,
-            Style::new().fg(green_color).bold().paint(increase_decrease_parth),
+            Style::new()
+                .fg(green_color)
+                .bold()
+                .paint(increase_decrease_parth),
             text_eighth_parth,
         ),
         len,
@@ -209,7 +212,10 @@ fn quicknav_medium(palette: Palette) -> LinePart {
             text_sixths_part,
             Style::new().fg(orange_color).bold().paint(third_alt),
             text_seventh_parth,
-            Style::new().fg(green_color).bold().paint(increase_decrease_parth),
+            Style::new()
+                .fg(green_color)
+                .bold()
+                .paint(increase_decrease_parth),
             text_eighth_parth,
         ),
         len,
@@ -260,7 +266,10 @@ fn quicknav_short(palette: Palette) -> LinePart {
             text_fifth_part,
             Style::new().fg(green_color).bold().paint(hjkl_navigation),
             text_sixth_part,
-            Style::new().fg(orange_color).bold().paint(increase_decrease_parth),
+            Style::new()
+                .fg(orange_color)
+                .bold()
+                .paint(increase_decrease_parth),
         ),
         len,
     }
