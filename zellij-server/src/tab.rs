@@ -1951,7 +1951,7 @@ impl Tab {
                         self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
 
                     let left_top_border_aligned_pane =
-                        pane_directly_left_of.iter().find(|&pane_id| {
+                        pane_directly_left_of.iter().find(|pane_id| {
                             let pane = self.panes.get(pane_id).unwrap();
                             let active_pane = self.panes.get(&active_pane_id).unwrap();
                             active_pane.y() == pane.y()
@@ -1979,7 +1979,7 @@ impl Tab {
                         });
 
                     let above_left_border_aligned_pane =
-                        pane_directly_above.iter().find(|&pane_id| {
+                        pane_directly_above.iter().find(|pane_id| {
                             let pane = self.panes.get(pane_id).unwrap();
                             let active_pane = self.panes.get(&active_pane_id).unwrap();
                             active_pane.x() == pane.x()
@@ -2226,7 +2226,7 @@ impl Tab {
                         self.viewport_plugin_pane_ids_directly_below(&active_pane_id);
 
                     let left_top_border_aligned_pane =
-                        pane_directly_left_of.iter().find(|&pane_id| {
+                        pane_directly_left_of.iter().find(|pane_id| {
                             let pane = self.panes.get(pane_id).unwrap();
                             active_pane.y() == pane.y()
                         });
@@ -2250,7 +2250,7 @@ impl Tab {
                         });
 
                     let above_left_border_aligned_pane =
-                        pane_directly_above.iter().find(|&pane_id| {
+                        pane_directly_above.iter().find(|pane_id| {
                             let pane = self.panes.get(pane_id).unwrap();
                             active_pane.x() == pane.x()
                         });
