@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Unused import for darwin systems (https://github.com/zellij-org/zellij/pull/820)
 * Add: `WriteChars` action (https://github.com/zellij-org/zellij/pull/825)
 * Fix: typo and grammar (https://github.com/zellij-org/zellij/pull/826)
+* Add: `rust-version' - msrv field to `Cargo.toml` (https://github.com/zellij-org/zellij/pull/828)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
