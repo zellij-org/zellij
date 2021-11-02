@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: typo and grammar (https://github.com/zellij-org/zellij/pull/826)
 * Add: `rust-version' - msrv field to `Cargo.toml` (https://github.com/zellij-org/zellij/pull/828)
 * Fix: improve memory utilization, reap both sides of pty properly and do not expose open FDs to child processes (https://github.com/zellij-org/zellij/pull/830)
+* Fix: move from the deprecated `colors_transform` to `colorsys` (https://github.com/zellij-org/zellij/pull/832)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
