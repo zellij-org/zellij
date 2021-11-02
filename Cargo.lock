@@ -363,10 +363,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "colors-transform"
-version = "0.2.11"
+name = "colorsys"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9226dbc05df4fb986f48d730b001532580883c4c06c5d1c213f4b34c1c157178"
+checksum = "4dfdf9179d546b55ff3f88c9d93ecfaa3e9760163da5a1080af5243230dbbb70"
 
 [[package]]
 name = "concurrent-queue"
@@ -2895,7 +2895,7 @@ dependencies = [
  "async-std",
  "backtrace",
  "bincode",
- "colors-transform",
+ "colorsys",
  "crossbeam",
  "directories-next",
  "interprocess",

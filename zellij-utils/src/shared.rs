@@ -2,7 +2,7 @@
 
 use std::{iter, str::from_utf8};
 
-use colors_transform::{Color, Rgb};
+use colorsys::Rgb;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
@@ -52,10 +52,9 @@ pub mod colors {
 }
 
 pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
-    let rgb = Rgb::from_hex_str(hex)
+    Rgb::from_hex_str(hex)
         .expect("The passed argument must be a valid hex color")
-        .as_tuple();
-    (rgb.0 as u8, rgb.1 as u8, rgb.2 as u8)
+        .into()
 }
 
 pub fn default_palette() -> Palette {
