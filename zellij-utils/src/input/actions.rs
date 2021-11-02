@@ -87,6 +87,7 @@ pub enum Action {
     /// Detach session and exit
     Detach,
     LeftClick(Position),
+    RightClick(Position),
     MouseRelease(Position),
     MouseHold(Position),
     Copy,

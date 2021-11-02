@@ -327,4 +327,12 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn handle_right_click(&mut self, to: &Position) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(
+                Some(self.pid),
+                Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
+            ))
+            .unwrap();
+    }
 }
