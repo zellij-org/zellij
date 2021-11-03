@@ -40,6 +40,8 @@ keybinds:
           key: [ Alt: ']',]
         - action: [Resize: Increase,]
           key: [ Alt: '=']
+        - action: [Resize: Increase,]
+          key: [ Alt: '+']
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
     locked:
@@ -72,6 +74,8 @@ keybinds:
           key: [Char: 'l', Right,]
         - action: [Resize: Increase,]
           key: [Char: '=']
+        - action: [Resize: Increase,]
+          key: [ Alt: '+']
         - action: [Resize: Decrease,]
           key: [Char: '-']
         - action: [NewPane: ,]

@@ -1927,7 +1927,7 @@ impl Tab {
     // If it was not found try to check for `T` cross section and resize accordingly
     pub fn resize_increase(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            let total_panes_inside_viewport = self.get_plugin_ids_inside_viewport().len();
+            let total_panes_inside_viewport = self.get_pane_ids_inside_viewport().len();
 
             // if there is only 1 pane in viewport resizing is not required
             match total_panes_inside_viewport {
@@ -2201,7 +2201,7 @@ impl Tab {
     // If it was not found try to check for `T` cross section and resize accordingly
     pub fn resize_decrease(&mut self) {
         if let Some(active_pane_id) = self.get_active_pane_id() {
-            let total_panes_inside_viewport = self.get_plugin_ids_inside_viewport().len();
+            let total_panes_inside_viewport = self.get_pane_ids_inside_viewport().len();
 
             // if there is only 1 pane in viewport resizing is not required
             match total_panes_inside_viewport {
@@ -3030,7 +3030,7 @@ impl Tab {
     pub fn get_pane_ids(&self) -> Vec<PaneId> {
         self.get_panes().map(|(&pid, _)| pid).collect()
     }
-    pub fn get_plugin_ids_inside_viewport(&self) -> Vec<PaneId> {
+    pub fn get_pane_ids_inside_viewport(&self) -> Vec<PaneId> {
         self.get_pane_ids()
             .into_iter()
             .filter(|id| self.is_inside_viewport(id))
