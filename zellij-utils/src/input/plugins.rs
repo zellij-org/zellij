@@ -62,6 +62,14 @@ impl PluginsConfig {
     pub fn iter(&self) -> impl Iterator<Item = &PluginConfig> {
         self.0.values()
     }
+
+    /// Merges two PluginConfig structs into one PluginConfig struct
+    /// `other` overrides the PluginConfig of `self`.
+    pub fn merge(&self, other: Self) -> Self {
+        let mut plugin_config = self.0.clone();
+        plugin_config.extend(other.0);
+        Self(plugin_config)
+    }
 }
 
 impl Default for PluginsConfig {

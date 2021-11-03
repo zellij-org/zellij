@@ -18,7 +18,10 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::{config::ConfigFromYaml, plugins::{PluginTag, PluginsConfigError}};
+use super::{
+    config::ConfigFromYaml,
+    plugins::{PluginTag, PluginsConfigError},
+};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;

@@ -168,7 +168,7 @@ impl Keybinds {
 
     /// Merges two Keybinds structs into one Keybinds struct
     /// `other` overrides the ModeKeybinds of `self`.
-    fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
+    pub fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
         let mut keybinds = Keybinds::new();
 
         for mode in InputMode::iter() {

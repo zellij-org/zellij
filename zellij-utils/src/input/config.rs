@@ -155,6 +155,34 @@ impl Config {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
         Self::from_yaml(cfg.as_str())
     }
+
+    /// Merges two Config structs into one Config struct
+    /// `other` overrides `self`.
+    pub fn merge(&self, other: Self) -> Self {
+        //let themes = if let Some()
+        Self {
+            keybinds: self.keybinds.merge_keybinds(other.keybinds),
+            options: self.options.merge(other.options),
+            themes: None,
+            plugins: self.plugins.merge(other.plugins),
+        }
+    }
+}
+
+impl From<ConfigFromYaml> for Config {
+    fn from(config_from_yaml: ConfigFromYaml) -> Self {
+        let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
+        let options = Options::from_yaml(config_from_yaml.options);
+        let themes = config_from_yaml.themes;
+        let plugins =
+            PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into().unwrap());
+        Self {
+            keybinds,
+            options,
+            plugins,
+            themes,
+        }
+    }
 }
 
 // TODO: Split errors up into separate modules

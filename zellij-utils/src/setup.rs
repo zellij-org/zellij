@@ -212,6 +212,31 @@ impl Setup {
                 );
         };
 
+        let config = if let Some(layout) = layout.clone() {
+            let config = if let Some(layout_config) = layout.config {
+                log::error!("{:?}", layout_config.clone());
+                config.merge(layout_config.into())
+            } else {
+                config
+            };
+            config
+        } else {
+            config
+        };
+
+        log::error!("{:?}", config.clone());
+
+        // TODO: small temporary hack
+        let layout = Some(LayoutFromYaml {
+            template: layout.clone().unwrap().template,
+            borderless: layout.clone().unwrap().borderless,
+            tabs: layout.unwrap().tabs,
+            config: None,
+        });
+
+        // TODO: merge_config_options
+        let config_options = config_options.merge(config.options.clone());
+
         Ok((config, layout, config_options))
     }
 
