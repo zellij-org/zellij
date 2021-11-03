@@ -12,7 +12,7 @@ use std::env;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
@@ -20,12 +20,12 @@ use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile}
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
-use nix::fcntl::{fcntl, FcntlArg, FdFlag};
-use nix::pty::{forkpty, openpty, ForkptyResult, OpenptyResult, Winsize};
+
+use nix::pty::{openpty, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::termios;
-use nix::sys::wait::waitpid;
-use nix::unistd::{self, ForkResult};
+
+use nix::unistd;
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -36,7 +36,6 @@ use zellij_utils::{
 
 use async_std::io::ReadExt;
 pub use async_trait::async_trait;
-use byteorder::{BigEndian, ByteOrder};
 
 pub use nix::unistd::Pid;
 
