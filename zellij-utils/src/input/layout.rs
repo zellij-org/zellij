@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::{config::ConfigFromYaml, plugins::{PluginTag, PluginsConfigError}};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -149,6 +149,8 @@ pub struct LayoutFromYaml {
     pub borderless: bool,
     #[serde(default)]
     pub tabs: Vec<TabLayout>,
+    #[serde(default)]
+    pub config: Option<ConfigFromYaml>,
 }
 
 type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
@@ -592,6 +594,7 @@ impl Default for LayoutFromYaml {
     fn default() -> Self {
         Self {
             template: LayoutTemplate::default(),
+            config: None,
             borderless: false,
             tabs: vec![],
         }
