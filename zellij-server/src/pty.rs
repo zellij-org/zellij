@@ -267,36 +267,51 @@ impl Pty {
             task_handles: HashMap::new(),
         }
     }
-    pub fn get_default_terminal(&self, client_id: Option<ClientId>) -> TerminalAction {
+    pub fn get_default_terminal(&self) -> TerminalAction {
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
-            cwd: client_id
-                .and_then(|client_id| self.active_panes.get(&client_id))
-                .and_then(|pane| match pane {
-                    PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-                })
-                .and_then(|id| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .map(|input| input.get_cwd(Pid::from_raw(*id)))
-                })
-                .flatten(),
+            cwd: None, // this should be filled by the calling function, eg. spawn_terminal
         })
+    }
+    fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
+        if let TerminalAction::RunCommand(run_command) = terminal_action {
+            if run_command.cwd.is_none() {
+                run_command.cwd = self
+                    .active_panes
+                    .get(&client_id)
+                    .and_then(|pane| match pane {
+                        PaneId::Plugin(..) => None,
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                    })
+                    .and_then(|id| {
+                        self.bus
+                            .os_input
+                            .as_ref()
+                            .map(|input| input.get_cwd(Pid::from_raw(*id)))
+                    })
+                    .flatten();
+            };
+        };
     }
     pub fn spawn_terminal(
         &mut self,
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientOrTabIndex,
     ) -> RawFd {
+        log::info!(
+            "spawn_terminal, client_or_tab_index: {:?}",
+            client_or_tab_index
+        );
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal(Some(client_id)))
+                let mut terminal_action =
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal());
+                self.fill_cwd(&mut terminal_action, client_id);
+                terminal_action
             }
             ClientOrTabIndex::TabIndex(_) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
+                terminal_action.unwrap_or_else(|| self.get_default_terminal())
             }
         };
         let quit_cb = Box::new({
@@ -327,8 +342,8 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {
-        let default_shell =
-            default_shell.unwrap_or_else(|| self.get_default_terminal(Some(client_id)));
+        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
+        self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
         for run_instruction in extracted_run_instructions {
