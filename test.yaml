@@ -21,6 +21,5 @@ template:
 tabs:
   - direction: Vertical
 
-config:
-  default_mode: normal
-  default_shell: bash
+default_mode: normal
+default_shell: bash

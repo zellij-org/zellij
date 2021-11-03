@@ -152,7 +152,7 @@ pub struct LayoutFromYaml {
     pub borderless: bool,
     #[serde(default)]
     pub tabs: Vec<TabLayout>,
-    #[serde(default)]
+    #[serde(flatten)]
     pub config: Option<ConfigFromYaml>,
 }
 

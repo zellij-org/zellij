@@ -106,7 +106,8 @@ impl TryFrom<&CliArgs> for Config {
 impl Config {
     /// Uses defaults, but lets config override them.
     pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config) {
+        let maybe_config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config)
+        {
             Err(e) => {
                 // needs direct check, as `[ErrorImpl]` is private
                 // https://github.com/dtolnay/serde-yaml/issues/121
@@ -118,20 +119,9 @@ impl Config {
             Ok(config) => config,
         };
 
-        match config_from_yaml {
+        match maybe_config_from_yaml {
             None => Ok(Config::default()),
-            Some(config) => {
-                let keybinds = Keybinds::get_default_keybinds_with_config(config.keybinds);
-                let options = Options::from_yaml(config.options);
-                let themes = config.themes;
-                let plugins = PluginsConfig::get_plugins_with_default(config.plugins.try_into()?);
-                Ok(Config {
-                    keybinds,
-                    options,
-                    plugins,
-                    themes,
-                })
-            }
+            Some(config_from_yaml) => Config::try_from(config_from_yaml),
         }
     }
 
@@ -169,19 +159,20 @@ impl Config {
     }
 }
 
-impl From<ConfigFromYaml> for Config {
-    fn from(config_from_yaml: ConfigFromYaml) -> Self {
+impl TryFrom<ConfigFromYaml> for Config {
+    type Error = ConfigError;
+
+    fn try_from(config_from_yaml: ConfigFromYaml) -> ConfigResult {
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
         let options = Options::from_yaml(config_from_yaml.options);
         let themes = config_from_yaml.themes;
-        let plugins =
-            PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into().unwrap());
-        Self {
+        let plugins = PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into()?);
+        Ok(Self {
             keybinds,
             options,
             plugins,
             themes,
-        }
+        })
     }
 }
 
