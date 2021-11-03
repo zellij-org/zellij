@@ -277,8 +277,9 @@ impl Pty {
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
-                run_command.cwd =
-                    self.active_panes.get(&client_id)
+                run_command.cwd = self
+                    .active_panes
+                    .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(..) => None,
                         PaneId::Terminal(id) => self.id_to_child_pid.get(id),
@@ -298,11 +299,14 @@ impl Pty {
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientOrTabIndex,
     ) -> RawFd {
-        log::info!("spawn_terminal, client_or_tab_index: {:?}", client_or_tab_index);
+        log::info!(
+            "spawn_terminal, client_or_tab_index: {:?}",
+            client_or_tab_index
+        );
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
-                let mut terminal_action = terminal_action
-                    .unwrap_or_else(|| self.get_default_terminal());
+                let mut terminal_action =
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal());
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             }
@@ -338,8 +342,7 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {
-        let mut default_shell =
-            default_shell.unwrap_or_else(|| self.get_default_terminal());
+        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids = vec![];
