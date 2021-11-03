@@ -2514,6 +2514,31 @@ impl Tab {
             }
         }
     }
+    pub fn scroll_active_terminal_up_half_page(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            // prevent overflow when row == 0
+            let scroll_columns = (active_terminal.rows().max(1) - 1)/2;
+            active_terminal.scroll_up(scroll_columns);
+        }
+    }
+    pub fn scroll_active_terminal_down_half_page(&mut self) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id() {
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            // prevent overflow when row == 0
+            let scroll_columns = (active_terminal.rows().max(1) - 1)/2;
+            active_terminal.scroll_down(scroll_columns);
+            if !active_terminal.is_scrolled() {
+                self.process_pending_vte_events(active_terminal_id);
+            }
+        }
+    }
     pub fn scroll_active_terminal_to_bottom(&mut self) {
         if let Some(active_terminal_id) = self.get_active_terminal_id() {
             let active_terminal = self
