@@ -20,7 +20,7 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 type ConfigResult = Result<Config, ConfigError>;
 
 /// Intermediate deserialization config struct
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<Options>,

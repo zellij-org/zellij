@@ -21,5 +21,4 @@ template:
 tabs:
   - direction: Vertical
 
-default_mode: normal
-default_shell: bash
+simplified_ui: false

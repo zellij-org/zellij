@@ -1,15 +1,7 @@
-use crate::{
-    cli::{CliArgs, Command},
-    consts::{
+use crate::{cli::{CliArgs, Command}, consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_PROJ_DIR,
-    },
-    input::{
-        config::{Config, ConfigError},
-        layout::LayoutFromYaml,
-        options::Options,
-    },
-};
+    }, input::{config::{Config, ConfigError}, layout::{LayoutFromYaml, LayoutFromYamlIntermediate}, options::Options}};
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, io::Write, path::Path, path::PathBuf, process};
@@ -187,7 +179,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = LayoutFromYaml::from_path_or_default(
+        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
             opts.layout.as_ref(),
             opts.layout_path.as_ref(),
             layout_dir,
@@ -212,30 +204,14 @@ impl Setup {
                 );
         };
 
-        let config = if let Some(layout) = layout.clone() {
-            let config = if let Some(layout_config) = layout.config {
-                log::error!("{:?}", layout_config.clone());
-                config.merge(layout_config.into())
-            } else {
-                config
-            };
-            config
-        } else {
-            config
-        };
+        let (layout, layout_config) = layout.unwrap().to_layout_and_config();
+        let layout = Some(layout);
 
-        log::error!("{:?}", config.clone());
 
-        // TODO: small temporary hack
-        let layout = Some(LayoutFromYaml {
-            template: layout.clone().unwrap().template,
-            borderless: layout.clone().unwrap().borderless,
-            tabs: layout.unwrap().tabs,
-            config: None,
-        });
 
         // TODO: merge_config_options
-        let config_options = config_options.merge(config.options.clone());
+        let config_options = config_options.merge(layout_config.clone().unwrap().options.unwrap());
+        let config = config.merge(layout_config.unwrap().try_into()?);
 
         Ok((config, layout, config_options))
     }
