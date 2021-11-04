@@ -12539,7 +12539,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
             .position_and_size()
             .cols
             .as_usize(),
-        67,
+        73,
         "Pane 3 col count"
     );
 }
@@ -12571,7 +12571,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
             .unwrap()
             .position_and_size()
             .x,
-        54,
+        61,
         "Pane 3 x coordinate"
     );
     assert_eq!(
@@ -12591,7 +12591,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
             .position_and_size()
             .cols
             .as_usize(),
-        42,
+        36,
         "Pane 3 col count"
     );
 }
@@ -12623,7 +12623,7 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
             .unwrap()
             .position_and_size()
             .x,
-        54,
+        61,
         "Pane 3 x coordinate"
     );
     assert_eq!(
@@ -12643,7 +12643,7 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
             .position_and_size()
             .cols
             .as_usize(),
-        42,
+        36,
         "Pane 3 col count"
     );
 }
