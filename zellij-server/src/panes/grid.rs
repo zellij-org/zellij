@@ -1424,7 +1424,6 @@ impl Perform for Grid {
             }
             13 => {
                 // 0d, carriage return
-
                 self.move_cursor_to_beginning_of_line();
             }
             14 => {
