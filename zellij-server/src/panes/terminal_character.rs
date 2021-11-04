@@ -20,8 +20,8 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
         bold: Some(AnsiCode::Reset),
         dim: Some(AnsiCode::Reset),
         italic: Some(AnsiCode::Reset),
+        link_anchor: Some(LinkAnchor::End),
     },
-    link_anchor: None,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +109,7 @@ pub struct CharacterStyles {
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
+    pub link_anchor: Option<LinkAnchor>,
 }
 
 impl Default for CharacterStyles {
@@ -125,6 +126,7 @@ impl Default for CharacterStyles {
             bold: None,
             dim: None,
             italic: None,
+            link_anchor: None,
         }
     }
 }
@@ -177,6 +179,10 @@ impl CharacterStyles {
         self.strike = strike_code;
         self
     }
+    pub fn link_anchor(mut self, link_anchor: Option<LinkAnchor>) -> Self {
+        self.link_anchor = link_anchor;
+        self
+    }
     pub fn clear(&mut self) {
         self.foreground = None;
         self.background = None;
@@ -189,6 +195,7 @@ impl CharacterStyles {
         self.bold = None;
         self.dim = None;
         self.italic = None;
+        self.link_anchor = None;
     }
     pub fn update_and_return_diff(
         &mut self,
@@ -208,6 +215,7 @@ impl CharacterStyles {
             && new_styles.bold == Some(AnsiCode::Reset)
             && new_styles.dim == Some(AnsiCode::Reset)
             && new_styles.italic == Some(AnsiCode::Reset)
+            && new_styles.link_anchor == Some(LinkAnchor::End)
         {
             self.foreground = Some(AnsiCode::Reset);
             self.background = Some(AnsiCode::Reset);
@@ -220,6 +228,7 @@ impl CharacterStyles {
             self.bold = Some(AnsiCode::Reset);
             self.dim = Some(AnsiCode::Reset);
             self.italic = Some(AnsiCode::Reset);
+            self.link_anchor = Some(LinkAnchor::End);
             return Some(*new_styles);
         };
 
@@ -310,6 +319,14 @@ impl CharacterStyles {
                 diff = Some(CharacterStyles::new().italic(new_styles.italic));
             }
             self.italic = new_styles.italic;
+        }
+        if self.link_anchor != new_styles.link_anchor {
+            if let Some(new_diff) = diff.as_mut() {
+                diff = Some(new_diff.link_anchor(new_styles.link_anchor))
+            } else {
+                diff = Some(CharacterStyles::new().link_anchor(new_styles.link_anchor))
+            }
+            self.link_anchor = new_styles.link_anchor;
         }
 
         if let Some(changed_colors) = changed_colors {
@@ -623,7 +640,7 @@ impl Display for CharacterStyles {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LinkAnchor {
     Start(u16),
     End,
@@ -762,7 +779,6 @@ pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
     pub width: usize,
-    pub link_anchor: Option<LinkAnchor>,
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
