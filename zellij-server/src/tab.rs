@@ -1626,8 +1626,10 @@ impl Tab {
                 let p = self.panes.get(id).unwrap();
                 if let Some(cols) = p.position_and_size().cols.as_percent() {
                     let current_fixed_cols = p.position_and_size().cols.as_usize();
-                    let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
-                    cols - increase_by >= RESIZE_PERCENT && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
+                    let will_reduce_by =
+                        ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
+                    cols - increase_by >= RESIZE_PERCENT
+                        && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
                 } else {
                     false
                 }
@@ -1642,8 +1644,10 @@ impl Tab {
                 let p = self.panes.get(id).unwrap();
                 if let Some(cols) = p.position_and_size().cols.as_percent() {
                     let current_fixed_cols = p.position_and_size().cols.as_usize();
-                    let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
-                    cols - increase_by >= RESIZE_PERCENT && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
+                    let will_reduce_by =
+                        ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
+                    cols - increase_by >= RESIZE_PERCENT
+                        && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
                 } else {
                     false
                 }
@@ -1658,8 +1662,10 @@ impl Tab {
                 let p = self.panes.get(id).unwrap();
                 if let Some(rows) = p.position_and_size().rows.as_percent() {
                     let current_fixed_rows = p.position_and_size().rows.as_usize();
-                    let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
-                    rows - increase_by >= RESIZE_PERCENT && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
+                    let will_reduce_by =
+                        ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
+                    rows - increase_by >= RESIZE_PERCENT
+                        && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
                 } else {
                     false
                 }
@@ -1675,8 +1681,10 @@ impl Tab {
                 let p = self.panes.get(id).unwrap();
                 if let Some(rows) = p.position_and_size().rows.as_percent() {
                     let current_fixed_rows = p.position_and_size().rows.as_usize();
-                    let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
-                    rows - increase_by >= RESIZE_PERCENT && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
+                    let will_reduce_by =
+                        ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
+                    rows - increase_by >= RESIZE_PERCENT
+                        && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
                 } else {
                     false
                 }
@@ -1692,7 +1700,9 @@ impl Tab {
             let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
             let ids_left = self.pane_ids_directly_left_of(pane_id);
             let flexible_left = self.ids_are_flexible(Direction::Horizontal, ids_left);
-            cols - reduce_by >= RESIZE_PERCENT && flexible_left && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
+            cols - reduce_by >= RESIZE_PERCENT
+                && flexible_left
+                && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
         } else {
             false
         }
@@ -1704,7 +1714,9 @@ impl Tab {
             let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
             let ids_right = self.pane_ids_directly_right_of(pane_id);
             let flexible_right = self.ids_are_flexible(Direction::Horizontal, ids_right);
-            cols - reduce_by >= RESIZE_PERCENT && flexible_right && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
+            cols - reduce_by >= RESIZE_PERCENT
+                && flexible_right
+                && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
         } else {
             false
         }
@@ -1716,7 +1728,9 @@ impl Tab {
             let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
             let ids_above = self.pane_ids_directly_above(pane_id);
             let flexible_above = self.ids_are_flexible(Direction::Vertical, ids_above);
-            rows - reduce_by >= RESIZE_PERCENT && flexible_above && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
+            rows - reduce_by >= RESIZE_PERCENT
+                && flexible_above
+                && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
         } else {
             false
         }
@@ -1728,7 +1742,9 @@ impl Tab {
             let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
             let ids_below = self.pane_ids_directly_below(pane_id);
             let flexible_below = self.ids_are_flexible(Direction::Vertical, ids_below);
-            rows - reduce_by >= RESIZE_PERCENT && flexible_below && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
+            rows - reduce_by >= RESIZE_PERCENT
+                && flexible_below
+                && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
         } else {
             false
         }
