@@ -27,6 +27,7 @@ strip-ansi-escapes = "0.1.0"
 structopt = "0.3"
 strum = "0.20.0"
 termion = "1.5.0"
+thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
 vte = "0.10.1"
 zellij-tile = { path = "../zellij-tile/", version = "0.20.0" }
