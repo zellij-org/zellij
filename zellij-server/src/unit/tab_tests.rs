@@ -12539,7 +12539,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
             .position_and_size()
             .cols
             .as_usize(),
-        73,
+        67,
         "Pane 3 col count"
     );
 }

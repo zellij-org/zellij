@@ -1761,24 +1761,24 @@ impl Tab {
     }
     fn try_increase_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
         let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
         let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
         if can_increase_pane_right && can_increase_pane_up {
             let pane_above_with_right_aligned_border = self
-                .viewport_pane_ids_directly_above(&pane_id)
+                .viewport_pane_ids_directly_above(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                    let active_pane = self.panes.get(pane_id).unwrap();
+                    active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
             {
-                self.try_increase_pane_and_surroundings_right(
+                self.try_reduce_pane_and_surroundings_right(
                     &pane_above_with_right_aligned_border,
                     RESIZE_PERCENT,
                 );
@@ -1790,23 +1790,23 @@ impl Tab {
     }
     fn try_increase_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
         let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
         let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
         if can_increase_pane_left && can_increase_pane_up {
             let pane_above_with_left_aligned_border = self
-                .viewport_pane_ids_directly_above(&pane_id)
+                .viewport_pane_ids_directly_above(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
-                    active_pane.x() == pane.x()
+                    let active_pane = self.panes.get(pane_id).unwrap();
+                    active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
-                self.try_increase_pane_and_surroundings_left(
+                self.try_reduce_pane_and_surroundings_left(
                     &pane_above_with_left_aligned_border,
                     RESIZE_PERCENT,
                 );
@@ -1818,24 +1818,24 @@ impl Tab {
     }
     fn try_increase_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
         let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
         let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
         if can_increase_pane_right && can_increase_pane_down {
             let pane_below_with_right_aligned_border = self
-                .viewport_pane_ids_directly_below(&pane_id)
+                .viewport_pane_ids_directly_below(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() + 1 == pane.x() + pane.cols() + 1
+                    let active_pane = self.panes.get(pane_id).unwrap();
+                    active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
             {
-                self.try_increase_pane_and_surroundings_right(
+                self.try_reduce_pane_and_surroundings_right(
                     &pane_below_with_right_aligned_border,
                     RESIZE_PERCENT,
                 );
@@ -1847,48 +1847,48 @@ impl Tab {
     }
     fn try_increase_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
         let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
         let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
         if can_increase_pane_left && can_increase_pane_down {
             let pane_below_with_left_aligned_border = self
-                .viewport_pane_ids_directly_below(&pane_id)
+                .viewport_pane_ids_directly_below(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
-                    active_pane.x() == pane.x()
+                    let active_pane = self.panes.get(pane_id).unwrap();
+                    active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
-                self.try_increase_pane_and_surroundings_left(
+                self.try_reduce_pane_and_surroundings_left(
                     &pane_below_with_left_aligned_border,
                     RESIZE_PERCENT,
                 );
             }
             true
         } else {
-            return false;
+            false
         }
     }
     fn try_reduce_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
         let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
         if can_reduce_pane_right && can_reduce_pane_up {
             let pane_below_with_left_aligned_border = self
-                .viewport_pane_ids_directly_below(&pane_id)
+                .viewport_pane_ids_directly_below(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
+                    let active_pane = self.panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
                 self.try_increase_pane_and_surroundings_right(
                     &pane_below_with_left_aligned_border,
@@ -1902,20 +1902,20 @@ impl Tab {
     }
     fn try_reduce_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
         let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
         if can_reduce_pane_left && can_reduce_pane_up {
             let pane_below_with_right_aligned_border = self
-                .viewport_pane_ids_directly_below(&pane_id)
+                .viewport_pane_ids_directly_below(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
+                    let active_pane = self.panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
             {
                 self.try_increase_pane_and_surroundings_left(
@@ -1930,21 +1930,21 @@ impl Tab {
     }
     fn try_reduce_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
         let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
         let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
         if can_reduce_pane_right && can_reduce_pane_down {
             let pane_above_with_left_aligned_border = self
-                .viewport_pane_ids_directly_above(&pane_id)
+                .viewport_pane_ids_directly_above(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
+                    let active_pane = self.panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
                 self.try_increase_pane_and_surroundings_right(
                     &pane_above_with_left_aligned_border,
@@ -1958,21 +1958,21 @@ impl Tab {
     }
     fn try_reduce_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
         let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
         let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
         if can_reduce_pane_left && can_reduce_pane_down {
             let pane_above_with_right_aligned_border = self
-                .viewport_pane_ids_directly_above(&pane_id)
+                .viewport_pane_ids_directly_above(pane_id)
                 .iter()
                 .copied()
                 .find(|p_id| {
                     let pane = self.panes.get(p_id).unwrap();
-                    let active_pane = self.panes.get(&pane_id).unwrap();
+                    let active_pane = self.panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
             {
                 self.try_increase_pane_and_surroundings_left(
@@ -1982,7 +1982,7 @@ impl Tab {
             }
             true
         } else {
-            return false;
+            false
         }
     }
     fn try_reduce_pane_and_surroundings_right(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
@@ -2132,9 +2132,7 @@ impl Tab {
             if self.try_increase_pane_and_surroundings_left(&active_pane_id, RESIZE_PERCENT) {
                 return;
             }
-            if self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT) {
-                return;
-            }
+            self.try_increase_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT);
         }
     }
     pub fn resize_decrease(&mut self) {
@@ -2160,9 +2158,7 @@ impl Tab {
             if self.try_reduce_pane_and_surroundings_up(&active_pane_id, RESIZE_PERCENT) {
                 return;
             }
-            if self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT) {
-                return;
-            }
+            self.try_reduce_pane_and_surroundings_down(&active_pane_id, RESIZE_PERCENT);
         }
     }
 
