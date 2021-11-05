@@ -2926,6 +2926,7 @@ dependencies = [
  "strum",
  "tempfile",
  "termion",
+ "thiserror",
  "unicode-width",
  "url",
  "vte",
