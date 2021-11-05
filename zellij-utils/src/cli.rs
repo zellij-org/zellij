@@ -85,6 +85,10 @@ pub enum Sessions {
         #[structopt(short, long)]
         create: bool,
 
+        /// Number of the session index in the active sessions ordered creation date.
+        #[structopt(long)]
+        index: Option<usize>,
+
         /// Change the behaviour of zellij
         #[structopt(subcommand, name = "options")]
         options: Option<SessionCommand>,
