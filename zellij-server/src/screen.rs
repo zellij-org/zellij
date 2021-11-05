@@ -35,6 +35,8 @@ pub(crate) enum ScreenInstruction {
     ResizeRight(ClientId),
     ResizeDown(ClientId),
     ResizeUp(ClientId),
+    ResizeIncrease(ClientId),
+    ResizeDecrease(ClientId),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -95,6 +97,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ResizeRight(..) => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown(..) => ScreenContext::ResizeDown,
             ScreenInstruction::ResizeUp(..) => ScreenContext::ResizeUp,
+            ScreenInstruction::ResizeIncrease(..) => ScreenContext::ResizeIncrease,
+            ScreenInstruction::ResizeDecrease(..) => ScreenContext::ResizeDecrease,
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
@@ -656,6 +660,22 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::ResizeUp(client_id) => {
                 screen.get_active_tab_mut(client_id).unwrap().resize_up();
+
+                screen.render();
+            }
+            ScreenInstruction::ResizeIncrease(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_increase();
+
+                screen.render();
+            }
+            ScreenInstruction::ResizeDecrease(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_decrease();
 
                 screen.render();
             }

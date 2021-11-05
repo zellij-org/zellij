@@ -17,6 +17,16 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum ResizeDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+    Increase,
+    Decrease,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -33,7 +43,7 @@ pub enum Action {
     /// Switch to the specified input mode.
     SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
-    Resize(Direction),
+    Resize(ResizeDirection),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
