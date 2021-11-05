@@ -401,6 +401,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a28b32d32ca44b70c3e4acd7db1babf555fa026e385fb95f18028f88848b3c31"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "regex",
+ "terminal_size",
+ "unicode-width",
+ "winapi",
+]
+
+[[package]]
 name = "cranelift-bforest"
 version = "0.68.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -651,6 +666,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dialoguer"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61579ada4ec0c6031cfac3f86fdba0d195a7ebeb5e36693bd53cb5999a25beeb"
+dependencies = [
+ "console 0.15.0",
+ "lazy_static",
+ "tempfile",
+ "zeroize",
 ]
 
 [[package]]
@@ -1048,7 +1075,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15226a375927344c78d39dc6b49e2d5562a5b0705e26a589093c6792e52eed8e"
 dependencies = [
  "backtrace",
- "console",
+ "console 0.14.1",
  "lazy_static",
  "serde",
  "serde_json",
@@ -2835,6 +2862,7 @@ name = "zellij"
 version = "0.20.0"
 dependencies = [
  "anyhow",
+ "dialoguer",
  "insta",
  "log",
  "names",
@@ -2933,3 +2961,9 @@ dependencies = [
  "vte",
  "zellij-tile",
 ]
+
+[[package]]
+name = "zeroize"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68d9dcec5f9b43a30d38c49f91dfedfaac384cb8f085faca366c26207dd1619"
