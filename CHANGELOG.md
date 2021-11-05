@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: open pane in cwd even when explicitly specifying shell (https://github.com/zellij-org/zellij/pull/834)
 * Fix: do not resize panes below minimum (https://github.com/zellij-org/zellij/pull/838)
 * Feature: Non directional resize of panes (https://github.com/zellij-org/zellij/pull/520)
+* Add: colored crate to replace manual color formatting (https://github.com/zellij-org/zellij/pull/837)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
