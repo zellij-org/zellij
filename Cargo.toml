@@ -14,6 +14,7 @@ rust-version = "1.56"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
 names = "0.11.0"
 zellij-client = { path = "zellij-client/", version = "0.20.0" }
 zellij-server = { path = "zellij-server/", version = "0.20.0" }

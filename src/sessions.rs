@@ -1,4 +1,5 @@
 use std::os::unix::fs::FileTypeExt;
+use std::time::SystemTime;
 use std::{fs, io, process};
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
@@ -24,6 +25,36 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
                 Ok(Vec::with_capacity(0))
             } else {
                 Err(err.kind())
+            }
+        }
+    }
+}
+
+pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<String>> {
+    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        Ok(files) => {
+            let mut sessions_with_creation_date: Vec<(String, SystemTime)> = Vec::new();
+            for file in files {
+                let file = file?;
+                let file_name = file.file_name().into_string().unwrap();
+                let file_created_at = file.metadata()?.created()?;
+                if file.file_type()?.is_socket() && assert_socket(&file_name) {
+                    sessions_with_creation_date.push((file_name, file_created_at));
+                }
+            }
+            sessions_with_creation_date.sort_by_key(|x| x.1); // the oldest one will be the first
+
+            let sessions = sessions_with_creation_date
+                .iter()
+                .map(|x| x.0.clone())
+                .collect();
+            Ok(sessions)
+        }
+        Err(err) => {
+            if let io::ErrorKind::NotFound = err.kind() {
+                Ok(Vec::with_capacity(0))
+            } else {
+                Err(err.into())
             }
         }
     }
@@ -57,6 +88,18 @@ pub(crate) fn print_sessions(sessions: Vec<String>) {
         };
         println!("{}{}", session, suffix);
     })
+}
+
+pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
+    let curr_session = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
+    for (i, session) in sessions.iter().enumerate() {
+        let suffix = if curr_session == *session {
+            " (current)"
+        } else {
+            ""
+        };
+        println!("{}: {}{}", i, session, suffix);
+    }
 }
 
 pub(crate) enum ActiveSession {
