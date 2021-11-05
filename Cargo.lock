@@ -2906,6 +2906,7 @@ dependencies = [
  "async-std",
  "backtrace",
  "bincode",
+ "colored",
  "colorsys",
  "crossbeam",
  "directories-next",
