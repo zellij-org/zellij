@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: Non directional resize of panes (https://github.com/zellij-org/zellij/pull/520)
 * Add: `colored` crate to replace manual color formatting (https://github.com/zellij-org/zellij/pull/837)
 * Add: introduce `thiserrror` to simplify error types (https://github.com/zellij-org/zellij/pull/836)
+* Add: support `--index` option for the `attach` subcommand in order to
+  choose the session indexed by the provided creation date (https://github.com/zellij-org/zellij/pull/824)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
