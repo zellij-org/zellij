@@ -205,110 +205,59 @@ impl CharacterStyles {
             return Some(RESET_STYLES);
         }
 
-        let mut diff: Option<CharacterStyles> = None;
+        // create diff from all changed styles
+        let mut diff = CharacterStyles::new();
 
         if self.foreground != new_styles.foreground {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.foreground(new_styles.foreground));
-            } else {
-                diff = Some(CharacterStyles::new().foreground(new_styles.foreground));
-            }
-            self.foreground = new_styles.foreground;
+            diff.foreground = new_styles.foreground;
         }
         if self.background != new_styles.background {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.background(new_styles.background));
-            } else {
-                diff = Some(CharacterStyles::new().background(new_styles.background));
-            }
-            self.background = new_styles.background;
+            diff.background = new_styles.background;
         }
         if self.strike != new_styles.strike {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.strike(new_styles.strike));
-            } else {
-                diff = Some(CharacterStyles::new().strike(new_styles.strike));
-            }
-            self.strike = new_styles.strike;
+            diff.strike = new_styles.strike;
         }
         if self.hidden != new_styles.hidden {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.hidden(new_styles.hidden));
-            } else {
-                diff = Some(CharacterStyles::new().hidden(new_styles.hidden));
-            }
-            self.hidden = new_styles.hidden;
+            diff.hidden = new_styles.hidden;
         }
         if self.reverse != new_styles.reverse {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.reverse(new_styles.reverse));
-            } else {
-                diff = Some(CharacterStyles::new().reverse(new_styles.reverse));
-            }
-            self.reverse = new_styles.reverse;
+            diff.reverse = new_styles.reverse;
         }
         if self.slow_blink != new_styles.slow_blink {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.blink_slow(new_styles.slow_blink));
-            } else {
-                diff = Some(CharacterStyles::new().blink_slow(new_styles.slow_blink));
-            }
-            self.slow_blink = new_styles.slow_blink;
+            diff.slow_blink = new_styles.slow_blink;
         }
         if self.fast_blink != new_styles.fast_blink {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.blink_fast(new_styles.fast_blink));
-            } else {
-                diff = Some(CharacterStyles::new().blink_fast(new_styles.fast_blink));
-            }
-            self.fast_blink = new_styles.fast_blink;
+            diff.fast_blink = new_styles.fast_blink;
         }
         if self.underline != new_styles.underline {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.underline(new_styles.underline));
-            } else {
-                diff = Some(CharacterStyles::new().underline(new_styles.underline));
-            }
-            self.underline = new_styles.underline;
+            diff.underline = new_styles.underline;
         }
         if self.bold != new_styles.bold {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.bold(new_styles.bold));
-            } else {
-                diff = Some(CharacterStyles::new().bold(new_styles.bold));
-            }
-            self.bold = new_styles.bold;
+            diff.bold = new_styles.bold;
         }
         if self.dim != new_styles.dim {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.dim(new_styles.dim));
-            } else {
-                diff = Some(CharacterStyles::new().dim(new_styles.dim));
-            }
-            self.dim = new_styles.dim;
+            diff.dim = new_styles.dim;
         }
         if self.italic != new_styles.italic {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.italic(new_styles.italic));
-            } else {
-                diff = Some(CharacterStyles::new().italic(new_styles.italic));
-            }
-            self.italic = new_styles.italic;
+            diff.italic = new_styles.italic;
         }
 
+        // apply new styles
+        *self = *new_styles;
+
         if let Some(changed_colors) = changed_colors {
-            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.foreground) {
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.foreground {
                 if let Some(changed_color) = changed_colors[color_index as usize] {
-                    diff.as_mut().unwrap().foreground = Some(changed_color);
+                    diff.foreground = Some(changed_color);
                 }
             }
-            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.background) {
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.background {
                 if let Some(changed_color) = changed_colors[color_index as usize] {
-                    diff.as_mut().unwrap().background = Some(changed_color);
+                    diff.background = Some(changed_color);
                 }
             }
         }
-        diff
+        Some(diff)
     }
     pub fn reset_all(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
@@ -735,7 +684,7 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
