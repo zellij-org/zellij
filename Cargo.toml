@@ -9,15 +9,18 @@ repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/plugins/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
 resolver = "2"
+rust-version = "1.56"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
 names = "0.11.0"
 zellij-client = { path = "zellij-client/", version = "0.20.0" }
 zellij-server = { path = "zellij-server/", version = "0.20.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.20.0" }
 log = "0.4.14"
+dialoguer = "0.9.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

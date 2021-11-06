@@ -1010,3 +1010,15 @@ pub fn move_cursor_below_scroll_region() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+pub fn insert_wide_characters_in_existing_line() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 86, Palette::default());
+    let fixture_name = "chinese_characters_line_middle";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

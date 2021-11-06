@@ -658,11 +658,7 @@ impl Grid {
                     canonical_line_parts.push(Row::new(new_columns).canonical());
                 }
                 while !canonical_line.columns.is_empty() {
-                    let next_wrap = if canonical_line.width() > new_columns {
-                        canonical_line.drain_until(new_columns)
-                    } else {
-                        canonical_line.columns.drain(..).collect()
-                    };
+                    let next_wrap = canonical_line.drain_until(new_columns);
                     // If the next character is wider than the grid (i.e. there is nothing in
                     // `next_wrap`, then just abort the resizing
                     if next_wrap.is_empty() {
@@ -821,7 +817,7 @@ impl Grid {
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             for _ in 0..count {
-                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                 if scroll_region_bottom < self.viewport.len() {
                     self.viewport.remove(scroll_region_bottom);
                 }
@@ -836,7 +832,7 @@ impl Grid {
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             for _ in 0..count {
-                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                 self.viewport.remove(scroll_region_top);
                 if self.viewport.len() > scroll_region_top {
                     self.viewport
@@ -857,7 +853,7 @@ impl Grid {
             self.width,
         );
         for _ in 0..self.height {
-            let columns = vec![character; self.width];
+            let columns = VecDeque::from(vec![character; self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
         }
         self.output_buffer.update_all_lines();
@@ -876,7 +872,7 @@ impl Grid {
                     return;
                 }
                 self.viewport.remove(scroll_region_top);
-                let columns = vec![EMPTY_TERMINAL_CHARACTER; self.width];
+                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                 if self.viewport.len() >= scroll_region_bottom {
                     self.viewport
                         .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
@@ -1012,7 +1008,7 @@ impl Grid {
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
         if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y) {
             cursor_row.truncate(self.cursor.x);
-            let replace_with_columns = vec![replace_with; self.width];
+            let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
             self.replace_characters_in_line_after_cursor(replace_with);
             for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
                 row.replace_columns(replace_with_columns.clone());
@@ -1023,7 +1019,7 @@ impl Grid {
     pub fn clear_all_before_cursor(&mut self, replace_with: TerminalCharacter) {
         if self.viewport.get(self.cursor.y).is_some() {
             self.replace_characters_in_line_before_cursor(replace_with);
-            let replace_with_columns = vec![replace_with; self.width];
+            let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
             for row in self.viewport.iter_mut().take(self.cursor.y) {
                 row.replace_columns(replace_with_columns.clone());
             }
@@ -1035,7 +1031,7 @@ impl Grid {
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
-        let replace_with_columns = vec![replace_with; self.width];
+        let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
         self.replace_characters_in_line_after_cursor(replace_with);
         for row in self.viewport.iter_mut() {
             row.replace_columns(replace_with_columns.clone());
@@ -1051,7 +1047,7 @@ impl Grid {
     }
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
-            let columns = vec![pad_character; self.width];
+            let columns = VecDeque::from(vec![pad_character; self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
             self.output_buffer.update_line(self.viewport.len() - 1);
         }
@@ -1172,7 +1168,7 @@ impl Grid {
                 // region
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
-                    let columns = vec![pad_character; self.width];
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     if self.viewport.len() > scroll_region_bottom {
                         self.viewport
                             .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
@@ -1201,7 +1197,7 @@ impl Grid {
                     if scroll_region_bottom < self.viewport.len() {
                         self.viewport.remove(scroll_region_bottom);
                     }
-                    let columns = vec![pad_character; self.width];
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     self.viewport
                         .insert(current_line_index, Row::from_columns(columns).canonical());
                 }
@@ -1325,7 +1321,8 @@ impl Grid {
                 continue;
             }
 
-            let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+            let empty_row =
+                Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
 
             // get the row from lines_above, viewport, or lines below depending on index
             let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
@@ -2017,7 +2014,7 @@ impl Perform for Grid {
 
 #[derive(Clone)]
 pub struct Row {
-    pub columns: Vec<TerminalCharacter>,
+    pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
 }
 
@@ -2033,11 +2030,11 @@ impl Debug for Row {
 impl Row {
     pub fn new(width: usize) -> Self {
         Row {
-            columns: Vec::with_capacity(width),
+            columns: VecDeque::with_capacity(width),
             is_canonical: false,
         }
     }
-    pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
+    pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
         Row {
             columns,
             is_canonical: false,
@@ -2055,7 +2052,7 @@ impl Row {
         }
     }
     pub fn with_character(mut self, terminal_character: TerminalCharacter) -> Self {
-        self.columns.push(terminal_character);
+        self.columns.push_back(terminal_character);
         self
     }
     pub fn canonical(mut self) -> Self {
@@ -2087,40 +2084,65 @@ impl Row {
         }
         acc
     }
+    pub fn absolute_character_index(&self, x: usize) -> usize {
+        // return x's width aware index
+        let mut absolute_index = x;
+        for (i, terminal_character) in self.columns.iter().enumerate().take(x) {
+            if i == absolute_index {
+                break;
+            }
+            if terminal_character.width > 1 {
+                absolute_index = absolute_index.saturating_sub(1);
+            }
+        }
+        absolute_index
+    }
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width().cmp(&x) {
             Ordering::Equal => {
-                self.columns.push(terminal_character);
+                self.columns.push_back(terminal_character);
             }
             Ordering::Less => {
                 let width_offset = self.excess_width_until(x);
                 self.columns
                     .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
-                self.columns.push(terminal_character);
+                self.columns.push_back(terminal_character);
             }
             Ordering::Greater => {
-                let width_offset = self.excess_width_until(x);
+                // wide-character-aware index, where each character is counted once
+                let absolute_x_index = self.absolute_character_index(x);
                 let character_width = terminal_character.width;
-                let replaced_character = std::mem::replace(
-                    &mut self.columns[x.saturating_sub(width_offset)],
-                    terminal_character,
-                );
-                if character_width > replaced_character.width {
-                    // this is done in a verbose manner because of performance
-                    let width_difference = character_width - replaced_character.width;
-                    for _ in 0..width_difference {
-                        self.columns.pop();
+                let replaced_character =
+                    std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
+                match character_width.cmp(&replaced_character.width) {
+                    Ordering::Greater => {
+                        // this is done in a verbose manner because of performance
+                        let width_difference = character_width - replaced_character.width;
+                        for _ in 0..width_difference {
+                            let position_to_remove = absolute_x_index + 1;
+                            if self.columns.get(position_to_remove).is_some() {
+                                self.columns.remove(position_to_remove);
+                            }
+                        }
                     }
+                    Ordering::Less => {
+                        let width_difference = replaced_character.width - character_width;
+                        for _ in 0..width_difference {
+                            self.columns
+                                .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.columns.len().cmp(&x) {
-            Ordering::Equal => self.columns.push(terminal_character),
+            Ordering::Equal => self.columns.push_back(terminal_character),
             Ordering::Less => {
                 self.columns.resize(x, EMPTY_TERMINAL_CHARACTER);
-                self.columns.push(terminal_character);
+                self.columns.push_back(terminal_character);
             }
             Ordering::Greater => {
                 self.columns.insert(x, terminal_character);
@@ -2130,19 +2152,20 @@ impl Row {
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         // this is much more performant than remove/insert
         if x < self.columns.len() {
-            self.columns.push(terminal_character);
-            let character = self.columns.swap_remove(x);
+            self.columns.push_back(terminal_character);
+            // let character = self.columns.swap_remove_back(x);
+            let character = self.columns.swap_remove_back(x).unwrap(); // TODO: if let?
             let excess_width = character.width.saturating_sub(1);
             for _ in 0..excess_width {
                 self.columns.insert(x, terminal_character);
             }
         }
     }
-    pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
+    pub fn replace_columns(&mut self, columns: VecDeque<TerminalCharacter>) {
         self.columns = columns;
     }
     pub fn push(&mut self, terminal_character: TerminalCharacter) {
-        self.columns.push(terminal_character);
+        self.columns.push_back(terminal_character);
     }
     pub fn truncate(&mut self, x: usize) {
         let width_offset = self.excess_width_until(x);
@@ -2173,26 +2196,23 @@ impl Row {
         let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
         let replacement_length = to_position_accounting_for_widechars
             .saturating_sub(from_position_accounting_for_widechars);
-        let mut replace_with = vec![terminal_character; replacement_length];
+        let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
         self.columns
             .truncate(from_position_accounting_for_widechars);
         self.columns.append(&mut replace_with);
     }
-    pub fn append(&mut self, to_append: &mut Vec<TerminalCharacter>) {
+    pub fn append(&mut self, to_append: &mut VecDeque<TerminalCharacter>) {
         self.columns.append(to_append);
     }
-    pub fn drain_until(&mut self, x: usize) -> Vec<TerminalCharacter> {
-        let mut drained_part: Vec<TerminalCharacter> = vec![];
+    pub fn drain_until(&mut self, x: usize) -> VecDeque<TerminalCharacter> {
+        let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
-        loop {
-            if self.columns.is_empty() {
-                break;
-            }
-            let next_character_len = self.columns.get(0).unwrap().width;
-            if drained_part_len + next_character_len <= x {
-                drained_part.push(self.columns.remove(0));
-                drained_part_len += next_character_len;
+        while let Some(next_character) = self.columns.remove(0) {
+            if drained_part_len + next_character.width <= x {
+                drained_part.push_back(next_character);
+                drained_part_len += next_character.width;
             } else {
+                self.columns.push_front(next_character); // put it back
                 break;
             }
         }
@@ -2205,7 +2225,8 @@ impl Row {
             .get(to_position_accounting_for_widechars)
             .map(|character| character.width)
             .unwrap_or(1);
-        let mut replace_with = vec![terminal_character; to + width_of_current_character];
+        let mut replace_with =
+            VecDeque::from(vec![terminal_character; to + width_of_current_character]);
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
         } else if to_position_accounting_for_widechars >= self.columns.len() {
@@ -2216,7 +2237,7 @@ impl Row {
         replace_with.append(&mut self.columns);
         self.columns = replace_with;
     }
-    pub fn replace_beginning_with(&mut self, mut line_part: Vec<TerminalCharacter>) {
+    pub fn replace_beginning_with(&mut self, mut line_part: VecDeque<TerminalCharacter>) {
         // this assumes line_part has no wide characters
         if line_part.len() > self.columns.len() {
             self.columns.clear();
@@ -2234,22 +2255,22 @@ impl Row {
     }
     pub fn delete_and_return_character(&mut self, x: usize) -> Option<TerminalCharacter> {
         if x < self.columns.len() {
-            Some(self.columns.remove(x))
+            Some(self.columns.remove(x).unwrap()) // TODO: just return the remove part?
         } else {
             None
         }
     }
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let mut parts: Vec<Row> = vec![];
-        let mut current_part: Vec<TerminalCharacter> = vec![];
+        let mut current_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut current_part_len = 0;
         for character in self.columns.drain(..) {
             if current_part_len + character.width > max_row_length {
                 parts.push(Row::from_columns(current_part));
-                current_part = vec![];
+                current_part = VecDeque::new();
                 current_part_len = 0;
             }
-            current_part.push(character);
+            current_part.push_back(character);
             current_part_len += character.width;
         }
         if !current_part.is_empty() {

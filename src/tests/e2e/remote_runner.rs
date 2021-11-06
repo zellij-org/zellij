@@ -271,7 +271,7 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_in_session(&mut channel, &session_name);
+        start_zellij_in_session(&mut channel, session_name);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -310,7 +310,7 @@ impl RemoteRunner {
         };
         let terminal_output = TerminalPane::new(0, pane_geom, Palette::default(), 0); // 0 is the pane index
         setup_remote_environment(&mut channel, win_size);
-        attach_to_existing_session(&mut channel, &session_name);
+        attach_to_existing_session(&mut channel, session_name);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -472,38 +472,35 @@ impl RemoteRunner {
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else if self.without_frames {
             let mut new_runner = RemoteRunner::new_without_frames(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else if self.session_name.is_some() {
             let mut new_runner = if self.attach_to_existing {
                 RemoteRunner::new_existing_session(
                     self.test_name,
                     self.win_size,
-                    &self.session_name.as_ref().unwrap(),
+                    self.session_name.as_ref().unwrap(),
                 )
             } else {
                 RemoteRunner::new_with_session_name(
                     self.test_name,
                     self.win_size,
-                    &self.session_name.as_ref().unwrap(),
+                    self.session_name.as_ref().unwrap(),
                 )
             };
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         } else {
             let mut new_runner = RemoteRunner::new(self.test_name, self.win_size);
             new_runner.retries_left = self.retries_left - 1;
             new_runner.replace_steps(self.steps.clone());
             drop(std::mem::replace(self, new_runner));
-            self.run_all_steps()
         }
+        self.run_all_steps()
     }
     pub fn run_all_steps(&mut self) -> String {
         // returns the last snapshot

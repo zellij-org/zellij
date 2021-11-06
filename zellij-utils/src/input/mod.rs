@@ -22,8 +22,14 @@ pub fn get_mode_info(
 ) -> ModeInfo {
     let keybinds = match mode {
         InputMode::Normal | InputMode::Locked => Vec::new(),
-        InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],
-        InputMode::Move => vec![("←↓↑→".to_string(), "Move".to_string())],
+        InputMode::Resize => vec![
+            ("←↓↑→".to_string(), "Resize".to_string()),
+            ("+-".to_string(), "Increase/Decrease size".to_string()),
+        ],
+        InputMode::Move => vec![
+            ("←↓↑→".to_string(), "Move".to_string()),
+            ("n/Tab".to_string(), "Next Pane".to_string()),
+        ],
         InputMode::Pane => vec![
             ("←↓↑→".to_string(), "Move focus".to_string()),
             ("p".to_string(), "Next".to_string()),
