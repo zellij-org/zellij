@@ -8,19 +8,21 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
-    styles: CharacterStyles {
-        foreground: Some(AnsiCode::Reset),
-        background: Some(AnsiCode::Reset),
-        strike: Some(AnsiCode::Reset),
-        hidden: Some(AnsiCode::Reset),
-        reverse: Some(AnsiCode::Reset),
-        slow_blink: Some(AnsiCode::Reset),
-        fast_blink: Some(AnsiCode::Reset),
-        underline: Some(AnsiCode::Reset),
-        bold: Some(AnsiCode::Reset),
-        dim: Some(AnsiCode::Reset),
-        italic: Some(AnsiCode::Reset),
-    },
+    styles: RESET_STYLES,
+};
+
+pub const RESET_STYLES: CharacterStyles = CharacterStyles {
+    foreground: Some(AnsiCode::Reset),
+    background: Some(AnsiCode::Reset),
+    strike: Some(AnsiCode::Reset),
+    hidden: Some(AnsiCode::Reset),
+    reverse: Some(AnsiCode::Reset),
+    slow_blink: Some(AnsiCode::Reset),
+    fast_blink: Some(AnsiCode::Reset),
+    underline: Some(AnsiCode::Reset),
+    bold: Some(AnsiCode::Reset),
+    dim: Some(AnsiCode::Reset),
+    italic: Some(AnsiCode::Reset),
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,7 +97,7 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -194,33 +196,16 @@ impl CharacterStyles {
         new_styles: &CharacterStyles,
         changed_colors: Option<[Option<AnsiCode>; 256]>,
     ) -> Option<CharacterStyles> {
-        let mut diff: Option<CharacterStyles> = None;
+        if self == new_styles && changed_colors.is_none() {
+            return None;
+        }
 
-        if new_styles.foreground == Some(AnsiCode::Reset)
-            && new_styles.background == Some(AnsiCode::Reset)
-            && new_styles.strike == Some(AnsiCode::Reset)
-            && new_styles.hidden == Some(AnsiCode::Reset)
-            && new_styles.reverse == Some(AnsiCode::Reset)
-            && new_styles.fast_blink == Some(AnsiCode::Reset)
-            && new_styles.slow_blink == Some(AnsiCode::Reset)
-            && new_styles.underline == Some(AnsiCode::Reset)
-            && new_styles.bold == Some(AnsiCode::Reset)
-            && new_styles.dim == Some(AnsiCode::Reset)
-            && new_styles.italic == Some(AnsiCode::Reset)
-        {
-            self.foreground = Some(AnsiCode::Reset);
-            self.background = Some(AnsiCode::Reset);
-            self.strike = Some(AnsiCode::Reset);
-            self.hidden = Some(AnsiCode::Reset);
-            self.reverse = Some(AnsiCode::Reset);
-            self.fast_blink = Some(AnsiCode::Reset);
-            self.slow_blink = Some(AnsiCode::Reset);
-            self.underline = Some(AnsiCode::Reset);
-            self.bold = Some(AnsiCode::Reset);
-            self.dim = Some(AnsiCode::Reset);
-            self.italic = Some(AnsiCode::Reset);
-            return Some(*new_styles);
-        };
+        if *new_styles == RESET_STYLES {
+            *self = RESET_STYLES;
+            return Some(RESET_STYLES);
+        }
+
+        let mut diff: Option<CharacterStyles> = None;
 
         if self.foreground != new_styles.foreground {
             if let Some(new_diff) = diff.as_mut() {
