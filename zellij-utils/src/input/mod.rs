@@ -10,6 +10,7 @@ pub mod options;
 pub mod plugins;
 pub mod theme;
 
+use crate::envs;
 use termion::input::TermRead;
 use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 
@@ -56,7 +57,7 @@ pub fn get_mode_info(
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
     };
 
-    let session_name = std::env::var("ZELLIJ_SESSION_NAME").ok();
+    let session_name = envs::get_session_name().ok();
 
     ModeInfo {
         mode,

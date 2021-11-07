@@ -2932,6 +2932,7 @@ dependencies = [
 name = "zellij-utils"
 version = "0.20.0"
 dependencies = [
+ "anyhow",
  "async-std",
  "backtrace",
  "bincode",
