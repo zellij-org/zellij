@@ -253,7 +253,12 @@ impl LayoutFromYaml {
 #[serde(crate = "self::serde")]
 pub struct SessionFromYaml {
     pub name: Option<String>,
+    #[serde(default = "default_as_some_true")]
     pub attach: Option<bool>,
+}
+
+fn default_as_some_true() -> Option<bool> {
+    Some(true)
 }
 
 // The struct that carries the information template that is used to

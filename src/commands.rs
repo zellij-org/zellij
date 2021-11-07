@@ -211,24 +211,73 @@ pub(crate) fn start_client(opts: CliArgs) {
             attach_layout,
         );
     } else {
-        let session_name = opts
-            .session
-            .clone()
-            .unwrap_or_else(|| names::Generator::default().next().unwrap());
-        assert_session_ne(&session_name);
+        let start_client_plan = |session_name: std::string::String| {
+            assert_session_ne(&session_name);
 
-        // Determine and initialize the data directory
-        let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-        #[cfg(not(disable_automatic_asset_installation))]
-        populate_data_dir(&data_dir);
+            let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+            #[cfg(not(disable_automatic_asset_installation))]
+            populate_data_dir(&data_dir);
+        };
 
-        start_client_impl(
-            Box::new(os_input),
-            opts,
-            config,
-            config_options,
-            ClientInfo::New(session_name),
-            layout,
-        );
+        if let Some(session_name) = opts.session.clone() {
+            start_client_plan(session_name.clone());
+            start_client_impl(
+                Box::new(os_input),
+                opts,
+                config,
+                config_options,
+                ClientInfo::New(session_name),
+                layout,
+            );
+        } else {
+            if let Some(layout_some) = layout.clone() {
+                if let Some(session_name) = layout_some.session.name {
+                    if layout_some.session.attach.unwrap() {
+                        let client = attach_with_session_name(
+                            Some(session_name),
+                            config_options.clone(),
+                            true,
+                        );
+
+                        let attach_layout = match client {
+                            ClientInfo::Attach(_, _) => None,
+                            ClientInfo::New(_) => layout,
+                        };
+
+                        start_client_impl(
+                            Box::new(os_input),
+                            opts,
+                            config,
+                            config_options,
+                            client,
+                            attach_layout,
+                        );
+                    } else {
+                        start_client_plan(session_name.clone());
+                        start_client_impl(
+                            Box::new(os_input),
+                            opts,
+                            config,
+                            config_options,
+                            ClientInfo::New(session_name),
+                            layout,
+                        );
+                    }
+
+                    process::exit(0);
+                }
+            }
+
+            let session_name = names::Generator::default().next().unwrap();
+            start_client_plan(session_name.clone());
+            start_client_impl(
+                Box::new(os_input),
+                opts,
+                config,
+                config_options,
+                ClientInfo::New(session_name),
+                layout,
+            );
+        }
     }
 }

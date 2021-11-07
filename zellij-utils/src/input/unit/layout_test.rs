@@ -736,7 +736,7 @@ fn session_name_to_layout_has_name() {
 
     let expected_session = SessionFromYaml {
         name: Some(String::from("zellij-session")),
-        attach: None,
+        attach: Some(true),
     };
 
     assert_eq!(expected_session, session_layout);
