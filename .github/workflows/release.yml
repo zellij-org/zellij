@@ -22,19 +22,19 @@ jobs:
         include:
           - build: linux musl x64
             os: ubuntu-latest
-            rust: beta
+            rust: stable
             target: x86_64-unknown-linux-musl
           - build: linux musl aarch64
             os: ubuntu-latest
-            rust: beta
+            rust: stable
             target: aarch64-unknown-linux-musl
           - build: macos x64
             os: macos-latest
-            rust: beta
+            rust: stable
             target: x86_64-apple-darwin
           - build: macos aarch64
             os: macos-latest
-            rust: beta
+            rust: stable
             target: aarch64-apple-darwin
     steps:
       - name: Set release tag
