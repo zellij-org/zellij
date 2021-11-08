@@ -1,6 +1,7 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
+use suggestion::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
     interprocess::local_socket::LocalSocketStream,
@@ -177,6 +178,9 @@ pub(crate) fn assert_session(name: &str) {
                 return;
             } else {
                 println!("No session named {:?} found.", name);
+                if let Some(sugg) = get_sessions().unwrap().suggest(name) {
+                    println!("  help: Did you mean `{}`?", sugg);
+                }
             }
         }
         Err(e) => {
