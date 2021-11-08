@@ -239,6 +239,8 @@ pub enum ScreenContext {
     ScrollToBottom,
     PageScrollUp,
     PageScrollDown,
+    HalfPageScrollUp,
+    HalfPageScrollDown,
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveSyncTab,
