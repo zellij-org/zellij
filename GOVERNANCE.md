@@ -42,3 +42,4 @@ For the removal of doubt: changing this rule itself requires a two thirds majori
 * Alex Kenji Berthold <aks.kenji@protonmail.com>
 * Kyle Sutherland-Cash <kyle.sutherlandcash@gmail.com>
 * Dante Pippi <dante.dpf@gmail.com>
+* Thomas Linford <linford.t@gmail.com>
