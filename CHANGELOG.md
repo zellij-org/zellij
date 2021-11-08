@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Add: add initial session name to layout template (https://github.com/zellij-org/zellij/pull/789)
 
 ## [0.20.0] - 2021-11-08
 * Fix: improve performance of echoed keystrokes (https://github.com/zellij-org/zellij/pull/798)
