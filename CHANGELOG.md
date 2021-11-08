@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: support `--index` option for the `attach` subcommand in order to
   choose the session indexed by the provided creation date (https://github.com/zellij-org/zellij/pull/824)
 * Fix: simplify the main function significantly (https://github.com/zellij-org/zellij/pull/829)
+* Feature: half page scrolling actions (https://github.com/zellij-org/zellij/pull/813)
 
 ## [0.19.0] - 2021-10-20
 * Fix: Prevent text overwrite when scrolled up (https://github.com/zellij-org/zellij/pull/655)
