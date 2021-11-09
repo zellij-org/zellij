@@ -129,7 +129,11 @@ impl PluginConfig {
     pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Option<Vec<u8>> {
         fs::read(&self.path)
             .or_else(|_| fs::read(&self.path.with_extension("wasm")))
-            .or_else(|_| fs::read(plugin_dir.join(&self.path).with_extension("wasm")))
+            .or_else(|_| {
+                log::warn!("Landed in {:?}!", plugin_dir);
+                let res = fs::read(plugin_dir.join(&self.path).with_extension("wasm"));
+                res
+            })
             .ok()
     }
 

@@ -187,6 +187,8 @@ fn start_plugin(
         .map(ToString::to_string)
         .collect();
 
+    log::warn!("Hash: {}", hash);
+
     let cached_path = ZELLIJ_PROJ_DIR.cache_dir().join(&hash);
 
     let module = unsafe {

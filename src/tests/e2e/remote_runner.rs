@@ -50,8 +50,8 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --data-dir {} --session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, ZELLIJ_DATA_LOCATION, SESSION_NAME
+                "ls {}; rm -r {}; ls {}; {} --data-dir {} --session {}\n",
+                ZELLIJ_DATA_LOCATION, ZELLIJ_DATA_LOCATION, ZELLIJ_DATA_LOCATION, ZELLIJ_EXECUTABLE_LOCATION, ZELLIJ_DATA_LOCATION, SESSION_NAME
             )
             .as_bytes(),
         )
