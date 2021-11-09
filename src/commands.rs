@@ -23,27 +23,26 @@ pub(crate) use crate::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
+        Ok(sessions) if sessions.is_empty() => {
+            println!("No active zellij sessions found.");
+            process::exit(1);
+        }
         Ok(sessions) => {
-            if sessions.is_empty() {
-                println!("No active zellij sessions found.");
-                process::exit(1);
-            } else {
-                if !yes {
-                    println!("WARNING: this action will kill all sessions.");
-                    if !Confirm::new()
-                        .with_prompt("Do you want to continue?")
-                        .interact()
-                        .unwrap()
-                    {
-                        println!("Abort.");
-                        process::exit(1);
-                    }
+            if !yes {
+                println!("WARNING: this action will kill all sessions.");
+                if !Confirm::new()
+                    .with_prompt("Do you want to continue?")
+                    .interact()
+                    .unwrap()
+                {
+                    println!("Abort.");
+                    process::exit(1);
                 }
-                for session in sessions.iter() {
-                    kill_session_impl(session);
-                }
-                process::exit(0);
             }
+            for session in sessions.iter() {
+                kill_session_impl(session);
+            }
+            process::exit(0);
         }
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -95,17 +94,14 @@ fn find_indexed_session(
 ) -> ClientInfo {
     match sessions.get(index) {
         Some(session) => ClientInfo::Attach(session.clone(), config_options),
+        None if create => create_new_client(),
         None => {
-            if create {
-                create_new_client()
-            } else {
-                println!(
-                    "No session indexed by {} found. The following sessions are active:",
-                    index
-                );
-                print_sessions_with_index(sessions);
-                process::exit(1);
-            }
+            println!(
+                "No session indexed by {} found. The following sessions are active:",
+                index
+            );
+            print_sessions_with_index(sessions);
+            process::exit(1);
         }
     }
 }
@@ -113,18 +109,15 @@ fn find_indexed_session(
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
     // Ignore the session_name when `--index` is provided
     match get_sessions_sorted_by_creation_date() {
-        Ok(sessions) => {
-            if sessions.is_empty() {
-                if create {
-                    create_new_client()
-                } else {
-                    println!("No active zellij sessions found.");
-                    process::exit(1);
-                }
+        Ok(sessions) if sessions.is_empty() => {
+            if create {
+                create_new_client()
             } else {
-                find_indexed_session(sessions, config_options, index, create)
+                println!("No active zellij sessions found.");
+                process::exit(1);
             }
         }
+        Ok(sessions) => find_indexed_session(sessions, config_options, index, create),
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
@@ -138,26 +131,22 @@ fn attach_with_session_name(
     create: bool,
 ) -> ClientInfo {
     match session_name.as_ref() {
-        Some(session) => {
-            if create {
-                if !session_exists(session).unwrap() {
-                    ClientInfo::New(session_name.unwrap())
-                } else {
-                    ClientInfo::Attach(session_name.unwrap(), config_options)
-                }
+        Some(session) if create => {
+            if !session_exists(session).unwrap() {
+                ClientInfo::New(session_name.unwrap())
             } else {
-                assert_session(session);
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
         }
+        Some(session) => {
+            assert_session(session);
+            ClientInfo::Attach(session_name.unwrap(), config_options)
+        }
         None => match get_active_session() {
+            ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
-                if create {
-                    create_new_client()
-                } else {
-                    println!("No active zellij sessions found.");
-                    process::exit(1);
-                }
+                println!("No active zellij sessions found.");
+                process::exit(1);
             }
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
