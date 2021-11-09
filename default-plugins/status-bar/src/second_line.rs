@@ -87,7 +87,7 @@ fn first_word_shortcut(
     }
 }
 fn quicknav_full(palette: Palette) -> LinePart {
-    let text_first_part = " Tip: ";
+    let text_first_part = " RIP: ";
     let alt = "Alt";
     let text_second_part = " + ";
     let new_pane_shortcut = "<n>";

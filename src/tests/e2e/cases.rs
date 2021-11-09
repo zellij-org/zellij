@@ -88,6 +88,7 @@ pub fn starts_with_one_terminal() {
             },
         })
         .run_all_steps();
+    println!("{}", last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -448,6 +449,7 @@ pub fn exit_zellij() {
             },
         })
         .run_all_steps();
+    println!("{}", last_snapshot);
     assert!(last_snapshot.contains("Bye from Zellij!"));
 }
 
