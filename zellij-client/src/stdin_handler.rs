@@ -30,14 +30,14 @@ fn keys_to_adjust() -> HashMap<Vec<u8>, Vec<u8>> {
 }
 
 fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
-    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
+    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
     let mut bp_position = 0;
     let mut position = None;
     for (i, byte) in stdin_buffer.iter().enumerate() {
         if Some(byte) == bracketed_paste_end.get(bp_position) {
             position = Some(i);
             bp_position += 1;
-            if bp_position == bracketed_paste_end.len() - 1 {
+            if bp_position == bracketed_paste_end.len() {
                 break;
             }
         } else {
@@ -45,7 +45,7 @@ fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
             position = None;
         }
     }
-    if bp_position == bracketed_paste_end.len() - 1 {
+    if bp_position == bracketed_paste_end.len() {
         position
     } else {
         None
@@ -70,15 +70,32 @@ pub(crate) fn stdin_loop(
         {
             match bracketed_paste_end_position(&stdin_buffer) {
                 Some(paste_end_position) => {
-                    let pasted_input = stdin_buffer.drain(..=paste_end_position).collect();
+                    let starts_with_bracketed_paste_start = stdin_buffer
+                        .iter()
+                        .take(bracketed_paste_start.len())
+                        .eq(bracketed_paste_start.iter());
+
+                    let ends_with_bracketed_paste_end = true;
+
+                    let mut pasted_input: Vec<u8> =
+                        stdin_buffer.drain(..=paste_end_position).collect();
+                    if starts_with_bracketed_paste_start {
+                        drop(pasted_input.drain(..6)); // bracketed paste start
+                    }
+                    drop(pasted_input.drain(pasted_input.len() - 6..)); // bracketed paste end
+
                     send_input_instructions
-                        .send(InputInstruction::PastedText(pasted_input))
+                        .send(InputInstruction::PastedText((
+                            starts_with_bracketed_paste_start,
+                            pasted_input,
+                            ends_with_bracketed_paste_end,
+                        )))
                         .unwrap();
                     pasting = false;
                 }
                 None => {
                     send_input_instructions
-                        .send(InputInstruction::PastedText(stdin_buffer))
+                        .send(InputInstruction::PastedText((true, stdin_buffer, false)))
                         .unwrap();
                     pasting = true;
                     continue;
