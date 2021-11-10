@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: e2e instructions for x86 and arm darwin systems (https://github.com/zellij-org/zellij/pull/846)
 * Fix: use key-value style for `docker-compose` (https://github.com/zellij-org/zellij/issues/338)
 * Fix: unify zellij environment variable handling (https://github.com/zellij-org/zellij/pull/842)
+* Add: toggle boolean options with cli flags (https://github.com/zellij-org/zellij/pull/855)
 
 ## [0.20.0] - 2021-11-08
 * Fix: improve performance of echoed keystrokes (https://github.com/zellij-org/zellij/pull/798)
