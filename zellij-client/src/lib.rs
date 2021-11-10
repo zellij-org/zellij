@@ -18,7 +18,8 @@ use crate::{
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
+    consts::ZELLIJ_IPC_PIPE,
+    envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -119,7 +120,7 @@ pub fn start_client(
         .get_stdout_writer()
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
-    std::env::set_var(&"ZELLIJ", "0");
+    envs::set_zellij("0".to_string());
 
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
@@ -137,14 +138,12 @@ pub fn start_client(
 
     let first_msg = match info {
         ClientInfo::Attach(name, config_options) => {
-            SESSION_NAME.set(name).unwrap();
-            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+            envs::set_session_name(name);
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
         }
         ClientInfo::New(name) => {
-            SESSION_NAME.set(name).unwrap();
-            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+            envs::set_session_name(name);
 
             spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 

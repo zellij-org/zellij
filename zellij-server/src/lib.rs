@@ -17,6 +17,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
@@ -186,7 +187,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .start()
         .expect("could not daemonize the server process");
 
-    std::env::set_var(&"ZELLIJ", "0");
+    envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
