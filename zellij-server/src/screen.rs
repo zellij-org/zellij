@@ -560,7 +560,7 @@ pub(crate) fn screen_thread_main(
     config_options: Box<Options>,
 ) {
     let capabilities = config_options.simplified_ui;
-    let draw_pane_frames = !config_options.no_pane_frames;
+    let draw_pane_frames = !config_options.no_pane_frames.unwrap_or_default();
 
     let mut screen = Screen::new(
         bus,
@@ -570,7 +570,7 @@ pub(crate) fn screen_thread_main(
             config_options.default_mode.unwrap_or_default(),
             client_attributes.palette,
             PluginCapabilities {
-                arrow_fonts: capabilities,
+                arrow_fonts: capabilities.unwrap_or_default(),
             },
         ),
         draw_pane_frames,
