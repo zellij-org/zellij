@@ -523,7 +523,7 @@ fn init_session(
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
     let capabilities = PluginCapabilities {
-        arrow_fonts: config_options.simplified_ui,
+        arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
     };
 
     let default_shell = config_options.default_shell.clone().map(|command| {
