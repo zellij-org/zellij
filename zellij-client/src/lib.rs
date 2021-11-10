@@ -95,7 +95,7 @@ pub enum ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(termion::event::Event, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText(Vec<u8>),
+    PastedText((bool, Vec<u8>, bool)), // (send_brackted_paste_start, pasted_text, send_bracketed_paste_end)
 }
 
 pub fn start_client(
