@@ -28,16 +28,8 @@ For more details about our future plans, read about upcoming features in our [ro
 Zellij was initially called "Mosaic".
 
 ## How do I install it?
-You can install it through `cargo`:
 
-```
-cargo install zellij
-```
-
-Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases).
-
-The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
-To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui`, or putting `simplified_ui: true` in the config file.
+See [INSTALL.md](INSTALL.md).
 
 ## How do I get involved?
 
