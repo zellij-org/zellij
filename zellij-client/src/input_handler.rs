@@ -63,7 +63,7 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         let alt_left_bracket = vec![27, 91];
-        if !self.options.disable_mouse_mode.unwrap_or_default() {
+        if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
         loop {

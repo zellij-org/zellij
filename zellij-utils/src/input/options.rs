@@ -39,7 +39,7 @@ impl FromStr for OnForceClose {
 /// into Options and CliOptions, this could be a good canditate for a macro
 pub struct Options {
     /// Allow plugins to use a more simplified layout
-    /// that is compatible with more fonts
+    /// that is compatible with more fonts (true or false)
     #[structopt(long)]
     #[serde(default)]
     pub simplified_ui: Option<bool>,
@@ -58,11 +58,13 @@ pub struct Options {
     pub layout_dir: Option<PathBuf>,
     #[structopt(long)]
     #[serde(default)]
-    /// Disable handling of mouse events
-    pub disable_mouse_mode: Option<bool>,
+    /// Set the handling of mouse events (true or false)
+    /// Can be temporarily bypassed by the [SHIFT] key
+    pub mouse_mode: Option<bool>,
     #[structopt(long)]
     #[serde(default)]
-    pub no_pane_frames: Option<bool>,
+    /// Set display of the pane frames (true or false)
+    pub pane_frames: Option<bool>,
     /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
     pub on_force_close: Option<OnForceClose>,
@@ -81,8 +83,8 @@ impl Options {
     /// will supercede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge(&self, other: Options) -> Options {
-        let disable_mouse_mode = other.disable_mouse_mode.or(self.disable_mouse_mode);
-        let no_pane_frames = other.no_pane_frames.or(self.no_pane_frames);
+        let mouse_mode = other.mouse_mode.or(self.mouse_mode);
+        let pane_frames = other.pane_frames.or(self.pane_frames);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -96,8 +98,8 @@ impl Options {
             default_mode,
             default_shell,
             layout_dir,
-            disable_mouse_mode,
-            no_pane_frames,
+            mouse_mode,
+            pane_frames,
             on_force_close,
         }
     }
@@ -118,8 +120,8 @@ impl Options {
         };
 
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
-        let disable_mouse_mode = merge_bool(other.disable_mouse_mode, self.disable_mouse_mode);
-        let no_pane_frames = merge_bool(other.no_pane_frames, self.no_pane_frames);
+        let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
+        let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -133,8 +135,8 @@ impl Options {
             default_mode,
             default_shell,
             layout_dir,
-            disable_mouse_mode,
-            no_pane_frames,
+            mouse_mode,
+            pane_frames,
             on_force_close,
         }
     }
@@ -152,52 +154,36 @@ impl Options {
 /// Options that can be set through cli flags
 /// boolean flags end up toggling boolean options in `Options`
 pub struct CliOptions {
-    /// Allow plugins to use a more simplified layout
-    /// that is compatible with more fonts
-    #[structopt(long)]
-    pub simplified_ui: bool,
-    /// Set the default theme
-    #[structopt(long)]
-    pub theme: Option<String>,
-    /// Set the default mode
-    #[structopt(long)]
-    pub default_mode: Option<InputMode>,
-    /// Set the default shell
-    #[structopt(long, parse(from_os_str))]
-    pub default_shell: Option<PathBuf>,
-    /// Set the layout_dir, defaults to
-    /// subdirectory of config dir
-    #[structopt(long, parse(from_os_str))]
-    pub layout_dir: Option<PathBuf>,
-    #[structopt(long)]
     /// Disable handling of mouse events
+    #[structopt(long)]
     pub disable_mouse_mode: bool,
+    /// Disable display of pane frames
     #[structopt(long)]
     pub no_pane_frames: bool,
-    /// Set behaviour on force close (quit or detach)
-    #[structopt(long)]
-    pub on_force_close: Option<OnForceClose>,
+    #[structopt(flatten)]
+    options: Options,
 }
 
 impl From<CliOptions> for Options {
     fn from(cli_options: CliOptions) -> Self {
-        let handle_bool = |bool| {
-            if bool {
-                Some(true)
-            } else {
-                None
-            }
-        };
+        let mut opts = cli_options.options;
+
+        if cli_options.no_pane_frames {
+            opts.pane_frames = Some(false);
+        }
+        if cli_options.disable_mouse_mode {
+            opts.mouse_mode = Some(false);
+        }
 
         Self {
-            simplified_ui: handle_bool(cli_options.simplified_ui),
-            theme: cli_options.theme,
-            default_mode: cli_options.default_mode,
-            default_shell: cli_options.default_shell,
-            layout_dir: cli_options.layout_dir,
-            disable_mouse_mode: handle_bool(cli_options.disable_mouse_mode),
-            no_pane_frames: handle_bool(cli_options.no_pane_frames),
-            on_force_close: cli_options.on_force_close,
+            simplified_ui: opts.simplified_ui,
+            theme: opts.theme,
+            default_mode: opts.default_mode,
+            default_shell: opts.default_shell,
+            layout_dir: opts.layout_dir,
+            mouse_mode: opts.mouse_mode,
+            pane_frames: opts.pane_frames,
+            on_force_close: opts.on_force_close,
         }
     }
 }
