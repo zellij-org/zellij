@@ -299,10 +299,6 @@ impl Pty {
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientOrTabIndex,
     ) -> RawFd {
-        log::info!(
-            "spawn_terminal, client_or_tab_index: {:?}",
-            client_or_tab_index
-        );
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =

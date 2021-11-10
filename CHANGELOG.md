@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.20.1] - 2021-11-10
 * Add: initial session name to layout template (https://github.com/zellij-org/zellij/pull/789)
 * Fix: simplify matches (https://github.com/zellij-org/zellij/pull/844)
 * Add: support darwin builds on ci (https://github.com/zellij-org/zellij/pull/846)
