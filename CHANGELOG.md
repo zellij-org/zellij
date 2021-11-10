@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: unify zellij environment variable handling (https://github.com/zellij-org/zellij/pull/842)
 * Add: toggle boolean options with cli flags (https://github.com/zellij-org/zellij/pull/855)
 
+* HOTFIX: fix pasting regression (https://github.com/zellij-org/zellij/pull/858)
+
 ## [0.20.0] - 2021-11-08
 * Fix: improve performance of echoed keystrokes (https://github.com/zellij-org/zellij/pull/798)
 * Add: Use hyperlinks for the setup information (https://github.com/zellij-org/zellij/pull/768)
