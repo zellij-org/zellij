@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Add: suggestion for similar session name, on attach (https://github.com/zellij-org/zellij/pull/843)
 * Fix: handling and overwriting options through the cli (https://github.com/zellij-org/zellij/pull/859)
 
   THIS IS A BREAKING CHANGE:
