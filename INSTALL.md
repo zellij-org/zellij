@@ -19,6 +19,8 @@ To get the best experience either install nerdfonts, or use the simplified ui by
 
 ## Packages
 
+** :warning: These packages are not affiliated with the Zellij maintainers and are provided here for convenience.**
+
 [![Packaging status](https://repology.org/badge/vertical-allrepos/zellij.svg)](https://repology.org/project/zellij/versions)
 
 ### Arch Linux
