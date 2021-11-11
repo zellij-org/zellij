@@ -1,6 +1,7 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
+use suggestion::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
@@ -149,9 +150,19 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 
 pub(crate) fn assert_session(name: &str) {
     match session_exists(name) {
-        Ok(result) if result => return,
-        Ok(_) => println!("No session named {:?} found.", name),
-        Err(e) => eprintln!("Error occurred: {:?}", e),
+        Ok(result) => {
+            if result {
+                return;
+            } else {
+                println!("No session named {:?} found.", name);
+                if let Some(sugg) = get_sessions().unwrap().suggest(name) {
+                    println!("  help: Did you mean `{}`?", sugg);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error occurred: {:?}", e);
+        }
     };
     process::exit(1);
 }
