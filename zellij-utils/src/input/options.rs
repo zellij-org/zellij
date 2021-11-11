@@ -155,10 +155,10 @@ impl Options {
 /// boolean flags end up toggling boolean options in `Options`
 pub struct CliOptions {
     /// Disable handling of mouse events
-    #[structopt(long)]
+    #[structopt(long, conflicts_with("mouse-mode"))]
     pub disable_mouse_mode: bool,
     /// Disable display of pane frames
-    #[structopt(long)]
+    #[structopt(long, conflicts_with("pane-frames"))]
     pub no_pane_frames: bool,
     #[structopt(flatten)]
     options: Options,
