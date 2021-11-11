@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: fix CSI cursor next line not moving cursor to beginning of line after moving it down (https://github.com/zellij-org/zellij/pull/863)
 * Add: suggestion for similar session name, on attach (https://github.com/zellij-org/zellij/pull/843)
 * Fix: handling and overwriting options through the cli (https://github.com/zellij-org/zellij/pull/859)
 
