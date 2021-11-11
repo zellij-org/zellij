@@ -1,9 +1,9 @@
 ---
 source: src/tests/e2e/cases.rs
-expression: last_snapshot
+expression: last_second_runner_snapshot
 
 ---
- Zellij (e2e-test)  Tab #1                                                                                            
+ Zellij (mirrored_sessions)  Tab #1  Tab #2                                                                         
 ┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────────────────────┐
 │$ █                                                       ││$                                                         │
 │                                                          ││                                                          │
