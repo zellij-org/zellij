@@ -328,7 +328,7 @@ impl Screen {
         let mut output = Output::default();
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in self.tabs.iter_mut() {
-            if tab.get_active_pane().is_some() {
+            if tab.has_active_panes() {
                 tab.render(&mut output);
             } else {
                 tabs_to_close.push(*tab_index);
@@ -491,20 +491,20 @@ impl Screen {
         {
             self.get_active_tab_mut(client_id)
                 .unwrap()
-                .clear_active_terminal_scroll();
+                .clear_active_terminal_scroll(client_id);
         }
         self.colors = mode_info.palette;
         self.mode_info = mode_info;
         for tab in self.tabs.values_mut() {
             tab.mode_info = self.mode_info.clone();
-            tab.mark_active_pane_for_rerender();
+            tab.mark_active_pane_for_rerender(client_id);
         }
     }
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) {
         if !self
             .get_active_tab_mut(client_id)
             .unwrap()
-            .move_focus_left()
+            .move_focus_left(client_id)
         {
             self.switch_tab_prev(client_id);
         }
@@ -513,7 +513,7 @@ impl Screen {
         if !self
             .get_active_tab_mut(client_id)
             .unwrap()
-            .move_focus_right()
+            .move_focus_right(client_id)
         {
             self.switch_tab_next(client_id);
         }
@@ -577,10 +577,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NewPane(pid, client_or_tab_index) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
-                        screen.get_active_tab_mut(client_id).unwrap().new_pane(pid);
+                        screen.get_active_tab_mut(client_id).unwrap().new_pane(pid, Some(client_id));
                     }
                     ClientOrTabIndex::TabIndex(tab_index) => {
-                        screen.tabs.get_mut(&tab_index).unwrap().new_pane(pid);
+                        screen.tabs.get_mut(&tab_index).unwrap().new_pane(pid, None);
                     }
                 };
                 screen
@@ -596,7 +596,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .horizontal_split(pid);
+                    .horizontal_split(pid, client_id);
                 screen
                     .bus
                     .senders
@@ -610,7 +610,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .vertical_split(pid);
+                    .vertical_split(pid, client_id);
                 screen
                     .bus
                     .senders
@@ -624,31 +624,31 @@ pub(crate) fn screen_thread_main(
                 let active_tab = screen.get_active_tab_mut(client_id).unwrap();
                 match active_tab.is_sync_panes_active() {
                     true => active_tab.write_to_terminals_on_current_tab(bytes),
-                    false => active_tab.write_to_active_terminal(bytes),
+                    false => active_tab.write_to_active_terminal(bytes, client_id),
                 }
             }
             ScreenInstruction::ResizeLeft(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_left();
+                screen.get_active_tab_mut(client_id).unwrap().resize_left(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeRight(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_right();
+                screen.get_active_tab_mut(client_id).unwrap().resize_right(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeDown(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_down();
+                screen.get_active_tab_mut(client_id).unwrap().resize_down(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeUp(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_up();
+                screen.get_active_tab_mut(client_id).unwrap().resize_up(client_id);
 
                 screen.render();
             }
             ScreenInstruction::SwitchFocus(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().move_focus();
+                screen.get_active_tab_mut(client_id).unwrap().move_focus(client_id);
 
                 screen.render();
             }
@@ -656,7 +656,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .focus_next_pane();
+                    .focus_next_pane(client_id);
 
                 screen.render();
             }
@@ -664,7 +664,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .focus_previous_pane();
+                    .focus_previous_pane(client_id);
 
                 screen.render();
             }
@@ -672,7 +672,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus_left();
+                    .move_focus_left(client_id);
 
                 screen.render();
             }
@@ -690,7 +690,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus_down();
+                    .move_focus_down(client_id);
 
                 screen.render();
             }
@@ -698,7 +698,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus_right();
+                    .move_focus_right(client_id);
 
                 screen.render();
             }
@@ -716,7 +716,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus_up();
+                    .move_focus_up(client_id);
 
                 screen.render();
             }
@@ -724,7 +724,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_active_terminal_up();
+                    .scroll_active_terminal_up(client_id);
 
                 screen.render();
             }
@@ -740,7 +740,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_active_terminal_down();
+                    .scroll_active_terminal_down(client_id);
 
                 screen.render();
             }
@@ -756,7 +756,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_active_terminal_to_bottom();
+                    .scroll_active_terminal_to_bottom(client_id);
 
                 screen.render();
             }
@@ -764,7 +764,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_active_terminal_up_page();
+                    .scroll_active_terminal_up_page(client_id);
 
                 screen.render();
             }
@@ -772,7 +772,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_active_terminal_down_page();
+                    .scroll_active_terminal_down_page(client_id);
 
                 screen.render();
             }
@@ -780,7 +780,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .clear_active_terminal_scroll();
+                    .clear_active_terminal_scroll(client_id);
 
                 screen.render();
             }
@@ -788,7 +788,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .close_focused_pane();
+                    .close_focused_pane(client_id);
                 screen.update_tabs(); // update_tabs eventually calls render through the plugin thread
             }
             ScreenInstruction::SetSelectable(id, selectable, tab_index) => {
@@ -825,7 +825,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .toggle_active_pane_fullscreen();
+                    .toggle_active_pane_fullscreen(client_id);
                 screen.update_tabs();
 
                 screen.render();
@@ -919,7 +919,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .handle_left_click(&point);
+                    .handle_left_click(&point, client_id);
 
                 screen.render();
             }
@@ -927,7 +927,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .handle_mouse_release(&point);
+                    .handle_mouse_release(&point, client_id);
 
                 screen.render();
             }
@@ -935,12 +935,12 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .handle_mouse_hold(&point);
+                    .handle_mouse_hold(&point, client_id);
 
                 screen.render();
             }
             ScreenInstruction::Copy(client_id) => {
-                screen.get_active_tab(client_id).unwrap().copy_selection();
+                screen.get_active_tab(client_id).unwrap().copy_selection(client_id);
 
                 screen.render();
             }
