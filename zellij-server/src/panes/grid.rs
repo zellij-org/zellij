@@ -1846,10 +1846,13 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'E' {
+            // Moves cursor to beginning of the line n (default 1) lines down.
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(count, pad_character);
+            self.move_cursor_to_beginning_of_line();
         } else if c == 'F' {
+            // Moves cursor to beginning of the line n (default 1) lines up.
             let count = next_param_or(1);
             self.move_cursor_up(count);
             self.move_cursor_to_beginning_of_line();
