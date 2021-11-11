@@ -560,7 +560,7 @@ pub(crate) fn screen_thread_main(
     config_options: Box<Options>,
 ) {
     let capabilities = config_options.simplified_ui;
-    let draw_pane_frames = !config_options.no_pane_frames.unwrap_or_default();
+    let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
 
     let mut screen = Screen::new(
         bus,
