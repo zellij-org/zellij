@@ -1,10 +1,3 @@
-use crate::{
-    logging_pipe::LoggingPipe,
-    panes::PaneId,
-    pty::{ClientOrTabIndex, PtyInstruction},
-    screen::ScreenInstruction,
-    thread_bus::{Bus, ThreadSenders},
-};
 use highway::{HighwayHash, PortableHash};
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
@@ -25,6 +18,15 @@ use wasmer::{
 };
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
+
+use crate::{
+    logging_pipe::LoggingPipe,
+    panes::PaneId,
+    pty::{ClientOrTabIndex, PtyInstruction},
+    screen::ScreenInstruction,
+    thread_bus::{Bus, ThreadSenders},
+};
+
 use zellij_utils::{
     consts::ZELLIJ_PROJ_DIR,
     errors::{ContextType, PluginContext},
