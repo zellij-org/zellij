@@ -597,7 +597,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NewPane(pid, client_or_tab_index) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
-                        screen.get_active_tab_mut(client_id).unwrap().new_pane(pid, Some(client_id));
+                        screen
+                            .get_active_tab_mut(client_id)
+                            .unwrap()
+                            .new_pane(pid, Some(client_id));
                     }
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         screen.tabs.get_mut(&tab_index).unwrap().new_pane(pid, None);
@@ -648,22 +651,34 @@ pub(crate) fn screen_thread_main(
                 }
             }
             ScreenInstruction::ResizeLeft(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_left(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_left(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeRight(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_right(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_right(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeDown(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_down(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_down(client_id);
 
                 screen.render();
             }
             ScreenInstruction::ResizeUp(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().resize_up(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_up(client_id);
 
                 screen.render();
             }
@@ -684,7 +699,10 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::SwitchFocus(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().move_focus(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_focus(client_id);
 
                 screen.render();
             }
@@ -1040,7 +1058,10 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::Copy(client_id) => {
-                screen.get_active_tab(client_id).unwrap().copy_selection(client_id);
+                screen
+                    .get_active_tab(client_id)
+                    .unwrap()
+                    .copy_selection(client_id);
 
                 screen.render();
             }

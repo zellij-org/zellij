@@ -428,14 +428,20 @@ impl Tab {
         }
         self.set_pane_frames(self.draw_pane_frames);
         // This is the end of the nasty viewport hack...
-        let next_selectable_pane_id = self.panes.iter().filter(|(_id, pane)| pane.selectable()).map(|(id, _)| id.to_owned()).next();
+        let next_selectable_pane_id = self
+            .panes
+            .iter()
+            .filter(|(_id, pane)| pane.selectable())
+            .map(|(id, _)| id.to_owned())
+            .next();
         match next_selectable_pane_id {
             Some(active_pane_id) => {
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, active_pane_id);
                 }
-            },
+            }
             None => {
                 // this is very likely a configuration error (layout with no selectable panes)
                 self.active_panes.clear();
@@ -448,7 +454,7 @@ impl Tab {
                 let first_active_pane_id = *self.active_panes.get(first_client_id).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, first_active_pane_id);
-            },
+            }
             None => {
                 let mut pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
                 if pane_ids.is_empty() {
@@ -460,7 +466,6 @@ impl Tab {
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
             }
-
         }
         // TODO: we might be able to avoid this, we do this so that newly connected clients will
         // necessarily get a full render
@@ -585,7 +590,8 @@ impl Tab {
 
                 // right now we administratively change focus of all clients until the
                 // mirroring/multiplayer situation is sorted out
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, pid);
                 }
@@ -721,7 +727,10 @@ impl Tab {
             }
         }
     }
-    pub fn get_active_terminal_cursor_position(&self, client_id: ClientId) -> Option<(usize, usize)> {
+    pub fn get_active_terminal_cursor_position(
+        &self,
+        client_id: ClientId,
+    ) -> Option<(usize, usize)> {
         // (x, y)
         let active_terminal = &self.get_active_pane(client_id)?;
         active_terminal
@@ -823,7 +832,10 @@ impl Tab {
     }
     pub fn mark_active_pane_for_rerender(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            self.panes.get_mut(&active_pane_id).unwrap().set_should_render(true)
+            self.panes
+                .get_mut(&active_pane_id)
+                .unwrap()
+                .set_should_render(true)
         }
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
@@ -930,7 +942,10 @@ impl Tab {
         match self.get_active_terminal_cursor_position(*first_client_id) {
             Some((cursor_position_x, cursor_position_y)) => {
                 let show_cursor = "\u{1b}[?25h";
-                let change_cursor_shape = self.get_active_pane(*first_client_id).unwrap().cursor_shape_csi();
+                let change_cursor_shape = self
+                    .get_active_pane(*first_client_id)
+                    .unwrap()
+                    .cursor_shape_csi();
                 let goto_cursor_position = &format!(
                     "\u{1b}[{};{}H\u{1b}[m{}",
                     cursor_position_y + 1,
@@ -2371,13 +2386,16 @@ impl Tab {
                 Some(&p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
-                    let previously_active_pane =
-                        self.panes.get_mut(&self.active_panes.get(&client_id).unwrap()).unwrap();
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
                     for client_id in connected_clients {
                         self.active_panes.insert(client_id, p);
                     }
@@ -2390,11 +2408,12 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
-            },
+            }
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
@@ -2424,8 +2443,10 @@ impl Tab {
                 Some(&p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
-                    let previously_active_pane =
-                        self.panes.get_mut(&self.active_panes.get(&client_id).unwrap()).unwrap();
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
@@ -2439,11 +2460,12 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
-            },
+            }
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
@@ -2471,8 +2493,10 @@ impl Tab {
                 Some(&p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
-                    let previously_active_pane =
-                        self.panes.get_mut(&self.active_panes.get(&client_id).unwrap()).unwrap();
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
@@ -2486,11 +2510,12 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
-            },
+            }
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
@@ -2519,13 +2544,16 @@ impl Tab {
                 Some(&p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
-                    let previously_active_pane =
-                        self.panes.get_mut(&self.active_panes.get(&client_id).unwrap()).unwrap();
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
 
-                    let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
                     for client_id in connected_clients {
                         self.active_panes.insert(client_id, p);
                     }
@@ -2538,11 +2566,12 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
-            },
+            }
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
@@ -2941,10 +2970,17 @@ impl Tab {
         }
     }
     fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {
-        let active_panes: Vec<(ClientId, PaneId)> = self.active_panes.iter().map(|(cid, pid)| (*cid, *pid)).collect();
+        let active_panes: Vec<(ClientId, PaneId)> = self
+            .active_panes
+            .iter()
+            .map(|(cid, pid)| (*cid, *pid))
+            .collect();
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
-                self.active_panes.insert(client_id, self.next_active_pane(&self.get_pane_ids()).unwrap());
+                self.active_panes.insert(
+                    client_id,
+                    self.next_active_pane(&self.get_pane_ids()).unwrap(),
+                );
             }
         }
     }
@@ -3203,7 +3239,9 @@ impl Tab {
     }
 
     pub fn copy_selection(&self, client_id: ClientId) {
-        let selected_text = self.get_active_pane(client_id).and_then(|p| p.get_selected_text());
+        let selected_text = self
+            .get_active_pane(client_id)
+            .and_then(|p| p.get_selected_text());
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
             self.senders

@@ -1,5 +1,5 @@
-use zellij_tile::data::Palette;
 use std::sync::{Arc, Mutex};
+use zellij_tile::data::Palette;
 
 use zellij_server::panes::TerminalPane;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
@@ -118,7 +118,12 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel.flush().unwrap();
 }
 
-fn read_from_channel(channel: &Arc<Mutex<ssh2::Channel>>, last_snapshot: &Arc<Mutex<String>>, cursor_coordinates: &Arc<Mutex<(usize, usize)>>, pane_geom: &PaneGeom) -> (Arc<Mutex<bool>>,std::thread::JoinHandle<()>) {
+fn read_from_channel(
+    channel: &Arc<Mutex<ssh2::Channel>>,
+    last_snapshot: &Arc<Mutex<String>>,
+    cursor_coordinates: &Arc<Mutex<(usize, usize)>>,
+    pane_geom: &PaneGeom,
+) -> (Arc<Mutex<bool>>, std::thread::JoinHandle<()>) {
     let should_keep_running = Arc::new(Mutex::new(true));
     let thread = std::thread::Builder::new()
         .name("read_thread".into())
@@ -142,21 +147,22 @@ fn read_from_channel(channel: &Arc<Mutex<ssh2::Channel>>, last_snapshot: &Arc<Mu
                     }
                     let mut buf = [0u8; 1280000];
                     match channel.lock().unwrap().read(&mut buf) {
-                        Ok(0) =>  {
+                        Ok(0) => {
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
-                            *cursor_coordinates.lock().unwrap() = terminal_output.cursor_coordinates().unwrap_or((0, 0));
+                            *cursor_coordinates.lock().unwrap() =
+                                terminal_output.cursor_coordinates().unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         }
                         Ok(count) => {
                             for byte in buf.iter().take(count) {
-                                vte_parser
-                                    .advance(&mut terminal_output.grid, *byte);
+                                vte_parser.advance(&mut terminal_output.grid, *byte);
                             }
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
-                            *cursor_coordinates.lock().unwrap() = terminal_output.grid.cursor_coordinates().unwrap_or((0, 0));
+                            *cursor_coordinates.lock().unwrap() =
+                                terminal_output.grid.cursor_coordinates().unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         }
@@ -164,7 +170,8 @@ fn read_from_channel(channel: &Arc<Mutex<ssh2::Channel>>, last_snapshot: &Arc<Mu
                             if e.kind() == std::io::ErrorKind::WouldBlock {
                                 let current_snapshot = take_snapshot(&mut terminal_output);
                                 let mut last_snapshot = last_snapshot.lock().unwrap();
-                                *cursor_coordinates.lock().unwrap() = terminal_output.cursor_coordinates().unwrap_or((0, 0));
+                                *cursor_coordinates.lock().unwrap() =
+                                    terminal_output.cursor_coordinates().unwrap_or((0, 0));
                                 *last_snapshot = current_snapshot;
                                 should_sleep = true;
                             } else if retries_left > 0 {
@@ -178,7 +185,7 @@ fn read_from_channel(channel: &Arc<Mutex<ssh2::Channel>>, last_snapshot: &Arc<Mu
             }
         })
         .unwrap();
-        (should_keep_running, thread)
+    (should_keep_running, thread)
 }
 
 pub fn take_snapshot(terminal_output: &mut TerminalPane) -> String {
@@ -214,7 +221,9 @@ impl std::fmt::Debug for RemoteTerminal {
         write!(
             f,
             "cursor x: {}\ncursor_y: {}\ncurrent_snapshot:\n{}",
-            self.cursor_x, self.cursor_y, *self.last_snapshot.lock().unwrap()
+            self.cursor_x,
+            self.cursor_y,
+            *self.last_snapshot.lock().unwrap()
         )
     }
 }
@@ -260,9 +269,11 @@ impl RemoteTerminal {
     }
     pub fn attach_to_original_session(&mut self) {
         let mut channel = self.channel.lock().unwrap();
-        channel.write_all(
-            format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
-        ).unwrap();
+        channel
+            .write_all(
+                format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
+            )
+            .unwrap();
         channel.flush().unwrap();
     }
 }
@@ -307,7 +318,8 @@ impl RemoteRunner {
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
         sess.set_blocking(false);
-        let reader_thread = read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -328,10 +340,7 @@ impl RemoteRunner {
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
     }
-    pub fn new_with_session_name(
-        win_size: Size,
-        session_name: &str,
-    ) -> Self {
+    pub fn new_with_session_name(win_size: Size, session_name: &str) -> Self {
         // notice that this method does not have a timeout, so use with caution!
         let sess = ssh_connect_without_timeout();
         let mut channel = sess.channel_session().unwrap();
@@ -351,7 +360,8 @@ impl RemoteRunner {
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
         sess.set_blocking(false);
-        let reader_thread = read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -366,10 +376,7 @@ impl RemoteRunner {
             reader_thread,
         }
     }
-    pub fn new_existing_session(
-        win_size: Size,
-        session_name: &str,
-    ) -> Self {
+    pub fn new_existing_session(win_size: Size, session_name: &str) -> Self {
         let sess = ssh_connect_without_timeout();
         let mut channel = sess.channel_session().unwrap();
         let mut rows = Dimension::fixed(win_size.rows);
@@ -388,7 +395,8 @@ impl RemoteRunner {
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
         sess.set_blocking(false);
-        let reader_thread = read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -422,7 +430,8 @@ impl RemoteRunner {
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
         sess.set_blocking(false);
-        let reader_thread = read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -437,10 +446,7 @@ impl RemoteRunner {
             reader_thread,
         }
     }
-    pub fn new_with_layout(
-        win_size: Size,
-        layout_file_name: &'static str,
-    ) -> Self {
+    pub fn new_with_layout(win_size: Size, layout_file_name: &'static str) -> Self {
         let remote_path = Path::new(ZELLIJ_LAYOUT_PATH).join(layout_file_name);
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
@@ -460,7 +466,8 @@ impl RemoteRunner {
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
         sess.set_blocking(false);
-        let reader_thread = read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
         RemoteRunner {
             steps: vec![],
             channel,
@@ -526,7 +533,7 @@ impl RemoteRunner {
                 channel: self.channel.clone(),
             };
             if instruction(remote_terminal) {
-                return String::from(self.last_snapshot.lock().unwrap().clone())
+                return String::from(self.last_snapshot.lock().unwrap().clone());
             } else {
                 retries_left -= 1;
                 std::thread::sleep(std::time::Duration::from_millis(100));
