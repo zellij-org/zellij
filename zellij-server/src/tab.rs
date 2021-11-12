@@ -2993,8 +2993,7 @@ impl Tab {
             if let (Some(freed_width), Some(freed_height)) =
                 (freed_space.cols.as_percent(), freed_space.rows.as_percent())
             {
-                let (panes, direction) = self.find_panes_to_grow(id);
-                if let Some(direction) = direction {
+                if let Some((panes, direction)) = self.find_panes_to_grow(id) {
                     self.grow_panes(&panes, direction, (freed_width, freed_height));
                     let pane = self.panes.remove(&id);
                     self.move_clients_out_of_pane(id);
@@ -3011,18 +3010,22 @@ impl Tab {
         }
         None
     }
-    fn find_panes_to_grow(&self, id: PaneId) -> (Vec<PaneId>, Option<Direction>) {
-        if let Some(panes) = self.panes_to_the_left_between_aligning_borders(id) {
-            (panes, Some(Direction::Horizontal))
-        } else if let Some(panes) = self.panes_to_the_right_between_aligning_borders(id) {
-            (panes, Some(Direction::Horizontal))
-        } else if let Some(panes) = self.panes_above_between_aligning_borders(id) {
-            (panes, Some(Direction::Vertical))
-        } else if let Some(panes) = self.panes_below_between_aligning_borders(id) {
-            (panes, Some(Direction::Vertical))
-        } else {
-            (vec![], None)
+    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, Direction)> {
+        if let Some(panes) = self
+            .panes_to_the_left_between_aligning_borders(id)
+            .or_else(|| self.panes_to_the_right_between_aligning_borders(id))
+        {
+            return Some((panes, Direction::Horizontal));
         }
+
+        if let Some(panes) = self
+            .panes_above_between_aligning_borders(id)
+            .or_else(|| self.panes_below_between_aligning_borders(id))
+        {
+            return Some((panes, Direction::Vertical));
+        }
+
+        None
     }
     fn grow_panes(&mut self, panes: &[PaneId], direction: Direction, (width, height): (f64, f64)) {
         match direction {
