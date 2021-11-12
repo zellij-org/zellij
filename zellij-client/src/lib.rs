@@ -2,6 +2,7 @@ pub mod os_input_output;
 
 mod command_is_executing;
 mod input_handler;
+mod stdin_handler;
 
 use log::info;
 use std::env::current_exe;
@@ -12,15 +13,15 @@ use std::thread;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
-    os_input_output::ClientOsApi,
+    os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
-use termion::input::TermReadEventsAndRaw;
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::{SESSION_NAME, ZELLIJ_IPC_PIPE},
+    consts::ZELLIJ_IPC_PIPE,
+    envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, mouse::MouseEvent, options::Options},
+    input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termion,
 };
@@ -91,9 +92,10 @@ pub enum ClientInfo {
 }
 
 #[derive(Debug, Clone)]
-pub enum InputInstruction {
+pub(crate) enum InputInstruction {
     KeyEvent(termion::event::Event, Vec<u8>),
     SwitchToMode(InputMode),
+    PastedText((bool, Vec<u8>, bool)), // (send_brackted_paste_start, pasted_text, send_bracketed_paste_end)
 }
 
 pub fn start_client(
@@ -118,7 +120,7 @@ pub fn start_client(
         .get_stdout_writer()
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
-    std::env::set_var(&"ZELLIJ", "0");
+    envs::set_zellij("0".to_string());
 
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
@@ -136,14 +138,12 @@ pub fn start_client(
 
     let first_msg = match info {
         ClientInfo::Attach(name, config_options) => {
-            SESSION_NAME.set(name).unwrap();
-            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+            envs::set_session_name(name);
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
         }
         ClientInfo::New(name) => {
-            SESSION_NAME.set(name).unwrap();
-            std::env::set_var(&"ZELLIJ_SESSION_NAME", SESSION_NAME.get().unwrap());
+            envs::set_session_name(name);
 
             spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 
@@ -193,44 +193,7 @@ pub fn start_client(
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            move || loop {
-                let stdin_buffer = os_input.read_from_stdin();
-                for key_result in stdin_buffer.events_and_raw() {
-                    let (key_event, raw_bytes) = key_result.unwrap();
-                    if let termion::event::Event::Mouse(me) = key_event {
-                        let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
-                        if let MouseEvent::Hold(_) = mouse_event {
-                            // as long as the user is holding the mouse down (no other stdin, eg.
-                            // MouseRelease) we need to keep sending this instruction to the app,
-                            // because the app itself doesn't have an event loop in the proper
-                            // place
-                            let mut poller = os_input.stdin_poller();
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    key_event.clone(),
-                                    raw_bytes.clone(),
-                                ))
-                                .unwrap();
-                            loop {
-                                let ready = poller.ready();
-                                if ready {
-                                    break;
-                                }
-                                send_input_instructions
-                                    .send(InputInstruction::KeyEvent(
-                                        key_event.clone(),
-                                        raw_bytes.clone(),
-                                    ))
-                                    .unwrap();
-                            }
-                            continue;
-                        }
-                    }
-                    send_input_instructions
-                        .send(InputInstruction::KeyEvent(key_event, raw_bytes))
-                        .unwrap();
-                }
-            }
+            move || stdin_loop(os_input, send_input_instructions)
         });
 
     let _input_thread = thread::Builder::new()

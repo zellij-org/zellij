@@ -35,6 +35,8 @@ pub(crate) enum ScreenInstruction {
     ResizeRight(ClientId),
     ResizeDown(ClientId),
     ResizeUp(ClientId),
+    ResizeIncrease(ClientId),
+    ResizeDecrease(ClientId),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -44,6 +46,11 @@ pub(crate) enum ScreenInstruction {
     MoveFocusUp(ClientId),
     MoveFocusRight(ClientId),
     MoveFocusRightOrNextTab(ClientId),
+    MovePane(ClientId),
+    MovePaneUp(ClientId),
+    MovePaneDown(ClientId),
+    MovePaneRight(ClientId),
+    MovePaneLeft(ClientId),
     Exit,
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -52,6 +59,8 @@ pub(crate) enum ScreenInstruction {
     ScrollToBottom(ClientId),
     PageScrollUp(ClientId),
     PageScrollDown(ClientId),
+    HalfPageScrollUp(ClientId),
+    HalfPageScrollDown(ClientId),
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId),
     ToggleActiveTerminalFullscreen(ClientId),
@@ -69,6 +78,7 @@ pub(crate) enum ScreenInstruction {
     TerminalResize(Size),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
+    RightClick(Position, ClientId),
     MouseRelease(Position, ClientId),
     MouseHold(Position, ClientId),
     Copy(ClientId),
@@ -89,6 +99,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ResizeRight(..) => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown(..) => ScreenContext::ResizeDown,
             ScreenInstruction::ResizeUp(..) => ScreenContext::ResizeUp,
+            ScreenInstruction::ResizeIncrease(..) => ScreenContext::ResizeIncrease,
+            ScreenInstruction::ResizeDecrease(..) => ScreenContext::ResizeDecrease,
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
@@ -102,12 +114,19 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusRightOrNextTab(..) => {
                 ScreenContext::MoveFocusRightOrNextTab
             }
+            ScreenInstruction::MovePane(..) => ScreenContext::MovePane,
+            ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
+            ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
+            ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
+            ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
             ScreenInstruction::PageScrollUp(..) => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown(..) => ScreenContext::PageScrollDown,
+            ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
+            ScreenInstruction::HalfPageScrollDown(..) => ScreenContext::HalfPageScrollDown,
             ScreenInstruction::ClearScroll(..) => ScreenContext::ClearScroll,
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
@@ -128,6 +147,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
             ScreenInstruction::ScrollDownAt(..) => ScreenContext::ScrollDownAt,
             ScreenInstruction::LeftClick(..) => ScreenContext::LeftClick,
+            ScreenInstruction::RightClick(..) => ScreenContext::RightClick,
             ScreenInstruction::MouseRelease(..) => ScreenContext::MouseRelease,
             ScreenInstruction::MouseHold(..) => ScreenContext::MouseHold,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
@@ -540,7 +560,7 @@ pub(crate) fn screen_thread_main(
     config_options: Box<Options>,
 ) {
     let capabilities = config_options.simplified_ui;
-    let draw_pane_frames = !config_options.no_pane_frames;
+    let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
 
     let mut screen = Screen::new(
         bus,
@@ -550,7 +570,7 @@ pub(crate) fn screen_thread_main(
             config_options.default_mode.unwrap_or_default(),
             client_attributes.palette,
             PluginCapabilities {
-                arrow_fonts: capabilities,
+                arrow_fonts: capabilities.unwrap_or_default(),
             },
         ),
         draw_pane_frames,
@@ -647,6 +667,22 @@ pub(crate) fn screen_thread_main(
 
                 screen.render();
             }
+            ScreenInstruction::ResizeIncrease(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_increase(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::ResizeDecrease(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .resize_decrease(client_id);
+
+                screen.render();
+            }
             ScreenInstruction::SwitchFocus(client_id) => {
                 screen.get_active_tab_mut(client_id).unwrap().move_focus(client_id);
 
@@ -728,6 +764,46 @@ pub(crate) fn screen_thread_main(
 
                 screen.render();
             }
+            ScreenInstruction::MovePane(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneDown(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_down(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneUp(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_up(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneRight(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_right(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::MovePaneLeft(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .move_active_pane_left(client_id);
+
+                screen.render();
+            }
             ScreenInstruction::ScrollUpAt(point, client_id) => {
                 screen
                     .get_active_tab_mut(client_id)
@@ -773,6 +849,22 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut(client_id)
                     .unwrap()
                     .scroll_active_terminal_down_page(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::HalfPageScrollUp(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .scroll_active_terminal_up_half_page(client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::HalfPageScrollDown(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .scroll_active_terminal_down_half_page(client_id);
 
                 screen.render();
             }
@@ -920,6 +1012,14 @@ pub(crate) fn screen_thread_main(
                     .get_active_tab_mut(client_id)
                     .unwrap()
                     .handle_left_click(&point, client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::RightClick(point, client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .handle_right_click(&point, client_id);
 
                 screen.render();
             }

@@ -17,6 +17,16 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum ResizeDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+    Increase,
+    Decrease,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -28,10 +38,12 @@ pub enum Action {
     Quit,
     /// Write to the terminal.
     Write(Vec<u8>),
+    /// Write Characters to the terminal.
+    WriteChars(String),
     /// Switch to the specified input mode.
     SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
-    Resize(Direction),
+    Resize(ResizeDirection),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
@@ -41,6 +53,7 @@ pub enum Action {
     /// Tries to move the focus pane in specified direction.
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
+    MovePane(Option<Direction>),
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
@@ -55,6 +68,10 @@ pub enum Action {
     PageScrollUp,
     /// Scroll down one page in focus pane.
     PageScrollDown,
+    /// Scroll up half page in focus pane.
+    HalfPageScrollUp,
+    /// Scroll down half page in focus pane.
+    HalfPageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
     /// Toggle frames around panes in the UI
@@ -84,6 +101,7 @@ pub enum Action {
     /// Detach session and exit
     Detach,
     LeftClick(Position),
+    RightClick(Position),
     MouseRelease(Position),
     MouseHold(Position),
     Copy,

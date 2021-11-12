@@ -1368,3 +1368,57 @@ pub fn mirrored_sessions() {
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn bracketed_paste() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    // here we enter some text, before which we invoke "bracketed paste mode"
+    // we make sure the text in bracketed paste mode is sent directly to the terminal and not
+    // interpreted by us (in this case it will send ^T to the terminal), then we exit bracketed
+    // paste, send some more text and make sure it's also sent to the terminal
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        drop(RemoteRunner::kill_running_sessions(fake_win_size));
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Send pasted text followed by normal text",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        remote_terminal.send_key(&BRACKETED_PASTE_START);
+                        remote_terminal.send_key(&TAB_MODE);
+                        remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                        remote_terminal.send_key(&BRACKETED_PASTE_END);
+                        remote_terminal.send_key("abc".as_bytes());
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for terminal to render sent keys",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(9, 2) {
+                    // text has been entered into the only terminal pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}

@@ -1,7 +1,7 @@
 use super::Tab;
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
-    os_input_output::{AsyncReader, ChildId, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
     thread_bus::ThreadSenders,
     ClientId,
@@ -29,7 +29,11 @@ impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
-    fn spawn_terminal(&self, _file_to_open: TerminalAction) -> (RawFd, ChildId) {
+    fn spawn_terminal(
+        &self,
+        _file_to_open: TerminalAction,
+        _quit_cb: Box<dyn Fn(PaneId) + Send>,
+    ) -> (RawFd, RawFd) {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -2522,6 +2526,244 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
         tab.get_active_pane(1).unwrap().x(),
         61,
         "Active pane x position"
+    );
+}
+
+#[test]
+pub fn move_active_pane_down() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id, 1);
+    tab.move_focus_up(1);
+    tab.move_active_pane_down(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        10,
+        "Active pane is the bottom one"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane is the bottom one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_down_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1, 1);
+    tab.vertical_split(new_pane_id_2, 1);
+    tab.vertical_split(new_pane_id_3, 1);
+    tab.move_focus_up(1);
+    tab.move_active_pane_down(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        10,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        91,
+        "Active pane x position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_up() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.horizontal_split(new_pane_id, 1);
+    tab.move_active_pane_up(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        0,
+        "Active pane is the top one"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane is the top one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_up_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.horizontal_split(new_pane_id_1, 1);
+    tab.move_focus_up(1);
+    tab.vertical_split(new_pane_id_2, 1);
+    tab.vertical_split(new_pane_id_3, 1);
+    tab.move_focus_down(1);
+    tab.move_active_pane_up(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        0,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        91,
+        "Active pane x position"
+    );
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, 1);
+    tab.move_active_pane_left(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        0,
+        "Active pane is the left one"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane is the left one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_left_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1, 1);
+    tab.move_focus_left(1);
+    tab.horizontal_split(new_pane_id_2, 1);
+    tab.horizontal_split(new_pane_id_3, 1);
+    tab.move_focus_right(1);
+    tab.move_active_pane_left(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        15,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        0,
+        "Active pane x position"
+    );
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(2),
+        "Active pane PaneId"
+    );
+}
+
+#[test]
+pub fn move_active_pane_right() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, 1);
+    tab.move_focus_left(1);
+    tab.move_active_pane_right(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        61,
+        "Active pane is the right one"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane is the right one"
+    );
+}
+
+#[test]
+pub fn move_active_pane_right_to_the_most_recently_used_position() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.vertical_split(new_pane_id_1, 1);
+    tab.horizontal_split(new_pane_id_2, 1);
+    tab.horizontal_split(new_pane_id_3, 1);
+    tab.move_focus_left(1);
+    tab.move_active_pane_right(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().y(),
+        15,
+        "Active pane y position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().x(),
+        61,
+        "Active pane x position"
+    );
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().pid(),
+        PaneId::Terminal(1),
+        "Active pane Paneid"
     );
 }
 
@@ -12143,5 +12385,269 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
             .as_usize(),
         5,
         "pane 2 height stayed the same"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let mut tab = create_new_tab(size);
+    tab.resize_increase(1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().y,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().x,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let mut tab = create_new_tab(size);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id_1, 1);
+    tab.resize_increase(1);
+
+    // should behave like `resize_left_with_pane_to_the_left`
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "pane 2 x position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "pane 2 y position"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_2_panes_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2), 1);
+    tab.move_focus_left(1);
+    tab.horizontal_split(PaneId::Terminal(3), 1);
+    tab.move_focus_right(1);
+    tab.resize_increase(1);
+
+    // should behave like `resize_left_with_multiple_panes_to_the_left`
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        54,
+        "pane 2 x position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "pane 2 y position"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        67,
+        "pane 2 column count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "pane 2 row count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2), 1);
+    tab.move_focus_left(1);
+    tab.horizontal_split(PaneId::Terminal(3), 1);
+    tab.resize_increase(1);
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .y,
+        9,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .x,
+        0,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        11,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(3))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        67,
+        "Pane 3 col count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2), 1);
+    tab.vertical_split(PaneId::Terminal(3), 1);
+    tab.move_focus_left(1);
+    tab.resize_increase(1);
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        61,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        36,
+        "Pane 3 col count"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2), 1);
+    tab.vertical_split(PaneId::Terminal(3), 1);
+    tab.move_focus_left(1);
+    tab.resize_increase(1);
+
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .y,
+        0,
+        "Pane 3 y coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .x,
+        61,
+        "Pane 3 x coordinate"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        20,
+        "Pane 3 row count"
+    );
+    assert_eq!(
+        tab.panes
+            .get(&PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        36,
+        "Pane 3 col count"
     );
 }

@@ -2,9 +2,9 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
 use std::fs;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -189,33 +189,14 @@ impl Default for PluginTypeFromYaml {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum PluginsConfigError {
+    #[error("Duplication in plugin tag names is not allowed: '{}'", String::from(.0.clone()))]
     DuplicatePlugins(PluginTag),
+    #[error("Only 'file:' and 'zellij:' url schemes are supported for plugin lookup. '{0}' does not match either.")]
     InvalidUrl(Url),
+    #[error("Could not find plugin at the path: '{0:?}'")]
     InvalidPluginLocation(PathBuf),
-}
-
-impl std::error::Error for PluginsConfigError {}
-impl Display for PluginsConfigError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PluginsConfigError::DuplicatePlugins(tag) => write!(
-                formatter,
-                "Duplication in plugin tag names is not allowed: '{}'",
-                String::from(tag.clone())
-            ),
-            PluginsConfigError::InvalidUrl(url) => write!(
-                formatter,
-                "Only 'file:' and 'zellij:' url schemes are supported for plugin lookup. '{}' does not match either.",
-                url
-            ),
-            PluginsConfigError::InvalidPluginLocation(path) => write!(
-                formatter,
-                "Could not find plugin at the path: '{:?}'", path
-            ),
-        }
-    }
 }
 
 #[cfg(test)]

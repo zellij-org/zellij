@@ -6,12 +6,12 @@ services:
     container_name: zellij-e2e
     hostname: zellij-e2e
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Vienna
-      - PASSWORD_ACCESS=true
-      - USER_PASSWORD=test
-      - USER_NAME=test
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/Vienna
+      PASSWORD_ACCESS: true
+      USER_PASSWORD: test
+      USER_NAME: test
     volumes:
       - type: bind
         source: ./target

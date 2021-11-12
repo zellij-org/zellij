@@ -31,7 +31,6 @@ struct InputHandler {
     command_is_executing: CommandIsExecuting,
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
-    pasting: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
 }
 
@@ -54,7 +53,6 @@ impl InputHandler {
             command_is_executing,
             send_client_instructions,
             should_exit: false,
-            pasting: false,
             receive_input_instructions,
         }
     }
@@ -65,10 +63,7 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         let alt_left_bracket = vec![27, 91];
-        let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
-        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
-
-        if !self.options.disable_mouse_mode {
+        if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
         loop {
@@ -92,17 +87,36 @@ impl InputHandler {
                             if unsupported_key == alt_left_bracket {
                                 let key = Key::Alt('[');
                                 self.handle_key(&key, raw_bytes);
-                            } else if unsupported_key == bracketed_paste_start {
-                                self.pasting = true;
-                                self.handle_unknown_key(raw_bytes);
-                            } else if unsupported_key == bracketed_paste_end {
-                                self.pasting = false;
-                                self.handle_unknown_key(raw_bytes);
                             } else {
                                 // this is a hack because termion doesn't recognize certain keys
                                 // in this case we just forward it to the terminal
                                 self.handle_unknown_key(raw_bytes);
                             }
+                        }
+                    }
+                }
+                Ok((
+                    InputInstruction::PastedText((
+                        send_bracketed_paste_start,
+                        raw_bytes,
+                        send_bracketed_paste_end,
+                    )),
+                    _error_context,
+                )) => {
+                    if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+                        if send_bracketed_paste_start {
+                            let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+                            let paste_start_action = Action::Write(bracketed_paste_start);
+                            self.dispatch_action(paste_start_action);
+                        }
+
+                        let pasted_text_action = Action::Write(raw_bytes);
+                        self.dispatch_action(pasted_text_action);
+
+                        if send_bracketed_paste_end {
+                            let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
+                            let paste_end_action = Action::Write(bracketed_paste_end);
+                            self.dispatch_action(paste_end_action);
                         }
                     }
                 }
@@ -121,20 +135,10 @@ impl InputHandler {
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
         let keybinds = &self.config.keybinds;
-        if self.pasting {
-            // we're inside a paste block, if we're in a mode that allows sending text to the
-            // terminal, send all text directly without interpreting it
-            // otherwise, just discard the input
-            if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-                let action = Action::Write(raw_bytes);
-                self.dispatch_action(action);
-            }
-        } else {
-            for action in Keybinds::key_to_actions(key, raw_bytes, &self.mode, keybinds) {
-                let should_exit = self.dispatch_action(action);
-                if should_exit {
-                    self.should_exit = true;
-                }
+        for action in Keybinds::key_to_actions(key, raw_bytes, &self.mode, keybinds) {
+            let should_exit = self.dispatch_action(action);
+            if should_exit {
+                self.should_exit = true;
             }
         }
     }
@@ -149,6 +153,9 @@ impl InputHandler {
                 }
                 MouseButton::Left => {
                     self.dispatch_action(Action::LeftClick(point));
+                }
+                MouseButton::Right => {
+                    self.dispatch_action(Action::RightClick(point));
                 }
                 _ => {}
             },
@@ -176,6 +183,7 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
+            Action::NoOp => {}
             Action::Quit | Action::Detach => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));

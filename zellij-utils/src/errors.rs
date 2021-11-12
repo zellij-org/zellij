@@ -2,6 +2,7 @@
 //! the instructions that are sent between threads.
 
 use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
+use colored::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;
@@ -180,24 +181,21 @@ pub enum ContextType {
     Empty,
 }
 
-// TODO use the `colored` crate for color formatting
 impl Display for ContextType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let purple = "\u{1b}[1;35m";
-        let green = "\u{1b}[0;32m";
-        match *self {
-            ContextType::Screen(c) => write!(f, "{}screen_thread: {}{:?}", purple, green, c),
-            ContextType::Pty(c) => write!(f, "{}pty_thread: {}{:?}", purple, green, c),
-            ContextType::Plugin(c) => write!(f, "{}plugin_thread: {}{:?}", purple, green, c),
-            ContextType::Client(c) => write!(f, "{}main_thread: {}{:?}", purple, green, c),
-            ContextType::IPCServer(c) => write!(f, "{}ipc_server: {}{:?}", purple, green, c),
-            ContextType::StdinHandler => {
-                write!(f, "{}stdin_handler_thread: {}AcceptInput", purple, green)
-            }
-            ContextType::AsyncTask => {
-                write!(f, "{}stream_terminal_bytes: {}AsyncTask", purple, green)
-            }
-            ContextType::Empty => write!(f, ""),
+        if let Some((left, right)) = match *self {
+            ContextType::Screen(c) => Some(("screen_thread:", format!("{:?}", c))),
+            ContextType::Pty(c) => Some(("pty_thread:", format!("{:?}", c))),
+            ContextType::Plugin(c) => Some(("plugin_thread:", format!("{:?}", c))),
+            ContextType::Client(c) => Some(("main_thread:", format!("{:?}", c))),
+            ContextType::IPCServer(c) => Some(("ipc_server:", format!("{:?}", c))),
+            ContextType::StdinHandler => Some(("stdin_handler_thread:", "AcceptInput".to_string())),
+            ContextType::AsyncTask => Some(("stream_terminal_bytes:", "AsyncTask".to_string())),
+            ContextType::Empty => None,
+        } {
+            write!(f, "{} {}", left.purple(), right.green())
+        } else {
+            write!(f, "")
         }
     }
 }
@@ -216,6 +214,8 @@ pub enum ScreenContext {
     ResizeRight,
     ResizeDown,
     ResizeUp,
+    ResizeIncrease,
+    ResizeDecrease,
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
@@ -226,6 +226,11 @@ pub enum ScreenContext {
     MoveFocusUp,
     MoveFocusRight,
     MoveFocusRightOrNextTab,
+    MovePane,
+    MovePaneDown,
+    MovePaneUp,
+    MovePaneRight,
+    MovePaneLeft,
     Exit,
     ScrollUp,
     ScrollUpAt,
@@ -234,6 +239,8 @@ pub enum ScreenContext {
     ScrollToBottom,
     PageScrollUp,
     PageScrollDown,
+    HalfPageScrollUp,
+    HalfPageScrollDown,
     ClearScroll,
     CloseFocusedPane,
     ToggleActiveSyncTab,
@@ -253,6 +260,7 @@ pub enum ScreenContext {
     TerminalResize,
     ChangeMode,
     LeftClick,
+    RightClick,
     MouseRelease,
     MouseHold,
     Copy,

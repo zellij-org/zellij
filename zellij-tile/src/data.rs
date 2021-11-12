@@ -34,6 +34,7 @@ pub enum Mouse {
     ScrollUp(usize),                 // number of lines
     ScrollDown(usize),               // number of lines
     LeftClick(isize, usize),         // line and column
+    RightClick(isize, usize),        // line and column
     Hold(isize, usize),              // line and column
     Release(Option<(isize, usize)>), // line and column
 }
@@ -81,6 +82,9 @@ pub enum InputMode {
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
+    /// `Move` mode allows moving the different existing panes within a tab
+    #[serde(alias = "move")]
+    Move,
 }
 
 impl Default for InputMode {
@@ -124,6 +128,7 @@ impl FromStr for InputMode {
             "scroll" => Ok(InputMode::Scroll),
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
+            "move" => Ok(InputMode::Move),
             e => Err(e.to_string().into()),
         }
     }

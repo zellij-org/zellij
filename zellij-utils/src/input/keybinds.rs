@@ -190,7 +190,7 @@ impl Keybinds {
     /// [`InputMode`] and [`Keybinds`].
     pub fn key_to_actions(
         key: &Key,
-        input: Vec<u8>,
+        raw_bytes: Vec<u8>,
         mode: &InputMode,
         keybinds: &Keybinds,
     ) -> Vec<Action> {
@@ -205,8 +205,10 @@ impl Keybinds {
                 .unwrap_or_else(|| vec![action])
         };
         match *mode {
-            InputMode::Normal | InputMode::Locked => mode_keybind_or_action(Action::Write(input)),
-            InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(input)),
+            InputMode::Normal | InputMode::Locked => {
+                mode_keybind_or_action(Action::Write(raw_bytes))
+            }
+            InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
             _ => mode_keybind_or_action(Action::NoOp),
         }
     }

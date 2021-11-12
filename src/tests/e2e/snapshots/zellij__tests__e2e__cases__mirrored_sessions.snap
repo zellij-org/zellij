@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-expression: last_first_runner_snapshot
+expression: first_runner_snapshot
 
 ---
  Zellij (mirrored_sessions)  Tab #1  Tab #2                                                                         
@@ -25,5 +25,5 @@ expression: last_first_runner_snapshot
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <s> SCROLL  <o> SESSION  <q> QUIT                       
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SCROLL  <o> SESSION  <q> QUIT           
  <←↓↑→> Move focus / <n> New / <x> Close / <r> Rename / <s> Sync / <Tab> Toggle / <ENTER> Select pane                   
