@@ -355,7 +355,7 @@ impl RemoteRunner {
             cols,
         };
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_in_session(&mut channel, &session_name);
+        start_zellij_in_session(&mut channel, session_name);
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
@@ -390,7 +390,7 @@ impl RemoteRunner {
             cols,
         };
         setup_remote_environment(&mut channel, win_size);
-        attach_to_existing_session(&mut channel, &session_name);
+        attach_to_existing_session(&mut channel, session_name);
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
@@ -523,7 +523,7 @@ impl RemoteRunner {
         loop {
             if retries_left == 0 {
                 self.test_timed_out = true;
-                return String::from(self.last_snapshot.lock().unwrap().clone());
+                return self.last_snapshot.lock().unwrap().clone();
             }
             let (cursor_x, cursor_y) = *self.cursor_coordinates.lock().unwrap();
             let remote_terminal = RemoteTerminal {
@@ -533,7 +533,7 @@ impl RemoteRunner {
                 channel: self.channel.clone(),
             };
             if instruction(remote_terminal) {
-                return String::from(self.last_snapshot.lock().unwrap().clone());
+                return self.last_snapshot.lock().unwrap().clone();
             } else {
                 retries_left -= 1;
                 std::thread::sleep(std::time::Duration::from_millis(100));

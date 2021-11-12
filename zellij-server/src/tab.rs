@@ -462,7 +462,7 @@ impl Tab {
                     return;
                 }
                 pane_ids.sort(); // TODO: make this predictable
-                let first_pane_id = pane_ids.iter().next().unwrap();
+                let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
             }
@@ -760,7 +760,7 @@ impl Tab {
                 viewport_pane.reset_size_and_position_override();
             }
             self.panes_to_hide.clear();
-            let active_terminal = self.panes.get_mut(&active_pane_id).unwrap();
+            let active_terminal = self.panes.get_mut(active_pane_id).unwrap();
             active_terminal.reset_size_and_position_override();
             self.set_force_render();
             self.resize_whole_tab(self.display_area);
@@ -2388,7 +2388,7 @@ impl Tab {
                     // colored
                     let previously_active_pane = self
                         .panes
-                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2445,7 +2445,7 @@ impl Tab {
                     // colored
                     let previously_active_pane = self
                         .panes
-                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2495,7 +2495,7 @@ impl Tab {
                     // colored
                     let previously_active_pane = self
                         .panes
-                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2546,7 +2546,7 @@ impl Tab {
                     // colored
                     let previously_active_pane = self
                         .panes
-                        .get_mut(&self.active_panes.get(&client_id).unwrap())
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
@@ -2647,7 +2647,7 @@ impl Tab {
                 .map(|(_, (pid, _))| pid);
             if let Some(&p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
-                let current_position = self.panes.get(&active_pane_id).unwrap();
+                let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
                 let prev_geom_override = current_position.geom_override();
 
@@ -2703,7 +2703,7 @@ impl Tab {
                 resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
-                let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+                let current_position = self.panes.get_mut(active_pane_id).unwrap();
                 current_position.set_geom(next_geom);
                 if let Some(geom) = next_geom_override {
                     current_position.get_geom_override(geom);
@@ -2731,7 +2731,7 @@ impl Tab {
                 .map(|(_, (pid, _))| pid);
             if let Some(&p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
-                let current_position = self.panes.get(&active_pane_id).unwrap();
+                let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
                 let prev_geom_override = current_position.geom_override();
 
@@ -2745,7 +2745,7 @@ impl Tab {
                 resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
-                let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+                let current_position = self.panes.get_mut(active_pane_id).unwrap();
                 current_position.set_geom(next_geom);
                 if let Some(geom) = next_geom_override {
                     current_position.get_geom_override(geom);
@@ -2773,7 +2773,7 @@ impl Tab {
                 .map(|(_, (pid, _))| pid);
             if let Some(&p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
-                let current_position = self.panes.get(&active_pane_id).unwrap();
+                let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
                 let prev_geom_override = current_position.geom_override();
 
@@ -2787,7 +2787,7 @@ impl Tab {
                 resize_pty!(new_position, self.os_api);
                 new_position.set_should_render(true);
 
-                let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+                let current_position = self.panes.get_mut(active_pane_id).unwrap();
                 current_position.set_geom(next_geom);
                 if let Some(geom) = next_geom_override {
                     current_position.get_geom_override(geom);
