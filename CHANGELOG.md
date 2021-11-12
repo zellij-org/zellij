@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
   zellij options --mouse-mode true
   ```
-
+* Refactor: Support multiple users in `Tab`s (https://github.com/zellij-org/zellij/pull/864)
 
 
 ## [0.20.1] - 2021-11-10
