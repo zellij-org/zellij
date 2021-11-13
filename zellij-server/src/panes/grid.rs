@@ -1490,8 +1490,7 @@ impl Perform for Grid {
                 if params.len() < 3 {
                     return;
                 }
-                self.link_handler
-                    .dispatch_osc8(params, bell_terminated, &mut self.cursor);
+                self.cursor.pending_styles.link_anchor = self.link_handler.dispatch_osc8(params);
             }
 
             // Get/set Foreground, Background, Cursor colors.

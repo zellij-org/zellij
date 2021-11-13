@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
-use super::{Cursor, LinkAnchor};
+use super::LinkAnchor;
 
-const TERMINATOR: &str = "\x1b\\";
+const TERMINATOR: &str = "\u{1b}\\";
 
 #[derive(Debug, Clone)]
 pub struct LinkHandler {
-    pending_link_anchor: Option<LinkAnchor>,
     links: HashMap<u16, Link>,
     link_index: u16,
 }
@@ -19,34 +18,35 @@ struct Link {
 impl LinkHandler {
     pub fn new() -> Self {
         Self {
-            pending_link_anchor: None,
             links: HashMap::new(),
             link_index: 0,
         }
     }
 
-    pub fn dispatch_osc8(&mut self, params: &[&[u8]], _bell_terminated: bool, cursor: &mut Cursor) {
+    pub fn dispatch_osc8(&mut self, params: &[&[u8]]) -> Option<LinkAnchor> {
         let (link_params, uri) = (params[1], params[2]);
-        log::info!(
+        log::debug!(
             "dispatching osc8, params: {:?}, uri: {:?}",
             std::str::from_utf8(link_params),
             std::str::from_utf8(uri)
         );
 
         if !uri.is_empty() {
-            self.start(link_params, uri)
+            // save the link, and the id if present to hashmap
+            String::from_utf8(uri.to_vec()).ok().map(|uri| {
+                let id = link_params
+                    .split(|&b| b == b':')
+                    .find(|kv| kv.starts_with(b"id="))
+                    .and_then(|kv| String::from_utf8(kv[3..].to_vec()).ok());
+                let anchor = LinkAnchor::Start(self.link_index);
+                self.links.insert(self.link_index, Link { id, uri });
+                self.link_index += 1;
+                anchor
+            })
         } else {
-            self.pending_link_anchor = Some(LinkAnchor::End);
+            // there is no link, so consider it a link end
+            Some(LinkAnchor::End)
         }
-        cursor.pending_styles.link_anchor = self.pending_link_anchor();
-    }
-
-    pub fn pending_link_anchor(&mut self) -> Option<LinkAnchor> {
-        let pending_link_anchor = self.pending_link_anchor;
-        if let Some(LinkAnchor::End) = self.pending_link_anchor {
-            self.pending_link_anchor = None;
-        }
-        pending_link_anchor
     }
 
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> String {
@@ -62,22 +62,50 @@ impl LinkHandler {
             LinkAnchor::End => format!("\u{1b}]8;;{}", TERMINATOR),
         })
     }
-
-    fn start(&mut self, params: &[u8], uri: &[u8]) {
-        if let Ok(uri) = String::from_utf8(uri.to_vec()) {
-            let id = params
-                .split(|&b| b == b':')
-                .find(|kv| kv.starts_with(b"id="))
-                .and_then(|kv| String::from_utf8(kv[3..].to_vec()).ok());
-            self.pending_link_anchor = Some(LinkAnchor::Start(self.link_index));
-            self.links.insert(self.link_index, Link { id, uri });
-            self.link_index += 1;
-        }
-    }
 }
 
 impl Default for LinkHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_osc8_link_start() {
+        let mut link_handler = LinkHandler::default();
+        let link_params = "id=test";
+        let uri = "http://test.com";
+        let params = vec!["8".as_bytes(), link_params.as_bytes(), uri.as_bytes()];
+
+        let anchor = link_handler.dispatch_osc8(&params);
+
+        match anchor {
+            Some(LinkAnchor::Start(link_id)) => {
+                let link = link_handler.links.get(&link_id).expect("link was not some");
+                assert_eq!(link.id, Some("test".to_string()));
+                assert_eq!(link.uri, uri);
+            }
+            _ => panic!("pending link handler was not start"),
+        }
+
+        let expected = format!("\u{1b}]8;id=test;http://test.com{}", TERMINATOR);
+        assert_eq!(link_handler.output_osc8(anchor), expected);
+    }
+
+    #[test]
+    fn dispatch_osc8_link_end() {
+        let mut link_handler = LinkHandler::default();
+        let params = vec!["8".as_bytes(), &[], &[]];
+
+        let anchor = link_handler.dispatch_osc8(&params);
+
+        assert_eq!(anchor, Some(LinkAnchor::End));
+
+        let expected = format!("\u{1b}]8;;{}", TERMINATOR);
+        assert_eq!(link_handler.output_osc8(anchor), expected);
     }
 }
