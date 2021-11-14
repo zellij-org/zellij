@@ -1,9 +1,9 @@
 //! Deserializes configuration options.
-use std::error;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
@@ -31,7 +31,7 @@ pub struct ConfigFromYaml {
 }
 
 /// Main configuration.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
@@ -39,20 +39,26 @@ pub struct Config {
     pub plugins: PluginsConfig,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ConfigError {
     // Deserialization error
-    Serde(serde_yaml::Error),
+    #[error("Deserialization error: {0}")]
+    Serde(#[from] serde_yaml::Error),
     // Io error
-    Io(io::Error),
+    #[error("IoError: {0}")]
+    Io(#[from] io::Error),
     // Io error with path context
+    #[error("IoError: {0}, File: {1}")]
     IoPath(io::Error, PathBuf),
     // Internal Deserialization Error
-    FromUtf8(std::string::FromUtf8Error),
+    #[error("FromUtf8Error: {0}")]
+    FromUtf8(#[from] std::string::FromUtf8Error),
     // Naming a part in a tab is unsupported
-    LayoutNameInTab(LayoutNameInTabError),
+    #[error("There was an error in the layout file, {0}")]
+    LayoutNameInTab(#[from] LayoutNameInTabError),
     // Plugins have a semantic error, usually trying to parse two of the same tag
-    PluginsError(PluginsConfigError),
+    #[error("PluginsError: {0}")]
+    PluginsError(#[from] PluginsConfigError),
 }
 
 impl Default for Config {
@@ -121,7 +127,7 @@ impl Config {
 
         match maybe_config_from_yaml {
             None => Ok(Config::default()),
-            Some(config_from_yaml) => Config::try_from(config_from_yaml),
+            Some(config) => config.try_into(),
         }
     }
 
@@ -204,66 +210,6 @@ tabs:
 impl std::error::Error for LayoutNameInTabError {
     fn description(&self) -> &str {
         "The `parts` inside the `tabs` can't be named."
-    }
-}
-
-impl Display for ConfigError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ConfigError::Io(ref err) => write!(formatter, "IoError: {}", err),
-            ConfigError::IoPath(ref err, ref path) => {
-                write!(formatter, "IoError: {}, File: {}", err, path.display(),)
-            }
-            ConfigError::Serde(ref err) => write!(formatter, "Deserialization error: {}", err),
-            ConfigError::FromUtf8(ref err) => write!(formatter, "FromUtf8Error: {}", err),
-            ConfigError::LayoutNameInTab(ref err) => {
-                write!(formatter, "There was an error in the layout file, {}", err)
-            }
-            ConfigError::PluginsError(ref err) => write!(formatter, "PluginsError: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            ConfigError::Io(ref err) => Some(err),
-            ConfigError::IoPath(ref err, _) => Some(err),
-            ConfigError::Serde(ref err) => Some(err),
-            ConfigError::FromUtf8(ref err) => Some(err),
-            ConfigError::LayoutNameInTab(ref err) => Some(err),
-            ConfigError::PluginsError(ref err) => Some(err),
-        }
-    }
-}
-
-impl From<io::Error> for ConfigError {
-    fn from(err: io::Error) -> ConfigError {
-        ConfigError::Io(err)
-    }
-}
-
-impl From<serde_yaml::Error> for ConfigError {
-    fn from(err: serde_yaml::Error) -> ConfigError {
-        ConfigError::Serde(err)
-    }
-}
-
-impl From<std::string::FromUtf8Error> for ConfigError {
-    fn from(err: std::string::FromUtf8Error) -> ConfigError {
-        ConfigError::FromUtf8(err)
-    }
-}
-
-impl From<LayoutNameInTabError> for ConfigError {
-    fn from(err: LayoutNameInTabError) -> ConfigError {
-        ConfigError::LayoutNameInTab(err)
-    }
-}
-
-impl From<PluginsConfigError> for ConfigError {
-    fn from(err: PluginsConfigError) -> ConfigError {
-        ConfigError::PluginsError(err)
     }
 }
 

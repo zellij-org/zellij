@@ -17,6 +17,16 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum ResizeDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+    Increase,
+    Decrease,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -33,7 +43,7 @@ pub enum Action {
     /// Switch to the specified input mode.
     SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
-    Resize(Direction),
+    Resize(ResizeDirection),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
@@ -58,6 +68,10 @@ pub enum Action {
     PageScrollUp,
     /// Scroll down one page in focus pane.
     PageScrollDown,
+    /// Scroll up half page in focus pane.
+    HalfPageScrollUp,
+    /// Scroll down half page in focus pane.
+    HalfPageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
     /// Toggle frames around panes in the UI

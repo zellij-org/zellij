@@ -154,6 +154,8 @@ pub struct LayoutFromYamlIntermediate {
     pub borderless: bool,
     #[serde(default)]
     pub tabs: Vec<TabLayout>,
+    #[serde(default)]
+    pub session: SessionFromYaml,
     #[serde(flatten)]
     pub config: Option<ConfigFromYaml>,
 }
@@ -164,6 +166,8 @@ pub struct LayoutFromYamlIntermediate {
 #[serde(crate = "self::serde")]
 #[serde(default)]
 pub struct LayoutFromYaml {
+    #[serde(default)]
+    pub session: SessionFromYaml,
     #[serde(default)]
     pub template: LayoutTemplate,
     #[serde(default)]
@@ -229,7 +233,10 @@ impl LayoutFromYamlIntermediate {
 
     // It wants to use Path here, but that doesn't compile.
     #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlIntermediateResult {
+    pub fn from_dir(
+        layout: &PathBuf,
+        layout_dir: Option<&PathBuf>,
+    ) -> LayoutFromYamlIntermediateResult {
         match layout_dir {
             Some(dir) => Self::from_path(&dir.join(layout))
                 .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout.as_path())),
@@ -365,6 +372,20 @@ impl LayoutFromYaml {
             serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
         Ok(layout)
     }
+}
+
+// The struct that is used to deserialize the session from
+// a yaml configuration file
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(crate = "self::serde")]
+pub struct SessionFromYaml {
+    pub name: Option<String>,
+    #[serde(default = "default_as_some_true")]
+    pub attach: Option<bool>,
+}
+
+fn default_as_some_true() -> Option<bool> {
+    Some(true)
 }
 
 // The struct that carries the information template that is used to
@@ -637,6 +658,7 @@ impl From<LayoutFromYamlIntermediate> for LayoutFromYaml {
             template: layout_from_yaml_intermediate.template,
             borderless: layout_from_yaml_intermediate.borderless,
             tabs: layout_from_yaml_intermediate.tabs,
+            session: layout_from_yaml_intermediate.session,
         }
     }
 }
@@ -648,10 +670,10 @@ impl From<LayoutFromYaml> for LayoutFromYamlIntermediate {
             borderless: layout_from_yaml.borderless,
             tabs: layout_from_yaml.tabs,
             config: None,
+            session: layout_from_yaml.session,
         }
     }
 }
-
 
 impl Default for LayoutFromYamlIntermediate {
     fn default() -> Self {
@@ -741,6 +763,7 @@ impl Default for LayoutTemplate {
 impl Default for LayoutFromYaml {
     fn default() -> Self {
         Self {
+            session: SessionFromYaml::default(),
             template: LayoutTemplate::default(),
             borderless: false,
             tabs: vec![],

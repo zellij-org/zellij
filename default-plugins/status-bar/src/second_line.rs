@@ -90,14 +90,18 @@ fn quicknav_full(palette: Palette) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
-    let new_pane_shortcut = "n";
+    let new_pane_shortcut = "<n>";
     let text_third_part = " => open new pane. ";
     let second_alt = "Alt";
     let text_fourth_part = " + ";
-    let brackets_navigation = "[]";
+    let brackets_navigation = "<[]";
     let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl";
-    let text_sixths_part = " => navigate between panes.";
+    let hjkl_navigation = "hjkl>";
+    let text_sixths_part = " => navigate between panes. ";
+    let third_alt = "Alt";
+    let text_seventh_parth = " + ";
+    let increase_decrease_parth = "<+->";
+    let text_eighth_parth = " => increase/decrease pane size.";
     let len = text_first_part.chars().count()
         + alt.chars().count()
         + text_second_part.chars().count()
@@ -108,7 +112,11 @@ fn quicknav_full(palette: Palette) -> LinePart {
         + brackets_navigation.chars().count()
         + text_fifth_part.chars().count()
         + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count();
+        + text_sixths_part.chars().count()
+        + third_alt.chars().count()
+        + text_seventh_parth.chars().count()
+        + increase_decrease_parth.chars().count()
+        + text_eighth_parth.chars().count();
     let green_color = match palette.green {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -119,7 +127,7 @@ fn quicknav_full(palette: Palette) -> LinePart {
     };
     LinePart {
         part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
             Style::new().fg(orange_color).bold().paint(alt),
             text_second_part,
@@ -134,6 +142,13 @@ fn quicknav_full(palette: Palette) -> LinePart {
             text_fifth_part,
             Style::new().fg(green_color).bold().paint(hjkl_navigation),
             text_sixths_part,
+            Style::new().fg(orange_color).bold().paint(third_alt),
+            text_seventh_parth,
+            Style::new()
+                .fg(green_color)
+                .bold()
+                .paint(increase_decrease_parth),
+            text_eighth_parth,
         ),
         len,
     }
@@ -143,14 +158,18 @@ fn quicknav_medium(palette: Palette) -> LinePart {
     let text_first_part = " Tip: ";
     let alt = "Alt";
     let text_second_part = " + ";
-    let new_pane_shortcut = "n";
+    let new_pane_shortcut = "<n>";
     let text_third_part = " => new pane. ";
     let second_alt = "Alt";
     let text_fourth_part = " + ";
-    let brackets_navigation = "[]";
+    let brackets_navigation = "<[]";
     let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl";
-    let text_sixths_part = " => navigate.";
+    let hjkl_navigation = "hjkl>";
+    let text_sixths_part = " => navigate. ";
+    let third_alt = "Alt";
+    let text_seventh_parth = " + ";
+    let increase_decrease_parth = "<+->";
+    let text_eighth_parth = " => resize pane. ";
     let len = text_first_part.chars().count()
         + alt.chars().count()
         + text_second_part.chars().count()
@@ -161,7 +180,11 @@ fn quicknav_medium(palette: Palette) -> LinePart {
         + brackets_navigation.chars().count()
         + text_fifth_part.chars().count()
         + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count();
+        + text_sixths_part.chars().count()
+        + third_alt.chars().count()
+        + text_seventh_parth.chars().count()
+        + increase_decrease_parth.chars().count()
+        + text_eighth_parth.chars().count();
     let green_color = match palette.green {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -172,7 +195,7 @@ fn quicknav_medium(palette: Palette) -> LinePart {
     };
     LinePart {
         part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
             Style::new().fg(orange_color).bold().paint(alt),
             text_second_part,
@@ -187,6 +210,13 @@ fn quicknav_medium(palette: Palette) -> LinePart {
             text_fifth_part,
             Style::new().fg(green_color).bold().paint(hjkl_navigation),
             text_sixths_part,
+            Style::new().fg(orange_color).bold().paint(third_alt),
+            text_seventh_parth,
+            Style::new()
+                .fg(green_color)
+                .bold()
+                .paint(increase_decrease_parth),
+            text_eighth_parth,
         ),
         len,
     }
@@ -201,6 +231,8 @@ fn quicknav_short(palette: Palette) -> LinePart {
     let brackets_navigation = "[]";
     let text_fifth_part = "/";
     let hjkl_navigation = "hjkl";
+    let text_sixth_part = "/";
+    let increase_decrease_part = "+-";
     let len = text_first_part.chars().count()
         + alt.chars().count()
         + text_second_part.chars().count()
@@ -208,7 +240,9 @@ fn quicknav_short(palette: Palette) -> LinePart {
         + text_third_part.chars().count()
         + brackets_navigation.chars().count()
         + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count();
+        + hjkl_navigation.chars().count()
+        + text_sixth_part.chars().count()
+        + increase_decrease_part.chars().count();
     let green_color = match palette.green {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -219,7 +253,7 @@ fn quicknav_short(palette: Palette) -> LinePart {
     };
     LinePart {
         part: format!(
-            "{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}",
             text_first_part,
             Style::new().fg(orange_color).bold().paint(alt),
             text_second_part,
@@ -231,6 +265,11 @@ fn quicknav_short(palette: Palette) -> LinePart {
                 .paint(brackets_navigation),
             text_fifth_part,
             Style::new().fg(green_color).bold().paint(hjkl_navigation),
+            text_sixth_part,
+            Style::new()
+                .fg(green_color)
+                .bold()
+                .paint(increase_decrease_part),
         ),
         len,
     }

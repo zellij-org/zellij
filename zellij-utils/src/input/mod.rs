@@ -10,6 +10,7 @@ pub mod options;
 pub mod plugins;
 pub mod theme;
 
+use crate::envs;
 use termion::input::TermRead;
 use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 
@@ -22,7 +23,10 @@ pub fn get_mode_info(
 ) -> ModeInfo {
     let keybinds = match mode {
         InputMode::Normal | InputMode::Locked => Vec::new(),
-        InputMode::Resize => vec![("←↓↑→".to_string(), "Resize".to_string())],
+        InputMode::Resize => vec![
+            ("←↓↑→".to_string(), "Resize".to_string()),
+            ("+-".to_string(), "Increase/Decrease size".to_string()),
+        ],
         InputMode::Move => vec![
             ("←↓↑→".to_string(), "Move".to_string()),
             ("n/Tab".to_string(), "Next Pane".to_string()),
@@ -48,12 +52,13 @@ pub fn get_mode_info(
         InputMode::Scroll => vec![
             ("↓↑".to_string(), "Scroll".to_string()),
             ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
+            ("u/d".to_string(), "Scroll Half Page".to_string()),
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
     };
 
-    let session_name = std::env::var("ZELLIJ_SESSION_NAME").ok();
+    let session_name = envs::get_session_name().ok();
 
     ModeInfo {
         mode,

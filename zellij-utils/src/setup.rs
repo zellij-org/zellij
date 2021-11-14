@@ -1,7 +1,15 @@
-use crate::{cli::{CliArgs, Command}, consts::{
+use crate::{
+    cli::{CliArgs, Command},
+    consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_PROJ_DIR,
-    }, input::{config::{Config, ConfigError}, layout::{LayoutFromYaml, LayoutFromYamlIntermediate}, options::Options}};
+    },
+    input::{
+        config::{Config, ConfigError},
+        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
+        options::Options,
+    },
+};
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, io::Write, path::Path, path::PathBuf, process};
@@ -207,8 +215,6 @@ impl Setup {
         let (layout, layout_config) = layout.unwrap().to_layout_and_config();
         let layout = Some(layout);
 
-
-
         // TODO: merge_config_options
         let config_options = config_options.merge(layout_config.clone().unwrap().options.unwrap());
         let config = config.merge(layout_config.unwrap().try_into()?);
@@ -271,7 +277,7 @@ impl Setup {
         // https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
         let hyperlink_start = "\u{1b}]8;;";
         let hyperlink_mid = "\u{1b}\\";
-        let hyperlink_end = "\u{1b}]8;;\u{1b}\\\n'";
+        let hyperlink_end = "\u{1b}]8;;\u{1b}\\";
 
         let mut message = String::new();
 
@@ -316,7 +322,7 @@ impl Setup {
 
         message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
         message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
-        message.push_str(" If not you may want to either start zellij with a compatible mode 'zellij options --simplified-ui'\n");
+        message.push_str(" If not you may want to either start zellij with a compatible mode: 'zellij options --simplified-ui true'\n");
         let mut hyperlink_compat = String::new();
         hyperlink_compat.push_str(hyperlink_start);
         hyperlink_compat.push_str("https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly");
@@ -327,6 +333,9 @@ impl Setup {
             " Or check the font that is in use:\n {}\n",
             hyperlink_compat
         ));
+        message.push_str("[MOUSE INTERACTION]: \n");
+        message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
+        message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
 
         message.push_str(&format!("[FEATURES]: {:?}\n", FEATURES));
         let mut hyperlink = String::new();
@@ -335,7 +344,7 @@ impl Setup {
         hyperlink.push_str(hyperlink_mid);
         hyperlink.push_str("zellij.dev/documentation");
         hyperlink.push_str(hyperlink_end);
-        message.push_str(&format!("[DOCUMENTATION]: {}", hyperlink));
+        message.push_str(&format!("[DOCUMENTATION]: {}\n", hyperlink));
         //printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
 
         std::io::stdout().write_all(message.as_bytes())?;
