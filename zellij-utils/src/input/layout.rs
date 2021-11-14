@@ -209,6 +209,21 @@ impl LayoutFromYamlIntermediate {
         }
     }
 
+    pub fn from_yaml(yaml: &str) -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate = match serde_yaml::from_str(yaml) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if yaml.is_empty() {
+                    return Ok(LayoutFromYamlIntermediate::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+        Ok(layout)
+    }
+
     pub fn to_layout_and_config(&self) -> (LayoutFromYaml, Option<ConfigFromYaml>) {
         let config = self.config.clone();
         let layout = self.clone().into();
