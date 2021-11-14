@@ -1,6 +1,6 @@
 mod first_line;
 mod second_line;
-mod tips;
+mod tip;
 
 use ansi_term::Style;
 

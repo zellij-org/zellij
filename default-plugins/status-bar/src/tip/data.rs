@@ -5,39 +5,15 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-
 use lazy_static::lazy_static;
 
+use crate::{palette_match, strings, LinePart};
 use zellij_tile::prelude::*;
-
-use crate::LinePart;
-
-macro_rules! palette_match {
-    ($palette_color:expr) => {
-        match $palette_color {
-            PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-            PaletteColor::EightBit(color) => Fixed(color),
-        }
-    };
-}
-
-macro_rules! strings {
-    ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
-
-        let ansi_strings = ANSIStrings(strings);
-
-        LinePart {
-            part: format!("{}", ansi_strings),
-            len: unstyled_len(&ansi_strings),
-        }
-    }};
-}
 
 type TipFn = fn(Palette) -> LinePart;
 
 lazy_static! {
-    static ref TIPS_MAP: HashMap<&'static str, TipFn> = HashMap::from([
+    pub static ref TIPS_MAP: HashMap<&'static str, TipFn> = HashMap::from([
         ("quicknav_full", quicknav_full as TipFn),
         ("quicknav_medium", quicknav_full),
         ("quicknav_short", quicknav_full)
