@@ -35,7 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
 * Fix: fix CSI cursor next line not moving cursor to beginning of line after moving it down (https://github.com/zellij-org/zellij/pull/863)
 * Refactor: Support multiple users in `Tab`s (https://github.com/zellij-org/zellij/pull/864)
-* Refactor: close_pane returns closed pane (https://github.com/zellij-org/zellij/pull/853) 
+* Refactor: close_pane returns closed pane (https://github.com/zellij-org/zellij/pull/853)
+* Add: ability to configure zellij through layouts (https://github.com/zellij-org/zellij/pull/866)
 
 
 ## [0.20.1] - 2021-11-10
