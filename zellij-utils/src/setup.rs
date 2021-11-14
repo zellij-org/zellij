@@ -6,7 +6,7 @@ use crate::{
     },
     input::{
         config::{Config, ConfigError},
-        layout::LayoutFromYaml,
+        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
         options::Options,
     },
 };
@@ -147,10 +147,12 @@ pub struct Setup {
 impl Setup {
     /// Entrypoint from main
     /// Merges options from the config file and the command line options
-    /// into `[Options]`, the command line options superceding the config
-    /// file options:
+    /// into `[Options]`, the command line options superceeding the layout
+    /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
-    /// 2. config options (`config.yaml`)
+    /// 2. layout options
+    ///    (`layout.yaml` / `zellij --layout` / `zellij --layout-path`)
+    /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
     ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
@@ -187,7 +189,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = LayoutFromYaml::from_path_or_default(
+        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
             opts.layout.as_ref(),
             opts.layout_path.as_ref(),
             layout_dir,
@@ -212,7 +214,7 @@ impl Setup {
                 );
         };
 
-        Ok((config, layout, config_options))
+        Setup::merge_config_with_layout(config, layout, config_options)
     }
 
     /// General setup helpers
@@ -250,6 +252,30 @@ impl Setup {
             std::process::exit(0);
         }
         Ok(())
+    }
+
+    fn merge_config_with_layout(
+        config: Config,
+        layout: Option<LayoutFromYamlIntermediate>,
+        config_options: Options,
+    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+        let (layout, layout_config) = match layout.map(|l| l.to_layout_and_config()) {
+            None => (None, None),
+            Some((layout, layout_config)) => (Some(layout), layout_config),
+        };
+
+        let (config, config_options) = if let Some(layout_config) = layout_config {
+            let config_options = if let Some(options) = layout_config.options.clone() {
+                config_options.merge(options)
+            } else {
+                config_options
+            };
+            let config = config.merge(layout_config.try_into()?);
+            (config, config_options)
+        } else {
+            (config, config_options)
+        };
+        Ok((config, layout, config_options))
     }
 
     pub fn check_defaults_config(opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
@@ -358,5 +384,101 @@ impl Setup {
         };
         let mut out = std::io::stdout();
         CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
+    }
+}
+
+#[cfg(test)]
+mod setup_test {
+    use super::Setup;
+    use crate::input::{
+        config::{Config, ConfigError},
+        keybinds::Keybinds,
+        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
+        options::Options,
+    };
+
+    fn deserialise_config_and_layout(
+        config: &str,
+        layout: &str,
+    ) -> Result<(Config, LayoutFromYamlIntermediate), ConfigError> {
+        let config = Config::from_yaml(&config)?;
+        let layout = LayoutFromYamlIntermediate::from_yaml(&layout)?;
+        Ok((config, layout))
+    }
+
+    #[test]
+    fn empty_config_empty_layout() {
+        let goal = Config::default();
+        let config = r"";
+        let layout = r"";
+        let config_layout_result = deserialise_config_and_layout(config, layout);
+        let (config, layout) = config_layout_result.unwrap();
+        let config_options = Options::default();
+        let (config, _layout, _config_options) =
+            Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
+        assert_eq!(config, goal);
+    }
+
+    #[test]
+    fn config_empty_layout() {
+        let mut goal = Config::default();
+        goal.options.default_shell = Some(std::path::PathBuf::from("fish"));
+        let config = r"---
+        default_shell: fish";
+        let layout = r"";
+        let config_layout_result = deserialise_config_and_layout(config, layout);
+        let (config, layout) = config_layout_result.unwrap();
+        let config_options = Options::default();
+        let (config, _layout, _config_options) =
+            Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
+        assert_eq!(config, goal);
+    }
+
+    #[test]
+    fn layout_overwrites_config() {
+        let mut goal = Config::default();
+        goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
+        let config = r"---
+        default_shell: fish";
+        let layout = r"---
+        default_shell: bash";
+        let config_layout_result = deserialise_config_and_layout(config, layout);
+        let (config, layout) = config_layout_result.unwrap();
+        let config_options = Options::default();
+        let (config, _layout, _config_options) =
+            Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
+        assert_eq!(config, goal);
+    }
+
+    #[test]
+    fn empty_config_nonempty_layout() {
+        let mut goal = Config::default();
+        goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
+        let config = r"";
+        let layout = r"---
+        default_shell: bash";
+        let config_layout_result = deserialise_config_and_layout(config, layout);
+        let (config, layout) = config_layout_result.unwrap();
+        let config_options = Options::default();
+        let (config, _layout, _config_options) =
+            Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
+        assert_eq!(config, goal);
+    }
+
+    #[test]
+    fn nonempty_config_nonempty_layout() {
+        let mut goal = Config::default();
+        goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
+        goal.options.default_mode = Some(zellij_tile::prelude::InputMode::Locked);
+        let config = r"---
+        default_mode: locked";
+        let layout = r"---
+        default_shell: bash";
+        let config_layout_result = deserialise_config_and_layout(config, layout);
+        let (config, layout) = config_layout_result.unwrap();
+        let config_options = Options::default();
+        let (config, _layout, _config_options) =
+            Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
+        assert_eq!(config, goal);
     }
 }
