@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                ││                                                │                    
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘                    
  Ctrl + g  p  t  n  h  s  o  q                                                                         
- Tip: Alt + n => open new pane. Alt + [] or hjkl => navigate between panes.                                             
+ Tip: Alt + <n> => new pane. Alt + <[] or hjkl> => navigate. Alt + <+-> => resize pane.                                 

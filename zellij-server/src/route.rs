@@ -12,7 +12,7 @@ use crate::{
 use zellij_utils::{
     channels::SenderWithContext,
     input::{
-        actions::{Action, Direction},
+        actions::{Action, Direction, ResizeDirection},
         command::TerminalAction,
         get_mode_info,
     },
@@ -50,6 +50,17 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
                 .unwrap();
         }
+        Action::WriteChars(val) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .unwrap();
+            let val = Vec::from(val.as_bytes());
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
+                .unwrap();
+        }
         Action::SwitchToMode(mode) => {
             let palette = session.palette;
             // TODO: use the palette from the client and remove it from the server os api
@@ -76,10 +87,12 @@ fn route_action(
         }
         Action::Resize(direction) => {
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::ResizeLeft(client_id),
-                Direction::Right => ScreenInstruction::ResizeRight(client_id),
-                Direction::Up => ScreenInstruction::ResizeUp(client_id),
-                Direction::Down => ScreenInstruction::ResizeDown(client_id),
+                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
+                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id),
+                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id),
+                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id),
+                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
+                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
@@ -168,6 +181,18 @@ fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::PageScrollDown(client_id))
+                .unwrap();
+        }
+        Action::HalfPageScrollUp => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollUp(client_id))
+                .unwrap();
+        }
+        Action::HalfPageScrollDown => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollDown(client_id))
                 .unwrap();
         }
         Action::ToggleFocusFullscreen => {
@@ -285,6 +310,13 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
                 .unwrap();
         }
+        Action::RightClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RightClick(point, client_id))
+                .unwrap();
+        }
+
         Action::MouseRelease(point) => {
             session
                 .senders
@@ -315,9 +347,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::DenyPrompt(client_id))
                 .unwrap();
         }
+        #[allow(clippy::single_match)]
         Action::SkipConfirm(action) => match *action {
             Action::Quit => {
-                to_server.send(ServerInstruction::ClientExit(client_id)).unwrap();
+                to_server
+                    .send(ServerInstruction::ClientExit(client_id))
+                    .unwrap();
                 should_break = true;
             }
             _ => {}

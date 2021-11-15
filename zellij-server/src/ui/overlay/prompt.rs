@@ -43,7 +43,7 @@ impl Overlayable for Prompt {
     }
 }
 
-pub fn generate_quit_prompt(client_id: ClientId) -> Overlay {
+pub fn _generate_quit_prompt(client_id: ClientId) -> Overlay {
     let prompt = Prompt::new(
         (" Do you want to quit zellij? [Y]es / [N]o").to_string(),
         Some(Box::new(ServerInstruction::ClientExit(client_id))),

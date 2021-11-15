@@ -104,7 +104,7 @@ impl Display for ExitReason {
                 f,
                 "Session attached to another client. Use --force flag to force connect."
             ),
-            Self::Error(e) => write!(f, "Error occured in server:\n{}", e),
+            Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
     }
 }

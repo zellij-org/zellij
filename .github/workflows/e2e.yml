@@ -11,7 +11,7 @@ env:
 
 jobs:
   test:
-    name: Bulild generic binary and run tests on it
+    name: Build generic binary and run tests on it
     runs-on: ubuntu-latest
 
     services:

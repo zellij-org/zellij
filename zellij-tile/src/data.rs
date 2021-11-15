@@ -34,6 +34,7 @@ pub enum Mouse {
     ScrollUp(usize),                 // number of lines
     ScrollDown(usize),               // number of lines
     LeftClick(isize, usize),         // line and column
+    RightClick(isize, usize),        // line and column
     Hold(isize, usize),              // line and column
     Release(Option<(isize, usize)>), // line and column
 }

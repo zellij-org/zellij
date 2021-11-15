@@ -1,6 +1,8 @@
-use crate::consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV};
-use crate::input::options::Options;
 use crate::setup::Setup;
+use crate::{
+    consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
+    input::options::CliOptions,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -51,7 +53,7 @@ pub struct CliArgs {
 pub enum Command {
     /// Change the behaviour of zellij
     #[structopt(name = "options")]
-    Options(Options),
+    Options(CliOptions),
 
     /// Setup zellij and check its configuration
     #[structopt(name = "setup")]
@@ -66,7 +68,7 @@ pub enum Command {
 pub enum SessionCommand {
     /// Change the behaviour of zellij
     #[structopt(name = "options")]
-    Options(Options),
+    Options(CliOptions),
 }
 
 #[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
@@ -84,6 +86,10 @@ pub enum Sessions {
         /// Create a session if one does not exist.
         #[structopt(short, long)]
         create: bool,
+
+        /// Number of the session index in the active sessions ordered creation date.
+        #[structopt(long)]
+        index: Option<usize>,
 
         /// Change the behaviour of zellij
         #[structopt(subcommand, name = "options")]
