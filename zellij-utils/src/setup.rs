@@ -335,7 +335,7 @@ impl Setup {
         if let Some(layout_dir) = layout_dir {
             message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
         } else {
-            message.push_str("[CONFIG FILE]: Not Found\n");
+            message.push_str("[LAYOUT DIR]: Not Found\n");
         }
         message.push_str(&format!("[SYSTEM DATA DIR]: {:?}\n", system_data_dir));
 
