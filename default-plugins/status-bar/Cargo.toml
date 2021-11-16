@@ -9,5 +9,6 @@ license = "MIT"
 colored = "2"
 ansi_term = "0.12"
 lazy_static = "1.4.0"
+rand = "0.8.4"
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }

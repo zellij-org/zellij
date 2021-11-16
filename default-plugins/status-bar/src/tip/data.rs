@@ -10,14 +10,30 @@ use lazy_static::lazy_static;
 use crate::{palette_match, strings, LinePart};
 use zellij_tile::prelude::*;
 
-type TipFn = fn(Palette) -> LinePart;
+pub type TipFn = fn(Palette) -> LinePart;
+
+#[derive(Debug)]
+pub struct TipFnMap {
+    pub short: TipFn,
+    pub medium: TipFn,
+    pub full: TipFn,
+}
+
+impl<'a> Default for &'a TipFnMap {
+    fn default() -> &'a TipFnMap {
+        TIPS_DATA.get("quicknav").unwrap()
+    }
+}
 
 lazy_static! {
-    pub static ref TIPS_MAP: HashMap<&'static str, TipFn> = HashMap::from([
-        ("quicknav_full", quicknav_full as TipFn),
-        ("quicknav_medium", quicknav_full),
-        ("quicknav_short", quicknav_full)
-    ]);
+    pub static ref TIPS_DATA: HashMap<&'static str, TipFnMap> = HashMap::from([(
+        "quicknav",
+        TipFnMap {
+            short: quicknav_short,
+            medium: quicknav_medium,
+            full: quicknav_full,
+        }
+    ),]);
 }
 
 fn quicknav_full(palette: Palette) -> LinePart {
@@ -92,14 +108,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_lengh_of_map_is_ok() {
-        assert_eq!(TIPS_MAP.len(), 3);
-    }
-
-    #[test]
     fn get_function_from_static_is_ok() {
         let default_palette = Palette::default();
-        let quicknav_full_func = TIPS_MAP.get(&"quicknav_full").unwrap();
+        let quicknav_map = TIPS_DATA.get(&"quicknav").unwrap();
+        let quicknav_full_func = quicknav_map.full;
         let quicknav_full_line = quicknav_full_func(default_palette);
 
         assert_eq!(quicknav_full_line.len, 122);

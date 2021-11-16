@@ -5,7 +5,10 @@ use ansi_term::{
 };
 use zellij_tile::prelude::*;
 
-use crate::{LinePart, MORE_MSG};
+use crate::{
+    tip::data::{TipFn, TipFnMap},
+    LinePart, MORE_MSG,
+};
 
 fn full_length_shortcut(
     is_first_shortcut: bool,
@@ -86,194 +89,6 @@ fn first_word_shortcut(
         len,
     }
 }
-fn quicknav_full(palette: Palette) -> LinePart {
-    let text_first_part = " Tip: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "<n>";
-    let text_third_part = " => open new pane. ";
-    let second_alt = "Alt";
-    let text_fourth_part = " + ";
-    let brackets_navigation = "<[]";
-    let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl>";
-    let text_sixths_part = " => navigate between panes. ";
-    let third_alt = "Alt";
-    let text_seventh_parth = " + ";
-    let increase_decrease_parth = "<+->";
-    let text_eighth_parth = " => increase/decrease pane size.";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + second_alt.chars().count()
-        + text_fourth_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count()
-        + third_alt.chars().count()
-        + text_seventh_parth.chars().count()
-        + increase_decrease_parth.chars().count()
-        + text_eighth_parth.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new().fg(orange_color).bold().paint(second_alt),
-            text_fourth_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
-            text_sixths_part,
-            Style::new().fg(orange_color).bold().paint(third_alt),
-            text_seventh_parth,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(increase_decrease_parth),
-            text_eighth_parth,
-        ),
-        len,
-    }
-}
-
-fn quicknav_medium(palette: Palette) -> LinePart {
-    let text_first_part = " Tip: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "<n>";
-    let text_third_part = " => new pane. ";
-    let second_alt = "Alt";
-    let text_fourth_part = " + ";
-    let brackets_navigation = "<[]";
-    let text_fifth_part = " or ";
-    let hjkl_navigation = "hjkl>";
-    let text_sixths_part = " => navigate. ";
-    let third_alt = "Alt";
-    let text_seventh_parth = " + ";
-    let increase_decrease_parth = "<+->";
-    let text_eighth_parth = " => resize pane. ";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + second_alt.chars().count()
-        + text_fourth_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count()
-        + text_sixths_part.chars().count()
-        + third_alt.chars().count()
-        + text_seventh_parth.chars().count()
-        + increase_decrease_parth.chars().count()
-        + text_eighth_parth.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new().fg(orange_color).bold().paint(second_alt),
-            text_fourth_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
-            text_sixths_part,
-            Style::new().fg(orange_color).bold().paint(third_alt),
-            text_seventh_parth,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(increase_decrease_parth),
-            text_eighth_parth,
-        ),
-        len,
-    }
-}
-
-fn quicknav_short(palette: Palette) -> LinePart {
-    let text_first_part = " QuickNav: ";
-    let alt = "Alt";
-    let text_second_part = " + ";
-    let new_pane_shortcut = "n";
-    let text_third_part = "/";
-    let brackets_navigation = "[]";
-    let text_fifth_part = "/";
-    let hjkl_navigation = "hjkl";
-    let text_sixth_part = "/";
-    let increase_decrease_part = "+-";
-    let len = text_first_part.chars().count()
-        + alt.chars().count()
-        + text_second_part.chars().count()
-        + new_pane_shortcut.chars().count()
-        + text_third_part.chars().count()
-        + brackets_navigation.chars().count()
-        + text_fifth_part.chars().count()
-        + hjkl_navigation.chars().count()
-        + text_sixth_part.chars().count()
-        + increase_decrease_part.chars().count();
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    LinePart {
-        part: format!(
-            "{}{}{}{}{}{}{}{}{}{}",
-            text_first_part,
-            Style::new().fg(orange_color).bold().paint(alt),
-            text_second_part,
-            Style::new().fg(green_color).bold().paint(new_pane_shortcut),
-            text_third_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(brackets_navigation),
-            text_fifth_part,
-            Style::new().fg(green_color).bold().paint(hjkl_navigation),
-            text_sixth_part,
-            Style::new()
-                .fg(green_color)
-                .bold()
-                .paint(increase_decrease_part),
-        ),
-        len,
-    }
-}
 
 fn locked_interface_indication(palette: Palette) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
@@ -324,9 +139,9 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
     }
 }
 
-fn full_shortcut_list(help: &ModeInfo) -> LinePart {
+fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_full(help.palette),
+        InputMode::Normal => tip(help.palette),
         InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();
@@ -343,9 +158,9 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
-fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
+fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => quicknav_medium(help.palette),
+        InputMode::Normal => tip(help.palette),
         InputMode::Locked => locked_interface_indication(help.palette),
         _ => {
             let mut line_part = LinePart::default();
@@ -362,10 +177,10 @@ fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
-fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
+fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = quicknav_short(help.palette);
+            let line_part = tip(help.palette);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -403,16 +218,16 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     }
 }
 
-pub fn keybinds(help: &ModeInfo, max_width: usize) -> LinePart {
-    let full_shortcut_list = full_shortcut_list(help);
+pub fn keybinds(help: &ModeInfo, tips: &TipFnMap, max_width: usize) -> LinePart {
+    let full_shortcut_list = full_shortcut_list(help, tips.full);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help);
+    let shortened_shortcut_list = shortened_shortcut_list(help, tips.medium);
     if shortened_shortcut_list.len <= max_width {
         return shortened_shortcut_list;
     }
-    best_effort_shortcut_list(help, max_width)
+    best_effort_shortcut_list(help, tips.short, max_width)
 }
 
 pub fn text_copied_hint(palette: &Palette) -> LinePart {

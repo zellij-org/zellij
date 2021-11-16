@@ -2077,6 +2077,7 @@ dependencies = [
  "ansi_term 0.12.1",
  "colored",
  "lazy_static",
+ "rand 0.8.4",
  "zellij-tile",
  "zellij-tile-utils",
 ]
