@@ -872,7 +872,7 @@ impl Tab {
             resize_pty!(pane, self.os_api);
         }
     }
-    pub fn render(&mut self, output: &mut Output) {
+    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
         if self.connected_clients.is_empty() || self.active_panes.is_empty() {
             return;
         }
@@ -923,6 +923,12 @@ impl Tab {
                         }
                     }
                 }
+
+                // FIXME: Once clients can be distinguished
+                if let Some(overlay_vte) = &overlay {
+                    output.push_str_to_all_clients(overlay_vte);
+                }
+
                 if let Some(vte_output) = pane.render() {
                     // FIXME: Use Termion for cursor and style clearing?
                     output.push_str_to_all_clients(&format!(
