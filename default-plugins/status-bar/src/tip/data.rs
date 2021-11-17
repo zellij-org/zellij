@@ -7,23 +7,8 @@ use ansi_term::{
 };
 use lazy_static::lazy_static;
 
-use crate::{palette_match, strings, LinePart};
+use crate::{palette_match, strings, tip::TipFnMap, LinePart};
 use zellij_tile::prelude::*;
-
-pub type TipFn = fn(Palette) -> LinePart;
-
-#[derive(Debug)]
-pub struct TipFnMap {
-    pub short: TipFn,
-    pub medium: TipFn,
-    pub full: TipFn,
-}
-
-impl<'a> Default for &'a TipFnMap {
-    fn default() -> &'a TipFnMap {
-        TIPS_DATA.get("quicknav").unwrap()
-    }
-}
 
 lazy_static! {
     pub static ref TIPS_DATA: HashMap<&'static str, TipFnMap> = HashMap::from([(

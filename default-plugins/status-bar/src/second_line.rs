@@ -6,7 +6,7 @@ use ansi_term::{
 use zellij_tile::prelude::*;
 
 use crate::{
-    tip::data::{TipFn, TipFnMap},
+    tip::{data::TIPS_DATA, TipFn},
     LinePart, MORE_MSG,
 };
 
@@ -218,7 +218,9 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
     }
 }
 
-pub fn keybinds(help: &ModeInfo, tips: &TipFnMap, max_width: usize) -> LinePart {
+pub fn keybinds(help: &ModeInfo, tip_name: &'static str, max_width: usize) -> LinePart {
+    let tips = TIPS_DATA.get(tip_name).unwrap();
+
     let full_shortcut_list = full_shortcut_list(help, tips.full);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;

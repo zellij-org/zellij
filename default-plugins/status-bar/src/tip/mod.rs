@@ -1,6 +1,18 @@
 pub mod data;
 pub mod utils;
 
+use crate::LinePart;
+use zellij_tile::prelude::*;
+
+pub type TipFn = fn(Palette) -> LinePart;
+
+#[derive(Debug)]
+pub struct TipFnMap {
+    pub short: TipFn,
+    pub medium: TipFn,
+    pub full: TipFn,
+}
+
 #[macro_export]
 macro_rules! palette_match {
     ($palette_color:expr) => {
