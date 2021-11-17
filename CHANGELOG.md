@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
+* Add: initial `zellij.desktop` file (https://github.com/zellij-org/zellij/pull/870)
+* Add: section for third party repositiories `THIRD_PARTY_INSTALL.md` (https://github.com/zellij-org/zellij/pull/857)
 * Add: suggestion for similar session name, on attach (https://github.com/zellij-org/zellij/pull/843)
 * Fix: handling and overwriting options through the cli (https://github.com/zellij-org/zellij/pull/859)
 
@@ -35,7 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
 * Fix: fix CSI cursor next line not moving cursor to beginning of line after moving it down (https://github.com/zellij-org/zellij/pull/863)
 * Refactor: Support multiple users in `Tab`s (https://github.com/zellij-org/zellij/pull/864)
-* Refactor: close_pane returns closed pane (https://github.com/zellij-org/zellij/pull/853) 
+* Refactor: close_pane returns closed pane (https://github.com/zellij-org/zellij/pull/853)
+* Add: ability to configure zellij through layouts (https://github.com/zellij-org/zellij/pull/866)
+* Refactor: simplify terminal character style diff (https://github.com/zellij-org/zellij/pull/839)
 
 
 ## [0.20.1] - 2021-11-10

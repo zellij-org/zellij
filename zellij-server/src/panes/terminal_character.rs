@@ -8,20 +8,22 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
-    styles: CharacterStyles {
-        foreground: Some(AnsiCode::Reset),
-        background: Some(AnsiCode::Reset),
-        strike: Some(AnsiCode::Reset),
-        hidden: Some(AnsiCode::Reset),
-        reverse: Some(AnsiCode::Reset),
-        slow_blink: Some(AnsiCode::Reset),
-        fast_blink: Some(AnsiCode::Reset),
-        underline: Some(AnsiCode::Reset),
-        bold: Some(AnsiCode::Reset),
-        dim: Some(AnsiCode::Reset),
-        italic: Some(AnsiCode::Reset),
-        link_anchor: Some(LinkAnchor::End),
-    },
+    styles: RESET_STYLES,
+};
+
+pub const RESET_STYLES: CharacterStyles = CharacterStyles {
+    foreground: Some(AnsiCode::Reset),
+    background: Some(AnsiCode::Reset),
+    strike: Some(AnsiCode::Reset),
+    hidden: Some(AnsiCode::Reset),
+    reverse: Some(AnsiCode::Reset),
+    slow_blink: Some(AnsiCode::Reset),
+    fast_blink: Some(AnsiCode::Reset),
+    underline: Some(AnsiCode::Reset),
+    bold: Some(AnsiCode::Reset),
+    dim: Some(AnsiCode::Reset),
+    italic: Some(AnsiCode::Reset),
+    link_anchor: Some(LinkAnchor::End),
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,7 +98,7 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -202,146 +204,71 @@ impl CharacterStyles {
         new_styles: &CharacterStyles,
         changed_colors: Option<[Option<AnsiCode>; 256]>,
     ) -> Option<CharacterStyles> {
-        let mut diff: Option<CharacterStyles> = None;
+        if self == new_styles && changed_colors.is_none() {
+            return None;
+        }
 
-        if new_styles.foreground == Some(AnsiCode::Reset)
-            && new_styles.background == Some(AnsiCode::Reset)
-            && new_styles.strike == Some(AnsiCode::Reset)
-            && new_styles.hidden == Some(AnsiCode::Reset)
-            && new_styles.reverse == Some(AnsiCode::Reset)
-            && new_styles.fast_blink == Some(AnsiCode::Reset)
-            && new_styles.slow_blink == Some(AnsiCode::Reset)
-            && new_styles.underline == Some(AnsiCode::Reset)
-            && new_styles.bold == Some(AnsiCode::Reset)
-            && new_styles.dim == Some(AnsiCode::Reset)
-            && new_styles.italic == Some(AnsiCode::Reset)
-            && new_styles.link_anchor == Some(LinkAnchor::End)
-        {
-            self.foreground = Some(AnsiCode::Reset);
-            self.background = Some(AnsiCode::Reset);
-            self.strike = Some(AnsiCode::Reset);
-            self.hidden = Some(AnsiCode::Reset);
-            self.reverse = Some(AnsiCode::Reset);
-            self.fast_blink = Some(AnsiCode::Reset);
-            self.slow_blink = Some(AnsiCode::Reset);
-            self.underline = Some(AnsiCode::Reset);
-            self.bold = Some(AnsiCode::Reset);
-            self.dim = Some(AnsiCode::Reset);
-            self.italic = Some(AnsiCode::Reset);
-            self.link_anchor = Some(LinkAnchor::End);
-            return Some(*new_styles);
-        };
+        if *new_styles == RESET_STYLES {
+            *self = RESET_STYLES;
+            return Some(RESET_STYLES);
+        }
+
+        // create diff from all changed styles
+        let mut diff = CharacterStyles::new();
 
         if self.foreground != new_styles.foreground {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.foreground(new_styles.foreground));
-            } else {
-                diff = Some(CharacterStyles::new().foreground(new_styles.foreground));
-            }
-            self.foreground = new_styles.foreground;
+            diff.foreground = new_styles.foreground;
         }
         if self.background != new_styles.background {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.background(new_styles.background));
-            } else {
-                diff = Some(CharacterStyles::new().background(new_styles.background));
-            }
-            self.background = new_styles.background;
+            diff.background = new_styles.background;
         }
         if self.strike != new_styles.strike {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.strike(new_styles.strike));
-            } else {
-                diff = Some(CharacterStyles::new().strike(new_styles.strike));
-            }
-            self.strike = new_styles.strike;
+            diff.strike = new_styles.strike;
         }
         if self.hidden != new_styles.hidden {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.hidden(new_styles.hidden));
-            } else {
-                diff = Some(CharacterStyles::new().hidden(new_styles.hidden));
-            }
-            self.hidden = new_styles.hidden;
+            diff.hidden = new_styles.hidden;
         }
         if self.reverse != new_styles.reverse {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.reverse(new_styles.reverse));
-            } else {
-                diff = Some(CharacterStyles::new().reverse(new_styles.reverse));
-            }
-            self.reverse = new_styles.reverse;
+            diff.reverse = new_styles.reverse;
         }
         if self.slow_blink != new_styles.slow_blink {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.blink_slow(new_styles.slow_blink));
-            } else {
-                diff = Some(CharacterStyles::new().blink_slow(new_styles.slow_blink));
-            }
-            self.slow_blink = new_styles.slow_blink;
+            diff.slow_blink = new_styles.slow_blink;
         }
         if self.fast_blink != new_styles.fast_blink {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.blink_fast(new_styles.fast_blink));
-            } else {
-                diff = Some(CharacterStyles::new().blink_fast(new_styles.fast_blink));
-            }
-            self.fast_blink = new_styles.fast_blink;
+            diff.fast_blink = new_styles.fast_blink;
         }
         if self.underline != new_styles.underline {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.underline(new_styles.underline));
-            } else {
-                diff = Some(CharacterStyles::new().underline(new_styles.underline));
-            }
-            self.underline = new_styles.underline;
+            diff.underline = new_styles.underline;
         }
         if self.bold != new_styles.bold {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.bold(new_styles.bold));
-            } else {
-                diff = Some(CharacterStyles::new().bold(new_styles.bold));
-            }
-            self.bold = new_styles.bold;
+            diff.bold = new_styles.bold;
         }
         if self.dim != new_styles.dim {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.dim(new_styles.dim));
-            } else {
-                diff = Some(CharacterStyles::new().dim(new_styles.dim));
-            }
-            self.dim = new_styles.dim;
+            diff.dim = new_styles.dim;
         }
         if self.italic != new_styles.italic {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.italic(new_styles.italic));
-            } else {
-                diff = Some(CharacterStyles::new().italic(new_styles.italic));
-            }
-            self.italic = new_styles.italic;
+            diff.italic = new_styles.italic;
         }
         if self.link_anchor != new_styles.link_anchor {
-            if let Some(new_diff) = diff.as_mut() {
-                diff = Some(new_diff.link_anchor(new_styles.link_anchor))
-            } else {
-                diff = Some(CharacterStyles::new().link_anchor(new_styles.link_anchor))
-            }
-            self.link_anchor = new_styles.link_anchor;
+            diff.link_anchor = new_styles.link_anchor;
         }
 
+        // apply new styles
+        *self = *new_styles;
+
         if let Some(changed_colors) = changed_colors {
-            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.foreground) {
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.foreground {
                 if let Some(changed_color) = changed_colors[color_index as usize] {
-                    diff.as_mut().unwrap().foreground = Some(changed_color);
+                    diff.foreground = Some(changed_color);
                 }
             }
-            if let Some(AnsiCode::ColorIndex(color_index)) = diff.and_then(|diff| diff.background) {
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.background {
                 if let Some(changed_color) = changed_colors[color_index as usize] {
-                    diff.as_mut().unwrap().background = Some(changed_color);
+                    diff.background = Some(changed_color);
                 }
             }
         }
-        diff
+        Some(diff)
     }
     pub fn reset_all(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
@@ -774,7 +701,7 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,

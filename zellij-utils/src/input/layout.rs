@@ -18,7 +18,10 @@ use crate::{
 };
 use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::{
+    config::ConfigFromYaml,
+    plugins::{PluginTag, PluginsConfigError},
+};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -138,6 +141,26 @@ pub struct Layout {
 }
 
 // The struct that is used to deserialize the layout from
+// a yaml configuration file, is needed because of:
+// https://github.com/bincode-org/bincode/issues/245
+// flattened fields don't retain size information.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(crate = "self::serde")]
+#[serde(default)]
+pub struct LayoutFromYamlIntermediate {
+    #[serde(default)]
+    pub template: LayoutTemplate,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub tabs: Vec<TabLayout>,
+    #[serde(default)]
+    pub session: SessionFromYaml,
+    #[serde(flatten)]
+    pub config: Option<ConfigFromYaml>,
+}
+
+// The struct that is used to deserialize the layout from
 // a yaml configuration file
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
@@ -151,6 +174,124 @@ pub struct LayoutFromYaml {
     pub borderless: bool,
     #[serde(default)]
     pub tabs: Vec<TabLayout>,
+}
+
+type LayoutFromYamlIntermediateResult = Result<LayoutFromYamlIntermediate, ConfigError>;
+
+impl LayoutFromYamlIntermediate {
+    pub fn from_path(layout_path: &Path) -> LayoutFromYamlIntermediateResult {
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut layout = String::new();
+        layout_file.read_to_string(&mut layout)?;
+        let layout: Option<LayoutFromYamlIntermediate> = match serde_yaml::from_str(&layout) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if layout.is_empty() {
+                    return Ok(LayoutFromYamlIntermediate::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+
+        match layout {
+            Some(layout) => {
+                for tab in layout.tabs.clone() {
+                    tab.check()?;
+                }
+                Ok(layout)
+            }
+            None => Ok(LayoutFromYamlIntermediate::default()),
+        }
+    }
+
+    pub fn from_yaml(yaml: &str) -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate = match serde_yaml::from_str(yaml) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if yaml.is_empty() {
+                    return Ok(LayoutFromYamlIntermediate::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+        Ok(layout)
+    }
+
+    pub fn to_layout_and_config(&self) -> (LayoutFromYaml, Option<ConfigFromYaml>) {
+        let config = self.config.clone();
+        let layout = self.clone().into();
+        (layout, config)
+    }
+
+    pub fn from_path_or_default(
+        layout: Option<&PathBuf>,
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Option<LayoutFromYamlIntermediateResult> {
+        layout
+            .map(|p| LayoutFromYamlIntermediate::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| LayoutFromYamlIntermediate::from_path(p)))
+            .or_else(|| {
+                Some(LayoutFromYamlIntermediate::from_dir(
+                    &std::path::PathBuf::from("default"),
+                    layout_dir.as_ref(),
+                ))
+            })
+    }
+
+    // It wants to use Path here, but that doesn't compile.
+    #[allow(clippy::ptr_arg)]
+    pub fn from_dir(
+        layout: &PathBuf,
+        layout_dir: Option<&PathBuf>,
+    ) -> LayoutFromYamlIntermediateResult {
+        match layout_dir {
+            Some(dir) => Self::from_path(&dir.join(layout))
+                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout.as_path())),
+            None => LayoutFromYamlIntermediate::from_default_assets(layout.as_path()),
+        }
+    }
+    // Currently still needed but on nightly
+    // this is already possible:
+    // HashMap<&'static str, Vec<u8>>
+    pub fn from_default_assets(path: &Path) -> LayoutFromYamlIntermediateResult {
+        match path.to_str() {
+            Some("default") => Self::default_from_assets(),
+            Some("strider") => Self::strider_from_assets(),
+            Some("disable-status-bar") => Self::disable_status_from_assets(),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+
+    // TODO Deserialize the assets from bytes &[u8],
+    // once serde-yaml supports zero-copy
+    pub fn default_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn strider_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
+
+    pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
+        Ok(layout)
+    }
 }
 
 type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
@@ -211,6 +352,7 @@ impl LayoutFromYaml {
                 ))
             })
     }
+
     // Currently still needed but on nightly
     // this is already possible:
     // HashMap<&'static str, Vec<u8>>
@@ -522,6 +664,35 @@ impl TryFrom<RunFromYaml> for Run {
                 location: plugin.location.try_into()?,
             })),
         }
+    }
+}
+
+impl From<LayoutFromYamlIntermediate> for LayoutFromYaml {
+    fn from(layout_from_yaml_intermediate: LayoutFromYamlIntermediate) -> Self {
+        Self {
+            template: layout_from_yaml_intermediate.template,
+            borderless: layout_from_yaml_intermediate.borderless,
+            tabs: layout_from_yaml_intermediate.tabs,
+            session: layout_from_yaml_intermediate.session,
+        }
+    }
+}
+
+impl From<LayoutFromYaml> for LayoutFromYamlIntermediate {
+    fn from(layout_from_yaml: LayoutFromYaml) -> Self {
+        Self {
+            template: layout_from_yaml.template,
+            borderless: layout_from_yaml.borderless,
+            tabs: layout_from_yaml.tabs,
+            config: None,
+            session: layout_from_yaml.session,
+        }
+    }
+}
+
+impl Default for LayoutFromYamlIntermediate {
+    fn default() -> Self {
+        LayoutFromYaml::default().into()
     }
 }
 

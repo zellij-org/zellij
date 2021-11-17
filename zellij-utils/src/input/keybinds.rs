@@ -16,7 +16,7 @@ pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 
 /// Intermediate struct used for deserialisation
 /// Used in the config file.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct KeybindsFromYaml {
     #[serde(flatten)]
     keybinds: HashMap<InputMode, Vec<KeyActionUnbind>>,
@@ -25,7 +25,7 @@ pub struct KeybindsFromYaml {
 }
 
 /// Intermediate enum used for deserialisation
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
 enum KeyActionUnbind {
     KeyAction(KeyActionFromYaml),
@@ -40,21 +40,21 @@ struct KeyActionUnbindFromYaml {
 }
 
 /// Intermediate struct used for deserialisation
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct KeyActionFromYaml {
     action: Vec<Action>,
     key: Vec<Key>,
 }
 
 /// Intermediate struct used for deserialisation
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 struct UnbindFromYaml {
     unbind: Unbind,
 }
 
 /// List of keys, for which to disable their respective default actions
 /// `All` is a catch all, and will disable the default actions for all keys.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 enum Unbind {
     // This is the correct order, don't rearrange!
@@ -168,7 +168,7 @@ impl Keybinds {
 
     /// Merges two Keybinds structs into one Keybinds struct
     /// `other` overrides the ModeKeybinds of `self`.
-    fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
+    pub fn merge_keybinds(&self, other: Keybinds) -> Keybinds {
         let mut keybinds = Keybinds::new();
 
         for mode in InputMode::iter() {
