@@ -106,7 +106,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     viewport: &mut Vec<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> usize {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
     loop {
@@ -137,6 +137,10 @@ fn transfer_rows_from_lines_above_to_viewport(
         let excess_row = Row::from_rows(next_lines, 0);
         bounded_push(lines_above, excess_row);
     }
+    match usize::try_from(lines_added_to_viewport) {
+        Ok(n) => n,
+        _ => 0,
+    }
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
@@ -144,12 +148,15 @@ fn transfer_rows_from_viewport_to_lines_above(
     lines_above: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> usize {
     let mut next_lines: Vec<Row> = vec![];
+    let mut transferred_rows_height = 0;
     for _ in 0..count {
         if next_lines.is_empty() {
             if !viewport.is_empty() {
                 let next_line = viewport.remove(0);
+                transferred_rows_height +=
+                    (next_line.width() as f64 / max_viewport_width as f64).ceil() as usize;
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
                         get_lines_above_bottom_canonical_row_and_wraps(lines_above);
@@ -170,6 +177,7 @@ fn transfer_rows_from_viewport_to_lines_above(
             viewport.insert(0, row);
         }
     }
+    transferred_rows_height
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
@@ -362,6 +370,7 @@ pub struct Grid {
     pub selection: Selection,
     pub title: Option<String>,
     pub is_scrolled: bool,
+    scrollback_buffer_lines: usize,
 }
 
 impl Debug for Grid {
@@ -407,6 +416,7 @@ impl Grid {
             title: None,
             changed_colors: None,
             is_scrolled: false,
+            scrollback_buffer_lines: 0,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -455,6 +465,13 @@ impl Grid {
     }
     pub fn scrollback_position_and_length(&self) -> (usize, usize) {
         // (position, length)
+        (
+            self.lines_below.len(),
+            (self.scrollback_buffer_lines + self.lines_below.len()),
+        )
+    }
+
+    fn recalculate_scrollback_buffer_count(&self) -> usize {
         let mut scrollback_buffer_count = 0;
         for row in self.lines_above.iter() {
             let row_width = row.width();
@@ -465,11 +482,9 @@ impl Grid {
                 scrollback_buffer_count += 1;
             }
         }
-        (
-            self.lines_below.len(),
-            (scrollback_buffer_count + self.lines_below.len()),
-        )
+        scrollback_buffer_count
     }
+
     fn set_horizontal_tabstop(&mut self) {
         self.horizontal_tabstops.insert(self.cursor.x);
     }
@@ -543,12 +558,15 @@ impl Grid {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
-            transfer_rows_from_lines_above_to_viewport(
+            let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
                 1,
                 self.width,
             );
+            self.scrollback_buffer_lines = self
+                .scrollback_buffer_lines
+                .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
         }
@@ -557,6 +575,8 @@ impl Grid {
     pub fn scroll_down_one_line(&mut self) {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
+            self.scrollback_buffer_lines +=
+                (line_to_push_up.width() as f64 / self.width as f64).ceil() as usize;
             if line_to_push_up.is_canonical {
                 bounded_push(&mut self.lines_above, line_to_push_up);
             } else {
@@ -753,6 +773,7 @@ impl Grid {
         if self.scroll_region.is_some() {
             self.set_scroll_region_to_viewport_size();
         }
+        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -846,7 +867,7 @@ impl Grid {
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
         let row_count_to_transfer = self.viewport.len();
-        transfer_rows_from_viewport_to_lines_above(
+        self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
             row_count_to_transfer,
@@ -893,7 +914,7 @@ impl Grid {
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
                 let row_count_to_transfer = 1;
-                transfer_rows_from_viewport_to_lines_above(
+                self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
@@ -968,7 +989,7 @@ impl Grid {
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
                 let row_count_to_transfer = 1;
-                transfer_rows_from_viewport_to_lines_above(
+                self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
@@ -1264,6 +1285,7 @@ impl Grid {
         self.cursor.change_shape(CursorShape::Initial);
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
+        self.scrollback_buffer_lines = 0;
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
