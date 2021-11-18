@@ -1,17 +1,11 @@
 use rand::{seq::SliceRandom, thread_rng};
 
-use crate::tip::data::TIPS_DATA;
+use crate::tip::data::TIPS;
 
-pub fn need_to_function_name() -> &'static str {
-    /*
-     * TODO:
-     *
-     * This function includes following feature:
-     * 1. returns random name of TipFnMap.
-     * 2. (optional) Use the cache for TipFnMap selection.
-     */
-    let mut shuffled_tips: Vec<&&str> = TIPS_DATA.keys().collect();
-    shuffled_tips.shuffle(&mut thread_rng());
+pub fn load_randomly_tip_name() -> &'static str {
+    let mut tip_names: Vec<&str> = TIPS.keys().cloned().collect();
+    tip_names.shuffle(&mut thread_rng());
 
-    return shuffled_tips[0];
+    // It is assumed that there is at least one TIP data in the TIPS HasMap.
+    tip_names.first().unwrap()
 }

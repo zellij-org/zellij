@@ -6,7 +6,7 @@ use ansi_term::{
 use zellij_tile::prelude::*;
 
 use crate::{
-    tip::{data::TIPS_DATA, TipFn},
+    tip::{data::TIPS, TipBody, TipFn},
     LinePart, MORE_MSG,
 };
 
@@ -218,18 +218,19 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
     }
 }
 
-pub fn keybinds(help: &ModeInfo, tip_name: &'static str, max_width: usize) -> LinePart {
-    let tips = TIPS_DATA.get(tip_name).unwrap();
+pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
+    // It is assumed that there is at least one TIP data in the TIPS HasMap.
+    let tip_body = TIPS.get(tip_name).unwrap();
 
-    let full_shortcut_list = full_shortcut_list(help, tips.full);
+    let full_shortcut_list = full_shortcut_list(help, tip_body.full);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help, tips.medium);
+    let shortened_shortcut_list = shortened_shortcut_list(help, tip_body.medium);
     if shortened_shortcut_list.len <= max_width {
         return shortened_shortcut_list;
     }
-    best_effort_shortcut_list(help, tips.short, max_width)
+    best_effort_shortcut_list(help, tip_body.short, max_width)
 }
 
 pub fn text_copied_hint(palette: &Palette) -> LinePart {

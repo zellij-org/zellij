@@ -12,7 +12,7 @@ use first_line::{ctrl_keys, superkey};
 use second_line::{
     fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, text_copied_hint,
 };
-use tip::utils::need_to_function_name;
+use tip::utils::load_randomly_tip_name;
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
@@ -143,7 +143,7 @@ impl ZellijPlugin for State {
         // Tips are fetched only once when the plugin is loaded.
         // Therefore, it is stored inside the State.
         // However, the logic can change at any time.
-        self.tip_name = need_to_function_name();
+        self.tip_name = load_randomly_tip_name();
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
@@ -203,7 +203,7 @@ impl ZellijPlugin for State {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
                             } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
+                                keybinds(&self.mode_info, self.tip_name, cols)
                             }
                         }
                     }
@@ -221,7 +221,7 @@ impl ZellijPlugin for State {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
                             } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
+                                keybinds(&self.mode_info, self.tip_name, cols)
                             }
                         }
                     }
@@ -229,7 +229,7 @@ impl ZellijPlugin for State {
                         second_line = if self.diplay_text_copied_hint {
                             text_copied_hint(&self.mode_info.palette)
                         } else {
-                            keybinds(&self.mode_info, &self.tip_name, cols)
+                            keybinds(&self.mode_info, self.tip_name, cols)
                         }
                     }
                 }

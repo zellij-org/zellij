@@ -7,18 +7,29 @@ use ansi_term::{
 };
 use lazy_static::lazy_static;
 
-use crate::{palette_match, strings, tip::TipFnMap, LinePart};
+use crate::{palette_match, strings, tip::TipBody, LinePart};
 use zellij_tile::prelude::*;
 
 lazy_static! {
-    pub static ref TIPS_DATA: HashMap<&'static str, TipFnMap> = HashMap::from([(
-        "quicknav",
-        TipFnMap {
-            short: quicknav_short,
-            medium: quicknav_medium,
-            full: quicknav_full,
-        }
-    ),]);
+    pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([
+        (
+            "quicknav",
+            TipBody {
+                short: quicknav_short,
+                medium: quicknav_medium,
+                full: quicknav_full,
+            }
+        ),
+        // This tip will have deleted before merge.
+        (
+            "test",
+            TipBody {
+                short: test_tip,
+                medium: test_tip,
+                full: test_tip,
+            }
+        )
+    ]);
 }
 
 fn quicknav_full(palette: Palette) -> LinePart {
@@ -85,6 +96,10 @@ fn quicknav_short(palette: Palette) -> LinePart {
     ])
 }
 
+fn test_tip(_: Palette) -> LinePart {
+    strings!(&[Style::new().paint(" This is Test Tip :)")])
+}
+
 /**
  * To test, need to wasmtime and cargo-wasi.
  */
@@ -95,7 +110,7 @@ mod tests {
     #[test]
     fn get_function_from_static_is_ok() {
         let default_palette = Palette::default();
-        let quicknav_map = TIPS_DATA.get(&"quicknav").unwrap();
+        let quicknav_map = TIPS.get(&"quicknav").unwrap();
         let quicknav_full_func = quicknav_map.full;
         let quicknav_full_line = quicknav_full_func(default_palette);
 
