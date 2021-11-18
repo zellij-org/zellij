@@ -148,15 +148,15 @@ fn transfer_rows_from_viewport_to_lines_above(
     lines_above: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
-) -> usize {
+) -> isize {
     let mut next_lines: Vec<Row> = vec![];
-    let mut transferred_rows_height = 0;
+    let mut transferred_rows_count: isize = 0;
     for _ in 0..count {
         if next_lines.is_empty() {
             if !viewport.is_empty() {
                 let next_line = viewport.remove(0);
-                transferred_rows_height +=
-                    (next_line.width() as f64 / max_viewport_width as f64).ceil() as usize;
+                transferred_rows_count +=
+                    calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
                         get_lines_above_bottom_canonical_row_and_wraps(lines_above);
@@ -168,7 +168,9 @@ fn transfer_rows_from_viewport_to_lines_above(
                 break; // no more rows
             }
         }
-        bounded_push(lines_above, next_lines.remove(0));
+        let dropped_line_width = bounded_push(lines_above, next_lines.remove(0));
+        transferred_rows_count -=
+            calculate_row_display_height(dropped_line_width, max_viewport_width) as isize;
     }
     if !next_lines.is_empty() {
         let excess_rows = Row::from_rows(next_lines, max_viewport_width)
@@ -177,7 +179,7 @@ fn transfer_rows_from_viewport_to_lines_above(
             viewport.insert(0, row);
         }
     }
-    transferred_rows_height
+    transferred_rows_count
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
@@ -220,11 +222,16 @@ fn transfer_rows_from_lines_below_to_viewport(
     }
 }
 
-fn bounded_push(vec: &mut VecDeque<Row>, value: Row) {
+fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> usize {
+    let mut dropped_line_width = 0;
     if vec.len() >= SCROLL_BACK {
-        vec.pop_front();
+        let line = vec.pop_front();
+        if let Some(line) = line {
+            dropped_line_width = line.width();
+        }
     }
-    vec.push_back(value)
+    vec.push_back(value);
+    dropped_line_width
 }
 
 pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
@@ -238,6 +245,18 @@ pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
         i += TABSTOP_WIDTH;
     }
     horizontal_tabstops
+}
+
+fn calculate_row_display_height(row_width: usize, viewport_width: usize) -> usize {
+    (row_width as f64 / viewport_width as f64).ceil() as usize
+}
+
+fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
+    if i.is_negative() {
+        u - i.abs() as usize
+    } else {
+        u + i as usize
+    }
 }
 
 #[derive(Debug)]
@@ -463,7 +482,7 @@ impl Grid {
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
     }
-    pub fn scrollback_position_and_length(&self) -> (usize, usize) {
+    pub fn scrollback_position_and_length(&mut self) -> (usize, usize) {
         // (position, length)
         (
             self.lines_below.len(),
@@ -477,7 +496,7 @@ impl Grid {
             let row_width = row.width();
             // rows in lines_above are unwrapped, so we need to account for that
             if row_width > self.width {
-                scrollback_buffer_count += (row_width as f64 / self.width as f64).ceil() as usize;
+                scrollback_buffer_count += calculate_row_display_height(row_width, self.width);
             } else {
                 scrollback_buffer_count += 1;
             }
@@ -576,15 +595,20 @@ impl Grid {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
             self.scrollback_buffer_lines +=
-                (line_to_push_up.width() as f64 / self.width as f64).ceil() as usize;
-            if line_to_push_up.is_canonical {
-                bounded_push(&mut self.lines_above, line_to_push_up);
+                calculate_row_display_height(line_to_push_up.width(), self.width);
+
+            let line_to_push_up = if line_to_push_up.is_canonical {
+                line_to_push_up
             } else {
                 let mut last_line_above = self.lines_above.pop_back().unwrap();
                 last_line_above.append(&mut line_to_push_up.columns);
-                bounded_push(&mut self.lines_above, last_line_above);
-            }
+                last_line_above
+            };
 
+            let dropped_line_width = bounded_push(&mut self.lines_above, line_to_push_up);
+
+            self.scrollback_buffer_lines -=
+                calculate_row_display_height(dropped_line_width, self.width);
             transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
@@ -867,12 +891,16 @@ impl Grid {
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
         let row_count_to_transfer = self.viewport.len();
-        self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
+        let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
             row_count_to_transfer,
             self.width,
         );
+
+        self.scrollback_buffer_lines =
+            subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+
         for _ in 0..self.height {
             let columns = VecDeque::from(vec![character; self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
@@ -914,12 +942,15 @@ impl Grid {
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
                 let row_count_to_transfer = 1;
-                self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
+                let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
                     self.width,
                 );
+                self.scrollback_buffer_lines =
+                    subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+
                 self.selection.move_up(1);
             }
             self.output_buffer.update_all_lines();
@@ -989,12 +1020,14 @@ impl Grid {
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
                 let row_count_to_transfer = 1;
-                self.scrollback_buffer_lines += transfer_rows_from_viewport_to_lines_above(
+                let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
                     self.width,
                 );
+                self.scrollback_buffer_lines =
+                    subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
                 let wrapped_row = Row::new(self.width);
                 self.viewport.push(wrapped_row);
                 self.selection.move_up(1);
