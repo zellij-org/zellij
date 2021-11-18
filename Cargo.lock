@@ -2078,6 +2078,8 @@ dependencies = [
  "colored",
  "lazy_static",
  "rand 0.8.4",
+ "serde",
+ "serde_json",
  "zellij-tile",
  "zellij-tile-utils",
 ]
