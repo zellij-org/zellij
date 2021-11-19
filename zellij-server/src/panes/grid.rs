@@ -606,9 +606,12 @@ impl Grid {
             };
 
             let dropped_line_width = bounded_push(&mut self.lines_above, line_to_push_up);
+            let dropped_line_height = calculate_row_display_height(dropped_line_width, self.width);
 
-            self.scrollback_buffer_lines -=
-                calculate_row_display_height(dropped_line_width, self.width);
+            self.scrollback_buffer_lines = self
+                .scrollback_buffer_lines
+                .saturating_sub(dropped_line_height);
+
             transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
