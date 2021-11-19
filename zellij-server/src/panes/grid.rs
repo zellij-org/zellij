@@ -169,8 +169,10 @@ fn transfer_rows_from_viewport_to_lines_above(
             }
         }
         let dropped_line_width = bounded_push(lines_above, next_lines.remove(0));
-        transferred_rows_count -=
-            calculate_row_display_height(dropped_line_width, max_viewport_width) as isize;
+        if let Some(width) = dropped_line_width {
+            transferred_rows_count -=
+                calculate_row_display_height(width, max_viewport_width) as isize;
+        }
     }
     if !next_lines.is_empty() {
         let excess_rows = Row::from_rows(next_lines, max_viewport_width)
@@ -222,12 +224,12 @@ fn transfer_rows_from_lines_below_to_viewport(
     }
 }
 
-fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> usize {
-    let mut dropped_line_width = 0;
+fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
+    let mut dropped_line_width = None;
     if vec.len() >= SCROLL_BACK {
         let line = vec.pop_front();
         if let Some(line) = line {
-            dropped_line_width = line.width();
+            dropped_line_width = Some(line.width());
         }
     }
     vec.push_back(value);
@@ -248,6 +250,9 @@ pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
 }
 
 fn calculate_row_display_height(row_width: usize, viewport_width: usize) -> usize {
+    if row_width <= viewport_width {
+        return 1;
+    }
     (row_width as f64 / viewport_width as f64).ceil() as usize
 }
 
@@ -594,6 +599,13 @@ impl Grid {
     pub fn scroll_down_one_line(&mut self) {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
+            log::info!("line_to_push_up: {:?}", line_to_push_up);
+            log::info!(
+                "is_canonical: {}, width: {}",
+                line_to_push_up.is_canonical,
+                line_to_push_up.width(),
+            );
+
             self.scrollback_buffer_lines +=
                 calculate_row_display_height(line_to_push_up.width(), self.width);
 
@@ -606,11 +618,13 @@ impl Grid {
             };
 
             let dropped_line_width = bounded_push(&mut self.lines_above, line_to_push_up);
-            let dropped_line_height = calculate_row_display_height(dropped_line_width, self.width);
+            if let Some(width) = dropped_line_width {
+                let dropped_line_height = calculate_row_display_height(width, self.width);
 
-            self.scrollback_buffer_lines = self
-                .scrollback_buffer_lines
-                .saturating_sub(dropped_line_height);
+                self.scrollback_buffer_lines = self
+                    .scrollback_buffer_lines
+                    .saturating_sub(dropped_line_height);
+            }
 
             transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
