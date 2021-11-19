@@ -6,7 +6,7 @@ use ansi_term::{
 use zellij_tile::prelude::*;
 
 use crate::{
-    tip::{data::TIPS, TipBody, TipFn},
+    tip::{data::TIPS, TipFn},
     LinePart, MORE_MSG,
 };
 

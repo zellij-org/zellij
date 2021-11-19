@@ -26,7 +26,7 @@ use wasmer::{
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
 use zellij_utils::{
-    consts::ZELLIJ_PROJ_DIR,
+    consts::{ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
@@ -209,6 +209,8 @@ fn start_plugin(
         .map_dir("/host", ".")
         .unwrap()
         .map_dir("/data", plugin_own_data_dir.as_path())
+        .unwrap()
+        .map_dir("/tmp", ZELLIJ_TMP_DIR.as_path())
         .unwrap()
         .stdin(Box::new(input))
         .stdout(Box::new(output))

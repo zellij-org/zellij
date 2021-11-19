@@ -99,21 +99,3 @@ fn quicknav_short(palette: Palette) -> LinePart {
 fn test_tip(_: Palette) -> LinePart {
     strings!(&[Style::new().paint(" This is Test Tip :)")])
 }
-
-/**
- * To test, need to wasmtime and cargo-wasi.
- */
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn get_function_from_static_is_ok() {
-        let default_palette = Palette::default();
-        let quicknav_map = TIPS.get(&"quicknav").unwrap();
-        let quicknav_full_func = quicknav_map.full;
-        let quicknav_full_line = quicknav_full_func(default_palette);
-
-        assert_eq!(quicknav_full_line.len, 122);
-    }
-}
