@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: ability to configure zellij through layouts (https://github.com/zellij-org/zellij/pull/866)
 * Refactor: simplify terminal character style diff (https://github.com/zellij-org/zellij/pull/839)
 * Fix: improve performance with large scrollback buffer (https://github.com/zellij-org/zellij/pull/881)
+* Add: support osc8 escape code (https://github.com/zellij-org/zellij/pull/822)
 
 
 ## [0.20.1] - 2021-11-10
