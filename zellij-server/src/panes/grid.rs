@@ -599,12 +599,6 @@ impl Grid {
     pub fn scroll_down_one_line(&mut self) {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
-            log::info!("line_to_push_up: {:?}", line_to_push_up);
-            log::info!(
-                "is_canonical: {}, width: {}",
-                line_to_push_up.is_canonical,
-                line_to_push_up.width(),
-            );
 
             self.scrollback_buffer_lines +=
                 calculate_row_display_height(line_to_push_up.width(), self.width);
