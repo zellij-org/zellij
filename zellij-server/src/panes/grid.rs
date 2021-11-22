@@ -18,12 +18,12 @@ use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::link_handler::LinkHandler;
+use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-
-use super::selection::Selection;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -394,6 +394,7 @@ pub struct Grid {
     pub selection: Selection,
     pub title: Option<String>,
     pub is_scrolled: bool,
+    pub link_handler: LinkHandler,
     scrollback_buffer_lines: usize,
 }
 
@@ -440,6 +441,7 @@ impl Grid {
             title: None,
             changed_colors: None,
             is_scrolled: false,
+            link_handler: Default::default(),
             scrollback_buffer_lines: 0,
         }
     }
@@ -1547,6 +1549,14 @@ impl Perform for Grid {
                         return;
                     }
                 }
+            }
+
+            // define hyperlink
+            b"8" => {
+                if params.len() < 3 {
+                    return;
+                }
+                self.cursor.pending_styles.link_anchor = self.link_handler.dispatch_osc8(params);
             }
 
             // Get/set Foreground, Background, Cursor colors.
