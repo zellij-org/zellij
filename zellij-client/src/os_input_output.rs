@@ -10,13 +10,15 @@ use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::{io, time};
+use std::{io, thread, time};
 use zellij_tile::data::Palette;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,
 };
+
+const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -143,10 +145,16 @@ impl ClientOsApi for ClientOsInputOutput {
             .recv()
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
+        let mut sigwinch_cb_timestamp = time::Instant::now();
         let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP]).unwrap();
         for signal in signals.forever() {
             match signal {
                 SIGWINCH => {
+                    // throttle sigwinch_cb calls, reduce excessive renders while resizing
+                    if sigwinch_cb_timestamp.elapsed() < SIGWINCH_CB_THROTTLE_DURATION {
+                        thread::sleep(SIGWINCH_CB_THROTTLE_DURATION);
+                    }
+                    sigwinch_cb_timestamp = time::Instant::now();
                     sigwinch_cb();
                 }
                 SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
