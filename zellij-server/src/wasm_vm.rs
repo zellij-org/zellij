@@ -238,6 +238,8 @@ fn start_plugin(
     let start = instance.exports.get_function("_start").unwrap();
 
     // This eventually calls the `.load()` method
+    // TODO: pass the zellij version to the plugins.
+    // zellij version can be obtained from [`zellij-utils::consts`] by calling [`zellij-utils::consts::VERSION`]
     start.call(&[]).unwrap();
 
     (instance, plugin_env)
