@@ -28,7 +28,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::ZELLIJ_PROJ_DIR,
+    consts::{VERSION, ZELLIJ_PROJ_DIR},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
@@ -238,8 +238,6 @@ fn start_plugin(
     let start = instance.exports.get_function("_start").unwrap();
 
     // This eventually calls the `.load()` method
-    // TODO: pass the zellij version to the plugins.
-    // zellij version can be obtained from [`zellij-utils::consts`] by calling [`zellij-utils::consts::VERSION`]
     start.call(&[]).unwrap();
 
     (instance, plugin_env)
@@ -264,6 +262,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_unsubscribe,
         host_set_selectable,
         host_get_plugin_ids,
+        host_get_zellij_version,
         host_open_file,
         host_switch_tab_to,
         host_set_timeout,
@@ -311,6 +310,10 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
         zellij_pid: process::id(),
     };
     wasi_write_object(&plugin_env.wasi_env, &ids);
+}
+
+fn host_get_zellij_version(plugin_env: &PluginEnv) {
+    wasi_write_string(&plugin_env.wasi_env, VERSION);
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {

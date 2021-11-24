@@ -27,6 +27,11 @@ pub fn get_plugin_ids() -> PluginIds {
     object_from_stdin().unwrap()
 }
 
+pub fn get_zellij_version() -> String {
+    unsafe { host_get_zellij_version() };
+    string_from_stdin()
+}
+
 // Host Functions
 
 pub fn open_file(path: &Path) {
@@ -49,6 +54,13 @@ pub fn exec_cmd(cmd: &[&str]) {
 // Internal Functions
 
 #[doc(hidden)]
+pub fn string_from_stdin() -> String {
+    let mut buffer = String::new();
+    io::stdin().read_line(&mut buffer).unwrap();
+    buffer.trim().to_string()
+}
+
+#[doc(hidden)]
 pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).unwrap();
@@ -66,6 +78,7 @@ extern "C" {
     fn host_unsubscribe();
     fn host_set_selectable(selectable: i32);
     fn host_get_plugin_ids();
+    fn host_get_zellij_version();
     fn host_open_file();
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
