@@ -62,8 +62,7 @@ impl<'a> PaneContentsAndUi<'a> {
             let fake_cursor_client_id = self
                 .focused_clients
                 .iter()
-                .filter(|c_id| **c_id != client_id)
-                .next()
+                .find(|c_id| **c_id != client_id)
                 .unwrap();
             if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.colors) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {

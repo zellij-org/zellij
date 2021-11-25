@@ -133,7 +133,7 @@ impl PaneFrame {
         let full_indication = format!(
             "{} {} {}",
             left_separator,
-            color_string(&full_indication_text, self.color),
+            color_string(full_indication_text, self.color),
             right_separator
         );
         let full_indication_len = full_indication_text.width() + 4; // 2 for separators 2 for padding
@@ -141,7 +141,7 @@ impl PaneFrame {
         let short_indication = format!(
             "{} {} {}",
             left_separator,
-            color_string(&short_indication_text, self.color),
+            color_string(short_indication_text, self.color),
             right_separator
         );
         let short_indication_len = short_indication_text.width() + 4; // 2 for separators 2 for padding
@@ -158,9 +158,9 @@ impl PaneFrame {
         let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS AND:";
         let short_indication_text = "+";
-        let mut full_indication = color_string(&full_indication_text, self.color);
+        let mut full_indication = color_string(full_indication_text, self.color);
         let mut full_indication_len = full_indication_text.width();
-        let mut short_indication = color_string(&short_indication_text, self.color);
+        let mut short_indication = color_string(short_indication_text, self.color);
         let mut short_indication_len = short_indication_text.width();
         for client_id in &self.other_focused_clients {
             let text = format!(" {}", self.client_cursor(*client_id));
@@ -197,9 +197,9 @@ impl PaneFrame {
             "FOCUSED USERS:"
         };
         let middle_indication_text = "U:";
-        let mut full_indication = color_string(&full_indication_text, self.color);
+        let mut full_indication = color_string(full_indication_text, self.color);
         let mut full_indication_len = full_indication_text.width();
-        let mut middle_indication = color_string(&middle_indication_text, self.color);
+        let mut middle_indication = color_string(middle_indication_text, self.color);
         let mut middle_indication_len = middle_indication_text.width();
         let mut short_indication = String::from("");
         let mut short_indication_len = 0;
@@ -243,7 +243,7 @@ impl PaneFrame {
             && self.other_focused_clients.is_empty()
             && !self.other_cursors_exist_in_session
         {
-            return None;
+            None
         } else if self.is_main_client
             && self.other_focused_clients.is_empty()
             && self.other_cursors_exist_in_session
@@ -330,15 +330,15 @@ impl PaneFrame {
             } else if col == self.geom.x + self.geom.cols - 1 {
                 title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
             } else if col == left_side_start_position {
-                title_line.push_str(&left_side);
+                title_line.push_str(left_side);
                 col += left_side_len;
                 continue;
             } else if col == middle_start_position {
-                title_line.push_str(&middle);
+                title_line.push_str(middle);
                 col += middle_len;
                 continue;
             } else if col == right_side_start_position {
-                title_line.push_str(&right_side);
+                title_line.push_str(right_side);
                 col += right_side_len;
                 continue;
             } else {
@@ -422,8 +422,8 @@ impl PaneFrame {
         right_side: &str,
         right_side_len: &usize,
     ) -> String {
-        let left_boundary = color_string(&boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(&boundary_type::TOP_RIGHT, self.color);
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle = String::new();
         for _ in (left_side_len + right_side_len)..total_title_length {
@@ -434,13 +434,13 @@ impl PaneFrame {
             left_boundary,
             left_side,
             color_string(&middle, self.color),
-            color_string(&right_side, self.color),
+            color_string(right_side, self.color),
             &right_boundary
         )
     }
     fn left_only_title_line(&self, left_side: &str, left_side_len: &usize) -> String {
-        let left_boundary = color_string(&boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(&boundary_type::TOP_RIGHT, self.color);
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in *left_side_len..total_title_length {
@@ -455,8 +455,8 @@ impl PaneFrame {
         )
     }
     fn empty_title_line(&self) -> String {
-        let left_boundary = color_string(&boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(&boundary_type::TOP_RIGHT, self.color);
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in 0..total_title_length {

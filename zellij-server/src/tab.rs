@@ -943,7 +943,7 @@ impl Tab {
                     } else {
                         let mut boundaries = client_id_to_boundaries
                             .entry(*client_id)
-                            .or_insert(Boundaries::new(self.viewport));
+                            .or_insert_with(|| Boundaries::new(self.viewport));
                         pane_contents_and_ui.render_pane_boundaries(
                             *client_id,
                             &mut boundaries,
