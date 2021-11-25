@@ -3,7 +3,7 @@ use zellij_utils::{pane_size::Viewport, zellij_tile};
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
-use zellij_tile::data::{InputMode, Palette, PaletteColor};
+use zellij_tile::data::PaletteColor;
 use zellij_utils::shared::colors;
 
 use std::fmt::{Display, Error, Formatter};
@@ -413,17 +413,10 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, input_mode: InputMode, palette: Option<Palette>) {
+    pub fn add_rect(&mut self, rect: &dyn Pane, color: Option<PaletteColor>) {
         if !self.is_fully_inside_screen(rect) {
             return;
         }
-        let color = match palette.is_some() {
-            true => match input_mode {
-                InputMode::Normal | InputMode::Locked => Some(palette.unwrap().green),
-                _ => Some(palette.unwrap().orange),
-            },
-            false => None,
-        };
         if rect.x() > self.viewport.x {
             // left boundary
             let boundary_x_coords = rect.x() - 1;

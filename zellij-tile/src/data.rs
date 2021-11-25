@@ -163,6 +163,7 @@ pub struct Palette {
     pub cyan: PaletteColor,
     pub white: PaletteColor,
     pub orange: PaletteColor,
+    pub gray: PaletteColor,
 }
 
 /// Represents the contents of the help message that is printed in the status bar,

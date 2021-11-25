@@ -3,13 +3,16 @@
 
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ui::pane_resizer::PaneResizer;
+
 use crate::{
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
+    ui::pane_contents_and_ui::PaneContentsAndUi,
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
@@ -21,7 +24,7 @@ use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, HashSet},
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
+use zellij_tile::data::{Event, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
     input::{
         layout::{Direction, Layout, Run},
@@ -112,6 +115,11 @@ impl Output {
             render_instruction.push_str(to_push)
         }
     }
+    pub fn push_to_client(&mut self, client_id: ClientId, to_push: &str) {
+        if let Some(render_instructions) = self.client_render_instructions.get_mut(&client_id) {
+            render_instructions.push_str(to_push);
+        }
+    }
 }
 
 pub(crate) struct Tab {
@@ -133,6 +141,7 @@ pub(crate) struct Tab {
     pub colors: Palette,
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
+    session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
 }
 
@@ -171,6 +180,12 @@ pub trait Pane {
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self) -> Option<String>;
+    fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String>;
+    fn render_fake_cursor(
+        &mut self,
+        cursor_color: PaletteColor,
+        text_color: PaletteColor,
+    ) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height(&mut self, percent: f64);
     fn increase_height(&mut self, percent: f64);
@@ -266,7 +281,6 @@ pub trait Pane {
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
-    fn set_boundary_color(&mut self, _color: Option<PaletteColor>) {}
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position) {}
@@ -331,6 +345,9 @@ impl Tab {
             mode_info,
             colors,
             draw_pane_frames,
+            // at the moment this is hard-coded while the feature is being developed
+            // the only effect this has is to make sure the UI is drawn without additional information about other connected clients
+            session_is_mirrored: true,
             pending_vte_events: HashMap::new(),
             connected_clients,
         }
@@ -478,6 +495,8 @@ impl Tab {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.connected_clients.remove(&client_id);
+        self.active_panes.remove(&client_id);
+        self.set_force_render();
     }
     pub fn drain_connected_clients(&mut self) -> Vec<ClientId> {
         self.connected_clients.drain().collect()
@@ -552,11 +571,15 @@ impl Tab {
                 }
             }
         }
-        if client_id.is_some() {
-            // right now we administratively change focus of all clients until the
-            // mirroring/multiplayer situation is sorted out
-            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
-            for client_id in connected_clients {
+        if let Some(client_id) = client_id {
+            if self.session_is_mirrored {
+                // move all clients
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
+                for client_id in connected_clients {
+                    self.active_panes.insert(client_id, pid);
+                }
+            } else {
                 self.active_panes.insert(client_id, pid);
             }
         }
@@ -588,11 +611,14 @@ impl Tab {
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
 
-                // right now we administratively change focus of all clients until the
-                // mirroring/multiplayer situation is sorted out
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, pid);
+                    }
+                } else {
                     self.active_panes.insert(client_id, pid);
                 }
 
@@ -623,11 +649,14 @@ impl Tab {
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
-
-            // right now we administratively change focus of all clients until the
-            // mirroring/multiplayer situation is sorted out
-            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
-            for client_id in connected_clients {
+            if self.session_is_mirrored {
+                // move all clients
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
+                for client_id in connected_clients {
+                    self.active_panes.insert(client_id, pid);
+                }
+            } else {
                 self.active_panes.insert(client_id, pid);
             }
 
@@ -805,6 +834,10 @@ impl Tab {
                     };
                     active_terminal.get_geom_override(full_screen_geom);
                 }
+                let active_panes: Vec<ClientId> = self.active_panes.keys().copied().collect();
+                for client_id in active_panes {
+                    self.active_panes.insert(client_id, active_pane_id);
+                }
                 self.set_force_render();
                 self.resize_whole_tab(self.display_area);
                 self.toggle_fullscreen_is_active();
@@ -872,12 +905,10 @@ impl Tab {
             resize_pty!(pane, self.os_api);
         }
     }
-    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
-        if self.connected_clients.is_empty() || self.active_panes.is_empty() {
-            return;
-        }
+    fn update_active_panes_in_pty_thread(&self) {
+        // this is a bit hacky and we should ideally not keep this state in two different places at
+        // some point
         for connected_client in self.connected_clients.iter() {
-            // TODO: move this out of the render function
             self.senders
                 .send_to_pty(PtyInstruction::UpdateActivePane(
                     self.active_panes.get(connected_client).copied(),
@@ -885,8 +916,57 @@ impl Tab {
                 ))
                 .unwrap();
         }
+    }
+    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
+        if self.connected_clients.is_empty() || self.active_panes.is_empty() {
+            return;
+        }
+        self.update_active_panes_in_pty_thread();
         output.add_clients(&self.connected_clients);
-        let mut boundaries = Boundaries::new(self.viewport);
+        let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
+        self.hide_cursor_and_clear_display_as_needed(output);
+        // render panes and their frames
+        for pane in self.panes.values_mut() {
+            if !self.panes_to_hide.contains(&pane.pid()) {
+                let mut pane_contents_and_ui = PaneContentsAndUi::new(
+                    pane,
+                    output,
+                    self.colors,
+                    &self.active_panes,
+                    self.mode_info.mode,
+                );
+                pane_contents_and_ui.render_pane_contents_for_all_clients();
+                for client_id in self.connected_clients.iter() {
+                    if self.draw_pane_frames {
+                        pane_contents_and_ui
+                            .render_pane_frame(*client_id, self.session_is_mirrored);
+                    } else {
+                        let mut boundaries = client_id_to_boundaries
+                            .entry(*client_id)
+                            .or_insert_with(|| Boundaries::new(self.viewport));
+                        pane_contents_and_ui.render_pane_boundaries(
+                            *client_id,
+                            &mut boundaries,
+                            self.session_is_mirrored,
+                        );
+                    }
+                    // this is done for panes that don't have their own cursor (eg. panes of
+                    // another user)
+                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
+                }
+            }
+        }
+        // render boundaries if needed
+        for (client_id, boundaries) in client_id_to_boundaries.iter_mut() {
+            output.push_to_client(*client_id, &boundaries.vte_output());
+        }
+        // FIXME: Once clients can be distinguished
+        if let Some(overlay_vte) = &overlay {
+            output.push_str_to_all_clients(overlay_vte);
+        }
+        self.render_cursor(output);
+    }
+    fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
         output.push_str_to_all_clients(hide_cursor);
         if self.should_clear_display_before_rendering {
@@ -894,76 +974,27 @@ impl Tab {
             output.push_str_to_all_clients(clear_display);
             self.should_clear_display_before_rendering = false;
         }
-        let first_client_id = self.connected_clients.iter().next().unwrap(); // this is a temporary hack until we fix the ui for multiple clients
-        for (_kind, pane) in self.panes.iter_mut() {
-            if !self.panes_to_hide.contains(&pane.pid()) {
-                match self.active_panes.get(first_client_id).copied().unwrap() == pane.pid() {
-                    true => {
-                        pane.set_active_at(Instant::now());
-                        match self.mode_info.mode {
-                            InputMode::Normal | InputMode::Locked => {
-                                pane.set_boundary_color(Some(self.colors.green));
-                            }
-                            _ => {
-                                pane.set_boundary_color(Some(self.colors.orange));
-                            }
-                        }
-                        if !self.draw_pane_frames {
-                            boundaries.add_rect(
-                                pane.as_ref(),
-                                self.mode_info.mode,
-                                Some(self.colors),
-                            )
-                        }
-                    }
-                    false => {
-                        pane.set_boundary_color(None);
-                        if !self.draw_pane_frames {
-                            boundaries.add_rect(pane.as_ref(), self.mode_info.mode, None);
-                        }
-                    }
-                }
-
-                // FIXME: Once clients can be distinguished
-                if let Some(overlay_vte) = &overlay {
-                    output.push_str_to_all_clients(overlay_vte);
-                }
-
-                if let Some(vte_output) = pane.render() {
-                    // FIXME: Use Termion for cursor and style clearing?
-                    output.push_str_to_all_clients(&format!(
+    }
+    fn render_cursor(&self, output: &mut Output) {
+        for client_id in self.connected_clients.iter() {
+            match self.get_active_terminal_cursor_position(*client_id) {
+                Some((cursor_position_x, cursor_position_y)) => {
+                    let show_cursor = "\u{1b}[?25h";
+                    let change_cursor_shape =
+                        self.get_active_pane(*client_id).unwrap().cursor_shape_csi();
+                    let goto_cursor_position = &format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
-                        pane.y() + 1,
-                        pane.x() + 1,
-                        vte_output
-                    ));
+                        cursor_position_y + 1,
+                        cursor_position_x + 1,
+                        change_cursor_shape
+                    ); // goto row/col
+                    output.push_to_client(*client_id, show_cursor);
+                    output.push_to_client(*client_id, goto_cursor_position);
                 }
-            }
-        }
-
-        if !self.draw_pane_frames {
-            output.push_str_to_all_clients(&boundaries.vte_output());
-        }
-
-        match self.get_active_terminal_cursor_position(*first_client_id) {
-            Some((cursor_position_x, cursor_position_y)) => {
-                let show_cursor = "\u{1b}[?25h";
-                let change_cursor_shape = self
-                    .get_active_pane(*first_client_id)
-                    .unwrap()
-                    .cursor_shape_csi();
-                let goto_cursor_position = &format!(
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    cursor_position_y + 1,
-                    cursor_position_x + 1,
-                    change_cursor_shape
-                ); // goto row/col
-                output.push_str_to_all_clients(show_cursor);
-                output.push_str_to_all_clients(goto_cursor_position);
-            }
-            None => {
-                let hide_cursor = "\u{1b}[?25l";
-                output.push_str_to_all_clients(hide_cursor);
+                None => {
+                    let hide_cursor = "\u{1b}[?25l";
+                    output.push_to_client(*client_id, hide_cursor);
+                }
             }
         }
     }
@@ -2396,15 +2427,29 @@ impl Tab {
                         .panes
                         .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
+
                     previously_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    previously_active_pane.render_full_viewport();
+
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    next_active_pane.render_full_viewport();
 
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, p);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, p);
                     }
+
                     return true;
                 }
                 None => Some(active.pid()),
@@ -2454,8 +2499,14 @@ impl Tab {
                         .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    previously_active_pane.render_full_viewport();
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    next_active_pane.render_full_viewport();
 
                     Some(p)
                 }
@@ -2466,9 +2517,14 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, updated_active_pane);
+                    }
+                } else {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
             }
@@ -2504,8 +2560,14 @@ impl Tab {
                         .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    previously_active_pane.render_full_viewport();
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    next_active_pane.render_full_viewport();
 
                     Some(p)
                 }
@@ -2516,9 +2578,14 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, updated_active_pane);
+                    }
+                } else {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
             }
@@ -2555,12 +2622,23 @@ impl Tab {
                         .get_mut(self.active_panes.get(&client_id).unwrap())
                         .unwrap();
                     previously_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    previously_active_pane.render_full_viewport();
                     let next_active_pane = self.panes.get_mut(&p).unwrap();
                     next_active_pane.set_should_render(true);
+                    // we render the full viewport to remove any ui elements that might have been
+                    // there before (eg. another user's cursor)
+                    next_active_pane.render_full_viewport();
 
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, p);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, p);
                     }
                     return true;
@@ -2572,9 +2650,14 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, updated_active_pane);
+                    }
+                } else {
                     self.active_panes.insert(client_id, updated_active_pane);
                 }
             }
@@ -3179,7 +3262,7 @@ impl Tab {
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.fullscreen_is_active {
-            let first_client_id = self.connected_clients.iter().next().unwrap(); // this is a temporary hack until we fix the ui for multiple clients
+            let first_client_id = self.connected_clients.iter().next().unwrap(); // TODO: instead of doing this, record the pane that is in fullscreen
             return self.get_active_pane_id(*first_client_id);
         }
         if search_selectable {
@@ -3208,10 +3291,16 @@ impl Tab {
             pane.handle_right_click(&relative_position);
         };
     }
-    fn focus_pane_at(&mut self, point: &Position, _client_id: ClientId) {
+    fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
         if let Some(clicked_pane) = self.get_pane_id_at(point, true) {
-            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
-            for client_id in connected_clients {
+            if self.session_is_mirrored {
+                // move all clients
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
+                for client_id in connected_clients {
+                    self.active_panes.insert(client_id, clicked_pane);
+                }
+            } else {
                 self.active_panes.insert(client_id, clicked_pane);
             }
         }

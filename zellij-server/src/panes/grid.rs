@@ -448,6 +448,9 @@ impl Grid {
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
     }
+    pub fn update_line_for_rendering(&mut self, line_index: usize) {
+        self.output_buffer.update_line(line_index);
+    }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
         let mut next_tabstop = None;
         for tabstop in self.horizontal_tabstops.iter() {
@@ -1056,6 +1059,16 @@ impl Grid {
         }
         self.add_character_at_cursor_position(terminal_character);
         self.move_cursor_forward_until_edge(character_width);
+    }
+    pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
+        let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y);
+        self.viewport
+            .get(self.cursor.y)
+            .and_then(|current_line| current_line.columns.get(absolute_x_in_line))
+            .copied()
+    }
+    pub fn get_absolute_character_index(&self, x: usize, y: usize) -> usize {
+        self.viewport.get(y).unwrap().absolute_character_index(x)
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
         let count_to_move = std::cmp::min(count, self.width - (self.cursor.x));

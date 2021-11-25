@@ -7,6 +7,8 @@ use crate::panes::{
 };
 use crate::pty::VteBytes;
 use crate::tab::Pane;
+use crate::ClientId;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
@@ -20,7 +22,7 @@ use zellij_utils::{
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
-use crate::ui::pane_boundaries_frame::PaneFrame;
+use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -42,9 +44,9 @@ pub struct TerminalPane {
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
-    frame: Option<PaneFrame>,
-    frame_color: Option<PaletteColor>,
+    frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
 }
 
 impl Pane for TerminalPane {
@@ -172,9 +174,7 @@ impl Pane for TerminalPane {
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
         // diff as it usually does with the OutputBuffer
-        if self.frame.is_some() {
-            self.frame.replace(PaneFrame::default());
-        }
+        self.frame.clear();
         self.grid.render_full_viewport();
     }
     fn selectable(&self) -> bool {
@@ -187,20 +187,33 @@ impl Pane for TerminalPane {
         if self.should_render() {
             let mut vte_output = String::new();
             let mut character_styles = CharacterStyles::new();
+            let content_x = self.get_content_x();
+            let content_y = self.get_content_y();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
-                    let x = self.get_content_x();
-                    let y = self.get_content_y();
                     vte_output.push_str(&format!(
                         "\u{1b}[{};{}H\u{1b}[m",
-                        y + line_index + 1,
-                        x + 1
+                        content_y + line_index + 1,
+                        content_x + 1
                     )); // goto row/col and reset styles
                     for _col_index in 0..self.grid.width {
                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
                     }
                 }
                 self.grid.clear_viewport_before_rendering = false;
+            }
+            // here we clear the previous cursor locations by adding an empty style-less character
+            // in their location, this is done before the main rendering logic so that if there
+            // actually is another character there, it will be overwritten
+            for (y, x) in self.fake_cursor_locations.drain() {
+                // we need to make sure to update the line in the line buffer so that if there's
+                // another character there it'll override it and we won't create holes with our
+                // empty character
+                self.grid.update_line_for_rendering(y);
+                let x = content_x + x;
+                let y = content_y + y;
+                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + 1, x + 1));
+                vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
             }
             let max_width = self.get_content_columns();
             for character_chunk in self.grid.read_changes() {
@@ -244,29 +257,69 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
-            if let Some(last_frame) = &self.frame {
-                let frame = PaneFrame {
-                    geom: self.current_geom().into(),
-                    title: self
-                        .grid
-                        .title
-                        .clone()
-                        .unwrap_or_else(|| self.pane_title.clone()),
-                    scroll_position: self.grid.scrollback_position_and_length(),
-                    color: self.frame_color,
-                };
-                if &frame != last_frame {
-                    if !self.borderless {
-                        vte_output.push_str(&frame.render());
-                    }
-                    self.frame = Some(frame);
-                }
-            }
             self.set_should_render(false);
             Some(vte_output)
         } else {
             None
         }
+    }
+    fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String> {
+        // TODO: remove the cursor stuff from here
+        let mut vte_output = None;
+        let frame = PaneFrame::new(
+            self.current_geom().into(),
+            self.grid.scrollback_position_and_length(),
+            self.grid
+                .title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone()),
+            frame_params,
+        );
+        match self.frame.get(&client_id) {
+            // TODO: use and_then or something?
+            Some(last_frame) => {
+                if &frame != last_frame {
+                    if !self.borderless {
+                        vte_output = Some(frame.render());
+                    }
+                    self.frame.insert(client_id, frame);
+                }
+                vte_output
+            }
+            None => {
+                if !self.borderless {
+                    vte_output = Some(frame.render());
+                }
+                self.frame.insert(client_id, frame);
+                vte_output
+            }
+        }
+    }
+    fn render_fake_cursor(
+        &mut self,
+        cursor_color: PaletteColor,
+        text_color: PaletteColor,
+    ) -> Option<String> {
+        let mut vte_output = None;
+        if let Some((cursor_x, cursor_y)) = self.cursor_coordinates() {
+            let mut character_under_cursor = self
+                .grid
+                .get_character_under_cursor()
+                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+            character_under_cursor.styles.background = Some(cursor_color.into());
+            character_under_cursor.styles.foreground = Some(text_color.into());
+            // we keep track of these so that we can clear them up later (see render function)
+            self.fake_cursor_locations.insert((cursor_y, cursor_x));
+            let mut fake_cursor = format!(
+                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
+                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
+                self.get_content_x() + cursor_x + 1,
+                &character_under_cursor.styles,
+            );
+            fake_cursor.push(character_under_cursor.character);
+            vte_output = Some(fake_cursor);
+        }
+        vte_output
     }
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
@@ -384,12 +437,8 @@ impl Pane for TerminalPane {
         self.grid.get_selected_text()
     }
 
-    fn set_frame(&mut self, frame: bool) {
-        self.frame = if frame {
-            Some(PaneFrame::default())
-        } else {
-            None
-        };
+    fn set_frame(&mut self, _frame: bool) {
+        self.frame.clear();
     }
 
     fn set_content_offset(&mut self, offset: Offset) {
@@ -397,10 +446,6 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
 
-    fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
-        self.frame_color = color;
-        self.set_should_render(true);
-    }
     fn set_borderless(&mut self, borderless: bool) {
         self.borderless = borderless;
     }
@@ -423,8 +468,7 @@ impl TerminalPane {
             palette,
         );
         TerminalPane {
-            frame: None,
-            frame_color: None,
+            frame: HashMap::new(),
             content_offset: Offset::default(),
             pid,
             grid,
@@ -437,6 +481,7 @@ impl TerminalPane {
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
             borderless: false,
+            fake_cursor_locations: HashSet::new(),
         }
     }
     pub fn get_x(&self) -> usize {
