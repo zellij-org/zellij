@@ -11,7 +11,7 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
@@ -134,9 +134,15 @@ impl SessionState {
         }
     }
     pub fn new_client(&mut self) -> ClientId {
-        let mut clients: Vec<ClientId> = self.clients.keys().copied().collect();
-        clients.sort_unstable();
-        let next_client_id = clients.last().unwrap_or(&0) + 1;
+        let clients: HashSet<ClientId> = self.clients.keys().copied().collect();
+        let mut next_client_id = 1;
+        loop {
+            if clients.contains(&next_client_id) {
+                next_client_id += 1;
+            } else {
+                break;
+            }
+        };
         self.clients.insert(next_client_id, None);
         next_client_id
     }

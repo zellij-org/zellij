@@ -5,7 +5,8 @@ use std::unimplemented;
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ui::pane_boundaries_frame::PaneFrame;
+use crate::ClientId;
+use crate::ui::pane_boundaries_frame::{PaneFrame, FrameParams};
 use crate::wasm_vm::PluginInstruction;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::position::Position;
@@ -27,7 +28,6 @@ pub(crate) struct PluginPane {
     pub active_at: Instant,
     pub pane_title: String,
     frame: bool,
-    frame_color: Option<PaletteColor>,
     borderless: bool,
 }
 
@@ -47,7 +47,6 @@ impl PluginPane {
             send_plugin_instructions,
             active_at: Instant::now(),
             frame: false,
-            frame_color: None,
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
@@ -152,17 +151,6 @@ impl Pane for PluginPane {
 
             self.should_render = false;
             let contents = buf_rx.recv().unwrap();
-            // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
-            // will eventually need fixing!
-            if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
-                let frame = PaneFrame {
-                    geom: self.current_geom().into(),
-                    title: self.pane_title.clone(),
-                    color: self.frame_color,
-                    ..Default::default()
-                };
-                vte_output.push_str(&frame.render());
-            }
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
                 let line_to_print = if actual_len > self.get_content_columns() {
@@ -211,6 +199,24 @@ impl Pane for PluginPane {
         } else {
             None
         }
+    }
+    fn render_frame(&mut self, _client_id: ClientId, frame_params: FrameParams) -> Option<String> {
+        // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
+        // will eventually need fixing!
+        if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
+            let frame = PaneFrame::new(
+                self.current_geom().into(),
+                (0, 0), // scroll position
+                self.pane_title.clone(),
+                frame_params,
+            );
+            Some(frame.render())
+        } else {
+            None
+        }
+    }
+    fn render_fake_cursor(&mut self, _cursor_color: PaletteColor, _text_color: PaletteColor) -> Option<String> {
+        None
     }
     fn pid(&self) -> PaneId {
         PaneId::Plugin(self.pid)
@@ -316,10 +322,6 @@ impl Pane for PluginPane {
     }
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
-    }
-    fn set_boundary_color(&mut self, color: Option<PaletteColor>) {
-        self.frame_color = color;
-        self.set_should_render(true);
     }
     fn set_borderless(&mut self, borderless: bool) {
         self.borderless = borderless;

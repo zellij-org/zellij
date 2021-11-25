@@ -22,6 +22,7 @@ wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.21.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.21.0" }
 log = "0.4.14"
 typetag = "0.1.7"
 chrono = "0.4.19"

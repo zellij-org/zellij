@@ -2924,6 +2924,7 @@ dependencies = [
  "url",
  "wasmer",
  "wasmer-wasi",
+ "zellij-tile",
  "zellij-utils",
 ]
 
