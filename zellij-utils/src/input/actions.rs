@@ -105,6 +105,12 @@ pub enum Action {
     MouseRelease(Position),
     MouseHold(Position),
     Copy,
+    /// Confirm a prompt
+    Confirm,
+    /// Deny a prompt
+    Deny,
+    /// Confirm an action that invokes a prompt automatically
+    SkipConfirm(Box<Action>),
 }
 
 impl From<OnForceClose> for Action {

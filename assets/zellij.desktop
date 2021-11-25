@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Zellij
+Type=Application
+Comment=Manage Your Terminal Applications
+Terminal=true
+Exec=zellij
+Icon=zellij
+Categories=ConsoleOnly;System;
+GenericName=Terminal Multiplexer

@@ -12,6 +12,7 @@ use crate::{
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::{Output, Tab},
     thread_bus::Bus,
+    ui::overlay::{Overlay, OverlayWindow, Overlayable},
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
@@ -24,7 +25,7 @@ use zellij_utils::{
 
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
-pub(crate) enum ScreenInstruction {
+pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
@@ -84,6 +85,10 @@ pub(crate) enum ScreenInstruction {
     Copy(ClientId),
     AddClient(ClientId),
     RemoveClient(ClientId),
+    AddOverlay(Overlay, ClientId),
+    RemoveOverlay(ClientId),
+    ConfirmPrompt(ClientId),
+    DenyPrompt(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -154,6 +159,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
+            ScreenInstruction::AddOverlay(..) => ScreenContext::AddOverlay,
+            ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
+            ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
+            ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
         }
     }
 }
@@ -169,6 +178,8 @@ pub(crate) struct Screen {
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
     size: Size,
+    /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
+    overlay: OverlayWindow,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
@@ -193,6 +204,7 @@ impl Screen {
             colors: client_attributes.palette,
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
+            overlay: OverlayWindow::default(),
             tab_history: BTreeMap::new(),
             mode_info,
             draw_pane_frames,
@@ -347,9 +359,12 @@ impl Screen {
     pub fn render(&mut self) {
         let mut output = Output::default();
         let mut tabs_to_close = vec![];
+        let size = self.size;
+        let overlay = self.overlay.clone();
         for (tab_index, tab) in self.tabs.iter_mut() {
             if tab.has_active_panes() {
-                tab.render(&mut output);
+                let vte_overlay = overlay.generate_overlay(size);
+                tab.render(&mut output, Some(vte_overlay));
             } else {
                 tabs_to_close.push(*tab_index);
             }
@@ -391,6 +406,11 @@ impl Screen {
             Some(tab) => self.tabs.get_mut(tab),
             None => None,
         }
+    }
+
+    /// Returns a mutable reference to this [`Screen`]'s active [`Overlays`].
+    pub fn get_active_overlays_mut(&mut self) -> &mut Vec<Overlay> {
+        &mut self.overlay.overlay_stack
     }
 
     /// Returns a mutable reference to this [`Screen`]'s indexed [`Tab`].
@@ -1087,6 +1107,45 @@ pub(crate) fn screen_thread_main(
                 screen.remove_client(client_id);
 
                 screen.render();
+            }
+            ScreenInstruction::AddOverlay(overlay, _client_id) => {
+                screen.get_active_overlays_mut().pop();
+                screen.get_active_overlays_mut().push(overlay);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            ScreenInstruction::RemoveOverlay(_client_id) => {
+                screen.get_active_overlays_mut().pop();
+                screen.render();
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            ScreenInstruction::ConfirmPrompt(_client_id) => {
+                let overlay = screen.get_active_overlays_mut().pop();
+                let instruction = overlay.map(|o| o.prompt_confirm()).flatten();
+                if let Some(instruction) = instruction {
+                    screen.bus.senders.send_to_server(*instruction).unwrap();
+                }
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            ScreenInstruction::DenyPrompt(_client_id) => {
+                screen.get_active_overlays_mut().pop();
+                screen.render();
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
             }
         }
     }

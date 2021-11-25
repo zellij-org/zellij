@@ -26,6 +26,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     bold: Some(AnsiCode::Reset),
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
+    link_anchor: Some(LinkAnchor::End),
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,6 +127,7 @@ pub struct CharacterStyles {
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
+    pub link_anchor: Option<LinkAnchor>,
 }
 
 impl Default for CharacterStyles {
@@ -142,6 +144,7 @@ impl Default for CharacterStyles {
             bold: None,
             dim: None,
             italic: None,
+            link_anchor: None,
         }
     }
 }
@@ -194,6 +197,10 @@ impl CharacterStyles {
         self.strike = strike_code;
         self
     }
+    pub fn link_anchor(mut self, link_anchor: Option<LinkAnchor>) -> Self {
+        self.link_anchor = link_anchor;
+        self
+    }
     pub fn clear(&mut self) {
         self.foreground = None;
         self.background = None;
@@ -206,6 +213,7 @@ impl CharacterStyles {
         self.bold = None;
         self.dim = None;
         self.italic = None;
+        self.link_anchor = None;
     }
     pub fn update_and_return_diff(
         &mut self,
@@ -256,6 +264,9 @@ impl CharacterStyles {
         }
         if self.italic != new_styles.italic {
             diff.italic = new_styles.italic;
+        }
+        if self.link_anchor != new_styles.link_anchor {
+            diff.link_anchor = new_styles.link_anchor;
         }
 
         // apply new styles
@@ -570,6 +581,12 @@ impl Display for CharacterStyles {
         };
         Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LinkAnchor {
+    Start(u16),
+    End,
 }
 
 #[derive(Clone, Copy, Debug)]

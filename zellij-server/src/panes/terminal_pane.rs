@@ -253,7 +253,10 @@ impl Pane for TerminalPane {
                         .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
                     {
                         vte_output.push_str(&new_styles.to_string());
+                        vte_output
+                            .push_str(&self.grid.link_handler.output_osc8(new_styles.link_anchor))
                     }
+
                     vte_output.push(t_character.character);
                 }
                 character_styles.clear();

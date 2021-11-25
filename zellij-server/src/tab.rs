@@ -916,7 +916,7 @@ impl Tab {
                 .unwrap();
         }
     }
-    pub fn render(&mut self, output: &mut Output) {
+    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
         if self.connected_clients.is_empty() || self.active_panes.is_empty() {
             return;
         }
@@ -951,6 +951,10 @@ impl Tab {
         // render boundaries if needed
         for (client_id, boundaries) in client_id_to_boundaries.iter_mut() {
             output.push_to_client(*client_id, &boundaries.vte_output());
+        }
+        // FIXME: Once clients can be distinguished
+        if let Some(overlay_vte) = &overlay {
+            output.push_str_to_all_clients(overlay_vte);
         }
         self.render_cursor(output);
     }
