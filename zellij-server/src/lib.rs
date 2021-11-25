@@ -142,7 +142,7 @@ impl SessionState {
             } else {
                 break;
             }
-        };
+        }
         self.clients.insert(next_client_id, None);
         next_client_id
     }

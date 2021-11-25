@@ -1,12 +1,11 @@
+use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
-use std::convert::From;
 
 use zellij_utils::vte::ParamsIter;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
 use zellij_tile::data::{Palette, PaletteColor};
-
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
@@ -41,12 +40,8 @@ pub enum AnsiCode {
 impl From<PaletteColor> for AnsiCode {
     fn from(palette_color: PaletteColor) -> Self {
         match palette_color {
-            PaletteColor::Rgb((r, g, b)) => {
-                AnsiCode::RgbCode((r, g, b))
-            },
-            PaletteColor::EightBit(index) => {
-                AnsiCode::ColorIndex(index)
-            }
+            PaletteColor::Rgb((r, g, b)) => AnsiCode::RgbCode((r, g, b)),
+            PaletteColor::EightBit(index) => AnsiCode::ColorIndex(index),
         }
     }
 }

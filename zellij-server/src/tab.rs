@@ -3,16 +3,16 @@
 
 use zellij_utils::{position::Position, serde, zellij_tile};
 
-use crate::ui::pane_resizer::PaneResizer;
 use crate::ui::pane_boundaries_frame::FrameParams;
+use crate::ui::pane_resizer::PaneResizer;
 
 use crate::{
-    ui::pane_contents_and_ui::PaneContentsAndUi,
     os_input_output::ServerOsApi,
     panes::{PaneId, PluginPane, TerminalPane},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
+    ui::pane_contents_and_ui::PaneContentsAndUi,
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
@@ -181,7 +181,11 @@ pub trait Pane {
     fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self) -> Option<String>;
     fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String>;
-    fn render_fake_cursor(&mut self, cursor_color: PaletteColor, text_color: PaletteColor) -> Option<String>;
+    fn render_fake_cursor(
+        &mut self,
+        cursor_color: PaletteColor,
+        text_color: PaletteColor,
+    ) -> Option<String>;
     fn pid(&self) -> PaneId;
     fn reduce_height(&mut self, percent: f64);
     fn increase_height(&mut self, percent: f64);
@@ -832,10 +836,7 @@ impl Tab {
                 }
                 let active_panes: Vec<ClientId> = self.active_panes.keys().copied().collect();
                 for client_id in active_panes {
-                    self.active_panes.insert(
-                        client_id,
-                        active_pane_id
-                    );
+                    self.active_panes.insert(client_id, active_pane_id);
                 }
                 self.set_force_render();
                 self.resize_whole_tab(self.display_area);
@@ -907,7 +908,7 @@ impl Tab {
     fn update_active_panes_in_pty_thread(&self) {
         // this is a bit hacky and we should ideally not keep this state in two different places at
         // some point
-        for connected_client in self.connected_clients.iter() { 
+        for connected_client in self.connected_clients.iter() {
             self.senders
                 .send_to_pty(PtyInstruction::UpdateActivePane(
                     self.active_panes.get(connected_client).copied(),
@@ -932,15 +933,22 @@ impl Tab {
                     output,
                     self.colors,
                     &self.active_panes,
-                    self.mode_info.mode
+                    self.mode_info.mode,
                 );
                 pane_contents_and_ui.render_pane_contents_for_all_clients();
                 for client_id in self.connected_clients.iter() {
                     if self.draw_pane_frames {
-                        pane_contents_and_ui.render_pane_frame(*client_id, self.session_is_mirrored);
+                        pane_contents_and_ui
+                            .render_pane_frame(*client_id, self.session_is_mirrored);
                     } else {
-                        let mut boundaries = client_id_to_boundaries.entry(*client_id).or_insert(Boundaries::new(self.viewport));
-                        pane_contents_and_ui.render_pane_boundaries(*client_id, &mut boundaries, self.session_is_mirrored);
+                        let mut boundaries = client_id_to_boundaries
+                            .entry(*client_id)
+                            .or_insert(Boundaries::new(self.viewport));
+                        pane_contents_and_ui.render_pane_boundaries(
+                            *client_id,
+                            &mut boundaries,
+                            self.session_is_mirrored,
+                        );
                     }
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
@@ -972,10 +980,8 @@ impl Tab {
             match self.get_active_terminal_cursor_position(*client_id) {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let show_cursor = "\u{1b}[?25h";
-                    let change_cursor_shape = self
-                        .get_active_pane(*client_id)
-                        .unwrap()
-                        .cursor_shape_csi();
+                    let change_cursor_shape =
+                        self.get_active_pane(*client_id).unwrap().cursor_shape_csi();
                     let goto_cursor_position = &format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         cursor_position_y + 1,

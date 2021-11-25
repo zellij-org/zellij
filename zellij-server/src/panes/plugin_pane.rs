@@ -5,9 +5,9 @@ use std::unimplemented;
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ClientId;
-use crate::ui::pane_boundaries_frame::{PaneFrame, FrameParams};
+use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 use crate::wasm_vm::PluginInstruction;
+use crate::ClientId;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::position::Position;
 use zellij_utils::shared::ansi_len;
@@ -215,7 +215,11 @@ impl Pane for PluginPane {
             None
         }
     }
-    fn render_fake_cursor(&mut self, _cursor_color: PaletteColor, _text_color: PaletteColor) -> Option<String> {
+    fn render_fake_cursor(
+        &mut self,
+        _cursor_color: PaletteColor,
+        _text_color: PaletteColor,
+    ) -> Option<String> {
         None
     }
     fn pid(&self) -> PaneId {

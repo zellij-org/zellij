@@ -22,7 +22,7 @@ use zellij_utils::{
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
-use crate::ui::pane_boundaries_frame::{PaneFrame, FrameParams};
+use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -212,11 +212,7 @@ impl Pane for TerminalPane {
                 self.grid.update_line_for_rendering(y);
                 let x = content_x + x;
                 let y = content_y + y;
-                vte_output.push_str(&format!(
-                    "\u{1b}[{};{}H\u{1b}[m",
-                    y + 1,
-                    x + 1
-                ));
+                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + 1, x + 1));
                 vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
             }
             let max_width = self.get_content_columns();
@@ -273,10 +269,14 @@ impl Pane for TerminalPane {
         let frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
-            self.grid.title.clone().unwrap_or_else(|| self.pane_title.clone()),
+            self.grid
+                .title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone()),
             frame_params,
         );
-        match self.frame.get(&client_id) { // TODO: use and_then or something?
+        match self.frame.get(&client_id) {
+            // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
                     if !self.borderless {
@@ -285,7 +285,7 @@ impl Pane for TerminalPane {
                     self.frame.insert(client_id, frame);
                 }
                 vte_output
-            },
+            }
             None => {
                 if !self.borderless {
                     vte_output = Some(frame.render());
@@ -295,16 +295,23 @@ impl Pane for TerminalPane {
             }
         }
     }
-    fn render_fake_cursor(&mut self, cursor_color: PaletteColor, text_color: PaletteColor) -> Option<String> {
+    fn render_fake_cursor(
+        &mut self,
+        cursor_color: PaletteColor,
+        text_color: PaletteColor,
+    ) -> Option<String> {
         let mut vte_output = None;
         if let Some((cursor_x, cursor_y)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self.grid.get_character_under_cursor().unwrap_or(EMPTY_TERMINAL_CHARACTER);
+            let mut character_under_cursor = self
+                .grid
+                .get_character_under_cursor()
+                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
             character_under_cursor.styles.background = Some(cursor_color.into());
             character_under_cursor.styles.foreground = Some(text_color.into());
             // we keep track of these so that we can clear them up later (see render function)
             self.fake_cursor_locations.insert((cursor_y, cursor_x));
             let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}", // goto row column and clear styles
+                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
                 self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
                 self.get_content_x() + cursor_x + 1,
                 &character_under_cursor.styles,
