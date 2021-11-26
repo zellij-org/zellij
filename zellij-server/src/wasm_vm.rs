@@ -1,10 +1,3 @@
-use crate::{
-    logging_pipe::LoggingPipe,
-    panes::PaneId,
-    pty::{ClientOrTabIndex, PtyInstruction},
-    screen::ScreenInstruction,
-    thread_bus::{Bus, ThreadSenders},
-};
 use highway::{HighwayHash, PortableHash};
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
@@ -25,8 +18,17 @@ use wasmer::{
 };
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
 use zellij_tile::data::{Event, EventType, PluginIds};
+
+use crate::{
+    logging_pipe::LoggingPipe,
+    panes::PaneId,
+    pty::{ClientOrTabIndex, PtyInstruction},
+    screen::ScreenInstruction,
+    thread_bus::{Bus, ThreadSenders},
+};
+
 use zellij_utils::{
-    consts::{ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
@@ -262,6 +264,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_unsubscribe,
         host_set_selectable,
         host_get_plugin_ids,
+        host_get_zellij_version,
         host_open_file,
         host_switch_tab_to,
         host_set_timeout,
@@ -309,6 +312,10 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
         zellij_pid: process::id(),
     };
     wasi_write_object(&plugin_env.wasi_env, &ids);
+}
+
+fn host_get_zellij_version(plugin_env: &PluginEnv) {
+    wasi_write_string(&plugin_env.wasi_env, VERSION);
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {

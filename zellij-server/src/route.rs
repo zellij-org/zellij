@@ -335,6 +335,28 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::Copy(client_id))
                 .unwrap();
         }
+        Action::Confirm => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ConfirmPrompt(client_id))
+                .unwrap();
+        }
+        Action::Deny => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::DenyPrompt(client_id))
+                .unwrap();
+        }
+        #[allow(clippy::single_match)]
+        Action::SkipConfirm(action) => match *action {
+            Action::Quit => {
+                to_server
+                    .send(ServerInstruction::ClientExit(client_id))
+                    .unwrap();
+                should_break = true;
+            }
+            _ => {}
+        },
         Action::NoOp => {}
     }
     should_break

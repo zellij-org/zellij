@@ -112,7 +112,7 @@ impl ZellijPlugin for State {
             }
             len_cnt += bar_part.len;
         }
-        match self.mode_info.palette.cyan {
+        match self.mode_info.palette.gray {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
             }

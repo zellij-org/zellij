@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-expression: first_runner_snapshot
+expression: second_runner_snapshot
 
 ---
  Zellij (mirrored_sessions)  Tab #1  Tab #2                                                                         

@@ -11,12 +11,13 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
@@ -48,11 +49,11 @@ use zellij_utils::{
     setup::get_default_data_dir,
 };
 
-pub(crate) type ClientId = u16;
+pub type ClientId = u16;
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
-pub(crate) enum ServerInstruction {
+pub enum ServerInstruction {
     NewClient(
         ClientAttributes,
         Box<CliArgs>,
@@ -133,9 +134,15 @@ impl SessionState {
         }
     }
     pub fn new_client(&mut self) -> ClientId {
-        let mut clients: Vec<ClientId> = self.clients.keys().copied().collect();
-        clients.sort_unstable();
-        let next_client_id = clients.last().unwrap_or(&0) + 1;
+        let clients: HashSet<ClientId> = self.clients.keys().copied().collect();
+        let mut next_client_id = 1;
+        loop {
+            if clients.contains(&next_client_id) {
+                next_client_id += 1;
+            } else {
+                break;
+            }
+        }
         self.clients.insert(next_client_id, None);
         next_client_id
     }
@@ -186,7 +193,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .start()
         .expect("could not daemonize the server process");
 
-    std::env::set_var(&"ZELLIJ", "0");
+    envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -522,7 +529,7 @@ fn init_session(
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
     let capabilities = PluginCapabilities {
-        arrow_fonts: config_options.simplified_ui,
+        arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
     };
 
     let default_shell = config_options.default_shell.clone().map(|command| {

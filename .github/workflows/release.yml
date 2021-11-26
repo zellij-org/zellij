@@ -91,7 +91,7 @@ jobs:
           tar cvzf "${name}" "zellij"
           echo "::set-output name=name::${name}"
       - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

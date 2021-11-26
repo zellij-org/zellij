@@ -46,11 +46,22 @@ version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
 ## Running the end-to-end tests
-Zellij includes some end to end tests which test the whole application as a black-box from the outside.
+Zellij includes some end-to-end tests which test the whole application as a black-box from the outside.
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
+
+<details>
+<summary>Should you be a macOS (including m1) user, please follow these commands before. (expand here):</summary>
+
+1. `rustup target add x86_64-unknown-linux-musl`
+2. `brew install messense/macos-cross-toolchains/x86_64-unknown-linux-musl`
+3. `export CC_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-gcc`
+4. `export AR_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-ar`
+5. `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC_x86_64_unknown_linux_musl`
+</details>
 
 To run these tests locally, you'll need to have both `docker` and `docker-compose` installed.
 Once you do, in the repository root:
+
 1. `docker-compose up -d` will start up the docker container
 2. `cargo make build-e2e` will build the generic linux executable of Zellij in the target folder, which is shared with the container
 3. `cargo make e2e-test` will run the tests

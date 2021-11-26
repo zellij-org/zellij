@@ -1,6 +1,7 @@
 pub mod channels;
 pub mod cli;
 pub mod consts;
+pub mod envs;
 pub mod errors;
 pub mod input;
 pub mod ipc;

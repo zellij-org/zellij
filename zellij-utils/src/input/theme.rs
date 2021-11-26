@@ -63,6 +63,14 @@ impl ThemesFromYaml {
             .get_theme(theme)
             .map(|t| Palette::from(t.palette))
     }
+
+    /// Merges two Theme structs into one Theme struct
+    /// `other` overrides the Theme of `self`.
+    pub fn merge(&self, other: Self) -> Self {
+        let mut theme = self.0.clone();
+        theme.extend(other.0);
+        Self(theme)
+    }
 }
 
 impl From<PaletteFromYaml> for Palette {

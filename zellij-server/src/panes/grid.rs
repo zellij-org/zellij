@@ -18,12 +18,12 @@ use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::link_handler::LinkHandler;
+use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-
-use super::selection::Selection;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -106,7 +106,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     viewport: &mut Vec<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> usize {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
     loop {
@@ -137,6 +137,10 @@ fn transfer_rows_from_lines_above_to_viewport(
         let excess_row = Row::from_rows(next_lines, 0);
         bounded_push(lines_above, excess_row);
     }
+    match usize::try_from(lines_added_to_viewport) {
+        Ok(n) => n,
+        _ => 0,
+    }
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
@@ -144,12 +148,15 @@ fn transfer_rows_from_viewport_to_lines_above(
     lines_above: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> isize {
     let mut next_lines: Vec<Row> = vec![];
+    let mut transferred_rows_count: isize = 0;
     for _ in 0..count {
         if next_lines.is_empty() {
             if !viewport.is_empty() {
                 let next_line = viewport.remove(0);
+                transferred_rows_count +=
+                    calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
                 if !next_line.is_canonical {
                     let mut bottom_canonical_row_and_wraps_in_dst =
                         get_lines_above_bottom_canonical_row_and_wraps(lines_above);
@@ -161,7 +168,11 @@ fn transfer_rows_from_viewport_to_lines_above(
                 break; // no more rows
             }
         }
-        bounded_push(lines_above, next_lines.remove(0));
+        let dropped_line_width = bounded_push(lines_above, next_lines.remove(0));
+        if let Some(width) = dropped_line_width {
+            transferred_rows_count -=
+                calculate_row_display_height(width, max_viewport_width) as isize;
+        }
     }
     if !next_lines.is_empty() {
         let excess_rows = Row::from_rows(next_lines, max_viewport_width)
@@ -170,6 +181,7 @@ fn transfer_rows_from_viewport_to_lines_above(
             viewport.insert(0, row);
         }
     }
+    transferred_rows_count
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
@@ -212,11 +224,16 @@ fn transfer_rows_from_lines_below_to_viewport(
     }
 }
 
-fn bounded_push(vec: &mut VecDeque<Row>, value: Row) {
+fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
+    let mut dropped_line_width = None;
     if vec.len() >= SCROLL_BACK {
-        vec.pop_front();
+        let line = vec.pop_front();
+        if let Some(line) = line {
+            dropped_line_width = Some(line.width());
+        }
     }
-    vec.push_back(value)
+    vec.push_back(value);
+    dropped_line_width
 }
 
 pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
@@ -230,6 +247,21 @@ pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
         i += TABSTOP_WIDTH;
     }
     horizontal_tabstops
+}
+
+fn calculate_row_display_height(row_width: usize, viewport_width: usize) -> usize {
+    if row_width <= viewport_width {
+        return 1;
+    }
+    (row_width as f64 / viewport_width as f64).ceil() as usize
+}
+
+fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
+    if i.is_negative() {
+        u - i.abs() as usize
+    } else {
+        u + i as usize
+    }
 }
 
 #[derive(Debug)]
@@ -362,6 +394,8 @@ pub struct Grid {
     pub selection: Selection,
     pub title: Option<String>,
     pub is_scrolled: bool,
+    pub link_handler: LinkHandler,
+    scrollback_buffer_lines: usize,
 }
 
 impl Debug for Grid {
@@ -407,10 +441,15 @@ impl Grid {
             title: None,
             changed_colors: None,
             is_scrolled: false,
+            link_handler: Default::default(),
+            scrollback_buffer_lines: 0,
         }
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
+    }
+    pub fn update_line_for_rendering(&mut self, line_index: usize) {
+        self.output_buffer.update_line(line_index);
     }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
         let mut next_tabstop = None;
@@ -453,23 +492,28 @@ impl Grid {
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
     }
-    pub fn scrollback_position_and_length(&self) -> (usize, usize) {
+    pub fn scrollback_position_and_length(&mut self) -> (usize, usize) {
         // (position, length)
+        (
+            self.lines_below.len(),
+            (self.scrollback_buffer_lines + self.lines_below.len()),
+        )
+    }
+
+    fn recalculate_scrollback_buffer_count(&self) -> usize {
         let mut scrollback_buffer_count = 0;
         for row in self.lines_above.iter() {
             let row_width = row.width();
             // rows in lines_above are unwrapped, so we need to account for that
             if row_width > self.width {
-                scrollback_buffer_count += (row_width as f64 / self.width as f64).ceil() as usize;
+                scrollback_buffer_count += calculate_row_display_height(row_width, self.width);
             } else {
                 scrollback_buffer_count += 1;
             }
         }
-        (
-            self.lines_below.len(),
-            (scrollback_buffer_count + self.lines_below.len()),
-        )
+        scrollback_buffer_count
     }
+
     fn set_horizontal_tabstop(&mut self) {
         self.horizontal_tabstops.insert(self.cursor.x);
     }
@@ -543,12 +587,15 @@ impl Grid {
             let line_to_push_down = self.viewport.pop().unwrap();
             self.lines_below.insert(0, line_to_push_down);
 
-            transfer_rows_from_lines_above_to_viewport(
+            let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
                 1,
                 self.width,
             );
+            self.scrollback_buffer_lines = self
+                .scrollback_buffer_lines
+                .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
         }
@@ -557,12 +604,25 @@ impl Grid {
     pub fn scroll_down_one_line(&mut self) {
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
-            if line_to_push_up.is_canonical {
-                bounded_push(&mut self.lines_above, line_to_push_up);
+
+            self.scrollback_buffer_lines +=
+                calculate_row_display_height(line_to_push_up.width(), self.width);
+
+            let line_to_push_up = if line_to_push_up.is_canonical {
+                line_to_push_up
             } else {
                 let mut last_line_above = self.lines_above.pop_back().unwrap();
                 last_line_above.append(&mut line_to_push_up.columns);
-                bounded_push(&mut self.lines_above, last_line_above);
+                last_line_above
+            };
+
+            let dropped_line_width = bounded_push(&mut self.lines_above, line_to_push_up);
+            if let Some(width) = dropped_line_width {
+                let dropped_line_height = calculate_row_display_height(width, self.width);
+
+                self.scrollback_buffer_lines = self
+                    .scrollback_buffer_lines
+                    .saturating_sub(dropped_line_height);
             }
 
             transfer_rows_from_lines_below_to_viewport(
@@ -753,6 +813,7 @@ impl Grid {
         if self.scroll_region.is_some() {
             self.set_scroll_region_to_viewport_size();
         }
+        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -846,12 +907,16 @@ impl Grid {
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
         let row_count_to_transfer = self.viewport.len();
-        transfer_rows_from_viewport_to_lines_above(
+        let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
             row_count_to_transfer,
             self.width,
         );
+
+        self.scrollback_buffer_lines =
+            subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+
         for _ in 0..self.height {
             let columns = VecDeque::from(vec![character; self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
@@ -893,12 +958,15 @@ impl Grid {
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
                 let row_count_to_transfer = 1;
-                transfer_rows_from_viewport_to_lines_above(
+                let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
                     self.width,
                 );
+                self.scrollback_buffer_lines =
+                    subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+
                 self.selection.move_up(1);
             }
             self.output_buffer.update_all_lines();
@@ -968,12 +1036,14 @@ impl Grid {
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
                 let row_count_to_transfer = 1;
-                transfer_rows_from_viewport_to_lines_above(
+                let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
                     &mut self.viewport,
                     &mut self.lines_above,
                     row_count_to_transfer,
                     self.width,
                 );
+                self.scrollback_buffer_lines =
+                    subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
                 let wrapped_row = Row::new(self.width);
                 self.viewport.push(wrapped_row);
                 self.selection.move_up(1);
@@ -989,6 +1059,16 @@ impl Grid {
         }
         self.add_character_at_cursor_position(terminal_character);
         self.move_cursor_forward_until_edge(character_width);
+    }
+    pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
+        let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y);
+        self.viewport
+            .get(self.cursor.y)
+            .and_then(|current_line| current_line.columns.get(absolute_x_in_line))
+            .copied()
+    }
+    pub fn get_absolute_character_index(&self, x: usize, y: usize) -> usize {
+        self.viewport.get(y).unwrap().absolute_character_index(x)
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
         let count_to_move = std::cmp::min(count, self.width - (self.cursor.x));
@@ -1264,6 +1344,7 @@ impl Grid {
         self.cursor.change_shape(CursorShape::Initial);
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
+        self.scrollback_buffer_lines = 0;
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -1481,6 +1562,14 @@ impl Perform for Grid {
                         return;
                     }
                 }
+            }
+
+            // define hyperlink
+            b"8" => {
+                if params.len() < 3 {
+                    return;
+                }
+                self.cursor.pending_styles.link_anchor = self.link_handler.dispatch_osc8(params);
             }
 
             // Get/set Foreground, Background, Cursor colors.
@@ -1846,10 +1935,13 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'E' {
+            // Moves cursor to beginning of the line n (default 1) lines down.
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(count, pad_character);
+            self.move_cursor_to_beginning_of_line();
         } else if c == 'F' {
+            // Moves cursor to beginning of the line n (default 1) lines up.
             let count = next_param_or(1);
             self.move_cursor_up(count);
             self.move_cursor_to_beginning_of_line();

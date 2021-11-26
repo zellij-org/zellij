@@ -85,6 +85,9 @@ pub enum InputMode {
     /// `Move` mode allows moving the different existing panes within a tab
     #[serde(alias = "move")]
     Move,
+    /// `Prompt` mode allows interacting with active prompts.
+    #[serde(alias = "prompt")]
+    Prompt,
 }
 
 impl Default for InputMode {
@@ -129,6 +132,7 @@ impl FromStr for InputMode {
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),
+            "prompt" => Ok(InputMode::Prompt),
             e => Err(e.to_string().into()),
         }
     }
@@ -159,6 +163,7 @@ pub struct Palette {
     pub cyan: PaletteColor,
     pub white: PaletteColor,
     pub orange: PaletteColor,
+    pub gray: PaletteColor,
 }
 
 /// Represents the contents of the help message that is printed in the status bar,

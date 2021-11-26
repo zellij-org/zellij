@@ -1,8 +1,10 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
+use suggestion::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
+    envs,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
@@ -66,7 +68,7 @@ fn assert_socket(name: &str) -> bool {
 }
 
 pub(crate) fn print_sessions(sessions: Vec<String>) {
-    let curr_session = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
+    let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     sessions.iter().for_each(|session| {
         let suffix = if curr_session == *session {
             " (current)"
@@ -78,7 +80,7 @@ pub(crate) fn print_sessions(sessions: Vec<String>) {
 }
 
 pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
-    let curr_session = std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| "".into());
+    let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     for (i, session) in sessions.iter().enumerate() {
         let suffix = if curr_session == *session {
             " (current)"
@@ -148,9 +150,19 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 
 pub(crate) fn assert_session(name: &str) {
     match session_exists(name) {
-        Ok(result) if result => return,
-        Ok(_) => println!("No session named {:?} found.", name),
-        Err(e) => eprintln!("Error occurred: {:?}", e),
+        Ok(result) => {
+            if result {
+                return;
+            } else {
+                println!("No session named {:?} found.", name);
+                if let Some(sugg) = get_sessions().unwrap().suggest(name) {
+                    println!("  help: Did you mean `{}`?", sugg);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error occurred: {:?}", e);
+        }
     };
     process::exit(1);
 }

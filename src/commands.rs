@@ -176,7 +176,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     })) = opts.command.clone()
     {
         let config_options = match options {
-            Some(SessionCommand::Options(o)) => config_options.merge(o),
+            Some(SessionCommand::Options(o)) => config_options.merge_from_cli(o.into()),
             None => config_options,
         };
 
