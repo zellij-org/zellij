@@ -29,7 +29,7 @@ pub fn get_plugin_ids() -> PluginIds {
 
 pub fn get_zellij_version() -> String {
     unsafe { host_get_zellij_version() };
-    string_from_stdin()
+    object_from_stdin().unwrap()
 }
 
 // Host Functions
@@ -52,13 +52,6 @@ pub fn exec_cmd(cmd: &[&str]) {
 }
 
 // Internal Functions
-
-#[doc(hidden)]
-pub fn string_from_stdin() -> String {
-    let mut buffer = String::new();
-    io::stdin().read_line(&mut buffer).unwrap();
-    buffer.trim().to_string()
-}
 
 #[doc(hidden)]
 pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
