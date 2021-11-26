@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: support osc8 escape code (https://github.com/zellij-org/zellij/pull/822)
 * Add: optionally leave ephemeral modes by pressing the `esc` key to default config (https://github.com/zellij-org/zellij/pull/889)
 * Feature: Multiple users UI for panes behind a turned-off feature flag (https://github.com/zellij-org/zellij/pull/897)
+* Add: plugin api, to provide version information to plugins (https://github.com/zellij-org/zellij/pull/894)
 
 
 ## [0.20.1] - 2021-11-10
