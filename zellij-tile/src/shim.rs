@@ -27,6 +27,11 @@ pub fn get_plugin_ids() -> PluginIds {
     object_from_stdin().unwrap()
 }
 
+pub fn get_zellij_version() -> String {
+    unsafe { host_get_zellij_version() };
+    object_from_stdin().unwrap()
+}
+
 // Host Functions
 
 pub fn open_file(path: &Path) {
@@ -66,6 +71,7 @@ extern "C" {
     fn host_unsubscribe();
     fn host_set_selectable(selectable: i32);
     fn host_get_plugin_ids();
+    fn host_get_zellij_version();
     fn host_open_file();
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
