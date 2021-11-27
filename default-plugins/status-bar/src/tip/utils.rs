@@ -1,79 +1,68 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::tip::{
-    cache::{Cache, CacheError, CACHE_FILE_PATH},
-    data::TIPS,
-};
-use rand::{seq::SliceRandom, thread_rng};
+use rand::prelude::{IteratorRandom, SliceRandom};
 
-pub fn get_random_tip_name() -> &'static str {
-    let mut shuffled_tips: Vec<&str> = TIPS.keys().cloned().collect();
-    shuffled_tips.shuffle(&mut thread_rng());
+use zellij_tile::prelude::get_zellij_version;
 
-    // It is assumed that there is at least one TIP data in the TIPS HasMap.
-    shuffled_tips.first().cloned().unwrap()
+use super::cache::LocalCache;
+use super::consts::{DEFAULT_CACHE_FILE_PATH, MAX_CACHE_HITS};
+use super::data::TIPS;
+
+macro_rules! get_name_and_caching {
+    ($cache:expr) => {{
+        let name = get_random_tip_name();
+        $cache.caching(name.clone()).unwrap();
+        return name;
+    }};
+    ($cache:expr, $from:expr) => {{
+        let name = $from.choose(&mut rand::thread_rng()).unwrap().to_string();
+        $cache.caching(name.clone()).unwrap();
+        return name;
+    }};
+}
+
+pub fn get_random_tip_name() -> String {
+    TIPS.keys()
+        .choose(&mut rand::thread_rng())
+        .unwrap()
+        .to_string()
 }
 
 pub fn get_cached_tip_name() -> String {
-    let path = PathBuf::from(CACHE_FILE_PATH);
-    if !path.exists() {
-        let mut cache = Cache::new(path);
-        let tip_name = get_random_tip_name();
+    let mut local_cache = LocalCache::new(PathBuf::from(DEFAULT_CACHE_FILE_PATH)).unwrap();
 
-        cache.add_and_get_mut(tip_name).one_hit();
-        cache.save().unwrap();
-
-        return tip_name.to_string();
+    let zellij_version = get_zellij_version();
+    if zellij_version.ne(local_cache.get_version()) {
+        local_cache.set_version(zellij_version);
+        local_cache.clear().unwrap();
     }
 
-    match Cache::load(path.clone()) {
-        Ok(mut cache) => {
-            let name = match cache.get_highest_hitted_name() {
-                Some(name) => {
-                    cache.get_mut(name.as_str()).unwrap().one_hit();
-                    name
-                }
-                None => {
-                    let cached_tips: HashSet<String> = HashSet::from_iter(cache.get_tip_names());
-                    let mut difference: Vec<&str> = TIPS
-                        .keys()
-                        .cloned()
-                        .filter(|name| !cached_tips.contains(&name.to_string()))
-                        .collect();
-                    difference.shuffle(&mut thread_rng());
+    if local_cache.is_empty() {
+        get_name_and_caching!(local_cache);
+    }
 
-                    let tip_name = match difference.len() {
-                        len if len > 0 => {
-                            let tip_name = difference.first().cloned().unwrap();
-                            cache.add_and_get_mut(tip_name).one_hit();
-                            tip_name
-                        }
-                        _ => {
-                            let tip_name = get_random_tip_name();
-                            cache.clear_data();
-                            cache.add_and_get_mut(tip_name).one_hit();
-                            tip_name
-                        }
-                    };
+    let usable_tips = local_cache
+        .get_cached_data()
+        .iter()
+        .filter(|(_, &v)| v < MAX_CACHE_HITS)
+        .map(|(k, _)| k.to_string())
+        .collect::<Vec<String>>();
 
-                    tip_name.to_string()
-                }
-            };
+    if usable_tips.is_empty() {
+        let cached_set = local_cache.get_cached_data_set();
+        let diff = TIPS
+            .keys()
+            .cloned()
+            .filter(|k| !cached_set.contains(&k.to_string()))
+            .collect::<Vec<&str>>();
 
-            cache.save().unwrap();
-            name
+        if diff.len() > 0 {
+            get_name_and_caching!(local_cache, diff);
+        } else {
+            local_cache.clear().unwrap();
+            get_name_and_caching!(local_cache);
         }
-        Err(CacheError::Serde(_)) => {
-            // The cache file exists, but it's empty or corrupted.
-            let mut cache = Cache::new(path);
-            let tip_name = get_random_tip_name();
-
-            cache.add_and_get_mut(tip_name).one_hit();
-            cache.save().unwrap();
-
-            tip_name.to_string()
-        }
-        Err(_) => get_random_tip_name().to_string(),
+    } else {
+        get_name_and_caching!(local_cache, usable_tips);
     }
 }

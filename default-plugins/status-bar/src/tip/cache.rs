@@ -1,105 +1,106 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Error as SerdeError;
 
-pub const CACHE_FILE_PATH: &str = "/tmp/cache.json";
-pub const MAX_CACHED_COUNT: usize = 10;
-
-#[derive(Debug)]
-pub struct Cache {
-    pub path: PathBuf,
-    pub data: Vec<CachedTip>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
-pub struct CachedTip {
-    name: String,
-    hitted: usize,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Metadata {
+    zellij_version: String,
+    cached_data: HashMap<String, usize>,
 }
 
 #[derive(Debug)]
-pub enum CacheError {
-    Io(std::io::Error),
-    Serde(SerdeError),
+pub struct LocalCache {
+    path: PathBuf,
+    metadata: Metadata,
 }
 
-impl Cache {
-    pub fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            data: Vec::new(),
+pub type LocalCacheResult = Result<LocalCache, LocalCacheError>;
+
+#[derive(Debug)]
+pub enum LocalCacheError {
+    Io(io::Error),
+    IoPath(io::Error),
+    Serde(serde_json::Error),
+}
+
+impl LocalCache {
+    fn from_json(json_cache: &str) -> Result<Metadata, LocalCacheError> {
+        match serde_json::from_str::<Metadata>(json_cache) {
+            Ok(metadata) => Ok(metadata),
+            Err(err) => {
+                if json_cache.is_empty() {
+                    return Ok(Metadata {
+                        zellij_version: zellij_tile::shim::get_zellij_version(),
+                        cached_data: HashMap::new(),
+                    });
+                }
+                Err(LocalCacheError::Serde(err))
+            }
         }
     }
 
-    pub fn load(path: PathBuf) -> Result<Self, CacheError> {
-        let file = match File::open(path.as_path()) {
-            Ok(file) => file,
-            Err(err) => return Err(CacheError::Io(err)),
-        };
-        let reader = BufReader::new(file);
+    pub fn new(path: PathBuf) -> LocalCacheResult {
+        match File::create(path.as_path()) {
+            Ok(mut file) => {
+                let mut json_cache = String::new();
+                file.read_to_string(&mut json_cache)
+                    .map_err(|e| LocalCacheError::Io(e))?;
 
-        let data: Vec<CachedTip> = match serde_json::from_reader(reader) {
-            Ok(data) => data,
-            Err(err) => return Err(CacheError::Serde(err)),
-        };
-
-        Ok(Self { path, data })
-    }
-
-    pub fn save(&self) -> Result<(), CacheError> {
-        let file = match File::create(self.path.as_path()) {
-            Ok(file) => file,
-            Err(err) => return Err(CacheError::Io(err)),
-        };
-        let writer = BufWriter::new(file);
-
-        serde_json::to_writer_pretty(writer, &self.data).unwrap();
-        Ok(())
-    }
-
-    pub fn add(&mut self, name: &str) -> () {
-        self.data.push(CachedTip::new(name))
-    }
-
-    pub fn add_and_get_mut(&mut self, name: &str) -> &mut CachedTip {
-        self.add(name);
-        self.data.last_mut().unwrap()
-    }
-
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut CachedTip> {
-        self.data.iter_mut().find(|tip| tip.name == name)
-    }
-
-    pub fn get_highest_hitted_name(&self) -> Option<String> {
-        self.data
-            .iter()
-            .cloned()
-            .filter(|tip| tip.hitted < MAX_CACHED_COUNT)
-            .max_by_key(|tip| tip.hitted)
-            .map(|tip| tip.name)
-    }
-
-    pub fn get_tip_names(&self) -> Vec<String> {
-        self.data.iter().map(|tip| tip.name.clone()).collect()
-    }
-
-    pub fn clear_data(&mut self) -> () {
-        self.data.clear();
-    }
-}
-
-impl CachedTip {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            hitted: 0,
+                let metadata = LocalCache::from_json(&json_cache)?;
+                Ok(LocalCache { path, metadata })
+            }
+            Err(e) => Err(LocalCacheError::IoPath(e)),
         }
     }
 
-    pub fn one_hit(&mut self) -> () {
-        self.hitted += 1;
+    pub fn flush(&mut self) -> Result<(), LocalCacheError> {
+        match serde_json::to_string(&self.metadata) {
+            Ok(json_cache) => {
+                let mut file =
+                    File::create(self.path.as_path()).map_err(|e| LocalCacheError::IoPath(e))?;
+                file.write_all(json_cache.as_bytes())
+                    .map_err(|e| LocalCacheError::Io(e))?;
+                Ok({})
+            }
+            Err(e) => Err(LocalCacheError::Serde(e)),
+        }
+    }
+
+    pub fn clear(&mut self) -> Result<(), LocalCacheError> {
+        self.metadata.cached_data.clear();
+        self.flush()
+    }
+
+    pub fn get_version(&self) -> &String {
+        &self.metadata.zellij_version
+    }
+
+    pub fn set_version<S: Into<String>>(&mut self, version: S) {
+        self.metadata.zellij_version = version.into();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.metadata.cached_data.is_empty()
+    }
+
+    pub fn get_cached_data(&self) -> &HashMap<String, usize> {
+        &self.metadata.cached_data
+    }
+
+    pub fn get_cached_data_set(&self) -> HashSet<String> {
+        self.get_cached_data().keys().cloned().collect()
+    }
+
+    pub fn caching<S: Into<String>>(&mut self, key: S) -> Result<(), LocalCacheError> {
+        let key = key.into();
+        if let Some(item) = self.metadata.cached_data.get_mut(&key) {
+            *item += 1;
+        } else {
+            self.metadata.cached_data.insert(key, 1);
+        }
+        self.flush()
     }
 }
