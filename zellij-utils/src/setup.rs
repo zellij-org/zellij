@@ -392,8 +392,7 @@ mod setup_test {
     use super::Setup;
     use crate::input::{
         config::{Config, ConfigError},
-        keybinds::Keybinds,
-        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
+        layout::LayoutFromYamlIntermediate,
         options::Options,
     };
 
