@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use zellij_tile::prelude::get_zellij_version;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Metadata {
@@ -33,7 +35,7 @@ impl LocalCache {
             Err(err) => {
                 if json_cache.is_empty() {
                     return Ok(Metadata {
-                        zellij_version: zellij_tile::shim::get_zellij_version(),
+                        zellij_version: get_zellij_version(),
                         cached_data: HashMap::new(),
                     });
                 }
@@ -43,7 +45,11 @@ impl LocalCache {
     }
 
     pub fn new(path: PathBuf) -> LocalCacheResult {
-        match File::create(path.as_path()) {
+        match OpenOptions::new()
+            .read(true)
+            .create(true)
+            .open(path.as_path())
+        {
             Ok(mut file) => {
                 let mut json_cache = String::new();
                 file.read_to_string(&mut json_cache)
