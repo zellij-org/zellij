@@ -29,6 +29,8 @@ pub fn get_plugin_ids() -> PluginIds {
 
 pub fn get_zellij_version() -> String {
     unsafe { host_get_zellij_version() };
+
+    // FIXME: mismatch JSON format.
     object_from_stdin().unwrap()
 }
 
