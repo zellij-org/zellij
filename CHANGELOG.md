@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.21.0] - 2021-11-29
 * Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
 * Add: initial `zellij.desktop` file (https://github.com/zellij-org/zellij/pull/870)
 * Add: section for third party repositiories `THIRD_PARTY_INSTALL.md` (https://github.com/zellij-org/zellij/pull/857)
