@@ -91,6 +91,15 @@ pub enum ClientInfo {
     New(String),
 }
 
+impl ClientInfo {
+    pub fn get_session_name(&self) -> String {
+        match self {
+            Self::Attach(name, _) => name.clone(),
+            Self::New(name) => name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(termion::event::Event, Vec<u8>),

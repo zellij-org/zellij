@@ -16,6 +16,7 @@ use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
+    envs,
     setup::{get_default_data_dir, Setup},
 };
 
@@ -130,7 +131,7 @@ fn attach_with_session_name(
     config_options: Options,
     create: bool,
 ) -> ClientInfo {
-    match session_name.as_ref() {
+    let info = match session_name.as_ref() {
         Some(session) if create => {
             if !session_exists(session).unwrap() {
                 ClientInfo::New(session_name.unwrap())
@@ -155,7 +156,14 @@ fn attach_with_session_name(
                 process::exit(1);
             }
         },
+    };
+    if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
+        if val == info.get_session_name() {
+            eprintln!("You are trying to attach to the current session(\"{}\"). Zellij does not support nesting a session in itself", val);
+            process::exit(1);
+        }
     }
+    info
 }
 
 pub(crate) fn start_client(opts: CliArgs) {
