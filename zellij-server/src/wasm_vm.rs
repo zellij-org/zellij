@@ -313,7 +313,7 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
 }
 
 fn host_get_zellij_version(plugin_env: &PluginEnv) {
-    wasi_write_string(&plugin_env.wasi_env, format!("{:?}", VERSION).as_str());
+    wasi_write_object(&plugin_env.wasi_env, &VERSION.to_string());
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {
