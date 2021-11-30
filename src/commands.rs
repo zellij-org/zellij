@@ -131,7 +131,7 @@ fn attach_with_session_name(
     config_options: Options,
     create: bool,
 ) -> ClientInfo {
-    let info = match session_name.as_ref() {
+    match session_name.as_ref() {
         Some(session) if create => {
             if !session_exists(session).unwrap() {
                 ClientInfo::New(session_name.unwrap())
@@ -156,14 +156,7 @@ fn attach_with_session_name(
                 process::exit(1);
             }
         },
-    };
-    if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
-        if val == info.get_session_name() {
-            eprintln!("You are trying to attach to the current session(\"{}\"). Zellij does not support nesting a session in itself", val);
-            process::exit(1);
-        }
     }
-    info
 }
 
 pub(crate) fn start_client(opts: CliArgs) {
@@ -193,6 +186,13 @@ pub(crate) fn start_client(opts: CliArgs) {
         } else {
             attach_with_session_name(session_name, config_options.clone(), create)
         };
+
+        if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
+            if val == *client.get_session_name() {
+                eprintln!("You are trying to attach to the current session(\"{}\"). Zellij does not support nesting a session in itself", val);
+                process::exit(1);
+            }
+        }
 
         let attach_layout = match client {
             ClientInfo::Attach(_, _) => None,

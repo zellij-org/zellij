@@ -92,10 +92,10 @@ pub enum ClientInfo {
 }
 
 impl ClientInfo {
-    pub fn get_session_name(&self) -> String {
+    pub fn get_session_name(&self) -> &str {
         match self {
-            Self::Attach(name, _) => name.clone(),
-            Self::New(name) => name.clone(),
+            Self::Attach(ref name, _) => name,
+            Self::New(ref name) => name,
         }
     }
 }
