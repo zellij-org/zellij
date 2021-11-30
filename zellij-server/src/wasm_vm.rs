@@ -313,7 +313,7 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
 }
 
 fn host_get_zellij_version(plugin_env: &PluginEnv) {
-    wasi_write_string(&plugin_env.wasi_env, VERSION);
+    wasi_write_object(&plugin_env.wasi_env, VERSION);
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {
@@ -397,7 +397,7 @@ pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
     writeln!(wasi_file, "{}\r", buf).unwrap();
 }
 
-pub fn wasi_write_object(wasi_env: &WasiEnv, object: &impl Serialize) {
+pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) {
     wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
 }
 
