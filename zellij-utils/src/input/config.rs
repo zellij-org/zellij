@@ -155,11 +155,10 @@ impl Config {
     /// Merges two Config structs into one Config struct
     /// `other` overrides `self`.
     pub fn merge(&self, other: Self) -> Self {
-        //let themes = if let Some()
         Self {
             keybinds: self.keybinds.merge_keybinds(other.keybinds),
             options: self.options.merge(other.options),
-            themes: None,
+            themes: self.themes.clone(), // TODO
             plugins: self.plugins.merge(other.plugins),
         }
     }
