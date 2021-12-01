@@ -75,8 +75,8 @@ If you are new contributor to `Zellij` going through
 [Discord server][discord-invite-link], we would be happy to help finding
 something interesting to work on and guide through.
 
-[discord-invite-link]: https://discord.gg/feHDHahHCz [good-first-issue]:
-https://github.com/zellij-org/zellij/labels/good%20first%20issue
+[discord-invite-link]: https://discord.gg/feHDHahHCz 
+[good-first-issue]: https://github.com/zellij-org/zellij/labels/good%20first%20issue
 
 ## Filing Issues
 
