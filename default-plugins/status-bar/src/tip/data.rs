@@ -7,8 +7,22 @@ use ansi_term::{
 };
 use lazy_static::lazy_static;
 
-use crate::{palette_match, strings, tip::TipBody, LinePart};
+use crate::{tip::TipBody, LinePart};
 use zellij_tile::prelude::*;
+use zellij_tile_utils::palette_match;
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString<'static>] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 lazy_static! {
     pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([
