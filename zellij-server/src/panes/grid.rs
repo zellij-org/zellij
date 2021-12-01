@@ -940,7 +940,7 @@ impl Grid {
                     // the state is corrupted
                     return;
                 }
-                if scroll_region_bottom == self.height -1 && scroll_region_top == 0 {
+                if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
                     let row_count_to_transfer = 1;
                     let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
@@ -948,12 +948,13 @@ impl Grid {
                         row_count_to_transfer,
                         self.width,
                     );
-                    self.scrollback_buffer_lines =
-                        subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+                    self.scrollback_buffer_lines = subtract_isize_from_usize(
+                        self.scrollback_buffer_lines,
+                        transferred_rows_count,
+                    );
                     let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                     self.viewport.push(Row::from_columns(columns).canonical());
                     self.selection.move_up(1);
-                    self.output_buffer.update_all_lines();
                 } else {
                     self.viewport.remove(scroll_region_top);
                     let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
@@ -963,8 +964,8 @@ impl Grid {
                     } else {
                         self.viewport.push(Row::from_columns(columns).canonical());
                     }
-                    self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
                 }
+                self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
                 return;
             }
         }
