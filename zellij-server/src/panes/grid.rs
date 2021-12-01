@@ -374,6 +374,10 @@ pub struct Grid {
     alternative_lines_above_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
     cursor: Cursor,
     saved_cursor_position: Option<Cursor>,
+    // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
+    // line of the viewport and the bottom line the last unless it's changed with CSI r and friends
+    // Having it as an Option causes lots of complexity and issues, and according to DECSTBM, this
+    // should be the behaviour anyway
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
@@ -936,15 +940,31 @@ impl Grid {
                     // the state is corrupted
                     return;
                 }
-                self.viewport.remove(scroll_region_top);
-                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
-                if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
-                } else {
+                if scroll_region_bottom == self.height -1 && scroll_region_top == 0 {
+                    let row_count_to_transfer = 1;
+                    let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
+                        &mut self.viewport,
+                        &mut self.lines_above,
+                        row_count_to_transfer,
+                        self.width,
+                    );
+                    self.scrollback_buffer_lines =
+                        subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                     self.viewport.push(Row::from_columns(columns).canonical());
+                    self.selection.move_up(1);
+                    self.output_buffer.update_all_lines();
+                } else {
+                    self.viewport.remove(scroll_region_top);
+                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+                    if self.viewport.len() >= scroll_region_bottom {
+                        self.viewport
+                            .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                    } else {
+                        self.viewport.push(Row::from_columns(columns).canonical());
+                    }
+                    self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
                 }
-                self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
                 return;
             }
         }
@@ -1226,6 +1246,7 @@ impl Grid {
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
         let bottom_line_index = bottom_line_index.unwrap_or(self.height);
         self.scroll_region = Some((top_line_index, bottom_line_index));
+        self.move_cursor_to(0, 0, EMPTY_TERMINAL_CHARACTER); // DECSTBM moves the cursor to column 1 line 1 of the page
     }
     pub fn clear_scroll_region(&mut self) {
         self.scroll_region = None;

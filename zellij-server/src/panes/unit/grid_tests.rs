@@ -1022,3 +1022,23 @@ pub fn insert_wide_characters_in_existing_line() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+pub fn full_screen_scroll_region_and_scroll_up() {
+    // this test is a regression test for a bug
+    // where the scroll region would be set to the
+    // full viewport and then scrolling up would cause
+    // lines to get deleted from the viewport rather
+    // than moving to "lines_above"
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(54, 80, Palette::default());
+    let fixture_name = "scroll_region_full_screen";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.scroll_up_one_line();
+    grid.scroll_up_one_line();
+    grid.scroll_up_one_line();
+    assert_snapshot!(format!("{:?}", grid));
+}
