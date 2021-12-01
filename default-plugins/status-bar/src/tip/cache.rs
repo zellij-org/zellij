@@ -4,6 +4,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use zellij_tile::prelude::get_zellij_version;
 
@@ -21,11 +22,17 @@ pub struct LocalCache {
 
 pub type LocalCacheResult = Result<LocalCache, LocalCacheError>;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum LocalCacheError {
-    Io(io::Error),
-    IoPath(io::Error),
-    Serde(serde_json::Error),
+    // Io error
+    #[error("IoError: {0}")]
+    Io(#[from] io::Error),
+    // Io error with path context
+    #[error("IoError: {0}, File: {1}")]
+    IoPath(io::Error, PathBuf),
+    // Deserialization error
+    #[error("Deserialization error: {0}")]
+    Serde(#[from] serde_json::Error),
 }
 
 impl LocalCache {
@@ -58,18 +65,18 @@ impl LocalCache {
                 let metadata = LocalCache::from_json(&json_cache)?;
                 Ok(LocalCache { path, metadata })
             }
-            Err(e) => Err(LocalCacheError::IoPath(e)),
+            Err(e) => Err(LocalCacheError::IoPath(e, path)),
         }
     }
 
     pub fn flush(&mut self) -> Result<(), LocalCacheError> {
         match serde_json::to_string(&self.metadata) {
             Ok(json_cache) => {
-                let mut file =
-                    File::create(self.path.as_path()).map_err(|e| LocalCacheError::IoPath(e))?;
+                let mut file = File::create(self.path.as_path())
+                    .map_err(|e| LocalCacheError::IoPath(e, self.path.clone()))?;
                 file.write_all(json_cache.as_bytes())
                     .map_err(|e| LocalCacheError::Io(e))?;
-                Ok({})
+                Ok(())
             }
             Err(e) => Err(LocalCacheError::Serde(e)),
         }

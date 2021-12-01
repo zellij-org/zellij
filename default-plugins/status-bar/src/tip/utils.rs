@@ -56,7 +56,7 @@ pub fn get_cached_tip_name() -> String {
             .filter(|k| !cached_set.contains(&k.to_string()))
             .collect::<Vec<&str>>();
 
-        if diff.len() > 0 {
+        if !diff.is_empty() {
             get_name_and_caching!(local_cache, diff);
         } else {
             local_cache.clear().unwrap();

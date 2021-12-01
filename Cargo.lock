@@ -2086,6 +2086,7 @@ dependencies = [
  "rand 0.8.4",
  "serde",
  "serde_json",
+ "thiserror",
  "zellij-tile",
  "zellij-tile-utils",
 ]
