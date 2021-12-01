@@ -60,7 +60,7 @@ impl LocalCache {
             Ok(mut file) => {
                 let mut json_cache = String::new();
                 file.read_to_string(&mut json_cache)
-                    .map_err(|e| LocalCacheError::Io(e))?;
+                    .map_err(LocalCacheError::Io)?;
 
                 let metadata = LocalCache::from_json(&json_cache)?;
                 Ok(LocalCache { path, metadata })
@@ -75,7 +75,7 @@ impl LocalCache {
                 let mut file = File::create(self.path.as_path())
                     .map_err(|e| LocalCacheError::IoPath(e, self.path.clone()))?;
                 file.write_all(json_cache.as_bytes())
-                    .map_err(|e| LocalCacheError::Io(e))?;
+                    .map_err(LocalCacheError::Io)?;
                 Ok(())
             }
             Err(e) => Err(LocalCacheError::Serde(e)),
