@@ -25,25 +25,14 @@ macro_rules! strings {
 }
 
 lazy_static! {
-    pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([
-        (
-            "quicknav",
-            TipBody {
-                short: quicknav_short,
-                medium: quicknav_medium,
-                full: quicknav_full,
-            }
-        ),
-        // This tip will have deleted before merge.
-        (
-            "test",
-            TipBody {
-                short: test_tip,
-                medium: test_tip,
-                full: test_tip,
-            }
-        )
-    ]);
+    pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([(
+        "quicknav",
+        TipBody {
+            short: quicknav_short,
+            medium: quicknav_medium,
+            full: quicknav_full,
+        }
+    )]);
 }
 
 fn quicknav_full(palette: Palette) -> LinePart {
@@ -108,8 +97,4 @@ fn quicknav_short(palette: Palette) -> LinePart {
         Style::new().paint("/"),
         Style::new().fg(green_color).bold().paint("+-"),
     ])
-}
-
-fn test_tip(_: Palette) -> LinePart {
-    strings!(&[Style::new().paint(" This is Test Tip :)")])
 }
