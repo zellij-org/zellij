@@ -946,7 +946,7 @@ impl Tab {
                             .or_insert_with(|| Boundaries::new(self.viewport));
                         pane_contents_and_ui.render_pane_boundaries(
                             *client_id,
-                            &mut boundaries,
+                            boundaries,
                             self.session_is_mirrored,
                         );
                     }

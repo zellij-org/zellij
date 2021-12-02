@@ -44,17 +44,9 @@ impl Overlayable for OverlayType {
 /// Entrypoint from [`Screen`], which holds the context in which
 /// the overlays are being rendered.
 /// The most recent overlays draw over the previous overlays.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct OverlayWindow {
     pub overlay_stack: Vec<Overlay>,
-}
-
-impl Default for OverlayWindow {
-    fn default() -> Self {
-        Self {
-            overlay_stack: vec![],
-        }
-    }
 }
 
 impl Overlayable for OverlayWindow {
