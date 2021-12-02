@@ -95,6 +95,14 @@ pub(crate) fn stdin_loop(
                     pasting = false;
                 }
                 None => {
+                    let starts_with_bracketed_paste_start = stdin_buffer
+                        .iter()
+                        .take(bracketed_paste_start.len())
+                        .eq(bracketed_paste_start.iter());
+                    if starts_with_bracketed_paste_start {
+                        drop(stdin_buffer.drain(..6)); // bracketed paste start
+                    }
+
                     send_input_instructions
                         .send(InputInstruction::PastedText((true, stdin_buffer, false)))
                         .unwrap();
