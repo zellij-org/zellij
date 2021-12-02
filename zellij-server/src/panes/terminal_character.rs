@@ -109,7 +109,7 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -123,25 +123,6 @@ pub struct CharacterStyles {
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
-}
-
-impl Default for CharacterStyles {
-    fn default() -> Self {
-        Self {
-            foreground: None,
-            background: None,
-            strike: None,
-            hidden: None,
-            reverse: None,
-            slow_blink: None,
-            fast_blink: None,
-            underline: None,
-            bold: None,
-            dim: None,
-            italic: None,
-            link_anchor: None,
-        }
-    }
 }
 
 impl CharacterStyles {
