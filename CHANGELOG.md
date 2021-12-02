@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: add `gray` to theme section (https://github.com/zellij-org/zellij/pull/914)
 * Fix: prevent zellij session from attaching to itself (https://github.com/zellij-org/zellij/pull/911)
 * Terminal compatibility: fix flaky scrolling issue (https://github.com/zellij-org/zellij/pull/915)
+* Fix: handle pasted text properly in windows terminal (https://github.com/zellij-org/zellij/pull/917)
 
 ## [0.21.0] - 2021-11-29
 * Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
