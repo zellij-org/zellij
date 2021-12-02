@@ -162,7 +162,7 @@ pub struct LayoutFromYamlIntermediate {
 
 // The struct that is used to deserialize the layout from
 // a yaml configuration file
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(crate = "self::serde")]
 #[serde(default)]
 pub struct LayoutFromYaml {
@@ -771,17 +771,6 @@ impl Default for LayoutTemplate {
             }],
             split_size: None,
             run: None,
-        }
-    }
-}
-
-impl Default for LayoutFromYaml {
-    fn default() -> Self {
-        Self {
-            session: SessionFromYaml::default(),
-            template: LayoutTemplate::default(),
-            borderless: false,
-            tabs: vec![],
         }
     }
 }
