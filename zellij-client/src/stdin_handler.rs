@@ -104,7 +104,7 @@ pub(crate) fn stdin_loop(
                     }
 
                     send_input_instructions
-                        .send(InputInstruction::PastedText((true, stdin_buffer, false)))
+                        .send(InputInstruction::PastedText((starts_with_bracketed_paste_start, stdin_buffer, false)))
                         .unwrap();
                     pasting = true;
                     continue;
