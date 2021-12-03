@@ -11,10 +11,8 @@ pub fn active_tab(text: String, palette: Palette, separator: &str) -> LinePart {
         .bold()
         .paint(format!(" {} ", text));
     let right_separator = style!(palette.green, palette.gray).paint(separator);
-    let tab_styled_text = format!(
-        "{}",
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
-    );
+    let tab_styled_text =
+        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string();
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,
@@ -28,10 +26,8 @@ pub fn non_active_tab(text: String, palette: Palette, separator: &str) -> LinePa
         .bold()
         .paint(format!(" {} ", text));
     let right_separator = style!(palette.fg, palette.gray).paint(separator);
-    let tab_styled_text = format!(
-        "{}",
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator,])
-    );
+    let tab_styled_text =
+        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string();
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,

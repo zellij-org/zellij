@@ -93,7 +93,7 @@ fn selected_mode_shortcut(
 ) -> LinePart {
     let prefix_separator = palette.selected_prefix_separator.paint(separator);
     let char_left_separator = palette.selected_char_left_separator.paint(" <".to_string());
-    let char_shortcut = palette.selected_char_shortcut.paint(format!("{}", letter));
+    let char_shortcut = palette.selected_char_shortcut.paint(letter.to_string());
     let char_right_separator = palette.selected_char_right_separator.paint(">".to_string());
     let styled_text = palette.selected_styled_text.paint(format!("{} ", text));
     let suffix_separator = palette.selected_suffix_separator.paint(separator);

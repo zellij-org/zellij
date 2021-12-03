@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn dispatch_osc8_link_end() {
         let mut link_handler = LinkHandler::default();
-        let params = vec!["8".as_bytes(), &[], &[]];
+        let params: Vec<&[_]> = vec![b"8", b"", b""];
 
         let anchor = link_handler.dispatch_osc8(&params);
 

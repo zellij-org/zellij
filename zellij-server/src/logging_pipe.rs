@@ -147,7 +147,7 @@ mod logging_pipe_test {
     fn write_without_endl_does_not_consume_buffer_after_flush() {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
 
-        let test_buffer = "Testing write".as_bytes();
+        let test_buffer = b"Testing write";
 
         pipe.write_all(test_buffer).expect("Err write");
         pipe.flush().expect("Err flush");
@@ -159,7 +159,7 @@ mod logging_pipe_test {
     fn write_with_single_endl_at_the_end_consumes_whole_buffer_after_flush() {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
 
-        let test_buffer = "Testing write \n".as_bytes();
+        let test_buffer = b"Testing write \n";
 
         pipe.write_all(test_buffer).expect("Err write");
         pipe.flush().expect("Err flush");
@@ -171,8 +171,8 @@ mod logging_pipe_test {
     fn write_with_endl_in_the_middle_consumes_buffer_up_to_endl_after_flush() {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
 
-        let test_buffer = "Testing write \n".as_bytes();
-        let test_buffer2 = "And the rest".as_bytes();
+        let test_buffer = b"Testing write \n";
+        let test_buffer2: &[_] = b"And the rest";
 
         pipe.write_all(
             [
@@ -195,7 +195,7 @@ mod logging_pipe_test {
     fn write_with_many_endl_consumes_whole_buffer_after_flush() {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
 
-        let test_buffer = "Testing write \n".as_bytes();
+        let test_buffer: &[_] = b"Testing write \n";
 
         pipe.write_all(
             [
@@ -235,7 +235,7 @@ mod logging_pipe_test {
     #[test]
     fn write_with_many_endls_consumes_everything_after_flush() {
         let mut pipe = LoggingPipe::new("TestPipe", 0);
-        let test_buffer = "Testing write \n".as_bytes();
+        let test_buffer: &[_] = b"Testing write \n";
 
         pipe.write_all(
             [test_buffer, test_buffer, b"\n", b"\n", b"\n"]

@@ -149,7 +149,7 @@ impl Config {
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        Self::from_yaml(cfg.as_str())
+        Self::from_yaml(&cfg)
     }
 
     /// Merges two Config structs into one Config struct

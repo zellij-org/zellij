@@ -3,6 +3,8 @@ use zellij_utils::pane_size::Size;
 use super::{Overlay, OverlayType, Overlayable};
 use crate::{ClientId, ServerInstruction};
 
+use std::fmt::Write;
+
 #[derive(Clone, Debug)]
 pub struct Prompt {
     pub message: String,
@@ -37,7 +39,14 @@ impl Overlayable for Prompt {
         let mut vte_output = self.message.clone();
         Overlay::pad_cols(&mut vte_output, size.cols);
         for (x, h) in vte_output.chars().enumerate() {
-            output.push_str(&format!("\u{1b}[{};{}H\u{1b}[48;5;238m{}", rows, x + 1, h,));
+            write!(
+                &mut output,
+                "\u{1b}[{};{}H\u{1b}[48;5;238m{}",
+                rows,
+                x + 1,
+                h,
+            )
+            .unwrap();
         }
         output
     }

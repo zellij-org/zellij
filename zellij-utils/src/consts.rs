@@ -47,8 +47,7 @@ lazy_static! {
         sock_dir.push(envs::get_session_name().unwrap());
         sock_dir
     };
-    pub static ref ZELLIJ_TMP_DIR: PathBuf =
-        PathBuf::from("/tmp/zellij-".to_string() + &format!("{}", *UID));
+    pub static ref ZELLIJ_TMP_DIR: PathBuf = PathBuf::from(format!("/tmp/zellij-{}", *UID));
     pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
     pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
 }

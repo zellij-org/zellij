@@ -12,7 +12,9 @@ use crate::{
 };
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, io::Write, path::Path, path::PathBuf, process};
+use std::{
+    convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
+};
 use structopt::StructOpt;
 
 const CONFIG_LOCATION: &str = ".config/zellij";
@@ -47,7 +49,7 @@ fn default_config_dirs() -> Vec<Option<PathBuf>> {
 /// Looks for an existing dir, uses that, else returns a
 /// dir matching the config spec.
 pub fn get_default_data_dir() -> PathBuf {
-    vec![
+    [
         xdg_data_dir(),
         Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij"),
     ]
@@ -300,9 +302,9 @@ impl Setup {
 
         let mut message = String::new();
 
-        message.push_str(&format!("[Version]: {:?}\n", VERSION));
+        writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
         if let Some(config_dir) = config_dir {
-            message.push_str(&format!("[CONFIG DIR]: {:?}\n", config_dir));
+            writeln!(&mut message, "[CONFIG DIR]: {:?}", config_dir).unwrap();
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
@@ -314,32 +316,34 @@ impl Setup {
                 " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
-                message.push_str(&format!(" {:?}\n", dir));
+                writeln!(&mut message, " {:?}", dir).unwrap();
             }
         }
         if let Some(config_file) = config_file {
-            message.push_str(&format!("[CONFIG FILE]: {:?}\n", config_file));
+            writeln!(&mut message, "[CONFIG FILE]: {:?}", config_file).unwrap();
             match Config::new(&config_file) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
-                Err(e) => message.push_str(&format!("[CONFIG ERROR]: {}\n", e)),
+                Err(e) => writeln!(&mut message, "[CONFIG ERROR]: {}", e).unwrap(),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");
-            message.push_str(&format!(
-                " By default zellij looks for a file called [{}] in the configuration directory\n",
+            writeln!(
+                &mut message,
+                " By default zellij looks for a file called [{}] in the configuration directory",
                 CONFIG_NAME
-            ));
+            )
+            .unwrap();
         }
-        message.push_str(&format!("[DATA DIR]: {:?}\n", data_dir));
+        writeln!(&mut message, "[DATA DIR]: {:?}", data_dir).unwrap();
         message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
         if let Some(layout_dir) = layout_dir {
-            message.push_str(&format!("[LAYOUT DIR]: {:?}\n", layout_dir));
+            writeln!(&mut message, "[LAYOUT DIR]: {:?}", layout_dir).unwrap();
         } else {
             message.push_str("[LAYOUT DIR]: Not Found\n");
         }
-        message.push_str(&format!("[SYSTEM DATA DIR]: {:?}\n", system_data_dir));
+        writeln!(&mut message, "[SYSTEM DATA DIR]: {:?}", system_data_dir).unwrap();
 
-        message.push_str(&format!("[ARROW SEPARATOR]: {}\n", ARROW_SEPARATOR));
+        writeln!(&mut message, "[ARROW SEPARATOR]: {}", ARROW_SEPARATOR).unwrap();
         message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
         message.push_str(" If not you may want to either start zellij with a compatible mode: 'zellij options --simplified-ui true'\n");
         let mut hyperlink_compat = String::new();
@@ -348,22 +352,24 @@ impl Setup {
         hyperlink_compat.push_str(hyperlink_mid);
         hyperlink_compat.push_str("https://zellij.dev/documentation/compatibility.html#the-status-bar-fonts-dont-render-correctly");
         hyperlink_compat.push_str(hyperlink_end);
-        message.push_str(&format!(
+        write!(
+            &mut message,
             " Or check the font that is in use:\n {}\n",
             hyperlink_compat
-        ));
+        )
+        .unwrap();
         message.push_str("[MOUSE INTERACTION]: \n");
         message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
         message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
 
-        message.push_str(&format!("[FEATURES]: {:?}\n", FEATURES));
+        writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).unwrap();
         let mut hyperlink = String::new();
         hyperlink.push_str(hyperlink_start);
         hyperlink.push_str("https://www.zellij.dev/documentation/");
         hyperlink.push_str(hyperlink_mid);
         hyperlink.push_str("zellij.dev/documentation");
         hyperlink.push_str(hyperlink_end);
-        message.push_str(&format!("[DOCUMENTATION]: {}\n", hyperlink));
+        writeln!(&mut message, "[DOCUMENTATION]: {}", hyperlink).unwrap();
         //printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
 
         std::io::stdout().write_all(message.as_bytes())?;
@@ -371,14 +377,10 @@ impl Setup {
         Ok(())
     }
     fn generate_completion(shell: String) {
-        let shell = match shell.as_ref() {
-            "bash" => structopt::clap::Shell::Bash,
-            "fish" => structopt::clap::Shell::Fish,
-            "zsh" => structopt::clap::Shell::Zsh,
-            "powerShell" => structopt::clap::Shell::PowerShell,
-            "elvish" => structopt::clap::Shell::Elvish,
-            other => {
-                eprintln!("Unsupported shell: {}", other);
+        let shell = match shell.parse() {
+            Ok(shell) => shell,
+            _ => {
+                eprintln!("Unsupported shell: {}", shell);
                 std::process::exit(1);
             }
         };
@@ -400,8 +402,8 @@ mod setup_test {
         config: &str,
         layout: &str,
     ) -> Result<(Config, LayoutFromYamlIntermediate), ConfigError> {
-        let config = Config::from_yaml(&config)?;
-        let layout = LayoutFromYamlIntermediate::from_yaml(&layout)?;
+        let config = Config::from_yaml(config)?;
+        let layout = LayoutFromYamlIntermediate::from_yaml(layout)?;
         Ok((config, layout))
     }
 
