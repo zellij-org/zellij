@@ -941,7 +941,7 @@ impl Tab {
                         pane_contents_and_ui
                             .render_pane_frame(*client_id, self.session_is_mirrored);
                     } else {
-                        let mut boundaries = client_id_to_boundaries
+                        let boundaries = client_id_to_boundaries
                             .entry(*client_id)
                             .or_insert_with(|| Boundaries::new(self.viewport));
                         pane_contents_and_ui.render_pane_boundaries(
