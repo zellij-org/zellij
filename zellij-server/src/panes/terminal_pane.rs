@@ -44,6 +44,7 @@ pub struct TerminalPane {
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
+    pane_name: Option<String>,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
@@ -288,6 +289,7 @@ impl Pane for TerminalPane {
                 .title
                 .clone()
                 .unwrap_or_else(|| self.pane_title.clone()),
+            self.pane_name.clone(),
             frame_params,
         );
         match self.frame.get(&client_id) {
@@ -475,6 +477,7 @@ impl TerminalPane {
         position_and_size: PaneGeom,
         palette: Palette,
         pane_index: usize,
+        pane_name: Option<String>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
@@ -495,6 +498,7 @@ impl TerminalPane {
             colors: palette,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
+            pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
         }

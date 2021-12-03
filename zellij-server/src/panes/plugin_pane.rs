@@ -28,6 +28,7 @@ pub(crate) struct PluginPane {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
     pub pane_title: String,
+    pub pane_name: Option<String>,
     frame: bool,
     borderless: bool,
 }
@@ -38,6 +39,7 @@ impl PluginPane {
         position_and_size: PaneGeom,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         title: String,
+        pane_name: Option<String>,
     ) -> Self {
         Self {
             pid,
@@ -51,6 +53,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            pane_name,
         }
     }
 }
@@ -217,6 +220,7 @@ impl Pane for PluginPane {
                 self.current_geom().into(),
                 (0, 0), // scroll position
                 self.pane_title.clone(),
+                self.pane_name.clone(),
                 frame_params,
             );
             Some(frame.render())
