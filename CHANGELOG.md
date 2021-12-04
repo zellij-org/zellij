@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: fix flaky scrolling issue (https://github.com/zellij-org/zellij/pull/915)
 * Fix: handle pasted text properly in windows terminal (https://github.com/zellij-org/zellij/pull/917)
 * Fix: update example config options (https://github.com/zellij-org/zellij/pull/920)
+* Fix: correct handling of unbinds (https://github.com/zellij-org/zellij/issues/923)
 
 ## [0.21.0] - 2021-11-29
 * Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
