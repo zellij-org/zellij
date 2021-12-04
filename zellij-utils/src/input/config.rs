@@ -156,7 +156,8 @@ impl Config {
     /// `other` overrides `self`.
     pub fn merge(&self, other: Self) -> Self {
         Self {
-            keybinds: self.keybinds.merge_keybinds(other.keybinds),
+            // TODO: merge keybinds in a way that preserves "unbind" attribute
+            keybinds: self.keybinds.clone(),
             options: self.options.merge(other.options),
             themes: self.themes.clone(), // TODO
             plugins: self.plugins.merge(other.plugins),
