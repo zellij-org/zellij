@@ -83,6 +83,7 @@ pub enum Action {
     NewPane(Option<Direction>),
     /// Close the focus pane.
     CloseFocus,
+    PaneNameInput(Vec<u8>),
     /// Create a new tab, optionally with a specified tab layout.
     NewTab(Option<TabLayout>),
     /// Do nothing.

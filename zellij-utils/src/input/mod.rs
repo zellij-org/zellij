@@ -55,6 +55,7 @@ pub fn get_mode_info(
             ("u/d".to_string(), "Scroll Half Page".to_string()),
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
+        InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
     };
 

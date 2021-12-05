@@ -12,7 +12,7 @@ use crate::ClientId;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::position::Position;
 use zellij_utils::shared::ansi_len;
-use zellij_utils::zellij_tile::prelude::{Event, Mouse, PaletteColor};
+use zellij_utils::zellij_tile::prelude::{Event, InputMode, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
@@ -28,7 +28,7 @@ pub(crate) struct PluginPane {
     pub send_plugin_instructions: SenderWithContext<PluginInstruction>,
     pub active_at: Instant,
     pub pane_title: String,
-    pub pane_name: Option<String>,
+    pub pane_name: String,
     frame: bool,
     borderless: bool,
 }
@@ -39,7 +39,7 @@ impl PluginPane {
         position_and_size: PaneGeom,
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         title: String,
-        pane_name: Option<String>,
+        pane_name: String,
     ) -> Self {
         Self {
             pid,
@@ -212,15 +212,25 @@ impl Pane for PluginPane {
             None
         }
     }
-    fn render_frame(&mut self, _client_id: ClientId, frame_params: FrameParams) -> Option<String> {
+    fn render_frame(
+        &mut self,
+        _client_id: ClientId,
+        frame_params: FrameParams,
+        input_mode: InputMode,
+    ) -> Option<String> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
+            let pane_name = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+                String::from("Enter name...")
+            } else {
+                self.pane_name.clone()
+            };
             let frame = PaneFrame::new(
                 self.current_geom().into(),
                 (0, 0), // scroll position
                 self.pane_title.clone(),
-                self.pane_name.clone(),
+                pane_name,
                 frame_params,
             );
             Some(frame.render())
@@ -234,6 +244,20 @@ impl Pane for PluginPane {
         _text_color: PaletteColor,
     ) -> Option<String> {
         None
+    }
+    fn update_name(&mut self, name: &str) {
+        match name {
+            "\0" => {
+                self.pane_name = String::new();
+            }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.pane_name.pop();
+            }
+            c => {
+                self.pane_name.push_str(c);
+            }
+        }
     }
     fn pid(&self) -> PaneId {
         PaneId::Plugin(self.pid)

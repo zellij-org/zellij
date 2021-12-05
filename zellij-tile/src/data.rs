@@ -77,8 +77,12 @@ pub enum InputMode {
     /// `Scroll` mode allows scrolling up and down within a pane.
     #[serde(alias = "scroll")]
     Scroll,
+    /// `RenameTab` mode allows assigning a new name to a tab.
     #[serde(alias = "renametab")]
     RenameTab,
+    /// `RenamePane` mode allows assigning a new name to a pane.
+    #[serde(alias = "renamepane")]
+    RenamePane,
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
@@ -133,6 +137,7 @@ impl FromStr for InputMode {
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),
             "prompt" => Ok(InputMode::Prompt),
+            "renamepane" => Ok(InputMode::RenamePane),
             e => Err(e.to_string().into()),
         }
     }

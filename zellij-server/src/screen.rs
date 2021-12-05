@@ -68,6 +68,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
+    UpdatePaneName(Vec<u8>, ClientId),
     NewTab(Layout, Vec<RawFd>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
@@ -140,6 +141,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
+            ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext(..) => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
@@ -974,6 +976,14 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.update_tabs();
+            }
+            ScreenInstruction::UpdatePaneName(c, client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .update_active_pane_name(c, client_id);
+
+                screen.render();
             }
             ScreenInstruction::ToggleActiveTerminalFullscreen(client_id) => {
                 screen

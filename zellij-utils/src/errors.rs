@@ -251,6 +251,7 @@ pub enum ScreenContext {
     SetFixedHeight,
     SetFixedWidth,
     ClosePane,
+    UpdatePaneName,
     NewTab,
     SwitchTabNext,
     SwitchTabPrev,

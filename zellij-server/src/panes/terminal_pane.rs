@@ -17,7 +17,7 @@ use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
     vte,
-    zellij_tile::data::{Palette, PaletteColor},
+    zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -44,7 +44,7 @@ pub struct TerminalPane {
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
-    pane_name: Option<String>,
+    pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
@@ -279,9 +279,19 @@ impl Pane for TerminalPane {
             None
         }
     }
-    fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String> {
+    fn render_frame(
+        &mut self,
+        client_id: ClientId,
+        frame_params: FrameParams,
+        input_mode: InputMode,
+    ) -> Option<String> {
         // TODO: remove the cursor stuff from here
         let mut vte_output = None;
+        let pane_name = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            String::from("Enter name...")
+        } else {
+            self.pane_name.clone()
+        };
         let frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
@@ -289,7 +299,7 @@ impl Pane for TerminalPane {
                 .title
                 .clone()
                 .unwrap_or_else(|| self.pane_title.clone()),
-            self.pane_name.clone(),
+            pane_name,
             frame_params,
         );
         match self.frame.get(&client_id) {
@@ -337,6 +347,20 @@ impl Pane for TerminalPane {
             vte_output = Some(fake_cursor);
         }
         vte_output
+    }
+    fn update_name(&mut self, name: &str) {
+        match name {
+            "\0" => {
+                self.pane_name = String::new();
+            }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.pane_name.pop();
+            }
+            c => {
+                self.pane_name.push_str(c);
+            }
+        }
     }
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
@@ -477,7 +501,7 @@ impl TerminalPane {
         position_and_size: PaneGeom,
         palette: Palette,
         pane_index: usize,
-        pane_name: Option<String>,
+        pane_name: String,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
