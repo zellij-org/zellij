@@ -131,7 +131,8 @@ fn read_from_channel(
             let last_snapshot = last_snapshot.clone();
             let cursor_coordinates = cursor_coordinates.clone();
             let mut vte_parser = vte::Parser::new();
-            let mut terminal_output = TerminalPane::new(0, *pane_geom, Palette::default(), 0); // 0 is the pane index
+            let mut terminal_output =
+                TerminalPane::new(0, *pane_geom, Palette::default(), 0, String::new()); // 0 is the pane index
             let mut retries_left = 3;
             move || {
                 let mut should_sleep = false;
