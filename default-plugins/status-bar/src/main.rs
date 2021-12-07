@@ -176,7 +176,7 @@ impl ZellijPlugin for State {
         let first_line = format!("{}{}", superkey, ctrl_keys);
 
         let mut second_line = LinePart::default();
-        for t in self.tabs.iter_mut() {
+        for t in &mut self.tabs {
             if t.active {
                 match self.mode_info.mode {
                     InputMode::Normal => {

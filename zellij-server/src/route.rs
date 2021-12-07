@@ -55,7 +55,7 @@ fn route_action(
                 .senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .unwrap();
-            let val = Vec::from(val.as_bytes());
+            let val = val.into_bytes();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))

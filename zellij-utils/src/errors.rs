@@ -121,8 +121,8 @@ impl ErrorContext {
 
     /// Adds a call to this [`ErrorContext`]'s call stack representation.
     pub fn add_call(&mut self, call: ContextType) {
-        for ctx in self.calls.iter_mut() {
-            if *ctx == ContextType::Empty {
+        for ctx in &mut self.calls {
+            if let ContextType::Empty = ctx {
                 *ctx = call;
                 break;
             }

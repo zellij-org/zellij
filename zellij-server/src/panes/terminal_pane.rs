@@ -9,7 +9,7 @@ use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
@@ -93,8 +93,8 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
-        for byte in bytes.iter() {
-            self.vte_parser.advance(&mut self.grid, *byte);
+        for &byte in &bytes {
+            self.vte_parser.advance(&mut self.grid, byte);
         }
         self.set_should_render(true);
     }
@@ -191,11 +191,13 @@ impl Pane for TerminalPane {
             let content_y = self.get_content_y();
             if self.grid.clear_viewport_before_rendering {
                 for line_index in 0..self.grid.height {
-                    vte_output.push_str(&format!(
+                    write!(
+                        &mut vte_output,
                         "\u{1b}[{};{}H\u{1b}[m",
                         content_y + line_index + 1,
                         content_x + 1
-                    )); // goto row/col and reset styles
+                    )
+                    .unwrap(); // goto row/col and reset styles
                     for _col_index in 0..self.grid.width {
                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
                     }
@@ -212,8 +214,14 @@ impl Pane for TerminalPane {
                 self.grid.update_line_for_rendering(y);
                 let x = content_x + x;
                 let y = content_y + y;
-                vte_output.push_str(&format!("\u{1b}[{};{}H\u{1b}[m", y + 1, x + 1));
-                vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
+                write!(
+                    &mut vte_output,
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    y + 1,
+                    x + 1,
+                    EMPTY_TERMINAL_CHARACTER.character
+                )
+                .unwrap();
             }
             let max_width = self.get_content_columns();
             for character_chunk in self.grid.read_changes() {
@@ -222,11 +230,13 @@ impl Pane for TerminalPane {
                 let chunk_absolute_x = pane_x + character_chunk.x;
                 let chunk_absolute_y = pane_y + character_chunk.y;
                 let terminal_characters = character_chunk.terminal_characters;
-                vte_output.push_str(&format!(
+                write!(
+                    &mut vte_output,
                     "\u{1b}[{};{}H\u{1b}[m",
                     chunk_absolute_y + 1,
                     chunk_absolute_x + 1
-                )); // goto row/col and reset styles
+                )
+                .unwrap(); // goto row/col and reset styles
 
                 let mut chunk_width = character_chunk.x;
                 for mut t_character in terminal_characters {
@@ -248,9 +258,13 @@ impl Pane for TerminalPane {
                     if let Some(new_styles) = character_styles
                         .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
                     {
-                        vte_output.push_str(&new_styles.to_string());
-                        vte_output
-                            .push_str(&self.grid.link_handler.output_osc8(new_styles.link_anchor))
+                        write!(
+                            &mut vte_output,
+                            "{}{}",
+                            new_styles,
+                            self.grid.link_handler.output_osc8(new_styles.link_anchor)
+                        )
+                        .unwrap();
                     }
 
                     vte_output.push(t_character.character);

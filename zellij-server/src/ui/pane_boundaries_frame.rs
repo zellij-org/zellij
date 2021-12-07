@@ -7,29 +7,25 @@ use zellij_utils::zellij_tile::prelude::{Palette, PaletteColor};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use std::fmt::Write;
+
 fn color_string(character: &str, color: Option<PaletteColor>) -> String {
     match color {
-        Some(color) => match color {
-            PaletteColor::Rgb((r, g, b)) => {
-                format!("{}", RGB(r, g, b).bold().paint(character))
-            }
-            PaletteColor::EightBit(color) => {
-                format!("{}", Fixed(color).bold().paint(character))
-            }
-        },
-        None => format!("{}", Style::new().bold().paint(character)),
+        Some(PaletteColor::Rgb((r, g, b))) => RGB(r, g, b).bold().paint(character).to_string(),
+        Some(PaletteColor::EightBit(color)) => Fixed(color).bold().paint(character).to_string(),
+        None => Style::new().bold().paint(character).to_string(),
     }
 }
 
 fn background_color(character: &str, color: Option<PaletteColor>) -> String {
     match color {
         Some(PaletteColor::Rgb((r, g, b))) => {
-            format!("{}", Style::new().on(RGB(r, g, b)).paint(character))
+            Style::new().on(RGB(r, g, b)).paint(character).to_string()
         }
         Some(PaletteColor::EightBit(color)) => {
-            format!("{}", Style::new().on(Fixed(color)).paint(character))
+            Style::new().on(Fixed(color)).paint(character).to_string()
         }
-        None => String::from(character),
+        None => character.to_string(),
     }
 }
 
@@ -475,7 +471,7 @@ impl PaneFrame {
         let mut left_side = self.render_title_left_side(length_of_each_side);
         let mut right_side = self.render_title_right_side(length_of_each_side);
 
-        match (left_side.as_mut(), right_side.as_mut()) {
+        match (&mut left_side, &mut right_side) {
             (Some((left_side, left_side_len)), Some((right_side, right_side_len))) => self
                 .three_part_title_line(
                     left_side,
@@ -511,23 +507,26 @@ impl PaneFrame {
     fn render_title(&self, vte_output: &mut String) {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
 
-        if let Some((middle, middle_length)) = self.render_title_middle(total_title_length).as_mut()
-        {
+        if let Some((middle, middle_length)) = &self.render_title_middle(total_title_length) {
             let title_text = self.title_line_with_middle(middle, middle_length);
-            vte_output.push_str(&format!(
+            write!(
+                vte_output,
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 self.geom.y + 1, // +1 because goto is 1 indexed
                 self.geom.x + 1, // +1 because goto is 1 indexed
                 color_string(&title_text, self.color),
-            )); // goto row/col + boundary character
+            )
+            .unwrap(); // goto row/col + boundary character
         } else {
             let title_text = self.title_line_without_middle();
-            vte_output.push_str(&format!(
+            write!(
+                vte_output,
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 self.geom.y + 1, // +1 because goto is 1 indexed
                 self.geom.x + 1, // +1 because goto is 1 indexed
                 color_string(&title_text, self.color),
-            )); // goto row/col + boundary character
+            )
+            .unwrap(); // goto row/col + boundary character
         }
     }
     pub fn render(&self) -> String {
@@ -539,44 +538,43 @@ impl PaneFrame {
             } else if row == self.geom.y + self.geom.rows - 1 {
                 // bottom row
                 for col in self.geom.x..(self.geom.x + self.geom.cols) {
-                    if col == self.geom.x {
+                    let boundary = if col == self.geom.x {
                         // bottom left corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::BOTTOM_LEFT, self.color),
-                        )); // goto row/col + boundary character
+                        boundary_type::BOTTOM_LEFT
                     } else if col == self.geom.x + self.geom.cols - 1 {
                         // bottom right corner
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::BOTTOM_RIGHT, self.color),
-                        )); // goto row/col + boundary character
+                        boundary_type::BOTTOM_RIGHT
                     } else {
-                        vte_output.push_str(&format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            row + 1, // +1 because goto is 1 indexed
-                            col + 1,
-                            color_string(boundary_type::HORIZONTAL, self.color),
-                        )); // goto row/col + boundary character
-                    }
+                        boundary_type::HORIZONTAL
+                    };
+
+                    let boundary_rendered = color_string(boundary, self.color);
+                    write!(
+                        &mut vte_output,
+                        "\u{1b}[{};{}H\u{1b}[m{}",
+                        row + 1,
+                        col + 1,
+                        boundary_rendered
+                    )
+                    .unwrap();
                 }
             } else {
-                vte_output.push_str(&format!(
+                write!(
+                    &mut vte_output,
                     "\u{1b}[{};{}H\u{1b}[m{}",
                     row + 1, // +1 because goto is 1 indexed
                     self.geom.x + 1,
                     color_string(boundary_type::VERTICAL, self.color),
-                )); // goto row/col + boundary character
-                vte_output.push_str(&format!(
+                )
+                .unwrap(); // goto row/col + boundary character
+                write!(
+                    &mut vte_output,
                     "\u{1b}[{};{}H\u{1b}[m{}",
                     row + 1, // +1 because goto is 1 indexed
                     self.geom.x + self.geom.cols,
                     color_string(boundary_type::VERTICAL, self.color),
-                )); // goto row/col + boundary character
+                )
+                .unwrap(); // goto row/col + boundary character
             }
         }
         vte_output

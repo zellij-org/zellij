@@ -31,16 +31,14 @@ fn full_length_shortcut(
     let description = Style::new().fg(white_color).bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[
-                separator,
-                shortcut_left_separator,
-                shortcut,
-                shortcut_right_separator,
-                description
-            ])
-        ),
+        part: ANSIStrings(&[
+            separator,
+            shortcut_left_separator,
+            shortcut,
+            shortcut_right_separator,
+            description,
+        ])
+        .to_string(),
         len,
     }
 }
@@ -73,16 +71,14 @@ fn first_word_shortcut(
         .paint(description_first_word);
     let len = shortcut_len + description_first_word_length + separator.chars().count();
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[
-                separator,
-                shortcut_left_separator,
-                shortcut,
-                shortcut_right_separator,
-                description_first_word,
-            ])
-        ),
+        part: ANSIStrings(&[
+            separator,
+            shortcut_left_separator,
+            shortcut,
+            shortcut_right_separator,
+            description_first_word,
+        ])
+        .to_string(),
         len,
     }
 }
@@ -284,7 +280,7 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     };
     let locked_styled_text = Style::new().fg(white_color).bold().paint(locked_text);
     LinePart {
-        part: format!("{}", locked_styled_text),
+        part: locked_styled_text.to_string(),
         len: locked_text_len,
     }
 }
@@ -310,16 +306,14 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
     let description = Style::new().fg(white_color).bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
-        part: format!(
-            "{}",
-            ANSIStrings(&[
-                separator,
-                shortcut_left_separator,
-                shortcut,
-                shortcut_right_separator,
-                description
-            ])
-        ),
+        part: ANSIStrings(&[
+            separator,
+            shortcut_left_separator,
+            shortcut,
+            shortcut_right_separator,
+            description,
+        ])
+        .to_string(),
         len,
     }
 }
@@ -422,7 +416,7 @@ pub fn text_copied_hint(palette: &Palette) -> LinePart {
         PaletteColor::EightBit(color) => Fixed(color),
     };
     LinePart {
-        part: format!("{}", Style::new().fg(green_color).bold().paint(hint)),
+        part: Style::new().fg(green_color).bold().paint(hint).to_string(),
         len: hint.len(),
     }
 }

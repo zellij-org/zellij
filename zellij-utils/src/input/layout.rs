@@ -254,8 +254,8 @@ impl LayoutFromYamlIntermediate {
     ) -> LayoutFromYamlIntermediateResult {
         match layout_dir {
             Some(dir) => Self::from_path(&dir.join(layout))
-                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout.as_path())),
-            None => LayoutFromYamlIntermediate::from_default_assets(layout.as_path()),
+                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout)),
+            None => LayoutFromYamlIntermediate::from_default_assets(layout),
         }
     }
     // Currently still needed but on nightly
@@ -277,19 +277,19 @@ impl LayoutFromYamlIntermediate {
     // once serde-yaml supports zero-copy
     pub fn default_from_assets() -> LayoutFromYamlIntermediateResult {
         let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 
     pub fn strider_from_assets() -> LayoutFromYamlIntermediateResult {
         let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 
     pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
         let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 }
@@ -331,9 +331,10 @@ impl LayoutFromYaml {
     #[allow(clippy::ptr_arg)]
     pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlResult {
         match layout_dir {
-            Some(dir) => Self::new(&dir.join(layout))
-                .or_else(|_| Self::from_default_assets(layout.as_path())),
-            None => Self::from_default_assets(layout.as_path()),
+            Some(dir) => {
+                Self::new(&dir.join(layout)).or_else(|_| Self::from_default_assets(layout))
+            }
+            None => Self::from_default_assets(layout),
         }
     }
 
@@ -372,19 +373,19 @@ impl LayoutFromYaml {
     // once serde-yaml supports zero-copy
     pub fn default_from_assets() -> LayoutFromYamlResult {
         let layout: LayoutFromYaml =
-            serde_yaml::from_str(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 
     pub fn strider_from_assets() -> LayoutFromYamlResult {
         let layout: LayoutFromYaml =
-            serde_yaml::from_str(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 
     pub fn disable_status_from_assets() -> LayoutFromYamlResult {
         let layout: LayoutFromYaml =
-            serde_yaml::from_str(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?.as_str())?;
+            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 }
@@ -465,7 +466,7 @@ pub struct TabLayout {
 
 impl TabLayout {
     fn check(&self) -> Result<TabLayout, ConfigError> {
-        for part in self.parts.iter() {
+        for part in &self.parts {
             part.check()?;
             if !part.name.is_empty() {
                 return Err(ConfigError::LayoutNameInTab(LayoutNameInTabError));
@@ -479,7 +480,7 @@ impl Layout {
     pub fn total_terminal_panes(&self) -> usize {
         let mut total_panes = 0;
         total_panes += self.parts.len();
-        for part in self.parts.iter() {
+        for part in &self.parts {
             match part.run {
                 Some(Run::Command(_)) | None => {
                     total_panes += part.total_terminal_panes();
@@ -493,7 +494,7 @@ impl Layout {
     pub fn total_borderless_panes(&self) -> usize {
         let mut total_borderless_panes = 0;
         total_borderless_panes += self.parts.iter().filter(|p| p.borderless).count();
-        for part in self.parts.iter() {
+        for part in &self.parts {
             total_borderless_panes += part.total_borderless_panes();
         }
         total_borderless_panes
@@ -503,7 +504,7 @@ impl Layout {
         if self.parts.is_empty() {
             run_instructions.push(self.run.clone());
         }
-        for part in self.parts.iter() {
+        for part in &self.parts {
             let mut current_runnables = part.extract_run_instructions();
             run_instructions.append(&mut current_runnables);
         }
@@ -549,7 +550,7 @@ fn layout_size(direction: Direction, layout: &Layout) -> usize {
                 .parts
                 .iter()
                 .map(|p| child_layout_size(direction, layout.direction, p))
-                .sum::<usize>();
+                .sum();
             max(size, children_size)
         }
     }

@@ -284,13 +284,12 @@ impl Pty {
                         PaneId::Plugin(..) => None,
                         PaneId::Terminal(id) => self.id_to_child_pid.get(id),
                     })
-                    .and_then(|id| {
+                    .and_then(|&id| {
                         self.bus
                             .os_input
                             .as_ref()
-                            .map(|input| input.get_cwd(Pid::from_raw(*id)))
-                    })
-                    .flatten();
+                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    });
             };
         };
     }

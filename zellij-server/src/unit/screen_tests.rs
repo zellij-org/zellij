@@ -307,7 +307,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
 
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1],
+        &[0, 1],
         "Tab history is invalid"
     );
 
@@ -319,7 +319,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
     );
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 2],
+        &[0, 2],
         "Tab history is invalid"
     );
 
@@ -331,7 +331,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
     );
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1],
+        &[0, 1],
         "Tab history is invalid"
     );
 
@@ -358,7 +358,7 @@ pub fn toggle_to_previous_tab_delete() {
 
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1, 2],
+        &[0, 1, 2],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -370,7 +370,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.toggle_tab(1);
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1, 3],
+        &[0, 1, 3],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -382,7 +382,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.toggle_tab(1);
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1, 2],
+        &[0, 1, 2],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -394,7 +394,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.switch_tab_prev(1);
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 1, 3],
+        &[0, 1, 3],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -405,7 +405,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.switch_tab_prev(1);
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 3, 2],
+        &[0, 3, 2],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -417,7 +417,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.close_tab(1);
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 3],
+        &[0, 3],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -434,7 +434,7 @@ pub fn toggle_to_previous_tab_delete() {
     );
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &vec![0, 2],
+        &[0, 2],
         "Tab history is invalid"
     );
 }

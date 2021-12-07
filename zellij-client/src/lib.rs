@@ -299,9 +299,9 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
 
                 if let ExitReason::Error(_) = reason {
-                    handle_error(format!("{}", reason));
+                    handle_error(reason.to_string());
                 }
-                exit_msg = format!("{}", reason);
+                exit_msg = reason.to_string();
                 break;
             }
             ClientInstruction::Error(backtrace) => {

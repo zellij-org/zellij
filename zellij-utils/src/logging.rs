@@ -92,7 +92,7 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
 pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(&*ZELLIJ_TMP_LOG_DIR);
-    path.push(format!("zellij-{}.log", pid.to_string()));
+    path.push(format!("zellij-{}.log", pid));
 
     let mut file = fs::OpenOptions::new()
         .append(true)

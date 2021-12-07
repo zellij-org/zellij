@@ -451,9 +451,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(op) = output.as_mut() {
-                    for (client_id, client_render_instruction) in
-                        op.client_render_instructions.iter_mut()
+                if let Some(op) = &mut output {
+                    for (client_id, client_render_instruction) in &mut op.client_render_instructions
                     {
                         os_input.send_to_client(
                             *client_id,

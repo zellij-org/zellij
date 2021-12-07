@@ -18,7 +18,7 @@ pub use zellij_tile::data::PluginTag;
 lazy_static! {
     static ref DEFAULT_CONFIG_PLUGINS: PluginsConfig = {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec()).unwrap();
-        let cfg_yaml: ConfigFromYaml = serde_yaml::from_str(cfg.as_str()).unwrap();
+        let cfg_yaml: ConfigFromYaml = serde_yaml::from_str(&cfg).unwrap();
         PluginsConfig::try_from(cfg_yaml.plugins).unwrap()
     };
 }
@@ -271,7 +271,7 @@ mod tests {
         )?;
         let plugins = PluginsConfig::get_plugins_with_default(plugins.try_into()?);
 
-        assert_eq!(plugins.iter().collect::<Vec<_>>().len(), 4);
+        assert_eq!(plugins.iter().count(), 4);
         Ok(())
     }
 

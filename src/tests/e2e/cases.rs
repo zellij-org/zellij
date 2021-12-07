@@ -5,6 +5,7 @@ use zellij_utils::{pane_size::Size, position::Position};
 
 use rand::Rng;
 
+use std::fmt::Write;
 use std::path::Path;
 
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
@@ -231,26 +232,26 @@ pub fn scrolling_inside_a_pane() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         let mut content_to_send = String::new();
-                        content_to_send.push_str(&format!("{:0<56}", "line1 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line2 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line3 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line4 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line5 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line6 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line7 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line8 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line9 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line10 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line11 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line12 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line13 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line14 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line15 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line16 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line17 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line18 "));
-                        content_to_send.push_str(&format!("{:0<58}", "line19 "));
-                        content_to_send.push_str(&format!("{:0<57}", "line20 "));
+                        write!(&mut content_to_send, "{:0<56}", "line1 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line2 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line3 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line4 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line5 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line6 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line7 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line8 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line9 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line10 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line11 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line12 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line13 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line14 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line15 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line16 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line17 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line18 ").unwrap();
+                        write!(&mut content_to_send, "{:0<58}", "line19 ").unwrap();
+                        write!(&mut content_to_send, "{:0<57}", "line20 ").unwrap();
 
                         remote_terminal.send_key(content_to_send.as_bytes());
 

@@ -30,8 +30,8 @@ struct Span {
 type Grid = Vec<Vec<Span>>;
 
 impl<'a> PaneResizer<'a> {
-    pub fn new(panes: impl Iterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>) -> Self {
-        let panes: HashMap<_, _> = panes.collect();
+    pub fn new(panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>) -> Self {
+        let panes: HashMap<_, _> = panes.into_iter().collect();
         let mut vars = HashMap::new();
         for &&k in panes.keys() {
             vars.insert(k, Variable::new());
@@ -84,7 +84,7 @@ impl<'a> PaneResizer<'a> {
 
         // Round f64 pane sizes to usize without gaps or overlap
         let mut finalised = Vec::new();
-        for spans in grid.iter_mut() {
+        for spans in &mut grid {
             let rounded_size: isize = spans.iter().map(|s| rounded_sizes[&s.size_var]).sum();
             let mut error = space as isize - rounded_size;
             let mut flex_spans: Vec<_> = spans
@@ -105,9 +105,9 @@ impl<'a> PaneResizer<'a> {
         }
 
         // Update span positions based on their rounded sizes
-        for spans in grid.iter_mut() {
+        for spans in &mut grid {
             let mut offset = 0;
-            for span in spans.iter_mut() {
+            for span in spans {
                 span.pos = offset;
                 let sz = rounded_sizes[&span.size_var];
                 if sz < 1 {

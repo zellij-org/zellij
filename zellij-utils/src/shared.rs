@@ -19,7 +19,7 @@ pub fn set_permissions(path: &Path) -> io::Result<()> {
 }
 
 pub fn ansi_len(s: &str) -> usize {
-    from_utf8(&strip(s.as_bytes()).unwrap()).unwrap().width()
+    from_utf8(&strip(s).unwrap()).unwrap().width()
 }
 
 pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {

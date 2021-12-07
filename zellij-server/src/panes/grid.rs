@@ -456,16 +456,14 @@ impl Grid {
         self.output_buffer.update_line(line_index);
     }
     pub fn advance_to_next_tabstop(&mut self, styles: CharacterStyles) {
-        let mut next_tabstop = None;
-        for tabstop in self.horizontal_tabstops.iter() {
-            if *tabstop > self.cursor.x {
-                next_tabstop = Some(tabstop);
-                break;
-            }
-        }
+        let next_tabstop = self
+            .horizontal_tabstops
+            .iter()
+            .copied()
+            .find(|&tabstop| tabstop > self.cursor.x);
         match next_tabstop {
             Some(tabstop) => {
-                self.cursor.x = *tabstop;
+                self.cursor.x = tabstop;
             }
             None => {
                 self.cursor.x = self.width.saturating_sub(1);
@@ -477,16 +475,15 @@ impl Grid {
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn move_to_previous_tabstop(&mut self) {
-        let mut previous_tabstop = None;
-        for tabstop in self.horizontal_tabstops.iter() {
-            if *tabstop >= self.cursor.x {
-                break;
-            }
-            previous_tabstop = Some(tabstop);
-        }
+        let previous_tabstop = self
+            .horizontal_tabstops
+            .iter()
+            .rev()
+            .copied()
+            .find(|&tabstop| tabstop < self.cursor.x);
         match previous_tabstop {
             Some(tabstop) => {
-                self.cursor.x = *tabstop;
+                self.cursor.x = tabstop;
             }
             None => {
                 self.cursor.x = 0;
@@ -506,7 +503,7 @@ impl Grid {
 
     fn recalculate_scrollback_buffer_count(&self) -> usize {
         let mut scrollback_buffer_count = 0;
-        for row in self.lines_above.iter() {
+        for row in &self.lines_above {
             let row_width = row.width();
             // rows in lines_above are unwrapped, so we need to account for that
             if row_width > self.width {
@@ -531,7 +528,7 @@ impl Grid {
         self.saved_cursor_position = Some(self.cursor.clone());
     }
     fn restore_cursor_position(&mut self) {
-        if let Some(saved_cursor_position) = self.saved_cursor_position.as_ref() {
+        if let Some(saved_cursor_position) = &self.saved_cursor_position {
             self.cursor = saved_cursor_position.clone();
         }
     }
@@ -701,7 +698,7 @@ impl Grid {
 
             // trim lines after the last empty space that has no following character, because
             // terminals don't trim empty lines
-            for line in viewport_canonical_lines.iter_mut() {
+            for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
                     if character.character != EMPTY_TERMINAL_CHARACTER.character {
@@ -1134,7 +1131,7 @@ impl Grid {
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
         let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
         self.replace_characters_in_line_after_cursor(replace_with);
-        for row in self.viewport.iter_mut() {
+        for row in &mut self.viewport {
             row.replace_columns(replace_with_columns.clone());
         }
         self.output_buffer.update_all_lines();
@@ -1481,7 +1478,7 @@ impl Grid {
         if self.title_stack.len() > MAX_TITLE_STACK_SIZE {
             self.title_stack.remove(0);
         }
-        if let Some(title) = self.title.as_ref() {
+        if let Some(title) = &self.title {
             self.title_stack.push(title.clone());
         }
     }
@@ -1793,7 +1790,7 @@ impl Perform for Grid {
                             alternative_lines_above,
                             alternative_viewport,
                             alternative_cursor,
-                        )) = self.alternative_lines_above_viewport_and_cursor.as_mut()
+                        )) = &mut self.alternative_lines_above_viewport_and_cursor
                         {
                             std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
@@ -2159,7 +2156,7 @@ impl Row {
             Row::new(width)
         } else {
             let mut first_row = rows.remove(0);
-            for row in rows.iter_mut() {
+            for row in &mut rows {
                 first_row.append(&mut row.columns);
             }
             first_row
@@ -2175,14 +2172,14 @@ impl Row {
     }
     pub fn width(&self) -> usize {
         let mut width = 0;
-        for terminal_character in self.columns.iter() {
+        for terminal_character in &self.columns {
             width += terminal_character.width;
         }
         width
     }
     pub fn excess_width(&self) -> usize {
         let mut acc = 0;
-        for terminal_character in self.columns.iter() {
+        for terminal_character in &self.columns {
             if terminal_character.width > 1 {
                 acc += terminal_character.width - 1;
             }

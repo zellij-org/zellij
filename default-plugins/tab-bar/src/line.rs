@@ -107,10 +107,8 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
         .bold()
         .paint(more_text);
     let right_separator = style!(palette.orange, palette.gray).paint(separator);
-    let more_styled_text = format!(
-        "{}",
-        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
-    );
+    let more_styled_text =
+        ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
         part: more_styled_text,
         len: more_text_len,
@@ -137,10 +135,8 @@ fn right_more_message(
         .bold()
         .paint(more_text);
     let right_separator = style!(palette.orange, palette.gray).paint(separator);
-    let more_styled_text = format!(
-        "{}",
-        ANSIStrings(&[left_separator, more_styled_text, right_separator,])
-    );
+    let more_styled_text =
+        ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
         part: more_styled_text,
         len: more_text_len,
@@ -155,7 +151,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
         .bold()
         .paint(prefix_text);
     let mut parts = vec![LinePart {
-        part: format!("{}", prefix_styled_text),
+        part: prefix_styled_text.to_string(),
         len: prefix_text_len,
     }];
     if let Some(name) = session_name {
@@ -164,7 +160,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
         let name_part_styled_text = style!(palette.white, palette.gray).bold().paint(name_part);
         if cols.saturating_sub(prefix_text_len) >= name_part_len {
             parts.push(LinePart {
-                part: format!("{}", name_part_styled_text),
+                part: name_part_styled_text.to_string(),
                 len: name_part_len,
             })
         }
