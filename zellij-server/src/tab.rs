@@ -970,11 +970,8 @@ impl Tab {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 let mut pane_contents_and_ui =
                     PaneContentsAndUi::new(pane, output, self.colors, &self.active_panes);
-                match kind {
-                    PaneId::Terminal(..) => {
-                        pane_contents_and_ui.render_pane_contents_for_all_clients();
-                    }
-                    _ => {}
+                if let PaneId::Terminal(..) = kind {
+                    pane_contents_and_ui.render_pane_contents_for_all_clients();
                 }
                 for client_id in self.connected_clients.iter() {
                     let client_mode = self
@@ -982,11 +979,8 @@ impl Tab {
                         .get(client_id)
                         .unwrap_or(&self.default_mode_info)
                         .mode;
-                    match kind {
-                        PaneId::Plugin(..) => {
-                            pane_contents_and_ui.render_pane_contents_for_client(*client_id);
-                        }
-                        _ => {}
+                    if let PaneId::Plugin(..) = kind {
+                        pane_contents_and_ui.render_pane_contents_for_client(*client_id);
                     }
                     if self.draw_pane_frames {
                         pane_contents_and_ui.render_pane_frame(

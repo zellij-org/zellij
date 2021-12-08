@@ -136,20 +136,14 @@ pub(crate) fn wasm_thread_main(
                     let subs = plugin_env.subscriptions.lock().unwrap();
                     // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                     let event_type = EventType::from_str(&event.to_string()).unwrap();
-                    if subs.contains(&event_type) {
-                        if pid.is_none() && cid.is_none() {
-                            let update = instance.exports.get_function("update").unwrap();
-                            wasi_write_object(&plugin_env.wasi_env, &event);
-                            update.call(&[]).unwrap();
-                        } else if pid.is_none() && cid == Some(client_id) {
-                            let update = instance.exports.get_function("update").unwrap();
-                            wasi_write_object(&plugin_env.wasi_env, &event);
-                            update.call(&[]).unwrap();
-                        } else if cid.is_none() && pid == Some(plugin_id) {
-                            let update = instance.exports.get_function("update").unwrap();
-                            wasi_write_object(&plugin_env.wasi_env, &event);
-                            update.call(&[]).unwrap();
-                        }
+                    if subs.contains(&event_type)
+                        && ((pid.is_none() && cid.is_none())
+                            || (pid.is_none() && cid == Some(client_id))
+                            || (cid.is_none() && pid == Some(plugin_id)))
+                    {
+                        let update = instance.exports.get_function("update").unwrap();
+                        wasi_write_object(&plugin_env.wasi_env, &event);
+                        update.call(&[]).unwrap();
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
@@ -227,6 +221,7 @@ pub(crate) fn wasm_thread_main(
     fs::remove_dir_all(plugin_global_data_dir.as_path()).unwrap();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_plugin(
     plugin_id: u32,
     client_id: ClientId,

@@ -131,10 +131,8 @@ impl Pane for PluginPane {
         self.selectable = selectable;
     }
     fn render(&mut self, client_id: Option<ClientId>) -> Option<String> {
-        if client_id.is_none() {
-            // this is a bit of a hack but works in a pinch
-            return None;
-        }
+        // this is a bit of a hack but works in a pinch
+        client_id?;
         let client_id = client_id.unwrap();
         // if self.should_render {
         if true {
