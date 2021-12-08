@@ -318,6 +318,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     spawn_tabs(None);
                 }
+                session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::AddClient(client_id))
+                    .unwrap();
             }
             ServerInstruction::AttachClient(attrs, options, client_id) => {
                 let rlock = session_data.read().unwrap();
@@ -339,6 +347,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(client_id))
                     .unwrap();
+                session_data
+                    .senders
+                    .send_to_plugin(PluginInstruction::AddClient(client_id))
+                    .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info =
                     get_mode_info(default_mode, attrs.palette, session_data.capabilities);
@@ -351,12 +363,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::Update(
                         None,
+                        Some(client_id),
                         Event::ModeUpdate(mode_info),
                     ))
                     .unwrap();
-                for client_id in session_state.read().unwrap().clients.keys() {
-                    os_input.send_to_client(*client_id, ServerToClientMsg::SwitchToMode(mode));
-                }
+                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode));
             }
             ServerInstruction::UnblockInputThread => {
                 for client_id in session_state.read().unwrap().clients.keys() {
@@ -385,6 +396,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
+                        .unwrap();
                 }
                 if session_state.read().unwrap().clients.is_empty() {
                     *session_data.write().unwrap() = None;
@@ -411,6 +430,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
             }
@@ -443,6 +470,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
             }

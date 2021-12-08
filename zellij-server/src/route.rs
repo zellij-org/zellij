@@ -31,7 +31,11 @@ fn route_action(
     let mut should_break = false;
     session
         .senders
-        .send_to_plugin(PluginInstruction::Update(None, Event::InputReceived))
+        .send_to_plugin(PluginInstruction::Update(
+            None,
+            Some(client_id),
+            Event::InputReceived,
+        ))
         .unwrap();
     match action {
         Action::ToggleTab => {
@@ -70,6 +74,7 @@ fn route_action(
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
+                    Some(client_id),
                     Event::ModeUpdate(get_mode_info(mode, palette, session.capabilities)),
                 ))
                 .unwrap();
@@ -379,12 +384,8 @@ pub(crate) fn route_thread_main(
             ClientToServerMsg::Action(action) => {
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                     if let Action::SwitchToMode(input_mode) = action {
-                        for client_id in session_state.read().unwrap().clients.keys() {
-                            os_input.send_to_client(
-                                *client_id,
-                                ServerToClientMsg::SwitchToMode(input_mode),
-                            );
-                        }
+                        os_input
+                            .send_to_client(client_id, ServerToClientMsg::SwitchToMode(input_mode));
                     }
                     if route_action(action, rlocked_sessions, &*os_input, &to_server, client_id) {
                         break;

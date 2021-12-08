@@ -294,6 +294,8 @@ pub enum PluginContext {
     Render,
     Unload,
     Exit,
+    AddClient,
+    RemoveClient,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

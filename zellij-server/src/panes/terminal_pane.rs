@@ -183,7 +183,8 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self) -> Option<String> {
+    fn render(&mut self, _client_id: Option<ClientId>) -> Option<String> {
+        // we don't use client_id because terminal panes render the same for all users
         if self.should_render() {
             let mut vte_output = String::new();
             let mut character_styles = CharacterStyles::new();

@@ -26,4 +26,4 @@ expression: first_runner_snapshot
 │                                                          ││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SCROLL  <o> SESSION  <q> QUIT           
- <←↓↑→> Move focus / <n> New / <x> Close / <r> Rename / <s> Sync / <Tab> Toggle / <ENTER> Select pane                   
+ Tip: Alt + <n> => new pane. Alt + <[] or hjkl> => navigate. Alt + <+-> => resize pane.                                 

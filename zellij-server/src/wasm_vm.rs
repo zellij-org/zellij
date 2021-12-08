@@ -25,6 +25,7 @@ use crate::{
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
+    ClientId,
 };
 
 use zellij_utils::{
@@ -40,10 +41,12 @@ use zellij_utils::{
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
-    Load(Sender<u32>, RunPlugin, usize), // tx_pid, plugin metadata, tab_index
-    Update(Option<u32>, Event),          // Focused plugin / broadcast, event data
-    Render(Sender<String>, u32, usize, usize), // String buffer, plugin id, rows, cols
-    Unload(u32),
+    Load(Sender<u32>, RunPlugin, usize, ClientId), // tx_pid, plugin metadata, tab_index, client_ids
+    Update(Option<u32>, Option<ClientId>, Event), // Focused plugin / broadcast, client_id, event data
+    Render(Sender<String>, u32, ClientId, usize, usize), // String buffer, plugin id, client_id, rows, cols
+    Unload(u32),                                         // plugin_id
+    AddClient(ClientId),
+    RemoveClient(ClientId),
     Exit,
 }
 
@@ -53,8 +56,10 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Render(..) => PluginContext::Render,
-            PluginInstruction::Unload(_) => PluginContext::Unload,
+            PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Exit => PluginContext::Exit,
+            PluginInstruction::AddClient(_) => PluginContext::AddClient,
+            PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
         }
     }
 }
@@ -67,6 +72,7 @@ pub(crate) struct PluginEnv {
     pub wasi_env: WasiEnv,
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
     pub tab_index: usize,
+    pub client_id: ClientId,
     plugin_own_data_dir: PathBuf,
 }
 
@@ -80,38 +86,25 @@ pub(crate) fn wasm_thread_main(
     info!("Wasm main thread starts");
 
     let mut plugin_id = 0;
-    let mut plugin_map = HashMap::new();
+    let mut headless_plugins = HashMap::new();
+    let mut plugin_map: HashMap<(u32, ClientId), (Instance, PluginEnv)> = HashMap::new(); // u32 => pid
+    let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
     fs::create_dir_all(&plugin_global_data_dir).unwrap();
-
-    for plugin in plugins.iter() {
-        if let PluginType::Headless = plugin.run {
-            let (instance, plugin_env) = start_plugin(
-                plugin_id,
-                plugin,
-                0,
-                &bus,
-                &store,
-                &data_dir,
-                &plugin_global_data_dir,
-            );
-            plugin_map.insert(plugin_id, (instance, plugin_env));
-            plugin_id += 1;
-        }
-    }
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(pid_tx, run, tab_index) => {
+            PluginInstruction::Load(pid_tx, run, tab_index, client_id) => {
                 let plugin = plugins
                     .get(&run)
                     .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
 
                 let (instance, plugin_env) = start_plugin(
                     plugin_id,
+                    client_id,
                     &plugin,
                     tab_index,
                     &bus,
@@ -120,16 +113,34 @@ pub(crate) fn wasm_thread_main(
                     &plugin_global_data_dir,
                 );
 
-                plugin_map.insert(plugin_id, (instance, plugin_env));
+                plugin_map.insert(
+                    (plugin_id, client_id),
+                    (instance.clone(), plugin_env.clone()),
+                );
+
+                // clone plugins for the rest of the client ids if they exist
+                for client_id in connected_clients.iter() {
+                    let mut new_plugin_env = plugin_env.clone();
+                    new_plugin_env.client_id = *client_id;
+                    let module = instance.module().clone();
+                    let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
+                    let zellij = zellij_exports(&store, &new_plugin_env);
+                    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env));
+                }
                 pid_tx.send(plugin_id).unwrap();
                 plugin_id += 1;
             }
-            PluginInstruction::Update(pid, event) => {
-                for (&i, (instance, plugin_env)) in &plugin_map {
+            PluginInstruction::Update(pid, cid, event) => {
+                for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
                     let subs = plugin_env.subscriptions.lock().unwrap();
                     // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                     let event_type = EventType::from_str(&event.to_string()).unwrap();
-                    if (pid.is_none() || pid == Some(i)) && subs.contains(&event_type) {
+                    if subs.contains(&event_type)
+                        && ((pid.is_none() && cid.is_none())
+                            || (pid.is_none() && cid == Some(client_id))
+                            || (cid.is_none() && pid == Some(plugin_id)))
+                    {
                         let update = instance.exports.get_function("update").unwrap();
                         wasi_write_object(&plugin_env.wasi_env, &event);
                         update.call(&[]).unwrap();
@@ -137,11 +148,11 @@ pub(crate) fn wasm_thread_main(
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             }
-            PluginInstruction::Render(buf_tx, pid, rows, cols) => {
+            PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
                 if rows == 0 || cols == 0 {
                     buf_tx.send(String::new()).unwrap();
                 } else {
-                    let (instance, plugin_env) = plugin_map.get(&pid).unwrap();
+                    let (instance, plugin_env) = plugin_map.get(&(pid, cid)).unwrap();
                     let render = instance.exports.get_function("render").unwrap();
 
                     render
@@ -154,7 +165,54 @@ pub(crate) fn wasm_thread_main(
             PluginInstruction::Unload(pid) => {
                 info!("Bye from plugin {}", &pid);
                 // TODO: remove plugin's own data directory
-                drop(plugin_map.remove(&pid));
+                let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
+                for (plugin_id, client_id) in ids_in_plugin_map {
+                    if pid == plugin_id {
+                        drop(plugin_map.remove(&(plugin_id, client_id)));
+                    }
+                }
+            }
+            PluginInstruction::AddClient(client_id) => {
+                connected_clients.push(client_id);
+                let mut seen = HashSet::new();
+                let mut new_plugins = HashMap::new();
+                for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
+                    if seen.contains(&plugin_id) {
+                        continue;
+                    } else {
+                        seen.insert(plugin_id);
+                        let mut new_plugin_env = plugin_env.clone();
+                        new_plugin_env.client_id = client_id;
+                        new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
+                    }
+                }
+                for (plugin_id, (module, mut new_plugin_env)) in new_plugins.drain() {
+                    let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
+                    let zellij = zellij_exports(&store, &new_plugin_env);
+                    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env));
+                }
+
+                // load headless plugins
+                for plugin in plugins.iter() {
+                    if let PluginType::Headless = plugin.run {
+                        let (instance, plugin_env) = start_plugin(
+                            plugin_id,
+                            client_id,
+                            plugin,
+                            0,
+                            &bus,
+                            &store,
+                            &data_dir,
+                            &plugin_global_data_dir,
+                        );
+                        headless_plugins.insert(plugin_id, (instance, plugin_env));
+                        plugin_id += 1;
+                    }
+                }
+            }
+            PluginInstruction::RemoveClient(client_id) => {
+                connected_clients.retain(|c| c != &client_id);
             }
             PluginInstruction::Exit => break,
         }
@@ -163,8 +221,10 @@ pub(crate) fn wasm_thread_main(
     fs::remove_dir_all(&plugin_global_data_dir).unwrap();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_plugin(
     plugin_id: u32,
+    client_id: ClientId,
     plugin: &PluginConfig,
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
@@ -224,6 +284,7 @@ fn start_plugin(
 
     let plugin_env = PluginEnv {
         plugin_id,
+        client_id,
         plugin,
         senders: bus.senders.clone(),
         wasi_env,
@@ -346,6 +407,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     // But that's a lot of code, and this is a few lines:
     let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
     let update_target = Some(plugin_env.plugin_id);
+    let client_id = plugin_env.client_id;
     thread::spawn(move || {
         let start_time = Instant::now();
         thread::sleep(Duration::from_secs_f64(secs));
@@ -357,6 +419,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
             .unwrap()
             .send(PluginInstruction::Update(
                 update_target,
+                Some(client_id),
                 Event::Timer(elapsed_time),
             ))
             .unwrap();
