@@ -183,7 +183,8 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
-    mode_info: ModeInfo,
+    mode_info: BTreeMap<ClientId, ModeInfo>,
+    default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     colors: Palette,
     draw_pane_frames: bool,
 }
@@ -206,7 +207,8 @@ impl Screen {
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
             tab_history: BTreeMap::new(),
-            mode_info,
+            mode_info: BTreeMap::new(),
+            default_mode_info: mode_info,
             draw_pane_frames,
         }
     }
@@ -241,12 +243,15 @@ impl Screen {
         }
     }
     fn move_clients(&mut self, source_index: usize, destination_index: usize) {
-        let connected_clients_in_source_tab = {
+        let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) = {
             let source_tab = self.tabs.get_mut(&source_index).unwrap();
             source_tab.drain_connected_clients()
         };
         let destination_tab = self.tabs.get_mut(&destination_index).unwrap();
-        destination_tab.add_multiple_clients(&connected_clients_in_source_tab);
+        destination_tab.add_multiple_clients(
+            connected_clients_in_source_tab,
+            client_mode_infos_in_source_tab,
+        );
     }
     /// A helper function to switch to a new tab at specified position.
     fn switch_active_tab(&mut self, new_tab_pos: usize, client_id: ClientId) {
@@ -423,6 +428,11 @@ impl Screen {
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
+        let client_mode_info = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .clone();
         let mut tab = Tab::new(
             tab_index,
             position,
@@ -431,16 +441,20 @@ impl Screen {
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
-            self.mode_info.clone(),
+            client_mode_info,
             self.colors,
             self.draw_pane_frames,
             client_id,
         );
-        tab.apply_layout(layout, new_pids, tab_index);
+        tab.apply_layout(layout, new_pids, tab_index, client_id);
         if let Some(active_tab) = self.get_active_tab_mut(client_id) {
             active_tab.visible(false);
-            let connected_clients = active_tab.drain_connected_clients();
-            tab.add_multiple_clients(&connected_clients);
+            let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) =
+                active_tab.drain_connected_clients();
+            tab.add_multiple_clients(
+                connected_clients_in_source_tab,
+                client_mode_infos_in_source_tab,
+            );
         }
         for (client_id, tab_history) in self.tab_history.iter_mut() {
             let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
@@ -448,6 +462,7 @@ impl Screen {
             tab_history.retain(|&e| e != tab_index);
             tab_history.push(old_active_index);
         }
+        tab.update_input_modes();
         tab.visible(true);
         self.tabs.insert(tab_index, tab);
         if !self.active_tab_indices.contains_key(&client_id) {
@@ -503,7 +518,11 @@ impl Screen {
             }
             self.bus
                 .senders
-                .send_to_plugin(PluginInstruction::Update(None, Event::TabUpdate(tab_data)))
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    None,
+                    Event::TabUpdate(tab_data),
+                ))
                 .unwrap();
         }
     }
@@ -526,7 +545,12 @@ impl Screen {
         self.update_tabs();
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) {
-        if self.mode_info.mode == InputMode::Scroll
+        let previous_mode = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .mode;
+        if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
             self.get_active_tab_mut(client_id)
@@ -534,9 +558,9 @@ impl Screen {
                 .clear_active_terminal_scroll(client_id);
         }
         self.colors = mode_info.palette;
-        self.mode_info = mode_info;
+        self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
-            tab.mode_info = self.mode_info.clone();
+            tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
         }
     }
@@ -1100,6 +1124,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::AddClient(client_id) => {
                 screen.add_client(client_id);
+                screen.update_tabs();
 
                 screen.render();
             }

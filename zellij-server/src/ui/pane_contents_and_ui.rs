@@ -13,7 +13,6 @@ pub struct PaneContentsAndUi<'a> {
     colors: Palette,
     focused_clients: Vec<ClientId>,
     multiple_users_exist_in_session: bool,
-    mode: InputMode, // TODO: per client
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -22,7 +21,6 @@ impl<'a> PaneContentsAndUi<'a> {
         output: &'a mut Output,
         colors: Palette,
         active_panes: &HashMap<ClientId, PaneId>,
-        mode: InputMode,
     ) -> Self {
         let focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -36,11 +34,10 @@ impl<'a> PaneContentsAndUi<'a> {
             colors,
             focused_clients,
             multiple_users_exist_in_session,
-            mode,
         }
     }
     pub fn render_pane_contents_for_all_clients(&mut self) {
-        if let Some(vte_output) = self.pane.render() {
+        if let Some(vte_output) = self.pane.render(None) {
             // FIXME: Use Termion for cursor and style clearing?
             self.output.push_str_to_all_clients(&format!(
                 "\u{1b}[{};{}H\u{1b}[m{}",
@@ -48,6 +45,20 @@ impl<'a> PaneContentsAndUi<'a> {
                 self.pane.x() + 1,
                 vte_output
             ));
+        }
+    }
+    pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
+        if let Some(vte_output) = self.pane.render(Some(client_id)) {
+            // FIXME: Use Termion for cursor and style clearing?
+            self.output.push_to_client(
+                client_id,
+                &format!(
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    self.pane.y() + 1,
+                    self.pane.x() + 1,
+                    vte_output
+                ),
+            );
         }
     }
     pub fn render_fake_cursor_if_needed(&mut self, client_id: ClientId) {
@@ -79,7 +90,12 @@ impl<'a> PaneContentsAndUi<'a> {
             }
         }
     }
-    pub fn render_pane_frame(&mut self, client_id: ClientId, session_is_mirrored: bool) {
+    pub fn render_pane_frame(
+        &mut self,
+        client_id: ClientId,
+        client_mode: InputMode,
+        session_is_mirrored: bool,
+    ) {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let other_focused_clients: Vec<ClientId> = self
             .focused_clients
@@ -89,7 +105,7 @@ impl<'a> PaneContentsAndUi<'a> {
             .collect();
         let pane_focused_for_differet_client = !other_focused_clients.is_empty();
 
-        let frame_color = self.frame_color(client_id, self.mode, session_is_mirrored);
+        let frame_color = self.frame_color(client_id, client_mode, session_is_mirrored);
         let focused_client = if pane_focused_for_client_id {
             Some(client_id)
         } else if pane_focused_for_differet_client {
@@ -132,10 +148,11 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_pane_boundaries(
         &self,
         client_id: ClientId,
+        client_mode: InputMode,
         boundaries: &mut Boundaries,
         session_is_mirrored: bool,
     ) {
-        let color = self.frame_color(client_id, self.mode, session_is_mirrored);
+        let color = self.frame_color(client_id, client_mode, session_is_mirrored);
         boundaries.add_rect(self.pane.as_ref(), color);
     }
     fn frame_color(

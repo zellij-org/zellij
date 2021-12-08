@@ -137,7 +137,8 @@ pub(crate) struct Tab {
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
-    pub mode_info: ModeInfo,
+    mode_info: HashMap<ClientId, ModeInfo>,
+    default_mode_info: ModeInfo,
     pub colors: Palette,
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
@@ -179,7 +180,7 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn render(&mut self) -> Option<String>;
+    fn render(&mut self, client_id: Option<ClientId>) -> Option<String>;
     fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String>;
     fn render_fake_cursor(
         &mut self,
@@ -342,7 +343,8 @@ impl Tab {
             os_api,
             senders,
             should_clear_display_before_rendering: false,
-            mode_info,
+            mode_info: HashMap::new(),
+            default_mode_info: mode_info,
             colors,
             draw_pane_frames,
             // at the moment this is hard-coded while the feature is being developed
@@ -353,7 +355,13 @@ impl Tab {
         }
     }
 
-    pub fn apply_layout(&mut self, layout: Layout, new_pids: Vec<RawFd>, tab_index: usize) {
+    pub fn apply_layout(
+        &mut self,
+        layout: Layout,
+        new_pids: Vec<RawFd>,
+        tab_index: usize,
+        client_id: ClientId,
+    ) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let free_space = PaneGeom::default();
         self.panes_to_hide.clear();
@@ -384,7 +392,7 @@ impl Tab {
                 let (pid_tx, pid_rx) = channel();
                 let pane_title = run.location.to_string();
                 self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index))
+                    .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index, client_id))
                     .unwrap();
                 let pid = pid_rx.recv().unwrap();
                 let mut new_plugin = PluginPane::new(
@@ -395,13 +403,6 @@ impl Tab {
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
-                // Send an initial mode update to the newly loaded plugin only!
-                self.senders
-                    .send_to_plugin(PluginInstruction::Update(
-                        Some(pid),
-                        Event::ModeUpdate(self.mode_info.clone()),
-                    ))
-                    .unwrap();
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
@@ -465,12 +466,30 @@ impl Tab {
             }
         }
     }
+    pub fn update_input_modes(&mut self) {
+        // this updates all plugins with the client's input mode
+        for client_id in &self.connected_clients {
+            let mode_info = self
+                .mode_info
+                .get(client_id)
+                .unwrap_or(&self.default_mode_info);
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    Some(*client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ))
+                .unwrap();
+        }
+    }
     pub fn add_client(&mut self, client_id: ClientId) {
         match self.connected_clients.iter().next() {
             Some(first_client_id) => {
                 let first_active_pane_id = *self.active_panes.get(first_client_id).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, first_active_pane_id);
+                self.mode_info
+                    .insert(client_id, self.default_mode_info.clone());
             }
             None => {
                 let mut pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
@@ -482,15 +501,32 @@ impl Tab {
                 let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
+                self.mode_info
+                    .insert(client_id, self.default_mode_info.clone());
             }
         }
         // TODO: we might be able to avoid this, we do this so that newly connected clients will
         // necessarily get a full render
         self.set_force_render();
     }
-    pub fn add_multiple_clients(&mut self, client_ids: &[ClientId]) {
+    pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
+        self.mode_info.insert(client_id, mode_info);
+    }
+    pub fn add_multiple_clients(
+        &mut self,
+        client_ids: Vec<ClientId>,
+        client_mode_infos: Vec<(ClientId, ModeInfo)>,
+    ) {
         for client_id in client_ids {
-            self.add_client(*client_id);
+            self.add_client(client_id);
+        }
+        for (client_id, client_mode_info) in client_mode_infos {
+            log::info!(
+                "add_multiple_clients: client_id: {:?}, mode: {:?}",
+                client_id,
+                client_mode_info.mode
+            );
+            self.mode_info.insert(client_id, client_mode_info);
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
@@ -498,8 +534,12 @@ impl Tab {
         self.active_panes.remove(&client_id);
         self.set_force_render();
     }
-    pub fn drain_connected_clients(&mut self) -> Vec<ClientId> {
-        self.connected_clients.drain().collect()
+    pub fn drain_connected_clients(&mut self) -> (Vec<ClientId>, Vec<(ClientId, ModeInfo)>) {
+        let client_mode_info = self.mode_info.drain();
+        (
+            self.connected_clients.drain().collect(),
+            client_mode_info.collect(),
+        )
     }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
@@ -750,7 +790,7 @@ impl Tab {
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), Event::Key(key)))
+                        .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
                         .unwrap()
                 }
             }
@@ -926,26 +966,41 @@ impl Tab {
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
         self.hide_cursor_and_clear_display_as_needed(output);
         // render panes and their frames
-        for pane in self.panes.values_mut() {
+        for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
-                let mut pane_contents_and_ui = PaneContentsAndUi::new(
-                    pane,
-                    output,
-                    self.colors,
-                    &self.active_panes,
-                    self.mode_info.mode,
-                );
-                pane_contents_and_ui.render_pane_contents_for_all_clients();
+                let mut pane_contents_and_ui =
+                    PaneContentsAndUi::new(pane, output, self.colors, &self.active_panes);
+                match kind {
+                    PaneId::Terminal(..) => {
+                        pane_contents_and_ui.render_pane_contents_for_all_clients();
+                    }
+                    _ => {}
+                }
                 for client_id in self.connected_clients.iter() {
+                    let client_mode = self
+                        .mode_info
+                        .get(client_id)
+                        .unwrap_or(&self.default_mode_info)
+                        .mode;
+                    match kind {
+                        PaneId::Plugin(..) => {
+                            pane_contents_and_ui.render_pane_contents_for_client(*client_id);
+                        }
+                        _ => {}
+                    }
                     if self.draw_pane_frames {
-                        pane_contents_and_ui
-                            .render_pane_frame(*client_id, self.session_is_mirrored);
+                        pane_contents_and_ui.render_pane_frame(
+                            *client_id,
+                            client_mode,
+                            self.session_is_mirrored,
+                        );
                     } else {
                         let mut boundaries = client_id_to_boundaries
                             .entry(*client_id)
                             .or_insert_with(|| Boundaries::new(self.viewport));
                         pane_contents_and_ui.render_pane_boundaries(
                             *client_id,
+                            client_mode,
                             boundaries,
                             self.session_is_mirrored,
                         );
@@ -3344,7 +3399,11 @@ impl Tab {
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
             self.senders
-                .send_to_plugin(PluginInstruction::Update(None, Event::CopyToClipboard))
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    None,
+                    Event::CopyToClipboard,
+                ))
                 .unwrap();
         }
     }
@@ -3362,7 +3421,11 @@ impl Tab {
             .send_to_server(ServerInstruction::Render(Some(output)))
             .unwrap();
         self.senders
-            .send_to_plugin(PluginInstruction::Update(None, Event::CopyToClipboard))
+            .send_to_plugin(PluginInstruction::Update(
+                None,
+                None,
+                Event::CopyToClipboard,
+            ))
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
@@ -3406,6 +3469,7 @@ impl Tab {
             self.senders
                 .send_to_plugin(PluginInstruction::Update(
                     Some(*pid),
+                    None,
                     Event::Visible(visible),
                 ))
                 .unwrap();

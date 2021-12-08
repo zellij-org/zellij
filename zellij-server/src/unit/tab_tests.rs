@@ -106,6 +106,7 @@ fn create_new_tab(size: Size) -> Tab {
         LayoutTemplate::default().try_into().unwrap(),
         vec![1],
         index,
+        client_id,
     );
     tab
 }

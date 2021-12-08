@@ -130,7 +130,12 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self) -> Option<String> {
+    fn render(&mut self, client_id: Option<ClientId>) -> Option<String> {
+        if client_id.is_none() {
+            // this is a bit of a hack but works in a pinch
+            return None;
+        }
+        let client_id = client_id.unwrap();
         // if self.should_render {
         if true {
             // while checking should_render rather than rendering each pane every time
@@ -144,6 +149,7 @@ impl Pane for PluginPane {
                 .send(PluginInstruction::Render(
                     buf_tx,
                     self.pid,
+                    client_id,
                     self.get_content_rows(),
                     self.get_content_columns(),
                 ))
@@ -269,6 +275,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::ScrollUp(count)),
             ))
             .unwrap();
@@ -277,6 +284,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::ScrollDown(count)),
             ))
             .unwrap();
@@ -288,6 +296,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
             ))
             .unwrap();
@@ -296,6 +305,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
             ))
             .unwrap();
@@ -304,6 +314,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::Release(
                     end.map(|Position { line, column }| (line.0, column.0)),
                 )),
@@ -337,6 +348,7 @@ impl Pane for PluginPane {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
+                None,
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();
