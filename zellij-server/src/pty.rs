@@ -74,7 +74,7 @@ pub(crate) struct Pty {
 
 use std::convert::TryFrom;
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: LayoutFromYaml) {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
