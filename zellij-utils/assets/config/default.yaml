@@ -346,13 +346,13 @@ plugins:
 
 # Choose the path to the default shell that zellij will use for opening new panes
 # Default: $SHELL
-# default_shell: fish
+#default_shell: fish
 
 # Toggle between having pane frames around the panes
 # Options:
-#   - true
-#   - false (default)
-#no_pane_frames: true
+#   - true (default)
+#   - false
+#pane_frames: true
 
 # Choose the theme that is specified in the themes section.
 # Default: default
@@ -366,6 +366,6 @@ plugins:
 # On certain configurations, or terminals this could
 # potentially interfere with copying text.
 # Options:
-#   - true
-#   - false (default)
-#disable_mouse_mode: true
+#   - true (default)
+#   - false
+#mouse_mode: false

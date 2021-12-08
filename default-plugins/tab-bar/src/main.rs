@@ -43,7 +43,7 @@ impl ZellijPlugin for State {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => {
                 // tabs are indexed starting from 1 so we need to add 1
-                self.active_tab_idx = (&tabs).iter().position(|t| t.active).unwrap() + 1;
+                self.active_tab_idx = tabs.iter().position(|t| t.active).unwrap() + 1;
                 self.tabs = tabs;
             }
             Event::Mouse(me) => match me {
@@ -69,7 +69,7 @@ impl ZellijPlugin for State {
         }
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
-        for t in self.tabs.iter_mut() {
+        for t in &mut self.tabs {
             let mut tabname = t.name.clone();
             if t.active && self.mode_info.mode == InputMode::RenameTab {
                 if tabname.is_empty() {

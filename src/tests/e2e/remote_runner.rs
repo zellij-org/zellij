@@ -45,14 +45,12 @@ fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: Size) {
         .request_pty("xterm", None, Some((columns, rows, 0, 0)))
         .unwrap();
     channel.shell().unwrap();
-    channel.write_all("export PS1=\"$ \"\n".as_bytes()).unwrap();
+    channel.write_all(b"export PS1=\"$ \"\n").unwrap();
     channel.flush().unwrap();
 }
 
 fn stop_zellij(channel: &mut ssh2::Channel) {
-    channel
-        .write_all("killall -KILL zellij\n".as_bytes())
-        .unwrap();
+    channel.write_all(b"killall -KILL zellij\n").unwrap();
 }
 
 fn start_zellij(channel: &mut ssh2::Channel) {

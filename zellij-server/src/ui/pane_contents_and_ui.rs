@@ -66,14 +66,14 @@ impl<'a> PaneContentsAndUi<'a> {
         let pane_focused_for_different_client = self
             .focused_clients
             .iter()
-            .filter(|c_id| **c_id != client_id)
+            .filter(|&&c_id| c_id != client_id)
             .count()
             > 0;
         if pane_focused_for_different_client && !pane_focused_for_client_id {
             let fake_cursor_client_id = self
                 .focused_clients
                 .iter()
-                .find(|c_id| **c_id != client_id)
+                .find(|&&c_id| c_id != client_id)
                 .unwrap();
             if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.colors) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
@@ -100,7 +100,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let other_focused_clients: Vec<ClientId> = self
             .focused_clients
             .iter()
-            .filter(|c_id| **c_id != client_id)
+            .filter(|&&c_id| c_id != client_id)
             .copied()
             .collect();
         let pane_focused_for_differet_client = !other_focused_clients.is_empty();

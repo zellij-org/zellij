@@ -91,7 +91,7 @@ pub(crate) fn wasm_thread_main(
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-    fs::create_dir_all(plugin_global_data_dir.as_path()).unwrap();
+    fs::create_dir_all(&plugin_global_data_dir).unwrap();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -218,7 +218,7 @@ pub(crate) fn wasm_thread_main(
         }
     }
     info!("wasm main thread exits");
-    fs::remove_dir_all(plugin_global_data_dir.as_path()).unwrap();
+    fs::remove_dir_all(&plugin_global_data_dir).unwrap();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -270,7 +270,7 @@ fn start_plugin(
         .env("CLICOLOR_FORCE", "1")
         .map_dir("/host", ".")
         .unwrap()
-        .map_dir("/data", plugin_own_data_dir.as_path())
+        .map_dir("/data", &plugin_own_data_dir)
         .unwrap()
         .stdin(Box::new(input))
         .stdout(Box::new(output))

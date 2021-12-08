@@ -40,7 +40,7 @@ pub(crate) fn kill_all_sessions(yes: bool) {
                     process::exit(1);
                 }
             }
-            for session in sessions.iter() {
+            for session in &sessions {
                 kill_session_impl(session);
             }
             process::exit(0);
@@ -131,7 +131,7 @@ fn attach_with_session_name(
     config_options: Options,
     create: bool,
 ) -> ClientInfo {
-    match session_name.as_ref() {
+    match &session_name {
         Some(session) if create => {
             if !session_exists(session).unwrap() {
                 ClientInfo::New(session_name.unwrap())

@@ -3,6 +3,7 @@ use zellij_utils::{pane_size::Viewport, zellij_tile};
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
+use std::fmt::Write;
 use zellij_tile::data::PaletteColor;
 use zellij_utils::shared::colors;
 
@@ -513,12 +514,14 @@ impl Boundaries {
     pub fn vte_output(&self) -> String {
         let mut vte_output = String::new();
         for (coordinates, boundary_character) in &self.boundary_characters {
-            vte_output.push_str(&format!(
+            write!(
+                &mut vte_output,
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 coordinates.y + 1,
                 coordinates.x + 1,
                 boundary_character
-            )); // goto row/col + boundary character
+            )
+            .unwrap(); // goto row/col + boundary character
         }
         vte_output
     }

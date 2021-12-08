@@ -109,7 +109,7 @@ impl Keybinds {
 
         for mode in InputMode::iter() {
             if let Some(keybinds) = keybinds_from_yaml.get(&mode) {
-                for keybind in keybinds.iter() {
+                for keybind in keybinds {
                     match keybind {
                         KeyActionUnbind::Unbind(unbind) => {
                             unbind_config.insert(mode, unbind.unbind.clone());
@@ -242,8 +242,8 @@ impl From<KeybindsFromYaml> for Keybinds {
 
         for mode in InputMode::iter() {
             let mut mode_keybinds = ModeKeybinds::new();
-            for key_action in keybinds_from_yaml.keybinds.get(&mode).iter() {
-                for keybind in key_action.iter() {
+            if let Some(key_action) = keybinds_from_yaml.keybinds.get(&mode) {
+                for keybind in key_action {
                     mode_keybinds = mode_keybinds.merge(ModeKeybinds::from(keybind.clone()));
                 }
             }

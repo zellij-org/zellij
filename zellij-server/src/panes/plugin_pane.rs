@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
@@ -169,12 +170,14 @@ impl Pane for PluginPane {
                     .concat()
                 };
 
-                vte_output.push_str(&format!(
+                write!(
+                    &mut vte_output,
                     "\u{1b}[{};{}H\u{1b}[m{}",
                     self.get_content_y() + 1 + index,
                     self.get_content_x() + 1,
                     line_to_print,
-                )); // goto row/col and reset styles
+                )
+                .unwrap(); // goto row/col and reset styles
                 let line_len = line_to_print.len();
                 if line_len < self.get_content_columns() {
                     // pad line
@@ -189,11 +192,13 @@ impl Pane for PluginPane {
                 for line_index in total_line_count..self.get_content_rows() {
                     let x = self.get_content_x();
                     let y = self.get_content_y();
-                    vte_output.push_str(&format!(
+                    write!(
+                        &mut vte_output,
                         "\u{1b}[{};{}H\u{1b}[m",
                         y + line_index + 1,
                         x + 1
-                    )); // goto row/col and reset styles
+                    )
+                    .unwrap(); // goto row/col and reset styles
                     for _col_index in 0..self.get_content_columns() {
                         vte_output.push(' ');
                     }

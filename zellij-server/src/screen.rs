@@ -273,7 +273,7 @@ impl Screen {
             // currently all clients are just mirrors, so we perform the action for every entry in
             // tab_history
             // TODO: receive a client_id and only do it for the client
-            for (client_id, tab_history) in self.tab_history.iter_mut() {
+            for (client_id, tab_history) in &mut self.tab_history {
                 let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
                 self.active_tab_indices.insert(*client_id, new_tab_index);
                 tab_history.retain(|&e| e != new_tab_pos);
@@ -353,7 +353,7 @@ impl Screen {
 
     pub fn resize_to_screen(&mut self, new_screen_size: Size) {
         self.size = new_screen_size;
-        for (_, tab) in self.tabs.iter_mut() {
+        for tab in self.tabs.values_mut() {
             tab.resize_whole_tab(new_screen_size);
             tab.set_force_render();
         }
@@ -366,7 +366,7 @@ impl Screen {
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();
-        for (tab_index, tab) in self.tabs.iter_mut() {
+        for (tab_index, tab) in &mut self.tabs {
             if tab.has_active_panes() {
                 let vte_overlay = overlay.generate_overlay(size);
                 tab.render(&mut output, Some(vte_overlay));
@@ -456,7 +456,7 @@ impl Screen {
                 client_mode_infos_in_source_tab,
             );
         }
-        for (client_id, tab_history) in self.tab_history.iter_mut() {
+        for (client_id, tab_history) in &mut self.tab_history {
             let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
             self.active_tab_indices.insert(*client_id, tab_index);
             tab_history.retain(|&e| e != tab_index);
@@ -965,8 +965,8 @@ pub(crate) fn screen_thread_main(
                         screen.get_active_tab_mut(client_id).unwrap().close_pane(id);
                     }
                     None => {
-                        for (_index, tab) in screen.tabs.iter_mut() {
-                            if tab.get_pane_ids().iter().any(|pid| *pid == id) {
+                        for tab in screen.tabs.values_mut() {
+                            if tab.get_pane_ids().contains(&id) {
                                 tab.close_pane(id);
                                 break;
                             }
@@ -986,7 +986,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::TogglePaneFrames => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
-                for (_, tab) in screen.tabs.iter_mut() {
+                for tab in screen.tabs.values_mut() {
                     tab.set_pane_frames(screen.draw_pane_frames);
                 }
                 screen.render();

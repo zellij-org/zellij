@@ -68,44 +68,48 @@ pub enum NamedColor {
 
 impl NamedColor {
     fn to_foreground_ansi_code(self) -> String {
-        match self {
-            NamedColor::Black => format!("{}", 30),
-            NamedColor::Red => format!("{}", 31),
-            NamedColor::Green => format!("{}", 32),
-            NamedColor::Yellow => format!("{}", 33),
-            NamedColor::Blue => format!("{}", 34),
-            NamedColor::Magenta => format!("{}", 35),
-            NamedColor::Cyan => format!("{}", 36),
-            NamedColor::White => format!("{}", 37),
-            NamedColor::BrightBlack => format!("{}", 90),
-            NamedColor::BrightRed => format!("{}", 91),
-            NamedColor::BrightGreen => format!("{}", 92),
-            NamedColor::BrightYellow => format!("{}", 93),
-            NamedColor::BrightBlue => format!("{}", 94),
-            NamedColor::BrightMagenta => format!("{}", 95),
-            NamedColor::BrightCyan => format!("{}", 96),
-            NamedColor::BrightWhite => format!("{}", 97),
-        }
+        let v = match self {
+            NamedColor::Black => 30,
+            NamedColor::Red => 31,
+            NamedColor::Green => 32,
+            NamedColor::Yellow => 33,
+            NamedColor::Blue => 34,
+            NamedColor::Magenta => 35,
+            NamedColor::Cyan => 36,
+            NamedColor::White => 37,
+            NamedColor::BrightBlack => 90,
+            NamedColor::BrightRed => 91,
+            NamedColor::BrightGreen => 92,
+            NamedColor::BrightYellow => 93,
+            NamedColor::BrightBlue => 94,
+            NamedColor::BrightMagenta => 95,
+            NamedColor::BrightCyan => 96,
+            NamedColor::BrightWhite => 97,
+        };
+
+        v.to_string()
     }
     fn to_background_ansi_code(self) -> String {
-        match self {
-            NamedColor::Black => format!("{}", 40),
-            NamedColor::Red => format!("{}", 41),
-            NamedColor::Green => format!("{}", 42),
-            NamedColor::Yellow => format!("{}", 43),
-            NamedColor::Blue => format!("{}", 44),
-            NamedColor::Magenta => format!("{}", 45),
-            NamedColor::Cyan => format!("{}", 46),
-            NamedColor::White => format!("{}", 47),
-            NamedColor::BrightBlack => format!("{}", 100),
-            NamedColor::BrightRed => format!("{}", 101),
-            NamedColor::BrightGreen => format!("{}", 102),
-            NamedColor::BrightYellow => format!("{}", 103),
-            NamedColor::BrightBlue => format!("{}", 104),
-            NamedColor::BrightMagenta => format!("{}", 105),
-            NamedColor::BrightCyan => format!("{}", 106),
-            NamedColor::BrightWhite => format!("{}", 107),
-        }
+        let v = match self {
+            NamedColor::Black => 40,
+            NamedColor::Red => 41,
+            NamedColor::Green => 42,
+            NamedColor::Yellow => 43,
+            NamedColor::Blue => 44,
+            NamedColor::Magenta => 45,
+            NamedColor::Cyan => 46,
+            NamedColor::White => 47,
+            NamedColor::BrightBlack => 100,
+            NamedColor::BrightRed => 101,
+            NamedColor::BrightGreen => 102,
+            NamedColor::BrightYellow => 103,
+            NamedColor::BrightBlue => 104,
+            NamedColor::BrightMagenta => 105,
+            NamedColor::BrightCyan => 106,
+            NamedColor::BrightWhite => 107,
+        };
+
+        v.to_string()
     }
 }
 

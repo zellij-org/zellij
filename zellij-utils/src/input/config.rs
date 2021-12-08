@@ -149,14 +149,15 @@ impl Config {
     // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        Self::from_yaml(cfg.as_str())
+        Self::from_yaml(&cfg)
     }
 
     /// Merges two Config structs into one Config struct
     /// `other` overrides `self`.
     pub fn merge(&self, other: Self) -> Self {
         Self {
-            keybinds: self.keybinds.merge_keybinds(other.keybinds),
+            // TODO: merge keybinds in a way that preserves "unbind" attribute
+            keybinds: self.keybinds.clone(),
             options: self.options.merge(other.options),
             themes: self.themes.clone(), // TODO
             plugins: self.plugins.merge(other.plugins),

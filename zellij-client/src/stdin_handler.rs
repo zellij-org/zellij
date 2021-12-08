@@ -66,14 +66,14 @@ pub(crate) fn stdin_loop(
                 && stdin_buffer
                     .iter()
                     .take(bracketed_paste_start.len())
-                    .eq(bracketed_paste_start.iter()))
+                    .eq(&bracketed_paste_start))
         {
             match bracketed_paste_end_position(&stdin_buffer) {
                 Some(paste_end_position) => {
                     let starts_with_bracketed_paste_start = stdin_buffer
                         .iter()
                         .take(bracketed_paste_start.len())
-                        .eq(bracketed_paste_start.iter());
+                        .eq(&bracketed_paste_start);
 
                     let ends_with_bracketed_paste_end = true;
 
@@ -97,7 +97,7 @@ pub(crate) fn stdin_loop(
                     let starts_with_bracketed_paste_start = stdin_buffer
                         .iter()
                         .take(bracketed_paste_start.len())
-                        .eq(bracketed_paste_start.iter());
+                        .eq(&bracketed_paste_start);
                     if starts_with_bracketed_paste_start {
                         drop(stdin_buffer.drain(..6)); // bracketed paste start
                     }

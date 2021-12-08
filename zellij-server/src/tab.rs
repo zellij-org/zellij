@@ -368,7 +368,7 @@ impl Tab {
         let positions_in_layout = layout.position_panes_in_space(&free_space);
 
         let mut positions_and_size = positions_in_layout.iter();
-        for (pane_kind, terminal_pane) in self.panes.iter_mut() {
+        for (pane_kind, terminal_pane) in &mut self.panes {
             // for now the layout only supports terminal panes
             if let PaneId::Terminal(pid) = pane_kind {
                 match positions_and_size.next() {
@@ -814,7 +814,7 @@ impl Tab {
         if self.fullscreen_is_active {
             let first_client_id = self.connected_clients.iter().next().unwrap(); // this is a temporary hack until we fix the ui for multiple clients
             let active_pane_id = self.active_panes.get(first_client_id).unwrap();
-            for terminal_id in self.panes_to_hide.iter() {
+            for terminal_id in &self.panes_to_hide {
                 let pane = self.panes.get_mut(terminal_id).unwrap();
                 pane.set_should_render(true);
                 pane.set_should_render_boundaries(true);
@@ -948,11 +948,11 @@ impl Tab {
     fn update_active_panes_in_pty_thread(&self) {
         // this is a bit hacky and we should ideally not keep this state in two different places at
         // some point
-        for connected_client in self.connected_clients.iter() {
+        for &connected_client in &self.connected_clients {
             self.senders
                 .send_to_pty(PtyInstruction::UpdateActivePane(
-                    self.active_panes.get(connected_client).copied(),
-                    *connected_client,
+                    self.active_panes.get(&connected_client).copied(),
+                    connected_client,
                 ))
                 .unwrap();
         }
@@ -973,27 +973,27 @@ impl Tab {
                 if let PaneId::Terminal(..) = kind {
                     pane_contents_and_ui.render_pane_contents_for_all_clients();
                 }
-                for client_id in self.connected_clients.iter() {
+                for &client_id in &self.connected_clients {
                     let client_mode = self
                         .mode_info
-                        .get(client_id)
+                        .get(&client_id)
                         .unwrap_or(&self.default_mode_info)
                         .mode;
                     if let PaneId::Plugin(..) = kind {
-                        pane_contents_and_ui.render_pane_contents_for_client(*client_id);
+                        pane_contents_and_ui.render_pane_contents_for_client(client_id);
                     }
                     if self.draw_pane_frames {
                         pane_contents_and_ui.render_pane_frame(
-                            *client_id,
+                            client_id,
                             client_mode,
                             self.session_is_mirrored,
                         );
                     } else {
-                        let mut boundaries = client_id_to_boundaries
-                            .entry(*client_id)
+                        let boundaries = client_id_to_boundaries
+                            .entry(client_id)
                             .or_insert_with(|| Boundaries::new(self.viewport));
                         pane_contents_and_ui.render_pane_boundaries(
-                            *client_id,
+                            client_id,
                             client_mode,
                             boundaries,
                             self.session_is_mirrored,
@@ -1001,12 +1001,12 @@ impl Tab {
                     }
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
-                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
+                    pane_contents_and_ui.render_fake_cursor_if_needed(client_id);
                 }
             }
         }
         // render boundaries if needed
-        for (client_id, boundaries) in client_id_to_boundaries.iter_mut() {
+        for (client_id, boundaries) in &mut client_id_to_boundaries {
             output.push_to_client(*client_id, &boundaries.vte_output());
         }
         // FIXME: Once clients can be distinguished
@@ -1025,24 +1025,24 @@ impl Tab {
         }
     }
     fn render_cursor(&self, output: &mut Output) {
-        for client_id in self.connected_clients.iter() {
-            match self.get_active_terminal_cursor_position(*client_id) {
+        for &client_id in &self.connected_clients {
+            match self.get_active_terminal_cursor_position(client_id) {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let show_cursor = "\u{1b}[?25h";
                     let change_cursor_shape =
-                        self.get_active_pane(*client_id).unwrap().cursor_shape_csi();
+                        self.get_active_pane(client_id).unwrap().cursor_shape_csi();
                     let goto_cursor_position = &format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         cursor_position_y + 1,
                         cursor_position_x + 1,
                         change_cursor_shape
                     ); // goto row/col
-                    output.push_to_client(*client_id, show_cursor);
-                    output.push_to_client(*client_id, goto_cursor_position);
+                    output.push_to_client(client_id, show_cursor);
+                    output.push_to_client(client_id, goto_cursor_position);
                 }
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
-                    output.push_to_client(*client_id, hide_cursor);
+                    output.push_to_client(client_id, hide_cursor);
                 }
             }
         }
@@ -1558,10 +1558,7 @@ impl Tab {
 
         // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
         // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             let pane = self.panes.get(terminal_id).unwrap();
             if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
@@ -1572,10 +1569,7 @@ impl Tab {
         for terminal_id in terminals_below {
             self.increase_pane_height(&terminal_id, percent);
         }
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             self.reduce_pane_height(terminal_id, percent);
         }
     }
@@ -1597,10 +1591,7 @@ impl Tab {
 
         // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
         // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             let pane = self.panes.get(terminal_id).unwrap();
             if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
@@ -1611,10 +1602,7 @@ impl Tab {
         for terminal_id in terminals_above {
             self.increase_pane_height(&terminal_id, percent);
         }
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             self.reduce_pane_height(terminal_id, percent);
         }
     }
@@ -1636,7 +1624,7 @@ impl Tab {
 
         // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
         // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             let pane = self.panes.get(terminal_id).unwrap();
             if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
@@ -1647,7 +1635,7 @@ impl Tab {
         for terminal_id in terminals_to_the_left {
             self.increase_pane_width(&terminal_id, percent);
         }
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             self.reduce_pane_width(terminal_id, percent);
         }
     }
@@ -1669,7 +1657,7 @@ impl Tab {
 
         // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
         // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             let pane = self.panes.get(terminal_id).unwrap();
             if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
                 return;
@@ -1680,7 +1668,7 @@ impl Tab {
         for terminal_id in terminals_to_the_right {
             self.increase_pane_width(&terminal_id, percent);
         }
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             self.reduce_pane_width(terminal_id, percent);
         }
     }
@@ -1703,10 +1691,7 @@ impl Tab {
         for terminal_id in terminals_above {
             self.reduce_pane_height(&terminal_id, percent);
         }
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             self.increase_pane_height(terminal_id, percent);
         }
     }
@@ -1729,10 +1714,7 @@ impl Tab {
         for terminal_id in terminals_below {
             self.reduce_pane_height(&terminal_id, percent);
         }
-        for terminal_id in terminals_to_the_left
-            .iter()
-            .chain(terminals_to_the_right.iter())
-        {
+        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             self.increase_pane_height(terminal_id, percent);
         }
     }
@@ -1757,7 +1739,7 @@ impl Tab {
         for terminal_id in terminals_to_the_right {
             self.reduce_pane_width(&terminal_id, percent);
         }
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             self.increase_pane_width(terminal_id, percent);
         }
     }
@@ -1780,7 +1762,7 @@ impl Tab {
         for terminal_id in terminals_to_the_left {
             self.reduce_pane_width(&terminal_id, percent);
         }
-        for terminal_id in terminals_above.iter().chain(terminals_below.iter()) {
+        for terminal_id in terminals_above.iter().chain(&terminals_below) {
             self.increase_pane_width(terminal_id, percent);
         }
     }
@@ -2229,7 +2211,7 @@ impl Tab {
             })
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
-        let mut resizer = PaneResizer::new(self.panes.iter_mut());
+        let mut resizer = PaneResizer::new(&mut self.panes);
         let result = match direction {
             Direction::Horizontal => resizer.layout(direction, self.display_area.cols),
             Direction::Vertical => resizer.layout(direction, self.display_area.rows),
@@ -3168,12 +3150,12 @@ impl Tab {
     fn grow_panes(&mut self, panes: &[PaneId], direction: Direction, (width, height): (f64, f64)) {
         match direction {
             Direction::Horizontal => {
-                for pane_id in panes.iter() {
+                for pane_id in panes {
                     self.increase_pane_width(pane_id, width);
                 }
             }
             Direction::Vertical => {
-                for pane_id in panes.iter() {
+                for pane_id in panes {
                     self.increase_pane_height(pane_id, height);
                 }
             }
