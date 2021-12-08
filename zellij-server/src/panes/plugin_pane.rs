@@ -221,16 +221,20 @@ impl Pane for PluginPane {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
-            let pane_name = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            let pane_title = if self.pane_name.is_empty()
+                && input_mode == InputMode::RenamePane
+                && frame_params.is_main_client
+            {
                 String::from("Enter name...")
+            } else if self.pane_name.is_empty() {
+                self.pane_title.clone()
             } else {
                 self.pane_name.clone()
             };
             let frame = PaneFrame::new(
                 self.current_geom().into(),
                 (0, 0), // scroll position
-                self.pane_title.clone(),
-                pane_name,
+                pane_title,
                 frame_params,
             );
             Some(frame.render())

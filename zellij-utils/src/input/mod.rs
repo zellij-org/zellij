@@ -40,6 +40,7 @@ pub fn get_mode_info(
             ("x".to_string(), "Close".to_string()),
             ("f".to_string(), "Fullscreen".to_string()),
             ("z".to_string(), "Frames".to_string()),
+            ("c".to_string(), "Rename".to_string()),
         ],
         InputMode::Tab => vec![
             ("←↓↑→".to_string(), "Move focus".to_string()),

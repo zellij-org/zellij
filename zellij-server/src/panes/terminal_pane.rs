@@ -287,19 +287,23 @@ impl Pane for TerminalPane {
     ) -> Option<String> {
         // TODO: remove the cursor stuff from here
         let mut vte_output = None;
-        let pane_name = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+        let pane_title = if self.pane_name.is_empty()
+            && input_mode == InputMode::RenamePane
+            && frame_params.is_main_client
+        {
             String::from("Enter name...")
+        } else if self.pane_name.is_empty() {
+            self.grid
+                .title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone())
         } else {
             self.pane_name.clone()
         };
         let frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
-            self.grid
-                .title
-                .clone()
-                .unwrap_or_else(|| self.pane_title.clone()),
-            pane_name,
+            pane_title,
             frame_params,
         );
         match self.frame.get(&client_id) {

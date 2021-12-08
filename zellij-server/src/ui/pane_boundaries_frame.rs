@@ -58,7 +58,6 @@ pub struct FrameParams {
 pub struct PaneFrame {
     pub geom: Viewport,
     pub title: String,
-    pub name: String,
     pub scroll_position: (usize, usize), // (position, length)
     pub colors: Palette,
     pub color: Option<PaletteColor>,
@@ -73,13 +72,11 @@ impl PaneFrame {
         geom: Viewport,
         scroll_position: (usize, usize),
         main_title: String,
-        name: String,
         frame_params: FrameParams,
     ) -> Self {
         PaneFrame {
             geom,
             title: main_title,
-            name,
             scroll_position,
             colors: frame_params.colors,
             color: frame_params.color,
