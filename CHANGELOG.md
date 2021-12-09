@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: support multiple users in plugins
 * Fix: update default layouts (https://github.com/zellij-org/zellij/pull/926)
 * Add: infrastructure to show distinct tips in the `status-bar` plugin (https://github.com/zellij-org/zellij/pull/926)
+* Feature: Allow naming panes (https://github.com/zellij-org/zellij/pull/928)
 
 ## [0.21.0] - 2021-11-29
 * Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
