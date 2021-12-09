@@ -29,7 +29,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_PROJ_DIR},
+    consts::{VERSION, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
@@ -271,6 +271,8 @@ fn start_plugin(
         .map_dir("/host", ".")
         .unwrap()
         .map_dir("/data", &plugin_own_data_dir)
+        .unwrap()
+        .map_dir("/tmp", ZELLIJ_TMP_DIR.as_path())
         .unwrap()
         .stdin(Box::new(input))
         .stdout(Box::new(output))

@@ -2082,6 +2082,11 @@ version = "0.1.0"
 dependencies = [
  "ansi_term 0.12.1",
  "colored",
+ "lazy_static",
+ "rand 0.8.4",
+ "serde",
+ "serde_json",
+ "thiserror",
  "zellij-tile",
  "zellij-tile-utils",
 ]
