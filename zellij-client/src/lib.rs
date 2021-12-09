@@ -160,7 +160,7 @@ pub fn start_client(
                 client_attributes,
                 Box::new(opts),
                 Box::new(config_options.clone()),
-                layout.unwrap(),
+                Box::new(layout.unwrap()),
                 Some(config.plugins.clone()),
             )
         }

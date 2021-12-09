@@ -226,6 +226,12 @@ fn route_action(
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
+        Action::PaneNameInput(c) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UpdatePaneName(c, client_id))
+                .unwrap();
+        }
         Action::Run(command) => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {

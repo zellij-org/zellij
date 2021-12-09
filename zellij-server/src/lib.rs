@@ -58,7 +58,7 @@ pub enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        LayoutFromYaml,
+        Box<LayoutFromYaml>,
         ClientId,
         Option<PluginsConfig>,
     ),
@@ -531,7 +531,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
-    pub layout: LayoutFromYaml,
+    pub layout: Box<LayoutFromYaml>,
     pub plugins: Option<PluginsConfig>,
 }
 

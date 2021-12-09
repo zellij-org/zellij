@@ -23,8 +23,9 @@ use std::time::Instant;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, HashSet},
+    str,
 };
-use zellij_tile::data::{Event, ModeInfo, Palette, PaletteColor};
+use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
     input::{
         layout::{Direction, Layout, Run},
@@ -181,12 +182,18 @@ pub trait Pane {
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self, client_id: Option<ClientId>) -> Option<String>;
-    fn render_frame(&mut self, client_id: ClientId, frame_params: FrameParams) -> Option<String>;
+    fn render_frame(
+        &mut self,
+        client_id: ClientId,
+        frame_params: FrameParams,
+        input_mode: InputMode,
+    ) -> Option<String>;
     fn render_fake_cursor(
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
     ) -> Option<String>;
+    fn update_name(&mut self, name: &str);
     fn pid(&self) -> PaneId;
     fn reduce_height(&mut self, percent: f64);
     fn increase_height(&mut self, percent: f64);
@@ -400,6 +407,7 @@ impl Tab {
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                     pane_title,
+                    layout.pane_name.clone().unwrap_or_default(),
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
@@ -412,6 +420,7 @@ impl Tab {
                     *position_and_size,
                     self.colors,
                     next_terminal_position,
+                    layout.pane_name.clone().unwrap_or_default(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.panes
@@ -588,6 +597,7 @@ impl Tab {
                         bottom_winsize,
                         self.colors,
                         next_terminal_position,
+                        String::new(),
                     );
                     terminal_to_split.set_geom(top_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -604,6 +614,7 @@ impl Tab {
                         right_winsize,
                         self.colors,
                         next_terminal_position,
+                        String::new(),
                     );
                     terminal_to_split.set_geom(left_winsize);
                     self.panes.insert(pid, Box::new(new_terminal));
@@ -647,6 +658,7 @@ impl Tab {
                     bottom_winsize,
                     self.colors,
                     next_terminal_position,
+                    String::new(),
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
@@ -684,8 +696,13 @@ impl Tab {
             }
             let terminal_ws = active_pane.position_and_size();
             if let Some((left_winsize, right_winsize)) = split(Direction::Vertical, &terminal_ws) {
-                let new_terminal =
-                    TerminalPane::new(term_pid, right_winsize, self.colors, next_terminal_position);
+                let new_terminal = TerminalPane::new(
+                    term_pid,
+                    right_winsize,
+                    self.colors,
+                    next_terminal_position,
+                    String::new(),
+                );
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
@@ -3449,6 +3466,17 @@ impl Tab {
                     Event::Visible(visible),
                 ))
                 .unwrap();
+        }
+    }
+
+    pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let s = str::from_utf8(&buf).unwrap();
+            let active_terminal = self
+                .panes
+                .get_mut(&PaneId::Terminal(active_terminal_id))
+                .unwrap();
+            active_terminal.update_name(s);
         }
     }
 }

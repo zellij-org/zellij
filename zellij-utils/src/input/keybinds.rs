@@ -209,6 +209,7 @@ impl Keybinds {
                 mode_keybind_or_action(Action::Write(raw_bytes))
             }
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
+            InputMode::RenamePane => mode_keybind_or_action(Action::PaneNameInput(raw_bytes)),
             _ => mode_keybind_or_action(Action::NoOp),
         }
     }

@@ -132,7 +132,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
             }
         };
-        if let Some(vte_output) = self.pane.render_frame(client_id, frame_params) {
+        if let Some(vte_output) = self.pane.render_frame(client_id, frame_params, client_mode) {
             // FIXME: Use Termion for cursor and style clearing?
             self.output.push_to_client(
                 client_id,

@@ -133,6 +133,8 @@ impl fmt::Display for RunPluginLocation {
 pub struct Layout {
     pub direction: Direction,
     #[serde(default)]
+    pub pane_name: Option<String>,
+    #[serde(default)]
     pub parts: Vec<Layout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
@@ -411,6 +413,8 @@ fn default_as_some_true() -> Option<bool> {
 pub struct LayoutTemplate {
     pub direction: Direction,
     #[serde(default)]
+    pub pane_name: Option<String>,
+    #[serde(default)]
     pub borderless: bool,
     #[serde(default)]
     pub parts: Vec<LayoutTemplate>,
@@ -454,6 +458,7 @@ impl LayoutTemplate {
 pub struct TabLayout {
     #[serde(default)]
     pub direction: Direction,
+    pub pane_name: Option<String>,
     #[serde(default)]
     pub borderless: bool,
     #[serde(default)]
@@ -703,6 +708,7 @@ impl TryFrom<TabLayout> for Layout {
     fn try_from(tab: TabLayout) -> Result<Self, Self::Error> {
         Ok(Layout {
             direction: tab.direction,
+            pane_name: tab.pane_name,
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
@@ -715,6 +721,7 @@ impl From<TabLayout> for LayoutTemplate {
     fn from(tab: TabLayout) -> Self {
         Self {
             direction: tab.direction,
+            pane_name: tab.pane_name,
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts),
             body: false,
@@ -730,6 +737,7 @@ impl TryFrom<LayoutTemplate> for Layout {
     fn try_from(template: LayoutTemplate) -> Result<Self, Self::Error> {
         Ok(Layout {
             direction: template.direction,
+            pane_name: template.pane_name,
             borderless: template.borderless,
             parts: Self::from_vec_template_layout(template.parts)?,
             split_size: template.split_size,
@@ -752,6 +760,7 @@ impl Default for TabLayout {
             split_size: None,
             run: None,
             name: String::new(),
+            pane_name: None,
         }
     }
 }
@@ -760,10 +769,12 @@ impl Default for LayoutTemplate {
     fn default() -> Self {
         Self {
             direction: Direction::Horizontal,
+            pane_name: None,
             body: false,
             borderless: false,
             parts: vec![LayoutTemplate {
                 direction: Direction::Horizontal,
+                pane_name: None,
                 body: true,
                 borderless: false,
                 split_size: None,
