@@ -6,7 +6,8 @@ template:
       split_size:
         Fixed: 1
       run:
-        plugin: tab-bar
+        plugin:
+          location: "zellij:tab-bar"
       borderless: true
     - direction: Vertical
       body: true
@@ -14,7 +15,8 @@ template:
       split_size:
         Fixed: 2
       run:
-        plugin: status-bar
+        plugin:
+          location: "zellij:status-bar"
       borderless: true
 
 tabs:
@@ -59,7 +61,8 @@ tabs:
     split_size:
       Percent: 20
     run:
-      plugin: strider
+      plugin:
+        location: "zellij:strider"
   - direction: Horizontal
     split_size:
       Percent: 80
