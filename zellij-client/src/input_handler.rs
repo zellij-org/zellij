@@ -5,7 +5,7 @@ use zellij_utils::{
         mouse::{MouseButton, MouseEvent},
         options::Options,
     },
-    termion, zellij_tile,
+    crossterm, zellij_tile,
 };
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     errors::{ContextType, ErrorContext},
-    input::{actions::Action, cast_termion_key, config::Config, keybinds::Keybinds},
+    input::{actions::Action, cast_crossterm_key, config::Config, keybinds::Keybinds},
     ipc::{ClientToServerMsg, ExitReason},
 };
 
@@ -57,7 +57,7 @@ impl InputHandler {
         }
     }
 
-    /// Main input event loop. Interprets the terminal [`Event`](termion::event::Event)s
+    /// Main input event loop. Interprets the terminal [`Event`](crossterm::event::Event)s
     /// as [`Action`]s according to the current [`InputMode`], and dispatches those actions.
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
@@ -73,22 +73,22 @@ impl InputHandler {
             match self.receive_input_instructions.recv() {
                 Ok((InputInstruction::KeyEvent(event, raw_bytes), _error_context)) => {
                     match event {
-                        termion::event::Event::Key(key) => {
-                            let key = cast_termion_key(key);
+                        crossterm::event::Event::Key(key) => {
+                            let key = cast_crossterm_key(key);
                             self.handle_key(&key, raw_bytes);
                         }
-                        termion::event::Event::Mouse(me) => {
+                        crossterm::event::Event::Mouse(me) => {
                             let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
                             self.handle_mouse_event(&mouse_event);
                         }
-                        termion::event::Event::Unsupported(unsupported_key) => {
-                            // we have to do this because of a bug in termion
+                        crossterm::event::Event::Unsupported(unsupported_key) => {
+                            // we have to do this because of a bug in crossterm
                             // this should be a key event and not an unsupported event
                             if unsupported_key == alt_left_bracket {
                                 let key = Key::Alt('[');
                                 self.handle_key(&key, raw_bytes);
                             } else {
-                                // this is a hack because termion doesn't recognize certain keys
+                                // this is a hack because crossterm doesn't recognize certain keys
                                 // in this case we just forward it to the terminal
                                 self.handle_unknown_key(raw_bytes);
                             }

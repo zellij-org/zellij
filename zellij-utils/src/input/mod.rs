@@ -11,7 +11,6 @@ pub mod plugins;
 pub mod theme;
 
 use crate::envs;
-use termion::input::TermRead;
 use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
@@ -72,31 +71,35 @@ pub fn get_mode_info(
 }
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
-    input_bytes.keys().flatten().map(cast_termion_key).collect()
+    input_bytes
+        .keys()
+        .flatten()
+        .map(cast_crossterm_key)
+        .collect()
 }
 
 // FIXME: This is an absolutely cursed function that should be destroyed as soon
 // as an alternative that doesn't touch zellij-tile can be developed...
-pub fn cast_termion_key(event: termion::event::Key) -> Key {
-    match event {
-        termion::event::Key::Backspace => Key::Backspace,
-        termion::event::Key::Left => Key::Left,
-        termion::event::Key::Right => Key::Right,
-        termion::event::Key::Up => Key::Up,
-        termion::event::Key::Down => Key::Down,
-        termion::event::Key::Home => Key::Home,
-        termion::event::Key::End => Key::End,
-        termion::event::Key::PageUp => Key::PageUp,
-        termion::event::Key::PageDown => Key::PageDown,
-        termion::event::Key::BackTab => Key::BackTab,
-        termion::event::Key::Delete => Key::Delete,
-        termion::event::Key::Insert => Key::Insert,
-        termion::event::Key::F(n) => Key::F(n),
-        termion::event::Key::Char(c) => Key::Char(c),
-        termion::event::Key::Alt(c) => Key::Alt(c),
-        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
-        termion::event::Key::Null => Key::Null,
-        termion::event::Key::Esc => Key::Esc,
+pub fn cast_crossterm_key(event: crossterm::event::KeyEvent) -> Key {
+    match event.code {
+        crossterm::event::KeyCode::Backspace => Key::Backspace,
+        crossterm::event::KeyCode::Left => Key::Left,
+        crossterm::event::KeyCode::Right => Key::Right,
+        crossterm::event::KeyCode::Up => Key::Up,
+        crossterm::event::KeyCode::Down => Key::Down,
+        crossterm::event::KeyCode::Home => Key::Home,
+        crossterm::event::KeyCode::End => Key::End,
+        crossterm::event::KeyCode::PageUp => Key::PageUp,
+        crossterm::event::KeyCode::PageDown => Key::PageDown,
+        crossterm::event::KeyCode::BackTab => Key::BackTab,
+        crossterm::event::KeyCode::Delete => Key::Delete,
+        crossterm::event::KeyCode::Insert => Key::Insert,
+        crossterm::event::KeyCode::F(n) => Key::F(n),
+        crossterm::event::KeyCode::Char(c) if event.modifiers.contains(crossterm::event::KeyModifiers::ALT) => Key::Alt(c),
+        crossterm::event::KeyCode::Char(c) if event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => Key::Ctrl(c),
+        crossterm::event::KeyCode::Char(c) => Key::Char(c),
+        crossterm::event::KeyCode::Null => Key::Null,
+        crossterm::event::KeyCode::Esc => Key::Esc,
         _ => {
             unimplemented!("Encountered an unknown key!")
         }

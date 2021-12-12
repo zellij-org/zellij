@@ -2,10 +2,10 @@ use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
 use std::collections::HashMap;
 use terminfo::{capability as cap, Database as TerminfoDatabase};
-use termion::input::TermReadEventsAndRaw;
+use crossterm::input::TermReadEventsAndRaw;
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::termion;
+use zellij_utils::crossterm;
 
 fn keys_to_adjust() -> HashMap<Vec<u8>, Vec<u8>> {
     let mut keys_to_adjust = HashMap::new();
@@ -120,7 +120,7 @@ pub(crate) fn stdin_loop(
         for key_result in stdin_buffer.events_and_raw() {
             let (key_event, raw_bytes) = key_result.unwrap();
             let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
-            if let termion::event::Event::Mouse(me) = key_event {
+            if let crossterm::event::Event::Mouse(me) = key_event {
                 let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
                 if let MouseEvent::Hold(_) = mouse_event {
                     // as long as the user is holding the mouse down (no other stdin, eg.

@@ -38,7 +38,7 @@ impl<'a> PaneContentsAndUi<'a> {
     }
     pub fn render_pane_contents_for_all_clients(&mut self) {
         if let Some(vte_output) = self.pane.render(None) {
-            // FIXME: Use Termion for cursor and style clearing?
+            // FIXME: Use crossterm for cursor and style clearing?
             self.output.push_str_to_all_clients(&format!(
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 self.pane.y() + 1,
@@ -49,7 +49,7 @@ impl<'a> PaneContentsAndUi<'a> {
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
         if let Some(vte_output) = self.pane.render(Some(client_id)) {
-            // FIXME: Use Termion for cursor and style clearing?
+            // FIXME: Use crossterm for cursor and style clearing?
             self.output.push_to_client(
                 client_id,
                 &format!(
@@ -133,7 +133,7 @@ impl<'a> PaneContentsAndUi<'a> {
             }
         };
         if let Some(vte_output) = self.pane.render_frame(client_id, frame_params, client_mode) {
-            // FIXME: Use Termion for cursor and style clearing?
+            // FIXME: Use crossterm for cursor and style clearing?
             self.output.push_to_client(
                 client_id,
                 &format!(

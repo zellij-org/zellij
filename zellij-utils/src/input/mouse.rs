@@ -17,23 +17,26 @@ pub enum MouseEvent {
     ///
     /// The coordinates are zero-based.
     Hold(Position),
+    Moved(Position),
 }
 
-impl From<termion::event::MouseEvent> for MouseEvent {
-    fn from(event: termion::event::MouseEvent) -> Self {
-        match event {
-            termion::event::MouseEvent::Press(button, x, y) => Self::Press(
+impl From<crossterm::event::MouseEvent> for MouseEvent {
+    fn from(event: crossterm::event::MouseEvent) -> Self {
+        use crossterm::event::MouseEventKind;
+        let line = event.row.saturating_sub(1) as i32;
+        let column = event.column.saturating_sub(1);
+        let position = Position::new(line, column);
+
+        match event.kind {
+            MouseEventKind::Down(button) => Self::Press(
                 MouseButton::from(button),
-                Position::new((y.saturating_sub(1)) as i32, x.saturating_sub(1)),
+                position,
             ),
-            termion::event::MouseEvent::Release(x, y) => Self::Release(Position::new(
-                (y.saturating_sub(1)) as i32,
-                x.saturating_sub(1),
-            )),
-            termion::event::MouseEvent::Hold(x, y) => Self::Hold(Position::new(
-                (y.saturating_sub(1)) as i32,
-                x.saturating_sub(1),
-            )),
+            MouseEventKind::ScrollDown => Self::Press(MouseButton::WheelDown, position),
+            MouseEventKind::ScrollUp => Self::Press(MouseButton::WheelUp, position),
+            MouseEventKind::Up(_) => Self::Release(position),
+            MouseEventKind::Drag(_) => Self::Hold(position),
+            MouseEventKind::Moved => Self::Moved(position),
         }
     }
 }
@@ -56,14 +59,12 @@ pub enum MouseButton {
     WheelDown,
 }
 
-impl From<termion::event::MouseButton> for MouseButton {
-    fn from(button: termion::event::MouseButton) -> Self {
+impl From<crossterm::event::MouseButton> for MouseButton {
+    fn from(button: crossterm::event::MouseButton) -> Self {
         match button {
-            termion::event::MouseButton::Left => Self::Left,
-            termion::event::MouseButton::Right => Self::Right,
-            termion::event::MouseButton::Middle => Self::Middle,
-            termion::event::MouseButton::WheelUp => Self::WheelUp,
-            termion::event::MouseButton::WheelDown => Self::WheelDown,
+            crossterm::event::MouseButton::Left => Self::Left,
+            crossterm::event::MouseButton::Right => Self::Right,
+            crossterm::event::MouseButton::Middle => Self::Middle,
         }
     }
 }

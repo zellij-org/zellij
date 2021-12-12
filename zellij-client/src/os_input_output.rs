@@ -1,5 +1,5 @@
 use zellij_utils::pane_size::Size;
-use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
+use zellij_utils::{interprocess, libc, nix, signal_hook, crossterm, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};
@@ -66,7 +66,7 @@ pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
-    mouse_term: Arc<Mutex<Option<termion::input::MouseTerminal<std::io::Stdout>>>>,
+    mouse_term: Arc<Mutex<Option<crossterm::input::MouseTerminal<std::io::Stdout>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -200,7 +200,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn enable_mouse(&self) {
         let mut mouse_term = self.mouse_term.lock().unwrap();
         if mouse_term.is_none() {
-            *mouse_term = Some(termion::input::MouseTerminal::from(std::io::stdout()));
+            *mouse_term = Some(crossterm::input::MouseTerminal::from(std::io::stdout()));
         }
     }
 
