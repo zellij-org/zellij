@@ -4,9 +4,10 @@ use crate::envs;
 use crate::shared::set_permissions;
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
-use nix::unistd::Uid;
 use std::path::PathBuf;
 use std::{env, fs};
+#[cfg(unix)]
+use nix::unistd::Uid;
 
 pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
 pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
@@ -24,6 +25,7 @@ const fn system_default_data_dir() -> &'static str {
     }
 }
 
+#[cfg(unix)]
 lazy_static! {
     static ref UID: Uid = Uid::current();
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =

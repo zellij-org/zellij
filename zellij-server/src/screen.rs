@@ -1,6 +1,7 @@
 //! Things related to [`Screen`]s.
 
 use std::collections::{BTreeMap, HashSet};
+#[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::str;
 
@@ -26,6 +27,7 @@ use zellij_utils::{
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
+    #[cfg(unix)]
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
@@ -69,6 +71,7 @@ pub enum ScreenInstruction {
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
     UpdatePaneName(Vec<u8>, ClientId),
+    #[cfg(unix)]
     NewTab(Layout, Vec<RawFd>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
@@ -425,6 +428,7 @@ impl Screen {
         self.get_tabs_mut().get_mut(&tab_index)
     }
 
+    #[cfg(unix)]
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {

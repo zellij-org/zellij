@@ -3,15 +3,17 @@
 use std::{iter, str::from_utf8};
 
 use colorsys::Rgb;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
 use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
-
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 const UNIX_PERMISSIONS: u32 = 0o700;
 
+#[cfg(unix)]
 pub fn set_permissions(path: &Path) -> io::Result<()> {
     let mut permissions = fs::metadata(path)?.permissions();
     permissions.set_mode(UNIX_PERMISSIONS);

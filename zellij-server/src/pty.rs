@@ -13,11 +13,9 @@ use async_std::{
 use std::{
     collections::HashMap,
     env,
-    os::unix::io::RawFd,
     path::PathBuf,
     time::{Duration, Instant},
 };
-use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
     errors::{get_current_ctx, ContextType, PtyContext},
@@ -26,6 +24,11 @@ use zellij_utils::{
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
+};
+#[cfg(unix)]
+use {
+    std::os::unix::io::RawFd,
+    zellij_utils::nix::unistd::Pid,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -67,8 +70,10 @@ impl From<&PtyInstruction> for PtyContext {
 pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
+    #[cfg(unix)]
     pub id_to_child_pid: HashMap<RawFd, RawFd>, // pty_primary => child raw fd
     debug_to_file: bool,
+    #[cfg(unix)]
     task_handles: HashMap<RawFd, JoinHandle<()>>,
 }
 
@@ -206,6 +211,7 @@ async fn async_send_to_screen(senders: ThreadSenders, screen_instruction: Screen
 }
 
 fn stream_terminal_bytes(
+    #[cfg(unix)]
     pid: RawFd,
     senders: ThreadSenders,
     os_input: Box<dyn ServerOsApi>,
@@ -293,6 +299,7 @@ impl Pty {
             };
         };
     }
+    #[cfg(unix)]
     pub fn spawn_terminal(
         &mut self,
         terminal_action: Option<TerminalAction>,
@@ -426,6 +433,7 @@ impl Pty {
 }
 
 impl Drop for Pty {
+    #[cfg(unix)]
     fn drop(&mut self) {
         let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {

@@ -10,7 +10,6 @@ use crate::tab::Pane;
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Write};
-use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
@@ -19,6 +18,8 @@ use zellij_utils::{
     vte,
     zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
@@ -26,6 +27,7 @@ use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
+    #[cfg(unix)]
     Terminal(RawFd),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
@@ -34,6 +36,7 @@ pub enum PaneId {
 // their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 pub struct TerminalPane {
     pub grid: Grid,
+    #[cfg(unix)]
     pub pid: RawFd,
     pub selectable: bool,
     pub geom: PaneGeom,
@@ -500,6 +503,7 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    #[cfg(unix)]
     pub fn new(
         pid: RawFd,
         position_and_size: PaneGeom,

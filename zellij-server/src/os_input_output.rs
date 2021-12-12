@@ -9,8 +9,7 @@ use darwin_libproc;
 use std::fs;
 
 use std::env;
-use std::os::unix::io::RawFd;
-use std::os::unix::process::CommandExt;
+
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
@@ -18,14 +17,8 @@ use std::sync::{Arc, Mutex};
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
 
 use async_std::fs::File as AsyncFile;
-use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
 
-use nix::pty::{openpty, OpenptyResult, Winsize};
-use nix::sys::signal::{kill, Signal};
-use nix::sys::termios;
-
-use nix::unistd;
 use signal_hook::consts::*;
 use zellij_tile::data::Palette;
 use zellij_utils::{
@@ -37,10 +30,23 @@ use zellij_utils::{
 use async_std::io::ReadExt;
 pub use async_trait::async_trait;
 
+#[cfg(unix)]
+use {
+    std::os::unix::io::RawFd,
+    std::os::unix::process::CommandExt,
+    async_std::os::unix::io::FromRawFd,
+    nix::pty::{openpty, OpenptyResult, Winsize},
+    nix::sys::signal::{kill, Signal},
+    nix::sys::termios,
+    nix::unistd,
+};
+
+#[cfg(unix)]
 pub use nix::unistd::Pid;
 
 use crate::ClientId;
 
+#[cfg(unix)]
 pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
@@ -101,6 +107,7 @@ fn handle_command_exit(mut child: Child) {
     }
 }
 
+#[cfg(unix)]
 fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
@@ -140,6 +147,7 @@ fn handle_openpty(
     (pid_primary, child_id as RawFd)
 }
 
+#[cfg(unix)]
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
@@ -158,6 +166,7 @@ fn handle_terminal(
     }
 }
 
+#[cfg(unix)]
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
 /// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
 /// file open.
@@ -218,6 +227,7 @@ struct RawFdAsyncReader {
 }
 
 impl RawFdAsyncReader {
+    #[cfg(unix)]
     fn new(fd: RawFd) -> RawFdAsyncReader {
         RawFdAsyncReader {
             /// The supplied `RawFd` is consumed by the created `RawFdAsyncReader`, closing it when dropped
@@ -236,8 +246,10 @@ impl AsyncReader for RawFdAsyncReader {
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
+    #[cfg(unix)]
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
+    #[cfg(unix)]
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
@@ -246,12 +258,16 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
     ) -> (RawFd, RawFd);
+    #[cfg(unix)]
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    #[cfg(unix)]
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
+    #[cfg(unix)]
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
     fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error>;
+    #[cfg(unix)]
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error>;
     /// Terminate the process with process ID `pid`. (SIGTERM)
@@ -273,11 +289,13 @@ pub trait ServerOsApi: Send + Sync {
 }
 
 impl ServerOsApi for ServerOsInputOutput {
+    #[cfg(unix)]
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
         if cols > 0 && rows > 0 {
             set_terminal_size_using_fd(fd, cols, rows);
         }
     }
+    #[cfg(unix)]
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
@@ -286,15 +304,19 @@ impl ServerOsApi for ServerOsInputOutput {
         let orig_termios = self.orig_termios.lock().unwrap();
         spawn_terminal(terminal_action, orig_termios.clone(), quit_cb)
     }
+    #[cfg(unix)]
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
     }
+    #[cfg(unix)]
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
         Box::new(RawFdAsyncReader::new(fd))
     }
+    #[cfg(unix)]
     fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
         unistd::write(fd, buf)
     }
+    #[cfg(unix)]
     fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error> {
         termios::tcdrain(fd)
     }

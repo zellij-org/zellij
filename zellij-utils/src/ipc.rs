@@ -7,13 +7,16 @@ use crate::{
     pane_size::Size,
 };
 use interprocess::local_socket::LocalSocketStream;
-use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Write},
     marker::PhantomData,
-    os::unix::io::{AsRawFd, FromRawFd},
+};
+#[cfg(unix)]
+use {
+    nix::unistd::dup,
+    std::os::unix::io::{AsRawFd, FromRawFd}
 };
 
 use zellij_tile::data::{InputMode, Palette};
@@ -133,6 +136,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         let _ = self.sender.flush();
     }
 
+    #[cfg(unix)]
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
@@ -168,6 +172,7 @@ where
         bincode::deserialize_from(&mut self.receiver).unwrap()
     }
 
+    #[cfg(unix)]
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let sock_fd = self.receiver.get_ref().as_raw_fd();

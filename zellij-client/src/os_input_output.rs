@@ -2,12 +2,17 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, libc, nix, signal_hook, crossterm, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
-use mio::{unix::SourceFd, Events, Interest, Poll, Token};
-use nix::pty::Winsize;
-use nix::sys::termios;
-use signal_hook::{consts::signal::*, iterator::Signals};
+use mio::{Events, Interest, Poll, Token};
+#[cfg(unix)]
+use {
+    mio::unix::SourceFd,
+    nix::pty::Winsize,
+    nix::sys::termios,
+    signal_hook::{consts::signal::*, iterator::Signals},
+    std::os::unix::io::RawFd,
+};
+
 use std::io::prelude::*;
-use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
@@ -20,6 +25,7 @@ use zellij_utils::{
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
+#[cfg(unix)]
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
     termios::cfmakeraw(&mut tio);
@@ -29,6 +35,7 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
+#[cfg(unix)]
 fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
     match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios) {
         Ok(_) => {}
@@ -36,6 +43,7 @@ fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
     };
 }
 
+#[cfg(unix)]
 pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
@@ -72,11 +80,14 @@ pub struct ClientOsInputOutput {
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync {
+    #[cfg(unix)]
     /// Returns the size of the terminal associated to file descriptor `fd`.
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
+    #[cfg(unix)]
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     fn set_raw_mode(&mut self, fd: RawFd);
+    #[cfg(unix)]
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
     fn unset_raw_mode(&self, fd: RawFd);
@@ -102,12 +113,15 @@ pub trait ClientOsApi: Send + Sync {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
+    #[cfg(unix)]
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size {
         get_terminal_size_using_fd(fd)
     }
+    #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
+    #[cfg(unix)]
     fn unset_raw_mode(&self, fd: RawFd) {
         let orig_termios = self.orig_termios.lock().unwrap();
         unset_raw_mode(fd, orig_termios.clone());

@@ -4,7 +4,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
 use zellij_utils::crossterm::event::Event;
-use zellij_utils::crossterm::event::Key;
+use zellij_utils::crossterm::event::KeyEvent;
 use zellij_utils::zellij_tile::data::Palette;
 
 use crate::InputInstruction;
@@ -18,13 +18,14 @@ use std::path::Path;
 use zellij_utils::zellij_tile;
 
 use std::io;
-use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
 
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
@@ -94,12 +95,15 @@ impl FakeClientOsApi {
 }
 
 impl ClientOsApi for FakeClientOsApi {
+    #[cfg(unix)]
     fn get_terminal_size_using_fd(&self, _fd: RawFd) -> Size {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn set_raw_mode(&mut self, _fd: RawFd) {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn unset_raw_mode(&self, _fd: RawFd) {
         unimplemented!()
     }

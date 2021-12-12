@@ -12,7 +12,7 @@ use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
-
+#[cfg(unix)]
 use std::os::unix::io::RawFd;
 
 use zellij_utils::ipc::ClientAttributes;
@@ -27,9 +27,11 @@ use zellij_utils::{
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
+    #[cfg(unix)]
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
         // noop
     }
+    #[cfg(unix)]
     fn spawn_terminal(
         &self,
         _file_to_open: TerminalAction,
@@ -37,15 +39,19 @@ impl ServerOsApi for FakeInputOutput {
     ) -> (RawFd, RawFd) {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn write_to_tty_stdin(&self, _fd: RawFd, _buf: &[u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
+    #[cfg(unix)]
     fn tcdrain(&self, _fd: RawFd) -> Result<(), nix::Error> {
         unimplemented!()
     }

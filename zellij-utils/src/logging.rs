@@ -3,9 +3,11 @@
 use std::{
     fs,
     io::{self, prelude::*},
-    os::unix::io::RawFd,
     path::{Path, PathBuf},
 };
+
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
 
 use log::LevelFilter;
 
@@ -89,6 +91,7 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
     result
 }
 
+#[cfg(unix)]
 pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(&*ZELLIJ_TMP_LOG_DIR);

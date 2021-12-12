@@ -17,7 +17,6 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use serde::{Deserialize, Serialize};
-use std::os::unix::io::RawFd;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::{
@@ -33,6 +32,8 @@ use zellij_utils::{
     },
     pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
 
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
@@ -144,6 +145,7 @@ pub(crate) struct Tab {
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
+    #[cfg(unix)]
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
 }
 
@@ -362,6 +364,7 @@ impl Tab {
         }
     }
 
+    #[cfg(unix)]
     pub fn apply_layout(
         &mut self,
         layout: Layout,
@@ -734,6 +737,7 @@ impl Tab {
         // TODO: why do we need this?
         self.active_panes.get(&client_id).copied()
     }
+    #[cfg(unix)]
     fn get_active_terminal_id(&self, client_id: ClientId) -> Option<RawFd> {
         if let Some(PaneId::Terminal(pid)) = self.active_panes.get(&client_id).copied() {
             Some(pid)
@@ -741,9 +745,11 @@ impl Tab {
             None
         }
     }
+    #[cfg(unix)]
     pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
         self.panes.contains_key(&PaneId::Terminal(pid))
     }
+    #[cfg(unix)]
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
             // If the pane is scrolled buffer the vte events
@@ -761,6 +767,7 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes);
     }
+    #[cfg(unix)]
     pub fn process_pending_vte_events(&mut self, pid: RawFd) {
         if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
             let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
@@ -769,6 +776,7 @@ impl Tab {
             }
         }
     }
+    #[cfg(unix)]
     fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         // if we don't have the terminal in self.terminals it's probably because
         // of a race condition where the terminal was created in pty but has not

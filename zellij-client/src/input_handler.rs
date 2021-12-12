@@ -165,6 +165,7 @@ impl InputHandler {
             MouseEvent::Hold(point) => {
                 self.dispatch_action(Action::MouseHold(point));
             }
+            _ => {}
         }
     }
 
