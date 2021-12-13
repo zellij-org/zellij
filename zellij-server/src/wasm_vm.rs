@@ -117,10 +117,7 @@ pub(crate) fn wasm_thread_main(
                 let main_user_env = plugin_env.clone();
                 load_plugin(&mut main_user_instance);
 
-                plugin_map.insert(
-                    (plugin_id, client_id),
-                    (main_user_instance, main_user_env),
-                );
+                plugin_map.insert((plugin_id, client_id), (main_user_instance, main_user_env));
 
                 // clone plugins for the rest of the client ids if they exist
                 for client_id in connected_clients.iter() {
