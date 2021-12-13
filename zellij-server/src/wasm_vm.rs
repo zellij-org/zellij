@@ -113,9 +113,13 @@ pub(crate) fn wasm_thread_main(
                     &plugin_global_data_dir,
                 );
 
+                let mut main_user_instance = instance.clone();
+                let main_user_env = plugin_env.clone();
+                load_plugin(&mut main_user_instance);
+
                 plugin_map.insert(
                     (plugin_id, client_id),
-                    (instance.clone(), plugin_env.clone()),
+                    (main_user_instance, main_user_env),
                 );
 
                 // clone plugins for the rest of the client ids if they exist
@@ -125,7 +129,8 @@ pub(crate) fn wasm_thread_main(
                     let module = instance.module().clone();
                     let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
                     let zellij = zellij_exports(&store, &new_plugin_env);
-                    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    load_plugin(&mut instance);
                     plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env));
                 }
                 pid_tx.send(plugin_id).unwrap();
@@ -189,7 +194,8 @@ pub(crate) fn wasm_thread_main(
                 for (plugin_id, (module, mut new_plugin_env)) in new_plugins.drain() {
                     let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
                     let zellij = zellij_exports(&store, &new_plugin_env);
-                    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+                    load_plugin(&mut instance);
                     plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env));
                 }
 
@@ -298,12 +304,14 @@ fn start_plugin(
     let zellij = zellij_exports(store, &plugin_env);
     let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
 
-    let start = instance.exports.get_function("_start").unwrap();
+    (instance, plugin_env)
+}
+
+fn load_plugin(instance: &mut Instance) {
+    let load_function = instance.exports.get_function("_start").unwrap();
 
     // This eventually calls the `.load()` method
-    start.call(&[]).unwrap();
-
-    (instance, plugin_env)
+    load_function.call(&[]).unwrap();
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------
