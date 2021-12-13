@@ -37,6 +37,7 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
+    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
@@ -547,6 +548,15 @@ fn init_session(
         layout,
         plugins,
     } = options;
+
+    SCROLL_BUFFER_SIZE
+        .set(
+            config_options
+                .scroll_buffer_size
+                .unwrap_or(DEFAULT_SCROLL_BUFFER_SIZE),
+        )
+        .unwrap();
+
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 

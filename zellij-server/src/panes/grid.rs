@@ -7,10 +7,9 @@ use std::{
     str,
 };
 
-use zellij_utils::{position::Position, vte, zellij_tile};
+use zellij_utils::{consts::SCROLL_BUFFER_SIZE, position::Position, vte, zellij_tile};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
-pub const SCROLL_BACK: usize = 10_000;
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 use vte::{Params, Perform};
@@ -226,7 +225,7 @@ fn transfer_rows_from_lines_below_to_viewport(
 
 fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
     let mut dropped_line_width = None;
-    if vec.len() >= SCROLL_BACK {
+    if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
         let line = vec.pop_front();
         if let Some(line) = line {
             dropped_line_width = Some(line.width());
@@ -418,7 +417,7 @@ impl Debug for Grid {
 impl Grid {
     pub fn new(rows: usize, columns: usize, colors: Palette) -> Self {
         Grid {
-            lines_above: VecDeque::with_capacity(SCROLL_BACK),
+            lines_above: VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
             viewport: vec![Row::new(columns).canonical()],
             lines_below: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
@@ -1348,7 +1347,7 @@ impl Grid {
         self.should_render = true;
     }
     fn reset_terminal_state(&mut self) {
-        self.lines_above = VecDeque::with_capacity(SCROLL_BACK);
+        self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];
         self.alternative_lines_above_viewport_and_cursor = None;
@@ -1844,7 +1843,7 @@ impl Perform for Grid {
                     Some(1049) => {
                         let current_lines_above = std::mem::replace(
                             &mut self.lines_above,
-                            VecDeque::with_capacity(SCROLL_BACK),
+                            VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
                         );
                         let current_viewport = std::mem::replace(
                             &mut self.viewport,

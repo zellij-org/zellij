@@ -68,6 +68,8 @@ pub struct Options {
     /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
     pub on_force_close: Option<OnForceClose>,
+    #[structopt(long)]
+    pub scroll_buffer_size: Option<usize>,
 }
 
 impl Options {
@@ -91,6 +93,7 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
+        let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
 
         Options {
             simplified_ui,
@@ -101,6 +104,7 @@ impl Options {
             mouse_mode,
             pane_frames,
             on_force_close,
+            scroll_buffer_size,
         }
     }
 
@@ -128,6 +132,7 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
+        let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
 
         Options {
             simplified_ui,
@@ -138,6 +143,7 @@ impl Options {
             mouse_mode,
             pane_frames,
             on_force_close,
+            scroll_buffer_size,
         }
     }
 
@@ -184,6 +190,7 @@ impl From<CliOptions> for Options {
             mouse_mode: opts.mouse_mode,
             pane_frames: opts.pane_frames,
             on_force_close: opts.on_force_close,
+            scroll_buffer_size: opts.scroll_buffer_size,
         }
     }
 }
