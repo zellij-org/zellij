@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.22.0] - 2021-12-13
 * Fix: missing themes in configuration merge (https://github.com/zellij-org/zellij/pull/913)
 * Fix: add `gray` to theme section (https://github.com/zellij-org/zellij/pull/914)
 * Fix: prevent zellij session from attaching to itself (https://github.com/zellij-org/zellij/pull/911)
@@ -13,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: update example config options (https://github.com/zellij-org/zellij/pull/920)
 * Fix: correct handling of unbinds (https://github.com/zellij-org/zellij/issues/923)
 * Fix: improve perfomance when resizing window with a large scrollback buffer (https://github.com/zellij-org/zellij/pull/895)
-* Fix: support multiple users in plugins
+* Fix: support multiple users in plugins (https://github.com/zellij-org/zellij/pull/930)
 * Fix: update default layouts (https://github.com/zellij-org/zellij/pull/926)
 * Add: infrastructure to show distinct tips in the `status-bar` plugin (https://github.com/zellij-org/zellij/pull/926)
 * Feature: Allow naming panes (https://github.com/zellij-org/zellij/pull/928)

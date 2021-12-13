@@ -135,6 +135,8 @@ keybinds:
           key: [ Alt: '[',]
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
+        - action: [SwitchToMode: RenamePane, PaneNameInput: [0],]
+          key: [Char: 'c']
     move:
         - action: [SwitchToMode: Locked,]
           key: [Ctrl: 'g']
@@ -304,6 +306,27 @@ keybinds:
           key: [ Alt: '[',]
         - action: [FocusNextPane,]
           key: [ Alt: ']',]
+    renamepane:
+        - action: [SwitchToMode: Normal,]
+          key: [Ctrl: 'c', Ctrl: 's', Char: ' ',]
+        - action: [SwitchToMode: Pane,]
+          key: [Char: "\n",]
+        - action: [PaneNameInput: [27] , SwitchToMode: Pane,]
+          key: [Esc,]
+        - action: [NewPane: ,]
+          key: [ Alt: 'n',]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+        - action: [FocusPreviousPane,]
+          key: [ Alt: '[',]
+        - action: [FocusNextPane,]
+          key: [ Alt: ']',]
     session:
         - action: [SwitchToMode: Locked,]
           key: [Ctrl: 'g']
@@ -346,13 +369,13 @@ plugins:
 
 # Choose the path to the default shell that zellij will use for opening new panes
 # Default: $SHELL
-# default_shell: fish
+#default_shell: fish
 
 # Toggle between having pane frames around the panes
 # Options:
-#   - true
-#   - false (default)
-#no_pane_frames: true
+#   - true (default)
+#   - false
+#pane_frames: true
 
 # Choose the theme that is specified in the themes section.
 # Default: default
@@ -366,6 +389,6 @@ plugins:
 # On certain configurations, or terminals this could
 # potentially interfere with copying text.
 # Options:
-#   - true
-#   - false (default)
-#disable_mouse_mode: true
+#   - true (default)
+#   - false
+#mouse_mode: false
