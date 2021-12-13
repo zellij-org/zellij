@@ -392,3 +392,10 @@ plugins:
 #   - true (default)
 #   - false
 #mouse_mode: false
+
+# Configure the scroll back buffer size
+# This is the number of lines zellij stores for each pane in the scroll back
+# buffer. Excess number of lines are discarded in a FIFO fashion.
+# Valid values: positive integers
+# Default value: 10_000
+#scroll_buffer_size: 10_000
