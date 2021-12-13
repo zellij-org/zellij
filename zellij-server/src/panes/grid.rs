@@ -7,7 +7,11 @@ use std::{
     str,
 };
 
-use zellij_utils::{consts::SCROLL_BUFFER_SIZE, position::Position, vte, zellij_tile};
+use zellij_utils::{
+    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    position::Position,
+    vte, zellij_tile,
+};
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
@@ -417,7 +421,11 @@ impl Debug for Grid {
 impl Grid {
     pub fn new(rows: usize, columns: usize, colors: Palette) -> Self {
         Grid {
-            lines_above: VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
+            lines_above: VecDeque::with_capacity(
+                // .get_or_init() is used instead of .get().unwrap() to prevent
+                // unit tests from panicking where SCROLL_BUFFER_SIZE is uninitialized.
+                *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE),
+            ),
             viewport: vec![Row::new(columns).canonical()],
             lines_below: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
