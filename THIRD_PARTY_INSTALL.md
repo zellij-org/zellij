@@ -3,6 +3,7 @@
 * [Packages](#package)
     * [Arch Linux](#arch-linux)
     * [MacOS](#macos)
+    * [Fedora Linux](#fedora-linux)
 
 ## Packages
 
@@ -21,6 +22,14 @@ Or install from AUR repository with [AUR Helper](https://wiki.archlinux.org/titl
 
 ```
 paru -S zellij-git
+```
+
+### Fedora Linux
+You can install the `zellij` package from the [COPR](https://copr.fedorainfracloud.org/coprs/varlad/zellij/)
+
+```
+sudo dnf copr enable varlad/zellij 
+sudo dnf install zellij
 ```
 
 ### MacOS
