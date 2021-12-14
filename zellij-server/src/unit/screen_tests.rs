@@ -463,7 +463,12 @@ fn switch_to_tab_with_fullscreen() {
         "Active tab switched to previous"
     );
     assert_eq!(
-        screen.get_active_tab(1).unwrap().active_panes.get(&1).unwrap(),
+        screen
+            .get_active_tab(1)
+            .unwrap()
+            .active_panes
+            .get(&1)
+            .unwrap(),
         &PaneId::Terminal(2),
         "Active pane is still the fullscreen pane"
     );
