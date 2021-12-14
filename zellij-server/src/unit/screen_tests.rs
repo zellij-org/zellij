@@ -438,3 +438,33 @@ pub fn toggle_to_previous_tab_delete() {
         "Tab history is invalid"
     );
 }
+
+#[test]
+fn switch_to_tab_with_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab.new_pane(PaneId::Terminal(2), Some(1));
+        active_tab.toggle_active_pane_fullscreen(1);
+    }
+    new_tab(&mut screen, 2);
+
+    screen.switch_tab_prev(1);
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab switched to previous"
+    );
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().active_panes.get(&1).unwrap(),
+        &PaneId::Terminal(2),
+        "Active pane is still the fullscreen pane"
+    );
+}

@@ -129,7 +129,7 @@ pub(crate) struct Tab {
     pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     pub panes_to_hide: HashSet<PaneId>,
-    active_panes: HashMap<ClientId, PaneId>,
+    pub active_panes: HashMap<ClientId, PaneId>,
     max_panes: Option<usize>,
     viewport: Viewport, // includes all non-UI panes
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -507,6 +507,7 @@ impl Tab {
                     return;
                 }
                 pane_ids.sort(); // TODO: make this predictable
+                pane_ids.retain(|p| !self.panes_to_hide.contains(p));
                 let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
@@ -530,11 +531,6 @@ impl Tab {
             self.add_client(client_id);
         }
         for (client_id, client_mode_info) in client_mode_infos {
-            log::info!(
-                "add_multiple_clients: client_id: {:?}, mode: {:?}",
-                client_id,
-                client_mode_info.mode
-            );
             self.mode_info.insert(client_id, client_mode_info);
         }
     }
