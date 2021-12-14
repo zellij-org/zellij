@@ -189,6 +189,7 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     colors: Palette,
     draw_pane_frames: bool,
+    session_is_mirrored: bool,
 }
 
 impl Screen {
@@ -212,6 +213,7 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            session_is_mirrored: false,
         }
     }
 
@@ -241,7 +243,7 @@ impl Screen {
             self.tabs
                 .get_mut(&client_previous_tab)
                 .unwrap()
-                .add_client(client_id);
+                .add_client(client_id, None);
         }
     }
     fn move_clients(&mut self, source_index: usize, destination_index: usize) {
@@ -364,6 +366,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
+        log::info!("***render***");
         let mut output = Output::default();
         let mut tabs_to_close = vec![];
         let size = self.size;
@@ -409,6 +412,7 @@ impl Screen {
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Option<&mut Tab> {
+        log::info!("active_tab_indices: {:?}", self.active_tab_indices);
         match self.active_tab_indices.get(&client_id) {
             Some(tab) => self.tabs.get_mut(tab),
             None => None,
@@ -449,27 +453,59 @@ impl Screen {
             client_id,
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
-        if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-            active_tab.visible(false);
-            let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) =
-                active_tab.drain_connected_clients();
-            tab.add_multiple_clients(
-                connected_clients_in_source_tab,
-                client_mode_infos_in_source_tab,
-            );
-        }
-        for (client_id, tab_history) in &mut self.tab_history {
-            let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
-            self.active_tab_indices.insert(*client_id, tab_index);
-            tab_history.retain(|&e| e != tab_index);
-            tab_history.push(old_active_index);
+        if self.session_is_mirrored {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                active_tab.visible(false);
+                let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) =
+                    active_tab.drain_connected_clients();
+                tab.add_multiple_clients(
+                    connected_clients_in_source_tab,
+                    client_mode_infos_in_source_tab,
+                );
+            }
+            for (client_id, tab_history) in &mut self.tab_history {
+                let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
+                self.active_tab_indices.insert(*client_id, tab_index);
+                tab_history.retain(|&e| e != tab_index);
+                tab_history.push(old_active_index);
+            }
+        } else {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                let (client_id, client_mode_info) =
+                    active_tab.drain_single_client(client_id);
+                tab.add_client(
+                    client_id,
+                    Some(client_mode_info),
+                );
+                if active_tab.has_no_connected_clients() {
+                    active_tab.visible(false);
+                }
+            }
+            match self.active_tab_indices.remove(&client_id) {
+                Some(old_active_index) => {
+                    self.active_tab_indices.insert(client_id, tab_index);
+                    let client_tab_history = self.tab_history.get_mut(&client_id).unwrap();
+                    client_tab_history.retain(|&e| e != tab_index);
+                    client_tab_history.push(old_active_index);
+                },
+                None => {
+                    self.active_tab_indices.insert(client_id, tab_index);
+                }
+            }
+//             self.active_tab_indices.insert(client_id, tab_index);
+//             if let Some(old_active_index) = self.active_tab_indices.remove(&client_id) {
+//                 // self.active_tab_indices.insert(client_id, tab_index);
+//                 let client_tab_history = self.tab_history.get_mut(&client_id).unwrap();
+//                 client_tab_history.retain(|&e| e != tab_index);
+//                 client_tab_history.push(old_active_index);
+//             }
         }
         tab.update_input_modes();
         tab.visible(true);
         self.tabs.insert(tab_index, tab);
-        if !self.active_tab_indices.contains_key(&client_id) {
-            self.add_client(client_id);
-        }
+//         if !self.active_tab_indices.contains_key(&client_id) {
+//             self.add_client(client_id);
+//         }
         self.update_tabs();
 
         self.render();
@@ -487,7 +523,7 @@ impl Screen {
         }
         self.active_tab_indices.insert(client_id, tab_index);
         self.tab_history.insert(client_id, tab_history);
-        self.tabs.get_mut(&tab_index).unwrap().add_client(client_id);
+        self.tabs.get_mut(&tab_index).unwrap().add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         if let Some(client_tab) = self.get_active_tab_mut(client_id) {

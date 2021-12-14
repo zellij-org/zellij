@@ -111,10 +111,13 @@ impl Output {
                 .insert(*client_id, String::new());
         }
     }
-    pub fn push_str_to_all_clients(&mut self, to_push: &str) {
-        for render_instruction in self.client_render_instructions.values_mut() {
-            render_instruction.push_str(to_push)
+    pub fn push_str_to_multiple_clients(&mut self, to_push: &str, client_ids: impl Iterator<Item=ClientId>) {
+        for client_id in client_ids {
+            self.client_render_instructions.get_mut(&client_id).unwrap().push_str(to_push)
         }
+//         for render_instruction in self.client_render_instructions.values_mut() {
+//             render_instruction.push_str(to_push)
+//         }
     }
     pub fn push_to_client(&mut self, client_id: ClientId, to_push: &str) {
         if let Some(render_instructions) = self.client_render_instructions.get_mut(&client_id) {
@@ -356,7 +359,7 @@ impl Tab {
             draw_pane_frames,
             // at the moment this is hard-coded while the feature is being developed
             // the only effect this has is to make sure the UI is drawn without additional information about other connected clients
-            session_is_mirrored: true,
+            session_is_mirrored: false,
             pending_vte_events: HashMap::new(),
             connected_clients,
         }
@@ -491,7 +494,7 @@ impl Tab {
                 .unwrap();
         }
     }
-    pub fn add_client(&mut self, client_id: ClientId) {
+    pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
         match self.connected_clients.iter().next() {
             Some(first_client_id) => {
                 let first_active_pane_id = *self.active_panes.get(first_client_id).unwrap();
@@ -511,7 +514,7 @@ impl Tab {
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
                 self.mode_info
-                    .insert(client_id, self.default_mode_info.clone());
+                    .insert(client_id, mode_info.unwrap_or(self.default_mode_info.clone()));
             }
         }
         // TODO: we might be able to avoid this, we do this so that newly connected clients will
@@ -527,7 +530,7 @@ impl Tab {
         client_mode_infos: Vec<(ClientId, ModeInfo)>,
     ) {
         for client_id in client_ids {
-            self.add_client(client_id);
+            self.add_client(client_id, None);
         }
         for (client_id, client_mode_info) in client_mode_infos {
             log::info!(
@@ -549,6 +552,16 @@ impl Tab {
             self.connected_clients.drain().collect(),
             client_mode_info.collect(),
         )
+    }
+    pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
+        // TODO: active_panes, etc? what about the drain_connected_clients method above?
+        let client_mode_info = self.mode_info.remove(&client_id).unwrap();
+        self.connected_clients.remove(&client_id);
+        self.active_panes.remove(&client_id);
+        (client_id, client_mode_info)
+    }
+    pub fn has_no_connected_clients(&self) -> bool {
+        self.connected_clients.is_empty()
     }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
@@ -790,7 +803,10 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
-        self.write_to_pane_id(input_bytes, self.get_active_pane_id(client_id).unwrap());
+        // self.write_to_pane_id(input_bytes, self.get_active_pane_id(client_id).unwrap());
+        let pane_id = self.get_active_pane_id(client_id).unwrap();
+        log::info!("writing to pane id: {:?}", pane_id);
+        self.write_to_pane_id(input_bytes, pane_id);
     }
     pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
         match pane_id {
@@ -978,6 +994,8 @@ impl Tab {
         if self.connected_clients.is_empty() || self.active_panes.is_empty() {
             return;
         }
+        log::info!("tab render, connected clients: {:?}", self.connected_clients);
+        log::info!("tab render, active_panes: {:?}", self.active_panes);
         self.update_active_panes_in_pty_thread();
         output.add_clients(&self.connected_clients);
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
@@ -1028,16 +1046,19 @@ impl Tab {
         }
         // FIXME: Once clients can be distinguished
         if let Some(overlay_vte) = &overlay {
-            output.push_str_to_all_clients(overlay_vte);
+            // output.push_str_to_all_clients(overlay_vte);
+            output.push_str_to_multiple_clients(overlay_vte, self.connected_clients.iter().copied());
         }
         self.render_cursor(output);
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
-        output.push_str_to_all_clients(hide_cursor);
+        // output.push_str_to_all_clients(hide_cursor);
+        output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
-            output.push_str_to_all_clients(clear_display);
+            // output.push_str_to_all_clients(clear_display);
+            output.push_str_to_multiple_clients(clear_display, self.connected_clients.iter().copied());
             self.should_clear_display_before_rendering = false;
         }
     }
@@ -3404,10 +3425,14 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
         output.add_clients(&self.connected_clients);
-        output.push_str_to_all_clients(&format!(
+//         output.push_str_to_all_clients(&format!(
+//             "\u{1b}]52;c;{}\u{1b}\\",
+//             base64::encode(selection)
+//         ));
+        output.push_str_to_multiple_clients(&format!(
             "\u{1b}]52;c;{}\u{1b}\\",
             base64::encode(selection)
-        ));
+        ), self.connected_clients.iter().copied());
 
         // TODO: ideally we should be sending the Render instruction from the screen
         self.senders

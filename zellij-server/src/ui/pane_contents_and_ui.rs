@@ -39,12 +39,13 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_pane_contents_for_all_clients(&mut self) {
         if let Some(vte_output) = self.pane.render(None) {
             // FIXME: Use Termion for cursor and style clearing?
-            self.output.push_str_to_all_clients(&format!(
+            // self.output.push_str_to_all_clients(&format!(
+            self.output.push_str_to_multiple_clients(&format!(
                 "\u{1b}[{};{}H\u{1b}[m{}",
                 self.pane.y() + 1,
                 self.pane.x() + 1,
                 vte_output
-            ));
+            ), self.focused_clients.iter().copied());
         }
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
