@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.22.1] - 2021-12-14
+* Hotfix: Focus fullscreen pane when switching tab focus (https://github.com/zellij-org/zellij/pull/941)
+
 ## [0.22.0] - 2021-12-13
 * Fix: missing themes in configuration merge (https://github.com/zellij-org/zellij/pull/913)
 * Fix: add `gray` to theme section (https://github.com/zellij-org/zellij/pull/914)
