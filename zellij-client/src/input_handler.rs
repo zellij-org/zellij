@@ -70,7 +70,9 @@ impl InputHandler {
             if self.should_exit {
                 break;
             }
-            match self.receive_input_instructions.recv() {
+            let input_instruction = self.receive_input_instructions.recv();
+            log::info!("received input instruction: {:?}", input_instruction);
+            match input_instruction {
                 Ok((InputInstruction::KeyEvent(event, raw_bytes), _error_context)) => {
                     match event {
                         termion::event::Event::Key(key) => {
