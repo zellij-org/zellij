@@ -2,9 +2,6 @@ use std::collections::HashMap;
 
 use crate::panes::PaneId;
 
-#[cfg(target_os = "macos")]
-use darwin_libproc;
-
 #[cfg(target_os = "linux")]
 use std::fs;
 
@@ -338,7 +335,7 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     #[cfg(target_os = "macos")]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
-        darwin_libproc::pid_cwd(pid.as_raw()).ok()
+        zellij_darwin_libproc::pid_cwd(pid.as_raw()).ok()
     }
     #[cfg(target_os = "linux")]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
@@ -347,6 +344,65 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         None
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod zellij_darwin_libproc {
+    use std::ffi::OsStr;
+    use std::io;
+    use std::mem;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::PathBuf;
+    use std::slice;
+
+    // Fetch current working directory for process with `pid` provided.
+    fn pid_cwd(pid: libc::pid_t) -> io::Result<PathBuf> {
+        let vnode_path = vnode_path_info(pid)?;
+        let raw_path = unsafe {
+            slice::from_raw_parts(
+                vnode_path.pvi_cdir.vip_path.as_ptr() as *const u8,
+                vnode_path.pvi_cdir.vip_path.len(),
+            )
+        };
+        let first_null = memchr::memchr(0x00, &raw_path).unwrap_or(0);
+
+        let os_str = OsStr::from_bytes(&raw_path[..first_null]);
+
+        Ok(PathBuf::from(os_str.to_os_string()))
+    }
+
+    // Returns filled `proc_vnodepathinfo` struct for pid given.
+    fn vnode_path_info(pid: libc::pid_t) -> io::Result<darwin_libproc_sys::proc_vnodepathinfo> {
+        pid_info(
+            pid,
+            darwin_libproc_sys::PROC_PIDVNODEPATHINFO as libc::c_int,
+            0,
+        )
+    }
+
+    fn pid_info<T>(pid: libc::pid_t, flavor: libc::c_int, arg: u64) -> io::Result<T> {
+        let mut info = mem::MaybeUninit::<T>::uninit();
+        let size = mem::size_of::<T>() as libc::c_int;
+
+        let result = unsafe {
+            darwin_libproc_sys::proc_pidinfo(
+                pid,
+                flavor,
+                arg,
+                info.as_mut_ptr() as *mut libc::c_void,
+                size,
+            )
+        };
+
+        match result {
+            value if value <= 0 => Err(io::Error::last_os_error()),
+            value if value != size => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "invalid value returned",
+            )),
+            _ => unsafe { Ok(info.assume_init()) },
+        }
     }
 }
 
