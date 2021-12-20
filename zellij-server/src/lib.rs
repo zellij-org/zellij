@@ -320,8 +320,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .tabs
                         .into_iter()
                         .enumerate()
-                        .filter(|(_, tab_layout)| tab_layout.focus.unwrap_or(false))
-                        .next();
+                        .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
                     if let Some((tab_index, _)) = focused_tab {
                         session_data
                             .read()
