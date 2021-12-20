@@ -65,6 +65,10 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
+    #[structopt(long)]
+    #[serde(default)]
+    /// Mirror session when multiple users are connected (true or false)
+    pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
     #[structopt(long)]
     pub on_force_close: Option<OnForceClose>,
@@ -85,6 +89,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -100,6 +105,7 @@ impl Options {
             layout_dir,
             mouse_mode,
             pane_frames,
+            mirror_session,
             on_force_close,
         }
     }
@@ -122,6 +128,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -137,6 +144,7 @@ impl Options {
             layout_dir,
             mouse_mode,
             pane_frames,
+            mirror_session,
             on_force_close,
         }
     }
@@ -183,6 +191,7 @@ impl From<CliOptions> for Options {
             layout_dir: opts.layout_dir,
             mouse_mode: opts.mouse_mode,
             pane_frames: opts.pane_frames,
+            mirror_session: opts.mirror_session,
             on_force_close: opts.on_force_close,
         }
     }

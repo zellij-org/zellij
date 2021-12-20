@@ -1,0 +1,29 @@
+---
+source: src/tests/e2e/cases.rs
+expression: first_runner_snapshot
+
+---
+ Zellij (multiple_users_in_different_tabs)  Tab #1  Tab #2 [ ]                                                      
+┌ Pane #1 ────────────────────────────────────────────┤ MY FOCUS ├─────────────────────────────────────────────────────┐
+│$ █                                                                                                                   │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SCROLL  <o> SESSION  <q> QUIT           
+ Tip: Alt + <n> => new pane. Alt + <[] or hjkl> => navigate. Alt + <+-> => resize pane.                                 

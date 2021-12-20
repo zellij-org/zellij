@@ -12,7 +12,10 @@ use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 
+use std::cell::{RefCell, RefMut};
+use std::collections::HashSet;
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 
 use zellij_utils::nix;
 
@@ -89,6 +92,10 @@ fn create_new_tab(size: Size) -> Tab {
     let colors = Palette::default();
     let draw_pane_frames = true;
     let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
     let mut tab = Tab::new(
         index,
         position,
@@ -100,6 +107,8 @@ fn create_new_tab(size: Size) -> Tab {
         mode_info,
         colors,
         draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
         client_id,
     );
     tab.apply_layout(

@@ -3,7 +3,7 @@ use crate::ClientId;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
 use zellij_utils::pane_size::Viewport;
-use zellij_utils::zellij_tile::prelude::{Palette, PaletteColor};
+use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -26,22 +26,6 @@ fn background_color(character: &str, color: Option<PaletteColor>) -> String {
             Style::new().on(Fixed(color)).paint(character).to_string()
         }
         None => character.to_string(),
-    }
-}
-
-// TODO: move elsewhere
-pub(crate) fn client_id_to_colors(
-    client_id: ClientId,
-    colors: Palette,
-) -> Option<(PaletteColor, PaletteColor)> {
-    // (primary color, secondary color)
-    match client_id {
-        1 => Some((colors.green, colors.black)),
-        2 => Some((colors.blue, colors.black)),
-        3 => Some((colors.cyan, colors.black)),
-        4 => Some((colors.magenta, colors.black)),
-        5 => Some((colors.yellow, colors.black)),
-        _ => None,
     }
 }
 
