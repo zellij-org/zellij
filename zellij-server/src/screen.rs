@@ -1,7 +1,9 @@
 //! Things related to [`Screen`]s.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 use std::str;
 
 use zellij_utils::pane_size::Size;
@@ -182,6 +184,7 @@ pub(crate) struct Screen {
     size: Size,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
+    connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
@@ -189,6 +192,7 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     colors: Palette,
     draw_pane_frames: bool,
+    session_is_mirrored: bool,
 }
 
 impl Screen {
@@ -199,12 +203,14 @@ impl Screen {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         draw_pane_frames: bool,
+        session_is_mirrored: bool,
     ) -> Self {
         Screen {
             bus,
             max_panes,
             size: client_attributes.size,
             colors: client_attributes.palette,
+            connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
@@ -212,6 +218,7 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            session_is_mirrored,
         }
     }
 
@@ -226,34 +233,50 @@ impl Screen {
         }
     }
 
-    fn move_clients_from_closed_tab(&mut self, previous_tab_index: usize) {
-        let client_ids_in_closed_tab: Vec<ClientId> = self
-            .active_tab_indices
-            .iter()
-            .filter(|(_c_id, t_index)| **t_index == previous_tab_index)
-            .map(|(c_id, _t_index)| c_id)
-            .copied()
-            .collect();
-        for client_id in client_ids_in_closed_tab {
+    fn move_clients_from_closed_tab(
+        &mut self,
+        client_ids_and_mode_infos: Vec<(ClientId, ModeInfo)>,
+    ) {
+        for (client_id, client_mode_info) in client_ids_and_mode_infos {
             let client_previous_tab = self.tab_history.get_mut(&client_id).unwrap().pop().unwrap();
             self.active_tab_indices
                 .insert(client_id, client_previous_tab);
             self.tabs
                 .get_mut(&client_previous_tab)
                 .unwrap()
-                .add_client(client_id);
+                .add_client(client_id, Some(client_mode_info));
         }
     }
-    fn move_clients(&mut self, source_index: usize, destination_index: usize) {
-        let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) = {
-            let source_tab = self.tabs.get_mut(&source_index).unwrap();
-            source_tab.drain_connected_clients()
-        };
-        let destination_tab = self.tabs.get_mut(&destination_index).unwrap();
-        destination_tab.add_multiple_clients(
-            connected_clients_in_source_tab,
-            client_mode_infos_in_source_tab,
-        );
+    fn move_clients_between_tabs(
+        &mut self,
+        source_tab_index: usize,
+        destination_tab_index: usize,
+        clients_to_move: Option<Vec<ClientId>>,
+    ) {
+        // None ==> move all clients
+        let drained_clients = self
+            .get_indexed_tab_mut(source_tab_index)
+            .map(|t| t.drain_connected_clients(clients_to_move));
+        if let Some(client_mode_info_in_source_tab) = drained_clients {
+            let destination_tab = self.get_indexed_tab_mut(destination_tab_index).unwrap();
+            destination_tab.add_multiple_clients(client_mode_info_in_source_tab);
+            destination_tab.update_input_modes();
+            destination_tab.set_force_render();
+            destination_tab.visible(true);
+        }
+    }
+    fn update_client_tab_focus(&mut self, client_id: ClientId, new_tab_index: usize) {
+        match self.active_tab_indices.remove(&client_id) {
+            Some(old_active_index) => {
+                self.active_tab_indices.insert(client_id, new_tab_index);
+                let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
+                client_tab_history.retain(|&e| e != new_tab_index);
+                client_tab_history.push(old_active_index);
+            }
+            None => {
+                self.active_tab_indices.insert(client_id, new_tab_index);
+            }
+        }
     }
     /// A helper function to switch to a new tab at specified position.
     fn switch_active_tab(&mut self, new_tab_pos: usize, client_id: ClientId) {
@@ -265,24 +288,29 @@ impl Screen {
                 return;
             }
 
-            current_tab.visible(false);
             let current_tab_index = current_tab.index;
             let new_tab_index = new_tab.index;
-            let new_tab = self.get_indexed_tab_mut(new_tab_index).unwrap();
-            new_tab.set_force_render();
-            new_tab.visible(true);
-
-            // currently all clients are just mirrors, so we perform the action for every entry in
-            // tab_history
-            // TODO: receive a client_id and only do it for the client
-            for (client_id, tab_history) in &mut self.tab_history {
-                let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
-                self.active_tab_indices.insert(*client_id, new_tab_index);
-                tab_history.retain(|&e| e != new_tab_pos);
-                tab_history.push(old_active_index);
+            if self.session_is_mirrored {
+                self.move_clients_between_tabs(current_tab_index, new_tab_index, None);
+                let all_connected_clients: Vec<ClientId> =
+                    self.connected_clients.borrow().iter().copied().collect();
+                for client_id in all_connected_clients {
+                    self.update_client_tab_focus(client_id, new_tab_index);
+                }
+            } else {
+                self.move_clients_between_tabs(
+                    current_tab_index,
+                    new_tab_index,
+                    Some(vec![client_id]),
+                );
+                self.update_client_tab_focus(client_id, new_tab_index);
             }
 
-            self.move_clients(current_tab_index, new_tab_index);
+            if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_index) {
+                if current_tab.has_no_connected_clients() {
+                    current_tab.visible(false);
+                }
+            }
 
             self.update_tabs();
             self.render();
@@ -314,7 +342,7 @@ impl Screen {
     }
 
     fn close_tab_at_index(&mut self, tab_index: usize) {
-        let tab_to_close = self.tabs.remove(&tab_index).unwrap();
+        let mut tab_to_close = self.tabs.remove(&tab_index).unwrap();
         let pane_ids = tab_to_close.get_pane_ids();
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
@@ -330,7 +358,8 @@ impl Screen {
                 .send_to_server(ServerInstruction::Render(None))
                 .unwrap();
         } else {
-            self.move_clients_from_closed_tab(tab_index);
+            let client_mode_infos_in_closed_tab = tab_to_close.drain_connected_clients(None);
+            self.move_clients_from_closed_tab(client_mode_infos_in_closed_tab);
             let visible_tab_indices: HashSet<usize> =
                 self.active_tab_indices.values().copied().collect();
             for t in self.tabs.values_mut() {
@@ -446,28 +475,38 @@ impl Screen {
             client_mode_info,
             self.colors,
             self.draw_pane_frames,
+            self.connected_clients.clone(),
+            self.session_is_mirrored,
             client_id,
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
-        if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-            active_tab.visible(false);
-            let (connected_clients_in_source_tab, client_mode_infos_in_source_tab) =
-                active_tab.drain_connected_clients();
-            tab.add_multiple_clients(
-                connected_clients_in_source_tab,
-                client_mode_infos_in_source_tab,
-            );
-        }
-        for (client_id, tab_history) in &mut self.tab_history {
-            let old_active_index = self.active_tab_indices.remove(client_id).unwrap();
-            self.active_tab_indices.insert(*client_id, tab_index);
-            tab_history.retain(|&e| e != tab_index);
-            tab_history.push(old_active_index);
+        if self.session_is_mirrored {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
+                tab.add_multiple_clients(client_mode_infos_in_source_tab);
+                if active_tab.has_no_connected_clients() {
+                    active_tab.visible(false);
+                }
+            }
+            let all_connected_clients: Vec<ClientId> =
+                self.connected_clients.borrow().iter().copied().collect();
+            for client_id in all_connected_clients {
+                self.update_client_tab_focus(client_id, tab_index);
+            }
+        } else if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            let client_mode_info_in_source_tab =
+                active_tab.drain_connected_clients(Some(vec![client_id]));
+            tab.add_multiple_clients(client_mode_info_in_source_tab);
+            if active_tab.has_no_connected_clients() {
+                active_tab.visible(false);
+            }
+            self.update_client_tab_focus(client_id, tab_index);
         }
         tab.update_input_modes();
         tab.visible(true);
         self.tabs.insert(tab_index, tab);
         if !self.active_tab_indices.contains_key(&client_id) {
+            // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id);
         }
         self.update_tabs();
@@ -486,12 +525,19 @@ impl Screen {
             tab_history = first_tab_history.clone();
         }
         self.active_tab_indices.insert(client_id, tab_index);
+        self.connected_clients.borrow_mut().insert(client_id);
         self.tab_history.insert(client_id, tab_history);
-        self.tabs.get_mut(&tab_index).unwrap().add_client(client_id);
+        self.tabs
+            .get_mut(&tab_index)
+            .unwrap()
+            .add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         if let Some(client_tab) = self.get_active_tab_mut(client_id) {
             client_tab.remove_client(client_id);
+            if client_tab.has_no_connected_clients() {
+                client_tab.visible(false);
+            }
         }
         if self.active_tab_indices.contains_key(&client_id) {
             self.active_tab_indices.remove(&client_id);
@@ -499,30 +545,41 @@ impl Screen {
         if self.tab_history.contains_key(&client_id) {
             self.tab_history.remove(&client_id);
         }
+        self.connected_clients.borrow_mut().remove(&client_id);
+        self.update_tabs();
     }
 
     pub fn update_tabs(&self) {
-        let mut tab_data = vec![];
-        // TODO: right now all clients are synced, so we just take the first active_tab which is
-        // the same for everyone - when this is no longer the case, we need to update the TabInfo
-        // to account for this (or send multiple TabInfos)
-        if let Some((_first_client, first_active_tab_index)) = self.active_tab_indices.iter().next()
-        {
+        for (client_id, active_tab_index) in self.active_tab_indices.iter() {
+            let mut tab_data = vec![];
             for tab in self.tabs.values() {
+                let other_focused_clients: Vec<ClientId> = if self.session_is_mirrored {
+                    vec![]
+                } else {
+                    self.active_tab_indices
+                        .iter()
+                        .filter(|(c_id, tab_position)| {
+                            **tab_position == tab.index && *c_id != client_id
+                        })
+                        .map(|(c_id, _)| c_id)
+                        .copied()
+                        .collect()
+                };
                 tab_data.push(TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
-                    active: *first_active_tab_index == tab.index,
+                    active: *active_tab_index == tab.index,
                     panes_to_hide: tab.panes_to_hide.len(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
+                    other_focused_clients,
                 });
             }
             self.bus
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
-                    None,
+                    Some(*client_id),
                     Event::TabUpdate(tab_data),
                 ))
                 .unwrap();
@@ -607,6 +664,7 @@ pub(crate) fn screen_thread_main(
 ) {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
+    let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
 
     let mut screen = Screen::new(
         bus,
@@ -620,6 +678,7 @@ pub(crate) fn screen_thread_main(
             },
         ),
         draw_pane_frames,
+        session_is_mirrored,
     );
     loop {
         let (event, mut err_ctx) = screen

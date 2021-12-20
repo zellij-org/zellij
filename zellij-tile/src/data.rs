@@ -3,6 +3,32 @@ use std::fmt;
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
+pub type ClientId = u16; // TODO: merge with crate type?
+
+pub fn client_id_to_colors(
+    client_id: ClientId,
+    colors: Palette,
+) -> Option<(PaletteColor, PaletteColor)> {
+    // (primary color, secondary color)
+    match client_id {
+        1 => Some((colors.magenta, colors.black)),
+        2 => Some((colors.blue, colors.black)),
+        3 => Some((colors.purple, colors.black)),
+        4 => Some((colors.yellow, colors.black)),
+        5 => Some((colors.cyan, colors.black)),
+        6 => Some((colors.gold, colors.black)),
+        7 => Some((colors.red, colors.black)),
+        8 => Some((colors.silver, colors.black)),
+        9 => Some((colors.pink, colors.black)),
+        10 => Some((colors.brown, colors.black)),
+        _ => None,
+    }
+}
+
+pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
+    (colors.green, colors.black)
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
     Backspace,
@@ -169,6 +195,11 @@ pub struct Palette {
     pub white: PaletteColor,
     pub orange: PaletteColor,
     pub gray: PaletteColor,
+    pub purple: PaletteColor,
+    pub gold: PaletteColor,
+    pub silver: PaletteColor,
+    pub pink: PaletteColor,
+    pub brown: PaletteColor,
 }
 
 /// Represents the contents of the help message that is printed in the status bar,
@@ -193,6 +224,7 @@ pub struct TabInfo {
     pub panes_to_hide: usize,
     pub is_fullscreen_active: bool,
     pub is_sync_panes_active: bool,
+    pub other_focused_clients: Vec<ClientId>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
