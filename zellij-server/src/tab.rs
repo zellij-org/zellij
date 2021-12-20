@@ -124,9 +124,6 @@ impl Output {
                 .unwrap()
                 .push_str(to_push)
         }
-        //         for render_instruction in self.client_render_instructions.values_mut() {
-        //             render_instruction.push_str(to_push)
-        //         }
     }
     pub fn push_to_client(&mut self, client_id: ClientId, to_push: &str) {
         if let Some(render_instructions) = self.client_render_instructions.get_mut(&client_id) {
@@ -153,7 +150,7 @@ pub(crate) struct Tab {
     mode_info: HashMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo,
     pub colors: Palette,
-    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>, // TODO: can we combine this and connected_clients somehow?
+    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>, // TODO: combine this and connected_clients
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
@@ -815,7 +812,6 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
-        // self.write_to_pane_id(input_bytes, self.get_active_pane_id(client_id).unwrap());
         let pane_id = self.get_active_pane_id(client_id).unwrap();
         self.write_to_pane_id(input_bytes, pane_id);
     }
@@ -1074,11 +1070,9 @@ impl Tab {
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
-        // output.push_str_to_all_clients(hide_cursor);
         output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
-            // output.push_str_to_all_clients(clear_display);
             output.push_str_to_multiple_clients(
                 clear_display,
                 self.connected_clients.iter().copied(),
@@ -3449,10 +3443,6 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
         output.add_clients(&self.connected_clients);
-        //         output.push_str_to_all_clients(&format!(
-        //             "\u{1b}]52;c;{}\u{1b}\\",
-        //             base64::encode(selection)
-        //         ));
         output.push_str_to_multiple_clients(
             &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
             self.connected_clients.iter().copied(),

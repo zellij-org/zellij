@@ -43,7 +43,6 @@ impl<'a> PaneContentsAndUi<'a> {
     ) {
         if let Some(vte_output) = self.pane.render(None) {
             // FIXME: Use Termion for cursor and style clearing?
-            // self.output.push_str_to_all_clients(&format!(
             self.output.push_str_to_multiple_clients(
                 &format!(
                     "\u{1b}[{};{}H\u{1b}[m{}",
