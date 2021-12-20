@@ -1,11 +1,12 @@
 use crate::panes::PaneId;
 use crate::tab::{Output, Pane};
 use crate::ui::boundaries::Boundaries;
-use crate::ui::pane_boundaries_frame::client_id_to_colors;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
 use std::collections::HashMap;
-use zellij_tile::data::{InputMode, Palette, PaletteColor};
+use zellij_tile::data::{
+    client_id_to_colors, single_client_color, InputMode, Palette, PaletteColor,
+};
 
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
@@ -21,13 +22,13 @@ impl<'a> PaneContentsAndUi<'a> {
         output: &'a mut Output,
         colors: Palette,
         active_panes: &HashMap<ClientId, PaneId>,
+        multiple_users_exist_in_session: bool,
     ) -> Self {
         let focused_clients: Vec<ClientId> = active_panes
             .iter()
             .filter(|(_c_id, p_id)| **p_id == pane.pid())
             .map(|(c_id, _p_id)| *c_id)
             .collect();
-        let multiple_users_exist_in_session = active_panes.len() > 1;
         PaneContentsAndUi {
             pane,
             output,
@@ -36,15 +37,21 @@ impl<'a> PaneContentsAndUi<'a> {
             multiple_users_exist_in_session,
         }
     }
-    pub fn render_pane_contents_for_all_clients(&mut self) {
+    pub fn render_pane_contents_to_multiple_clients(
+        &mut self,
+        clients: impl Iterator<Item = ClientId>,
+    ) {
         if let Some(vte_output) = self.pane.render(None) {
             // FIXME: Use Termion for cursor and style clearing?
-            self.output.push_str_to_all_clients(&format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                self.pane.y() + 1,
-                self.pane.x() + 1,
-                vte_output
-            ));
+            self.output.push_str_to_multiple_clients(
+                &format!(
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    self.pane.y() + 1,
+                    self.pane.x() + 1,
+                    vte_output
+                ),
+                clients,
+            );
         }
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
@@ -165,9 +172,9 @@ impl<'a> PaneContentsAndUi<'a> {
         if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
-                    if session_is_mirrored {
-                        let colors = client_id_to_colors(1, self.colors); // mirrored sessions only have one focused color
-                        colors.map(|colors| colors.0)
+                    if session_is_mirrored || !self.multiple_users_exist_in_session {
+                        let colors = single_client_color(self.colors); // mirrored sessions only have one focused color
+                        Some(colors.0)
                     } else {
                         let colors = client_id_to_colors(client_id, self.colors);
                         colors.map(|colors| colors.0)

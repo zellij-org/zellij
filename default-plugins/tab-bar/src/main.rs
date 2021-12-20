@@ -85,6 +85,7 @@ impl ZellijPlugin for State {
                 t.is_sync_panes_active,
                 self.mode_info.palette,
                 self.mode_info.capabilities,
+                t.other_focused_clients.as_slice(),
             );
             all_tabs.push(tab);
         }

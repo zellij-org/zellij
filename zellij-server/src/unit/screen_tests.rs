@@ -90,12 +90,14 @@ fn create_new_screen(size: Size) -> Screen {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let draw_pane_frames = false;
+    let session_is_mirrored = true;
     Screen::new(
         bus,
         &client_attributes,
         max_panes,
         mode_info,
         draw_pane_frames,
+        session_is_mirrored,
     )
 }
 

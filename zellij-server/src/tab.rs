@@ -17,7 +17,9 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::{
@@ -111,9 +113,16 @@ impl Output {
                 .insert(*client_id, String::new());
         }
     }
-    pub fn push_str_to_all_clients(&mut self, to_push: &str) {
-        for render_instruction in self.client_render_instructions.values_mut() {
-            render_instruction.push_str(to_push)
+    pub fn push_str_to_multiple_clients(
+        &mut self,
+        to_push: &str,
+        client_ids: impl Iterator<Item = ClientId>,
+    ) {
+        for client_id in client_ids {
+            self.client_render_instructions
+                .get_mut(&client_id)
+                .unwrap()
+                .push_str(to_push)
         }
     }
     pub fn push_to_client(&mut self, client_id: ClientId, to_push: &str) {
@@ -141,6 +150,7 @@ pub(crate) struct Tab {
     mode_info: HashMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo,
     pub colors: Palette,
+    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>, // TODO: combine this and connected_clients
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
@@ -322,6 +332,8 @@ impl Tab {
         mode_info: ModeInfo,
         colors: Palette,
         draw_pane_frames: bool,
+        connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+        session_is_mirrored: bool,
         client_id: ClientId,
     ) -> Self {
         let panes = BTreeMap::new();
@@ -354,10 +366,9 @@ impl Tab {
             default_mode_info: mode_info,
             colors,
             draw_pane_frames,
-            // at the moment this is hard-coded while the feature is being developed
-            // the only effect this has is to make sure the UI is drawn without additional information about other connected clients
-            session_is_mirrored: true,
+            session_is_mirrored,
             pending_vte_events: HashMap::new(),
+            connected_clients_in_app,
             connected_clients,
         }
     }
@@ -491,14 +502,16 @@ impl Tab {
                 .unwrap();
         }
     }
-    pub fn add_client(&mut self, client_id: ClientId) {
+    pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
         match self.connected_clients.iter().next() {
             Some(first_client_id) => {
                 let first_active_pane_id = *self.active_panes.get(first_client_id).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, first_active_pane_id);
-                self.mode_info
-                    .insert(client_id, self.default_mode_info.clone());
+                self.mode_info.insert(
+                    client_id,
+                    mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
+                );
             }
             None => {
                 let mut pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
@@ -511,40 +524,53 @@ impl Tab {
                 let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, *first_pane_id);
-                self.mode_info
-                    .insert(client_id, self.default_mode_info.clone());
+                self.mode_info.insert(
+                    client_id,
+                    mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
+                );
             }
         }
         // TODO: we might be able to avoid this, we do this so that newly connected clients will
         // necessarily get a full render
         self.set_force_render();
+        self.update_input_modes();
     }
     pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         self.mode_info.insert(client_id, mode_info);
     }
-    pub fn add_multiple_clients(
-        &mut self,
-        client_ids: Vec<ClientId>,
-        client_mode_infos: Vec<(ClientId, ModeInfo)>,
-    ) {
-        for client_id in client_ids {
-            self.add_client(client_id);
-        }
-        for (client_id, client_mode_info) in client_mode_infos {
+    pub fn add_multiple_clients(&mut self, client_ids_to_mode_infos: Vec<(ClientId, ModeInfo)>) {
+        for (client_id, client_mode_info) in client_ids_to_mode_infos {
+            self.add_client(client_id, None);
             self.mode_info.insert(client_id, client_mode_info);
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.connected_clients.remove(&client_id);
-        self.active_panes.remove(&client_id);
         self.set_force_render();
     }
-    pub fn drain_connected_clients(&mut self) -> (Vec<ClientId>, Vec<(ClientId, ModeInfo)>) {
-        let client_mode_info = self.mode_info.drain();
-        (
-            self.connected_clients.drain().collect(),
-            client_mode_info.collect(),
-        )
+    pub fn drain_connected_clients(
+        &mut self,
+        clients_to_drain: Option<Vec<ClientId>>,
+    ) -> Vec<(ClientId, ModeInfo)> {
+        // None => all clients
+        let mut client_ids_to_mode_infos = vec![];
+        let clients_to_drain =
+            clients_to_drain.unwrap_or_else(|| self.connected_clients.drain().collect());
+        for client_id in clients_to_drain {
+            client_ids_to_mode_infos.push(self.drain_single_client(client_id));
+        }
+        client_ids_to_mode_infos
+    }
+    pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
+        let client_mode_info = self
+            .mode_info
+            .remove(&client_id)
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        self.connected_clients.remove(&client_id);
+        (client_id, client_mode_info)
+    }
+    pub fn has_no_connected_clients(&self) -> bool {
+        self.connected_clients.is_empty()
     }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
@@ -786,7 +812,8 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
-        self.write_to_pane_id(input_bytes, self.get_active_pane_id(client_id).unwrap());
+        let pane_id = self.get_active_pane_id(client_id).unwrap();
+        self.write_to_pane_id(input_bytes, pane_id);
     }
     pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
         match pane_id {
@@ -981,10 +1008,21 @@ impl Tab {
         // render panes and their frames
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
-                let mut pane_contents_and_ui =
-                    PaneContentsAndUi::new(pane, output, self.colors, &self.active_panes);
+                let mut active_panes = self.active_panes.clone();
+                let multiple_users_exist_in_session =
+                    { self.connected_clients_in_app.borrow().len() > 1 };
+                active_panes.retain(|c_id, _| self.connected_clients.contains(c_id));
+                let mut pane_contents_and_ui = PaneContentsAndUi::new(
+                    pane,
+                    output,
+                    self.colors,
+                    &active_panes,
+                    multiple_users_exist_in_session,
+                );
                 if let PaneId::Terminal(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_for_all_clients();
+                    pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                        self.connected_clients.iter().copied(),
+                    );
                 }
                 for &client_id in &self.connected_clients {
                     let client_mode = self
@@ -1024,16 +1062,21 @@ impl Tab {
         }
         // FIXME: Once clients can be distinguished
         if let Some(overlay_vte) = &overlay {
-            output.push_str_to_all_clients(overlay_vte);
+            // output.push_str_to_all_clients(overlay_vte);
+            output
+                .push_str_to_multiple_clients(overlay_vte, self.connected_clients.iter().copied());
         }
         self.render_cursor(output);
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
-        output.push_str_to_all_clients(hide_cursor);
+        output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
-            output.push_str_to_all_clients(clear_display);
+            output.push_str_to_multiple_clients(
+                clear_display,
+                self.connected_clients.iter().copied(),
+            );
             self.should_clear_display_before_rendering = false;
         }
     }
@@ -3400,10 +3443,10 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
         output.add_clients(&self.connected_clients);
-        output.push_str_to_all_clients(&format!(
-            "\u{1b}]52;c;{}\u{1b}\\",
-            base64::encode(selection)
-        ));
+        output.push_str_to_multiple_clients(
+            &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
+            self.connected_clients.iter().copied(),
+        );
 
         // TODO: ideally we should be sending the Render instruction from the screen
         self.senders
