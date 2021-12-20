@@ -145,6 +145,7 @@ pub(crate) struct Tab {
     draw_pane_frames: bool,
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    last_active_pane_id: Option<PaneId>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -359,6 +360,7 @@ impl Tab {
             session_is_mirrored: true,
             pending_vte_events: HashMap::new(),
             connected_clients,
+            last_active_pane_id: None,
         }
     }
 
@@ -392,6 +394,7 @@ impl Tab {
             }
         }
         let mut new_pids = new_pids.iter();
+        let mut focused_pane: Option<PaneId> = None;
 
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
@@ -425,6 +428,10 @@ impl Tab {
                 new_pane.set_borderless(layout.borderless);
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));
+
+                if layout.focus.unwrap_or(false) && focused_pane.is_none() {
+                    focused_pane = Some(PaneId::Terminal(*pid));
+                }
             }
         }
         for unused_pid in new_pids {
@@ -454,24 +461,36 @@ impl Tab {
             self.offset_viewport(&geom)
         }
         self.set_pane_frames(self.draw_pane_frames);
-        // This is the end of the nasty viewport hack...
-        let next_selectable_pane_id = self
-            .panes
-            .iter()
-            .filter(|(_id, pane)| pane.selectable())
-            .map(|(id, _)| id.to_owned())
-            .next();
-        match next_selectable_pane_id {
-            Some(active_pane_id) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
-                    self.active_panes.insert(client_id, active_pane_id);
-                }
+
+        if let Some(focused_pane_id) = focused_pane {
+            self.last_active_pane_id = Some(focused_pane_id);
+
+            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+            for client_id in connected_clients {
+                self.active_panes.insert(client_id, focused_pane_id);
             }
-            None => {
-                // this is very likely a configuration error (layout with no selectable panes)
-                self.active_panes.clear();
+        } else {
+            // This is the end of the nasty viewport hack...
+            let next_selectable_pane_id = self
+                .panes
+                .iter()
+                .filter(|(_id, pane)| pane.selectable())
+                .map(|(id, _)| id.to_owned())
+                .next();
+            match next_selectable_pane_id {
+                Some(active_pane_id) => {
+                    self.last_active_pane_id = Some(active_pane_id);
+
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, active_pane_id);
+                    }
+                }
+                None => {
+                    // this is very likely a configuration error (layout with no selectable panes)
+                    self.active_panes.clear();
+                }
             }
         }
     }
@@ -508,9 +527,12 @@ impl Tab {
                 }
                 pane_ids.sort(); // TODO: make this predictable
                 pane_ids.retain(|p| !self.panes_to_hide.contains(p));
-                let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
-                self.active_panes.insert(client_id, *first_pane_id);
+                self.active_panes.insert(
+                    client_id,
+                    self.last_active_pane_id
+                        .unwrap_or_else(|| pane_ids.get(0).unwrap().to_owned()),
+                );
                 self.mode_info
                     .insert(client_id, self.default_mode_info.clone());
             }
@@ -619,6 +641,8 @@ impl Tab {
             }
         }
         if let Some(client_id) = client_id {
+            self.last_active_pane_id = Some(pid);
+
             if self.session_is_mirrored {
                 // move all clients
                 let connected_clients: Vec<ClientId> =
@@ -658,6 +682,8 @@ impl Tab {
                 );
                 active_pane.set_geom(top_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
+
+                self.last_active_pane_id = Some(pid);
 
                 if self.session_is_mirrored {
                     // move all clients
@@ -702,6 +728,9 @@ impl Tab {
                 active_pane.set_geom(left_winsize);
                 self.panes.insert(pid, Box::new(new_terminal));
             }
+
+            self.last_active_pane_id = Some(pid);
+
             if self.session_is_mirrored {
                 // move all clients
                 let connected_clients: Vec<ClientId> =
@@ -887,6 +916,9 @@ impl Tab {
                     };
                     active_terminal.get_geom_override(full_screen_geom);
                 }
+
+                self.last_active_pane_id = Some(active_pane_id);
+
                 let active_panes: Vec<ClientId> = self.active_panes.keys().copied().collect();
                 for client_id in active_panes {
                     self.active_panes.insert(client_id, active_pane_id);
@@ -2376,6 +2408,8 @@ impl Tab {
             .copied()
             .unwrap();
 
+        self.last_active_pane_id = Some(next_active_pane_id);
+
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
@@ -2407,6 +2441,8 @@ impl Tab {
             .or_else(|| panes.get(0))
             .map(|p| *p.0)
             .unwrap();
+
+        self.last_active_pane_id = Some(next_active_pane_id);
 
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
@@ -2440,6 +2476,9 @@ impl Tab {
         } else {
             *panes.get(active_pane_position - 1).unwrap().0
         };
+
+        self.last_active_pane_id = Some(next_active_pane_id);
+
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
@@ -2483,6 +2522,8 @@ impl Tab {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
+                    self.last_active_pane_id = Some(p);
+
                     if self.session_is_mirrored {
                         // move all clients
                         let connected_clients: Vec<ClientId> =
@@ -2503,6 +2544,8 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
+                self.last_active_pane_id = Some(updated_active_pane);
+
                 let connected_clients: Vec<ClientId> =
                     self.connected_clients.iter().copied().collect();
                 for client_id in connected_clients {
@@ -2561,6 +2604,8 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
+                self.last_active_pane_id = Some(updated_active_pane);
+
                 if self.session_is_mirrored {
                     // move all clients
                     let connected_clients: Vec<ClientId> =
@@ -2622,6 +2667,8 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
+                self.last_active_pane_id = Some(updated_active_pane);
+
                 if self.session_is_mirrored {
                     // move all clients
                     let connected_clients: Vec<ClientId> =
@@ -2675,6 +2722,8 @@ impl Tab {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
+                    self.last_active_pane_id = Some(p);
+
                     if self.session_is_mirrored {
                         // move all clients
                         let connected_clients: Vec<ClientId> =
@@ -2694,6 +2743,8 @@ impl Tab {
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
+                self.last_active_pane_id = Some(updated_active_pane);
+
                 if self.session_is_mirrored {
                     // move all clients
                     let connected_clients: Vec<ClientId> =
@@ -3110,10 +3161,10 @@ impl Tab {
             .collect();
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
-                self.active_panes.insert(
-                    client_id,
-                    self.next_active_pane(&self.get_pane_ids()).unwrap(),
-                );
+                let next_active_pane_id = self.next_active_pane(&self.get_pane_ids()).unwrap();
+
+                self.last_active_pane_id = Some(next_active_pane_id);
+                self.active_panes.insert(client_id, next_active_pane_id);
             }
         }
     }
@@ -3337,6 +3388,7 @@ impl Tab {
     }
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
         if let Some(clicked_pane) = self.get_pane_id_at(point, true) {
+            self.last_active_pane_id = Some(clicked_pane);
             if self.session_is_mirrored {
                 // move all clients
                 let connected_clients: Vec<ClientId> =
