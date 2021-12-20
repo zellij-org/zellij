@@ -401,7 +401,7 @@ fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
         .send_to_screen(ScreenInstruction::GoToTab(
             tab_idx,
             Some(plugin_env.client_id),
-        )) // this is a hack, we should be able to return the client id here
+        ))
         .unwrap();
 }
 
