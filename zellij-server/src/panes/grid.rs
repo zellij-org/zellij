@@ -2253,7 +2253,8 @@ impl Row {
         match self.columns.len().cmp(&insert_position) {
             Ordering::Equal => self.columns.push_back(terminal_character),
             Ordering::Less => {
-                self.columns.resize(insert_position, EMPTY_TERMINAL_CHARACTER);
+                self.columns
+                    .resize(insert_position, EMPTY_TERMINAL_CHARACTER);
                 self.columns.push_back(terminal_character);
             }
             Ordering::Greater => {
