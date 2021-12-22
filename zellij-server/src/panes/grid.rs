@@ -2249,14 +2249,17 @@ impl Row {
         }
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
-        match self.columns.len().cmp(&x) {
+        let width_offset = self.excess_width_until(x);
+        let insert_position = x.saturating_sub(width_offset);
+        match self.columns.len().cmp(&insert_position) {
             Ordering::Equal => self.columns.push_back(terminal_character),
             Ordering::Less => {
-                self.columns.resize(x, EMPTY_TERMINAL_CHARACTER);
+                self.columns
+                    .resize(insert_position, EMPTY_TERMINAL_CHARACTER);
                 self.columns.push_back(terminal_character);
             }
             Ordering::Greater => {
-                self.columns.insert(x, terminal_character);
+                self.columns.insert(insert_position, terminal_character);
             }
         }
     }

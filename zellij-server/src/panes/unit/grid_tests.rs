@@ -421,6 +421,18 @@ fn wide_characters_line_wrap() {
 }
 
 #[test]
+fn insert_character_in_line_with_wide_character() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "wide_characters_middle_line_insert";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
 fn fish_wide_characters_override_clock() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = Grid::new(21, 104, Palette::default());
