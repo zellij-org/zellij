@@ -433,6 +433,30 @@ fn insert_character_in_line_with_wide_character() {
 }
 
 #[test]
+fn delete_char_in_middle_of_line_with_widechar() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "wide-chars-delete-middle";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn delete_char_in_middle_of_line_with_multiple_widechars() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(21, 104, Palette::default());
+    let fixture_name = "wide-chars-delete-middle-after-multi";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
 fn fish_wide_characters_override_clock() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = Grid::new(21, 104, Palette::default());
