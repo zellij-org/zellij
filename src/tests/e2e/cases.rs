@@ -579,7 +579,7 @@ pub fn exit_zellij() {
         rows: 24,
     };
     let mut test_attempts = 10;
-    let last_snapshot = loop {
+    let last_snapshot = {
         RemoteRunner::kill_running_sessions(fake_win_size);
         let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
             name: "Wait for app to load",
@@ -594,7 +594,7 @@ pub fn exit_zellij() {
             },
         });
         runner.run_all_steps();
-        break runner.take_snapshot_after(Step {
+        runner.take_snapshot_after(Step {
             name: "Wait for app to exit",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
@@ -605,7 +605,7 @@ pub fn exit_zellij() {
                 }
                 step_is_complete
             },
-        });
+        })
     };
     assert!(last_snapshot.contains("Bye from Zellij!"));
 }
