@@ -78,7 +78,7 @@ impl From<PaletteFromYaml> for Palette {
     fn from(yaml: PaletteFromYaml) -> Self {
         Palette {
             fg: yaml.fg.into(),
-            bg: yaml.fg.into(),
+            bg: yaml.bg.into(),
             black: yaml.black.into(),
             gray: yaml.gray.into(),
             red: yaml.red.into(),
