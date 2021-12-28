@@ -155,6 +155,7 @@ pub(crate) struct Tab {
     draw_pane_frames: bool,
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    selecting_with_mouse: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -370,6 +371,7 @@ impl Tab {
             pending_vte_events: HashMap::new(),
             connected_clients_in_app,
             connected_clients,
+            selecting_with_mouse: false,
         }
     }
 
@@ -3368,6 +3370,7 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
+            self.selecting_with_mouse = true;
         };
     }
     pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) {
@@ -3393,6 +3396,10 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        if !self.selecting_with_mouse {
+            return;
+        }
+
         let active_pane_id = self.get_active_pane_id(client_id);
         // on release, get the selected text from the active pane, and reset it's selection
         let mut selected_text = None;
@@ -3414,6 +3421,7 @@ impl Tab {
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
         }
+        self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
