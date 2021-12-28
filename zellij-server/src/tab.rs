@@ -4,7 +4,7 @@
 use zellij_utils::{position::Position, serde, zellij_tile};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
-use crate::ui::pane_resizer::PaneResizer;
+use crate::ui::pane_resizer::PaneGrid;
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -1125,102 +1125,11 @@ impl Tab {
             .find(|pid| self.panes.get(pid).unwrap().selectable())
             .copied()
     }
-    fn pane_ids_directly_left_of(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        if terminal_to_check.x() == 0 {
-            return None;
-        }
-        for (&pid, terminal) in self.get_panes() {
-            if terminal.x() + terminal.cols() == terminal_to_check.x() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn pane_ids_directly_right_of(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        for (&pid, terminal) in self.get_panes() {
-            if terminal.x() == terminal_to_check.x() + terminal_to_check.cols() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn pane_ids_directly_below(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        for (&pid, terminal) in self.get_panes() {
-            if terminal.y() == terminal_to_check.y() + terminal_to_check.rows() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn pane_ids_directly_above(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
-        let terminal_to_check = self.panes.get(id).unwrap();
-        for (&pid, terminal) in self.get_panes() {
-            if terminal.y() + terminal.rows() == terminal_to_check.y() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn increase_pane_height(&mut self, id: &PaneId, percent: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_height(percent);
-    }
-    fn increase_pane_width(&mut self, id: &PaneId, percent: f64) {
-        let terminal = self.panes.get_mut(id).unwrap();
-        terminal.increase_width(percent);
-    }
-    fn pane_is_between_vertical_borders(
-        &self,
-        id: &PaneId,
-        left_border_x: usize,
-        right_border_x: usize,
-    ) -> bool {
-        let terminal = self
-            .panes
-            .get(id)
-            .expect("could not find terminal to check between borders");
-        terminal.x() >= left_border_x && terminal.x() + terminal.cols() <= right_border_x
-    }
-    fn pane_is_between_horizontal_borders(
-        &self,
-        id: &PaneId,
-        top_border_y: usize,
-        bottom_border_y: usize,
-    ) -> bool {
-        let terminal = self
-            .panes
-            .get(id)
-            .expect("could not find terminal to check between borders");
-        terminal.y() >= top_border_y && terminal.y() + terminal.rows() <= bottom_border_y
-    }
     pub fn relayout_tab(&mut self, direction: Direction) {
-        let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
+        let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
         let result = match direction {
-            Direction::Horizontal => resizer.layout(direction, self.display_area.cols),
-            Direction::Vertical => resizer.layout(direction, self.display_area.rows),
+            Direction::Horizontal => pane_grid.layout(direction, self.display_area.cols),
+            Direction::Vertical => pane_grid.layout(direction, self.display_area.rows),
         };
         if let Err(e) = &result {
             log::error!("{:?} relayout of the tab failed: {}", direction, e);
@@ -1233,8 +1142,8 @@ impl Tab {
             .iter_mut()
             .filter(|(pid, _)| !self.panes_to_hide.contains(pid));
         let Size { rows, cols } = new_screen_size;
-        let mut resizer = PaneResizer::new(panes, self.display_area, self.viewport);
-        if resizer.layout(Direction::Horizontal, cols).is_ok() {
+        let mut pane_grid = PaneGrid::new(panes, self.display_area, self.viewport);
+        if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
             let column_difference = cols as isize - self.display_area.cols as isize;
             // FIXME: Should the viewport be an Offset?
             self.viewport.cols = (self.viewport.cols as isize + column_difference) as usize;
@@ -1242,7 +1151,7 @@ impl Tab {
         } else {
             log::error!("Failed to horizontally resize the tab!!!");
         }
-        if resizer.layout(Direction::Vertical, rows).is_ok() {
+        if pane_grid.layout(Direction::Vertical, rows).is_ok() {
             let row_difference = rows as isize - self.display_area.rows as isize;
             self.viewport.rows = (self.viewport.rows as isize + row_difference) as usize;
             self.display_area.rows = rows;
@@ -1254,8 +1163,8 @@ impl Tab {
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_pane_left(&active_pane_id);
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_pane_left(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1265,8 +1174,8 @@ impl Tab {
     }
     pub fn resize_right(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_pane_right(&active_pane_id);
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_pane_right(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1274,8 +1183,8 @@ impl Tab {
     }
     pub fn resize_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_pane_down(&active_pane_id);
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_pane_down(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1283,9 +1192,8 @@ impl Tab {
     }
     pub fn resize_up(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_pane_up(&active_pane_id);
-            // TODO: RESIZE ALL PTYS IN ALL OF THESE!!!111oneoneone
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_pane_up(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1293,8 +1201,8 @@ impl Tab {
     }
     pub fn resize_increase(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_increase(&active_pane_id);
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_increase(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1302,8 +1210,8 @@ impl Tab {
     }
     pub fn resize_decrease(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut resizer = PaneResizer::new(&mut self.panes, self.display_area, self.viewport);
-            resizer.resize_decrease(&active_pane_id);
+            let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            pane_grid.resize_decrease(&active_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
@@ -1342,25 +1250,8 @@ impl Tab {
             return;
         }
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
-        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
-            if a_pane.y() == b_pane.y() {
-                a_pane.x().cmp(&b_pane.x())
-            } else {
-                a_pane.y().cmp(&b_pane.y())
-            }
-        });
-        let active_pane_position = panes
-            .iter()
-            .position(|(id, _)| *id == &active_pane_id) // TODO: better
-            .unwrap();
-
-        let next_active_pane_id = panes
-            .get(active_pane_position + 1)
-            .or_else(|| panes.get(0))
-            .map(|p| *p.0)
-            .unwrap();
-
+        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        let next_active_pane_id = pane_grid.next_selectable_pane_id(&active_pane_id);
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
@@ -1374,25 +1265,8 @@ impl Tab {
             return;
         }
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
-        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
-            if a_pane.y() == b_pane.y() {
-                a_pane.x().cmp(&b_pane.x())
-            } else {
-                a_pane.y().cmp(&b_pane.y())
-            }
-        });
-        let last_pane = panes.last().unwrap();
-        let active_pane_position = panes
-            .iter()
-            .position(|(id, _)| *id == &active_pane_id) // TODO: better
-            .unwrap();
-
-        let next_active_pane_id = if active_pane_position == 0 {
-            *last_pane.0
-        } else {
-            *panes.get(active_pane_position - 1).unwrap().0
-        };
+        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        let next_active_pane_id = pane_grid.previous_selectable_pane_id(&active_pane_id);
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
@@ -1406,18 +1280,12 @@ impl Tab {
         if self.fullscreen_is_active {
             return false;
         }
-        let active_pane = self.get_active_pane(client_id);
-        let updated_active_pane = if let Some(active) = active_pane {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
+        let active_pane_id = self.get_active_pane_id(client_id);
+        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
             match next_index {
-                Some(&p) => {
+                Some(p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
                     let previously_active_pane = self
@@ -1449,10 +1317,10 @@ impl Tab {
 
                     return true;
                 }
-                None => Some(active.pid()),
+                None => Some(active_pane_id),
             }
         } else {
-            Some(active_pane.unwrap().pid())
+            active_pane_id
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
@@ -1477,18 +1345,12 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_pane = self.get_active_pane(client_id);
-        let updated_active_pane = if let Some(active) = active_pane {
-            let panes = self.get_selectable_panes();
-            let next_index = panes
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
+        let active_pane_id = self.get_active_pane_id(client_id);
+        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
             match next_index {
-                Some(&p) => {
+                Some(p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
                     let previously_active_pane = self
@@ -1507,10 +1369,10 @@ impl Tab {
 
                     Some(p)
                 }
-                None => Some(active.pid()),
+                None => Some(active_pane_id),
             }
         } else {
-            Some(active_pane.unwrap().pid())
+            active_pane_id
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
@@ -1538,18 +1400,12 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        let active_pane = self.get_active_pane(client_id);
-        let updated_active_pane = if let Some(active) = active_pane {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
+        let active_pane_id = self.get_active_pane_id(client_id);
+        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
             match next_index {
-                Some(&p) => {
+                Some(p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
                     let previously_active_pane = self
@@ -1568,10 +1424,10 @@ impl Tab {
 
                     Some(p)
                 }
-                None => Some(active.pid()),
+                None => Some(active_pane_id),
             }
         } else {
-            Some(active_pane.unwrap().pid())
+            active_pane_id
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
@@ -1600,18 +1456,12 @@ impl Tab {
         if self.fullscreen_is_active {
             return false;
         }
-        let active_pane = self.get_active_pane(client_id);
-        let updated_active_pane = if let Some(active) = active_pane {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
+        let active_pane_id = self.get_active_pane_id(client_id);
+        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
             match next_index {
-                Some(&p) => {
+                Some(p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
                     let previously_active_pane = self
@@ -1640,10 +1490,10 @@ impl Tab {
                     }
                     return true;
                 }
-                None => Some(active.pid()),
+                None => Some(active_pane_id)
             }
         } else {
-            Some(active_pane.unwrap().pid())
+            active_pane_id
         };
         match updated_active_pane {
             Some(updated_active_pane) => {
@@ -1883,131 +1733,6 @@ impl Tab {
             }
         }
     }
-    fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
-        terminals.iter().fold(HashSet::new(), |mut borders, t| {
-            let terminal = self.panes.get(t).unwrap();
-            borders.insert(terminal.y());
-            borders.insert(terminal.y() + terminal.rows());
-            borders
-        })
-    }
-    fn vertical_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
-        terminals.iter().fold(HashSet::new(), |mut borders, t| {
-            let terminal = self.panes.get(t).unwrap();
-            borders.insert(terminal.x());
-            borders.insert(terminal.x() + terminal.cols());
-            borders
-        })
-    }
-
-    fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = self.panes.get(&id) {
-            let upper_close_border = terminal.y();
-            let lower_close_border = terminal.y() + terminal.rows();
-
-            if let Some(terminals_to_the_left) = self.pane_ids_directly_left_of(&id) {
-                let mut selectable_panes: Vec<_> = terminals_to_the_left
-                    .into_iter()
-                    .filter(|pid| self.panes[pid].selectable())
-                    .collect();
-                let terminal_borders_to_the_left = self.horizontal_borders(&selectable_panes);
-                if terminal_borders_to_the_left.contains(&upper_close_border)
-                    && terminal_borders_to_the_left.contains(&lower_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_horizontal_borders(
-                            t,
-                            upper_close_border,
-                            lower_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
-            }
-        }
-        None
-    }
-    fn panes_to_the_right_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = self.panes.get(&id) {
-            let upper_close_border = terminal.y();
-            let lower_close_border = terminal.y() + terminal.rows();
-
-            if let Some(terminals_to_the_right) = self.pane_ids_directly_right_of(&id) {
-                let mut selectable_panes: Vec<_> = terminals_to_the_right
-                    .into_iter()
-                    .filter(|pid| self.panes[pid].selectable())
-                    .collect();
-                let terminal_borders_to_the_right = self.horizontal_borders(&selectable_panes);
-                if terminal_borders_to_the_right.contains(&upper_close_border)
-                    && terminal_borders_to_the_right.contains(&lower_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_horizontal_borders(
-                            t,
-                            upper_close_border,
-                            lower_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
-            }
-        }
-        None
-    }
-    fn panes_above_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = self.panes.get(&id) {
-            let left_close_border = terminal.x();
-            let right_close_border = terminal.x() + terminal.cols();
-
-            if let Some(terminals_above) = self.pane_ids_directly_above(&id) {
-                let mut selectable_panes: Vec<_> = terminals_above
-                    .into_iter()
-                    .filter(|pid| self.panes[pid].selectable())
-                    .collect();
-                let terminal_borders_above = self.vertical_borders(&selectable_panes);
-                if terminal_borders_above.contains(&left_close_border)
-                    && terminal_borders_above.contains(&right_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_vertical_borders(
-                            t,
-                            left_close_border,
-                            right_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
-            }
-        }
-        None
-    }
-    fn panes_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
-        if let Some(terminal) = self.panes.get(&id) {
-            let left_close_border = terminal.x();
-            let right_close_border = terminal.x() + terminal.cols();
-
-            if let Some(terminals_below) = self.pane_ids_directly_below(&id) {
-                let mut selectable_panes: Vec<_> = terminals_below
-                    .into_iter()
-                    .filter(|pid| self.panes[pid].selectable())
-                    .collect();
-                let terminal_borders_below = self.vertical_borders(&selectable_panes);
-                if terminal_borders_below.contains(&left_close_border)
-                    && terminal_borders_below.contains(&right_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_vertical_borders(
-                            t,
-                            left_close_border,
-                            right_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
-            }
-        }
-        None
-    }
     fn close_down_to_max_terminals(&mut self) {
         if let Some(max_panes) = self.max_panes {
             let terminals = self.get_pane_ids();
@@ -2060,58 +1785,19 @@ impl Tab {
         if self.fullscreen_is_active {
             self.unset_fullscreen();
         }
-        if let Some(pane_to_close) = self.panes.get(&id) {
-            let freed_space = pane_to_close.position_and_size();
-            if let (Some(freed_width), Some(freed_height)) =
-                (freed_space.cols.as_percent(), freed_space.rows.as_percent())
-            {
-                if let Some((panes, direction)) = self.find_panes_to_grow(id) {
-                    self.grow_panes(&panes, direction, (freed_width, freed_height));
-                    let pane = self.panes.remove(&id);
-                    self.move_clients_out_of_pane(id);
-                    self.relayout_tab(direction);
-                    return pane;
-                }
+        let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        if pane_grid.fill_space_over_pane(id) {
+            log::info!("successfully filled pane space in tab");
+            // successfully filled space over pane
+            let closed_pane = self.panes.remove(&id);
+            self.move_clients_out_of_pane(id);
+            for pane in self.panes.values_mut() {
+                resize_pty!(pane, self.os_api);
             }
-            // if we reached here, this is either the last pane or there's some sort of
-            // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
-            let pane = self.panes.remove(&id);
-            self.active_panes.clear();
-            self.resize_whole_tab(self.display_area);
-            return pane;
+            closed_pane
+        } else {
+            None
         }
-        None
-    }
-    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, Direction)> {
-        if let Some(panes) = self
-            .panes_to_the_left_between_aligning_borders(id)
-            .or_else(|| self.panes_to_the_right_between_aligning_borders(id))
-        {
-            return Some((panes, Direction::Horizontal));
-        }
-
-        if let Some(panes) = self
-            .panes_above_between_aligning_borders(id)
-            .or_else(|| self.panes_below_between_aligning_borders(id))
-        {
-            return Some((panes, Direction::Vertical));
-        }
-
-        None
-    }
-    fn grow_panes(&mut self, panes: &[PaneId], direction: Direction, (width, height): (f64, f64)) {
-        match direction {
-            Direction::Horizontal => {
-                for pane_id in panes {
-                    self.increase_pane_width(pane_id, width);
-                }
-            }
-            Direction::Vertical => {
-                for pane_id in panes {
-                    self.increase_pane_height(pane_id, height);
-                }
-            }
-        };
     }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {

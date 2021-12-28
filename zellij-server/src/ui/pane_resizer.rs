@@ -15,7 +15,7 @@ use zellij_utils::{
 const RESIZE_PERCENT: f64 = 5.0;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
-pub struct PaneResizer<'a> {
+pub struct PaneGrid<'a> {
     panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
@@ -36,14 +36,14 @@ struct Span {
 
 type Grid = Vec<Vec<Span>>;
 
-impl<'a> PaneResizer<'a> {
+impl<'a> PaneGrid<'a> {
     pub fn new(panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>, display_area: Size, viewport: Viewport) -> Self {
         let panes: HashMap<_, _> = panes.into_iter().collect();
         let mut vars = HashMap::new();
         for &&k in panes.keys() {
             vars.insert(k, Variable::new());
         }
-        PaneResizer {
+        PaneGrid {
             panes,
             vars,
             solver: Solver::new(),
@@ -1302,6 +1302,286 @@ impl<'a> PaneResizer<'a> {
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
         is_inside_viewport(&self.viewport, self.panes.get(pane_id).unwrap())
+    }
+    pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
+        let mut panes: Vec<(&&PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| **id == current_pane_id) // TODO: better
+            .unwrap();
+
+        let next_active_pane_id = panes
+            .get(active_pane_position + 1)
+            .or_else(|| panes.get(0))
+            .map(|p| *p.0)
+            .unwrap();
+        *next_active_pane_id
+    }
+    pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
+        let mut panes: Vec<(&&PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let last_pane = panes.last().unwrap();
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| **id == current_pane_id) // TODO: better
+            .unwrap();
+
+        let previous_active_pane_id = if active_pane_position == 0 {
+            *last_pane.0
+        } else {
+            *panes.get(active_pane_position - 1).unwrap().0
+        };
+        *previous_active_pane_id
+    }
+    pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let current_pane = self.panes.get(&current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).map(|(p_id, p)| (**p_id, p)).collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_left_of(Box::as_ref(current_pane)) && c.horizontally_overlaps_with(Box::as_ref(current_pane))
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
+    pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let current_pane = self.panes.get(&current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).map(|(p_id, p)| (**p_id, p)).collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_below(Box::as_ref(current_pane)) && c.vertically_overlaps_with(Box::as_ref(current_pane))
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
+    pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let current_pane = self.panes.get(&current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).map(|(p_id, p)| (**p_id, p)).collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_above(Box::as_ref(current_pane)) && c.vertically_overlaps_with(Box::as_ref(current_pane))
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
+    pub fn next_selectable_pane_id_to_the_right(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let current_pane = self.panes.get(&current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = self.panes.iter().filter(|(_, p)| p.selectable()).map(|(p_id, p)| (**p_id, p)).collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_right_of(Box::as_ref(current_pane)) && c.horizontally_overlaps_with(Box::as_ref(current_pane))
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
+    fn horizontal_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
+        terminals.iter().fold(HashSet::new(), |mut borders, t| {
+            let terminal = self.panes.get(t).unwrap();
+            borders.insert(terminal.y());
+            borders.insert(terminal.y() + terminal.rows());
+            borders
+        })
+    }
+    fn vertical_borders(&self, terminals: &[PaneId]) -> HashSet<usize> {
+        terminals.iter().fold(HashSet::new(), |mut borders, t| {
+            let terminal = self.panes.get(t).unwrap();
+            borders.insert(terminal.x());
+            borders.insert(terminal.x() + terminal.cols());
+            borders
+        })
+    }
+    fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+        if let Some(terminal) = self.panes.get(&id) {
+            let upper_close_border = terminal.y();
+            let lower_close_border = terminal.y() + terminal.rows();
+
+            if let Some(terminals_to_the_left) = self.pane_ids_directly_left_of(&id) {
+                let mut selectable_panes: Vec<_> = terminals_to_the_left
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_to_the_left = self.horizontal_borders(&selectable_panes);
+                if terminal_borders_to_the_left.contains(&upper_close_border)
+                    && terminal_borders_to_the_left.contains(&lower_close_border)
+                {
+                    selectable_panes.retain(|t| {
+                        self.pane_is_between_horizontal_borders(
+                            t,
+                            upper_close_border,
+                            lower_close_border,
+                        )
+                    });
+                    return Some(selectable_panes);
+                }
+            }
+        }
+        None
+    }
+    fn panes_to_the_right_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+        if let Some(terminal) = self.panes.get(&id) {
+            let upper_close_border = terminal.y();
+            let lower_close_border = terminal.y() + terminal.rows();
+
+            if let Some(terminals_to_the_right) = self.pane_ids_directly_right_of(&id) {
+                let mut selectable_panes: Vec<_> = terminals_to_the_right
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_to_the_right = self.horizontal_borders(&selectable_panes);
+                if terminal_borders_to_the_right.contains(&upper_close_border)
+                    && terminal_borders_to_the_right.contains(&lower_close_border)
+                {
+                    selectable_panes.retain(|t| {
+                        self.pane_is_between_horizontal_borders(
+                            t,
+                            upper_close_border,
+                            lower_close_border,
+                        )
+                    });
+                    return Some(selectable_panes);
+                }
+            }
+        }
+        None
+    }
+    fn panes_above_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+        if let Some(terminal) = self.panes.get(&id) {
+            let left_close_border = terminal.x();
+            let right_close_border = terminal.x() + terminal.cols();
+
+            if let Some(terminals_above) = self.pane_ids_directly_above(&id) {
+                let mut selectable_panes: Vec<_> = terminals_above
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_above = self.vertical_borders(&selectable_panes);
+                if terminal_borders_above.contains(&left_close_border)
+                    && terminal_borders_above.contains(&right_close_border)
+                {
+                    selectable_panes.retain(|t| {
+                        self.pane_is_between_vertical_borders(
+                            t,
+                            left_close_border,
+                            right_close_border,
+                        )
+                    });
+                    return Some(selectable_panes);
+                }
+            }
+        }
+        None
+    }
+    fn panes_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+        if let Some(terminal) = self.panes.get(&id) {
+            let left_close_border = terminal.x();
+            let right_close_border = terminal.x() + terminal.cols();
+
+            if let Some(terminals_below) = self.pane_ids_directly_below(&id) {
+                let mut selectable_panes: Vec<_> = terminals_below
+                    .into_iter()
+                    .filter(|pid| self.panes[pid].selectable())
+                    .collect();
+                let terminal_borders_below = self.vertical_borders(&selectable_panes);
+                if terminal_borders_below.contains(&left_close_border)
+                    && terminal_borders_below.contains(&right_close_border)
+                {
+                    selectable_panes.retain(|t| {
+                        self.pane_is_between_vertical_borders(
+                            t,
+                            left_close_border,
+                            right_close_border,
+                        )
+                    });
+                    return Some(selectable_panes);
+                }
+            }
+        }
+        None
+    }
+    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, Direction)> {
+        if let Some(panes) = self
+            .panes_to_the_left_between_aligning_borders(id)
+            .or_else(|| self.panes_to_the_right_between_aligning_borders(id))
+        {
+            return Some((panes, Direction::Horizontal));
+        }
+
+        if let Some(panes) = self
+            .panes_above_between_aligning_borders(id)
+            .or_else(|| self.panes_below_between_aligning_borders(id))
+        {
+            return Some((panes, Direction::Vertical));
+        }
+
+        None
+    }
+    fn grow_panes(&mut self, panes: &[PaneId], direction: Direction, (width, height): (f64, f64)) {
+        match direction {
+            Direction::Horizontal => {
+                for pane_id in panes {
+                    self.increase_pane_width(pane_id, width);
+                }
+            }
+            Direction::Vertical => {
+                for pane_id in panes {
+                    self.increase_pane_height(pane_id, height);
+                }
+            }
+        };
+    }
+    pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
+        // true => successfully filled space over pane
+        // false => didn't succeed, so didn't do anything
+        if let Some(pane_to_close) = self.panes.get(&id) {
+            let freed_space = pane_to_close.position_and_size();
+            if let (Some(freed_width), Some(freed_height)) =
+                (freed_space.cols.as_percent(), freed_space.rows.as_percent())
+            {
+                if let Some((panes, direction)) = self.find_panes_to_grow(id) {
+                    self.grow_panes(&panes, direction, (freed_width, freed_height));
+                    let side_length = match direction {
+                        Direction::Vertical => self.display_area.rows,
+                        Direction::Horizontal => self.display_area.cols,
+                    };
+                    self.panes.remove(&id);
+                    let _ = self.layout(direction, side_length);
+                    return true;
+                }
+                return false;
+            }
+            // if we reached here, this is either the last pane or there's some sort of
+            // configuration error (eg. we're trying to close a pane surrounded by fixed panes)
+            return true;
+        }
+        false
     }
     fn solve(&mut self, direction: Direction, space: usize) -> Result<Grid, String> {
         let grid: Grid = self
