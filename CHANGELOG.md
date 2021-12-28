@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: properly handle deletion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/965)
 * Fix: properly remove clients when detaching from a session (https://github.com/zellij-org/zellij/pull/966)
 * Fix: plugin theme coloring (https://github.com/zellij-org/zellij/pull/975)
+* Fix: prevent unhandled mouse events escape to terminal (https://github.com/zellij-org/zellij/pull/976)
 
 ## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
