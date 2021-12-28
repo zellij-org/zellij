@@ -62,7 +62,6 @@ pub(crate) fn stdin_loop(
     let adjusted_keys = keys_to_adjust();
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
-        log::info!("read from stdin: {:?}", stdin_buffer);
         if pasting
             || (stdin_buffer.len() > bracketed_paste_start.len()
                 && stdin_buffer
@@ -160,7 +159,6 @@ pub(crate) fn stdin_loop(
                 if raw_bytes.len() > csi_mouse_sgr_start.len()
                     && raw_bytes[0..csi_mouse_sgr_start.len()] == csi_mouse_sgr_start
                 {
-                    log::info!("discarding unhandled csi sgr sequence: {:?}", raw_bytes);
                     continue;
                 }
             }
