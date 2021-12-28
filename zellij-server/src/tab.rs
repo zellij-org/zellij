@@ -3377,8 +3377,8 @@ impl Tab {
 
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
-            self.selecting_with_mouse = false;
         }
+        self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
