@@ -1226,17 +1226,8 @@ impl Tab {
             return;
         }
         let current_active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let pane_ids: Vec<PaneId> = self.get_selectable_panes().map(|(&pid, _)| pid).collect(); // TODO: better, no allocations
-        let active_pane_id_position = pane_ids
-            .iter()
-            .position(|id| id == &current_active_pane_id)
-            .unwrap();
-        let next_active_pane_id = pane_ids
-            .get(active_pane_id_position + 1)
-            .or_else(|| pane_ids.get(0))
-            .copied()
-            .unwrap();
-
+        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        let next_active_pane_id = pane_grid.next_selectable_pane_id(&current_active_pane_id);
         let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
@@ -1523,47 +1514,29 @@ impl Tab {
             return;
         }
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let mut panes: Vec<(&PaneId, &Box<dyn Pane>)> = self.get_selectable_panes().collect();
-        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
-            if a_pane.y() == b_pane.y() {
-                a_pane.x().cmp(&b_pane.x())
-            } else {
-                a_pane.y().cmp(&b_pane.y())
-            }
-        });
-        let active_pane_position = panes
-            .iter()
-            .position(|(id, _)| *id == &active_pane_id) // TODO: better
-            .unwrap();
+        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        let new_position_id = pane_grid.next_selectable_pane_id(&active_pane_id);
+        let current_position = self.panes.get(&active_pane_id).unwrap();
+        let prev_geom = current_position.position_and_size();
+        let prev_geom_override = current_position.geom_override();
 
-        let new_position_id = panes
-            .get(active_pane_position + 1)
-            .or_else(|| panes.get(0))
-            .map(|p| *p.0);
-
-        if let Some(p) = new_position_id {
-            let current_position = self.panes.get(&active_pane_id).unwrap();
-            let prev_geom = current_position.position_and_size();
-            let prev_geom_override = current_position.geom_override();
-
-            let new_position = self.panes.get_mut(&p).unwrap();
-            let next_geom = new_position.position_and_size();
-            let next_geom_override = new_position.geom_override();
-            new_position.set_geom(prev_geom);
-            if let Some(geom) = prev_geom_override {
-                new_position.get_geom_override(geom);
-            }
-            resize_pty!(new_position, self.os_api);
-            new_position.set_should_render(true);
-
-            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
-            current_position.set_geom(next_geom);
-            if let Some(geom) = next_geom_override {
-                current_position.get_geom_override(geom);
-            }
-            resize_pty!(current_position, self.os_api);
-            current_position.set_should_render(true);
+        let new_position = self.panes.get_mut(&new_position_id).unwrap();
+        let next_geom = new_position.position_and_size();
+        let next_geom_override = new_position.geom_override();
+        new_position.set_geom(prev_geom);
+        if let Some(geom) = prev_geom_override {
+            new_position.get_geom_override(geom);
         }
+        resize_pty!(new_position, self.os_api);
+        new_position.set_should_render(true);
+
+        let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+        current_position.set_geom(next_geom);
+        if let Some(geom) = next_geom_override {
+            current_position.get_geom_override(geom);
+        }
+        resize_pty!(current_position, self.os_api);
+        current_position.set_should_render(true);
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
@@ -1572,16 +1545,10 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        if let Some(active) = self.get_active_pane(client_id) {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_below(active) && c.vertically_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
-            if let Some(&p) = next_index {
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
+            if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
@@ -1614,16 +1581,10 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        if let Some(active) = self.get_active_pane(client_id) {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_above(active) && c.vertically_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
-            if let Some(&p) = next_index {
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
+            if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
@@ -1656,16 +1617,10 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        if let Some(active) = self.get_active_pane(client_id) {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_right_of(active) && c.horizontally_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
-            if let Some(&p) = next_index {
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+            if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
@@ -1698,16 +1653,10 @@ impl Tab {
         if self.fullscreen_is_active {
             return;
         }
-        if let Some(active) = self.get_active_pane(client_id) {
-            let terminals = self.get_selectable_panes();
-            let next_index = terminals
-                .enumerate()
-                .filter(|(_, (_, c))| {
-                    c.is_directly_left_of(active) && c.horizontally_overlaps_with(active)
-                })
-                .max_by_key(|(_, (_, c))| c.active_at())
-                .map(|(_, (pid, _))| pid);
-            if let Some(&p) = next_index {
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+            if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
                 let prev_geom = current_position.position_and_size();
