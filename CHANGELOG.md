@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: properly remove clients when detaching from a session (https://github.com/zellij-org/zellij/pull/966)
 * Fix: plugin theme coloring (https://github.com/zellij-org/zellij/pull/975)
 * Fix: prevent unhandled mouse events escape to terminal (https://github.com/zellij-org/zellij/pull/976)
-* Fix: ensure clippy runs on all targets (https://github.com/zellij-org/zellij/pull/972) 
+* Fix: ensure clippy runs on all targets (https://github.com/zellij-org/zellij/pull/972)
+* Fix: atomically create default assets every time a session starts (https://github.com/zellij-org/zellij/pull/961)
 
 ## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
