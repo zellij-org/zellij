@@ -1,8 +1,8 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
-use zellij_utils::position::{Line, Column};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ui::pane_resizer::PaneResizer;
@@ -3529,7 +3529,10 @@ impl Tab {
     }
 
     pub fn is_position_inside_viewport(&self, point: &Position) -> bool {
-        let Position { line: Line(line), column: Column(column) } = *point;
+        let Position {
+            line: Line(line),
+            column: Column(column),
+        } = *point;
         let line: usize = line.try_into().unwrap();
 
         line >= self.viewport.y
