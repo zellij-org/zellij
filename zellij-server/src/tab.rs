@@ -2,6 +2,7 @@
 //! as well as how they should be resized
 
 use zellij_utils::{position::Position, serde, zellij_tile};
+use zellij_utils::position::{Line, Column};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ui::pane_resizer::PaneResizer;
@@ -3350,7 +3351,7 @@ impl Tab {
     }
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
-        if self.fullscreen_is_active {
+        if self.fullscreen_is_active && self.is_position_inside_viewport(point) {
             let first_client_id = self.connected_clients.iter().next().unwrap(); // TODO: instead of doing this, record the pane that is in fullscreen
             return self.get_active_pane_id(*first_client_id);
         }
@@ -3525,6 +3526,16 @@ impl Tab {
                 .unwrap();
             active_terminal.update_name(s);
         }
+    }
+
+    pub fn is_position_inside_viewport(&self, point: &Position) -> bool {
+        let Position { line: Line(line), column: Column(column) } = *point;
+        let line: usize = line.try_into().unwrap();
+
+        line >= self.viewport.y
+            && column >= self.viewport.x
+            && line <= self.viewport.y + self.viewport.rows
+            && column <= self.viewport.x + self.viewport.cols
     }
 }
 
