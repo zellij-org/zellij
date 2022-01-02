@@ -78,6 +78,14 @@ impl Default for PluginsConfig {
     }
 }
 
+impl FromIterator<PluginConfigFromYaml> for PluginsConfigFromYaml {
+    fn from_iter<T>(iter: T) -> Self
+        where T: IntoIterator<Item=PluginConfigFromYaml>
+    {
+        PluginsConfigFromYaml(iter.into_iter().collect())
+    }
+}
+
 impl TryFrom<PluginsConfigFromYaml> for PluginsConfig {
     type Error = PluginsConfigError;
 
@@ -173,19 +181,25 @@ impl Default for PluginType {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(knuffel::Decode)]
 pub struct PluginConfigFromYaml {
+    #[knuffel(child, unwrap(argument))]
     pub path: PathBuf,
+    #[knuffel(argument, str)]
     pub tag: PluginTag,
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub run: PluginTypeFromYaml,
+    //#[serde(default)] // TODO(tailhook) unused, should turn into KDL?
+    //pub config: serde_yaml::Value,
     #[serde(default)]
-    pub config: serde_yaml::Value,
-    #[serde(default)]
+    #[knuffel(child, unwrap(argument, default))]
     pub _allow_exec_host_cmd: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(knuffel::DecodeScalar)]
 pub enum PluginTypeFromYaml {
     Headless,
     Pane,

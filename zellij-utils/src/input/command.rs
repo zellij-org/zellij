@@ -10,25 +10,34 @@ pub enum TerminalAction {
 }
 
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+#[derive(knuffel::Decode)]
 pub struct RunCommand {
     #[serde(alias = "cmd")]
+    #[knuffel(argument)]
     pub command: PathBuf,
     #[serde(default)]
+    #[knuffel(arguments)]
     pub args: Vec<String>,
     #[serde(default)]
+    #[knuffel(property)]
     pub cwd: Option<PathBuf>,
 }
 
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+#[derive(knuffel::Decode)]
 pub struct RunCommandAction {
     #[serde(rename = "cmd")]
+    #[knuffel(argument)]
     pub command: PathBuf,
     #[serde(default)]
+    #[knuffel(arguments)]
     pub args: Vec<String>,
     #[serde(default)]
+    #[knuffel(property)]
     pub cwd: Option<PathBuf>,
     #[serde(default)]
+    #[knuffel(property)]
     pub direction: Option<Direction>,
 }
 

@@ -32,9 +32,12 @@ use std::{
     path::{Path, PathBuf},
 };
 use std::{fs::File, io::prelude::*};
+use std::str::FromStr;
 use url::Url;
+use anyhow::Context;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
+#[derive(knuffel::DecodeScalar)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
     Horizontal,
@@ -59,6 +62,18 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
+impl FromStr for SplitSize {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> anyhow::Result<SplitSize> {
+        use SplitSize::*;
+        if let Some(percent) = s.strip_suffix("%") {
+            Ok(Percent(percent.parse().context("invalid percent value")?))
+        } else {
+            Ok(Fixed(s.parse().context("invalid fixed value")?))
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
 pub enum Run {
@@ -70,6 +85,7 @@ pub enum Run {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
+#[derive(knuffel::Decode)]
 pub enum RunFromYaml {
     #[serde(rename = "plugin")]
     Plugin(RunPluginFromYaml),
@@ -79,9 +95,12 @@ pub enum RunFromYaml {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(crate = "self::serde")]
+#[derive(knuffel::Decode)]
 pub struct RunPluginFromYaml {
     #[serde(default)]
+    #[knuffel(property)]
     pub _allow_exec_host_cmd: bool,
+    #[knuffel(argument, str)]
     pub location: Url,
 }
 
@@ -457,19 +476,28 @@ impl LayoutTemplate {
 // The tab-layout struct used to specify each individual tab.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
+#[derive(knuffel::Decode)]
 pub struct TabLayout {
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub direction: Direction,
+    #[knuffel(child, unwrap(argument))]
     pub pane_name: Option<String>,
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub borderless: bool,
-    #[serde(default)]
-    pub parts: Vec<TabLayout>,
+    #[knuffel(child, unwrap(argument, str))]
     pub split_size: Option<SplitSize>,
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub name: String,
+    #[knuffel(child, unwrap(argument))]
     pub focus: Option<bool>,
+    #[knuffel(child)]
     pub run: Option<RunFromYaml>,
+    #[serde(default)]
+    #[knuffel(child, unwrap(children))]
+    pub parts: Vec<TabLayout>,
 }
 
 impl TabLayout {

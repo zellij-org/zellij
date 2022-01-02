@@ -1,3 +1,6 @@
+use anyhow::Context;
+use colorsys::Rgb;
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -14,20 +17,42 @@ struct Theme {
     palette: PaletteFromYaml,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct ThemeFromKdl {
+    #[knuffel(argument)]
+    name: String,
+    #[knuffel(child)]
+    palette: PaletteFromYaml,
+}
+
 /// Intermediate deserialization struct
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[derive(knuffel::Decode)]
 pub struct PaletteFromYaml {
+    #[knuffel(child, unwrap(argument, str))]
     pub fg: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub bg: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub black: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub gray: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub red: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub green: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub yellow: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub blue: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub magenta: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub cyan: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub white: PaletteColorFromYaml,
+    #[knuffel(child, unwrap(argument, str))]
     pub orange: PaletteColorFromYaml,
 }
 
@@ -38,6 +63,21 @@ pub struct PaletteFromYaml {
 pub enum PaletteColorFromYaml {
     Rgb((u8, u8, u8)),
     EightBit(u8),
+}
+
+impl FromStr for PaletteColorFromYaml {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with('#') {
+            Ok(PaletteColorFromYaml::Rgb(Rgb::from_hex_str(s)?.into()))
+        } else {
+            Ok(PaletteColorFromYaml::EightBit(
+                s.parse()
+                .context("expected either RGB prefixed by `#` or 8bit integer")?
+            ))
+        }
+    }
 }
 
 impl Default for PaletteColorFromYaml {
@@ -71,6 +111,16 @@ impl ThemesFromYaml {
         let mut theme = self.0.clone();
         theme.extend(other.0);
         Self(theme)
+    }
+}
+
+impl From<Vec<ThemeFromKdl>> for ThemesFromYaml {
+    fn from(src: Vec<ThemeFromKdl>) -> ThemesFromYaml {
+        ThemesFromYaml(
+            src.into_iter()
+            .map(|theme| (theme.name, Theme { palette: theme.palette }))
+            .collect()
+        )
     }
 }
 

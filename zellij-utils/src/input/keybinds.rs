@@ -18,10 +18,50 @@ pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 /// Used in the config file.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct KeybindsFromYaml {
-    #[serde(flatten)]
-    keybinds: HashMap<InputMode, Vec<KeyActionUnbind>>,
     #[serde(default)]
     unbind: Unbind,
+    #[serde(flatten)]
+    keybinds: HashMap<InputMode, Vec<KeyActionUnbind>>,
+}
+
+/// Intermediate struct used for deserialisation
+/// Used in the KDL config file.
+#[derive(Clone, Debug, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct KeybindsFromKdl {
+    #[knuffel(children(name="unbind-all"))]
+    unbind_all: Vec<UnbindAllFromKdl>,
+    #[knuffel(children(name="unbind"))]
+    unbind: Vec<UnbindFromKdl>,
+    #[knuffel(children(name="key"))]
+    keys: Vec<KeyFromKdl>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct UnbindAllFromKdl {
+    #[knuffel(property)]
+    mode: Option<InputMode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct UnbindFromKdl {
+    #[knuffel(argument, str)]
+    key: Key,
+    #[knuffel(property)]
+    mode: Option<InputMode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct KeyFromKdl {
+    #[knuffel(argument, str)]
+    key: Key,
+    #[knuffel(property)]
+    mode: Option<InputMode>,
+    #[knuffel(children)]
+    actions: Vec<Action>,
 }
 
 /// Intermediate enum used for deserialisation
@@ -99,6 +139,32 @@ impl Keybinds {
         } else {
             default_keybinds
         }
+    }
+    /// Entrypoint from the config module
+    pub fn from_kdl_config_with_defaults(src: KeybindsFromKdl) -> Keybinds {
+        let mut defaults = Keybinds::new();
+        let unbind_all = src.unbind_all.iter()
+            .any(|unbind| unbind.mode.is_none());
+        if !unbind_all {
+            let mut default = Keybinds::default();
+            for mode in InputMode::iter() {
+                let unbind_whole_mode = src.unbind_all.iter()
+                    .any(|unbind| unbind.mode == Some(mode));
+                if unbind_whole_mode {
+                    continue;
+                }
+                if let Some(mode_keybinds) = default.0.remove(&mode) {
+                    let unbind_keys = src.unbind.iter()
+                        .filter(|k| k.mode.is_none() || k.mode == Some(mode))
+                        .map(|k| k.key.clone())
+                        .collect();
+                    defaults.0.insert(mode,
+                                      mode_keybinds.unbind_keys(unbind_keys));
+                }
+            }
+        };
+
+        defaults.merge_keybinds(Keybinds::from(src))
     }
 
     /// Unbinds the default keybindings in relation to their mode
@@ -256,6 +322,30 @@ impl From<KeybindsFromYaml> for Keybinds {
                 }
             }
             keybinds.0.insert(mode, mode_keybinds);
+        }
+        keybinds
+    }
+}
+
+impl From<KeybindsFromKdl> for Keybinds {
+    fn from(src: KeybindsFromKdl) -> Keybinds {
+        let mut keybinds = Keybinds::new();
+
+        for key in src.keys {
+            if let Some(mode) = key.mode {
+                keybinds.0.entry(mode).or_insert_with(ModeKeybinds::new)
+                    .0.insert(key.key, key.actions);
+            } else {
+                for mode in InputMode::iter() {
+                    if mode == InputMode::Locked {
+                        // Keys without mode work everywhere
+                        // except Locked input mode
+                        continue;
+                    }
+                    keybinds.0.entry(mode).or_insert_with(ModeKeybinds::new)
+                        .0.insert(key.key, key.actions.clone());
+                }
+            }
         }
         keybinds
     }

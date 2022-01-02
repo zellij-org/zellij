@@ -1,5 +1,6 @@
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::fmt;
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
@@ -52,6 +53,54 @@ pub enum Key {
     Esc,
 }
 
+impl FromStr for Key {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> anyhow::Result<Key> {
+        use Key::*;
+        if let Some(c) = s.strip_prefix("Ctrl+") {
+            if c.chars().count() == 1 {
+                Ok(Ctrl(c.chars().next().unwrap()))
+            } else {
+                anyhow::bail!("single char expected after `Ctrl+`")
+            }
+        } else if let Some(c) = s.strip_prefix("Alt+") {
+            if c.chars().count() == 1 {
+                Ok(Alt(c.chars().next().unwrap()))
+            } else {
+                anyhow::bail!("single char expected after `Alt+`")
+            }
+        } else {
+            match &s[..] {
+                "backspace" => Ok(Backspace),
+                "left" => Ok(Left),
+                "right" => Ok(Right),
+                "up" => Ok(Up),
+                "down" => Ok(Down),
+                "home" => Ok(Home),
+                "end" => Ok(End),
+                "page-up" => Ok(PageUp),
+                "page-down" => Ok(PageDown),
+                "back-tab" => Ok(BackTab),
+                "delete" => Ok(Delete),
+                "insert" => Ok(Insert),
+                "null" => Ok(Null),
+                "esc" => Ok(Esc),
+                c if c.chars().count() == 1 => {
+                    Ok(Char(c.chars().next().unwrap()))
+                }
+                s if s.starts_with("F") => {
+                    s[1..].parse()
+                        .map(F)
+                        .map_err(|_| anyhow::anyhow!("unexpected key {:?}", s))
+                }
+                s => {
+                    anyhow::bail!("unexpected key {:?}", s)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 
 // FIXME: This should be extended to handle different button clicks (not just
@@ -84,6 +133,7 @@ pub enum Event {
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum)]
+#[derive(knuffel::DecodeScalar)]
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
@@ -129,6 +179,7 @@ impl Default for InputMode {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(knuffel::DecodeScalar)]
 pub enum ThemeHue {
     Light,
     Dark,
@@ -151,7 +202,7 @@ impl Default for PaletteColor {
 }
 
 impl FromStr for InputMode {
-    type Err = Box<dyn std::error::Error>;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -166,7 +217,7 @@ impl FromStr for InputMode {
             "move" => Ok(InputMode::Move),
             "prompt" => Ok(InputMode::Prompt),
             "renamepane" => Ok(InputMode::RenamePane),
-            e => Err(e.to_string().into()),
+            v => anyhow::bail!("unknown InputMode value: {:?}", v),
         }
     }
 }
@@ -183,6 +234,7 @@ impl Default for PaletteSource {
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct Palette {
+    // Can't be set from config
     pub source: PaletteSource,
     pub theme_hue: ThemeHue,
     pub fg: PaletteColor,
@@ -248,6 +300,13 @@ impl PluginTag {
 impl From<PluginTag> for String {
     fn from(tag: PluginTag) -> Self {
         tag.0
+    }
+}
+
+impl FromStr for PluginTag {
+    type Err = Infallible;
+    fn from_str(s: &str) -> Result<Self, Infallible> {
+        Ok(PluginTag(s.into()))
     }
 }
 

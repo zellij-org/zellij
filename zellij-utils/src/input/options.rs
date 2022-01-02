@@ -7,6 +7,7 @@ use std::str::FromStr;
 use zellij_tile::data::InputMode;
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
+#[derive(knuffel::DecodeScalar)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -33,6 +34,7 @@ impl FromStr for OnForceClose {
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
+#[derive(knuffel::Decode)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
 /// TODO: In order to correctly parse boolean flags, this is currently split
@@ -42,51 +44,64 @@ pub struct Options {
     /// that is compatible with more fonts (true or false)
     #[clap(long)]
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub simplified_ui: Option<bool>,
     /// Set the default theme
     #[clap(long)]
+    #[knuffel(child, unwrap(argument))]
     pub theme: Option<String>,
     /// Set the default mode
     #[clap(long, arg_enum, hide_possible_values = true)]
+    #[knuffel(child, unwrap(argument))]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, parse(from_os_str))]
+    #[knuffel(child, unwrap(argument))]
     pub default_shell: Option<PathBuf>,
     /// Set the layout_dir, defaults to
     /// subdirectory of config dir
     #[clap(long, parse(from_os_str))]
+    #[knuffel(child, unwrap(argument))]
     pub layout_dir: Option<PathBuf>,
     #[clap(long)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
     /// Can be temporarily bypassed by the [SHIFT] key
+    #[knuffel(child, unwrap(argument))]
     pub mouse_mode: Option<bool>,
     #[clap(long)]
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
     #[clap(long)]
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
     #[clap(long, arg_enum, hide_possible_values = true)]
+    #[knuffel(child, unwrap(argument))]
     pub on_force_close: Option<OnForceClose>,
     #[clap(long)]
+    #[knuffel(child, unwrap(argument))]
     pub scroll_buffer_size: Option<usize>,
 
     /// Switch to using a user supplied command for clipboard instead of OSC52
     #[clap(long)]
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub copy_command: Option<String>,
 
     /// OSC52 destination clipboard
     #[clap(long, arg_enum, ignore_case = true, conflicts_with = "copy-command")]
     #[serde(default)]
+    #[knuffel(child, unwrap(argument))]
     pub copy_clipboard: Option<Clipboard>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(knuffel::DecodeScalar)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,

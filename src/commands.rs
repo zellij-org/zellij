@@ -18,6 +18,7 @@ use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
     setup::{get_default_data_dir, Setup},
+    input::config::ConfigError,
 };
 
 pub(crate) use crate::sessions::list_sessions;
@@ -168,8 +169,12 @@ fn attach_with_session_name(
 pub(crate) fn start_client(opts: CliArgs) {
     let (config, layout, config_options) = match Setup::from_options(&opts) {
         Ok(results) => results,
+        Err(ConfigError::Kdl(e)) => {
+            eprintln!("{:?}", miette::Report::new(e));
+            process::exit(1);
+        }
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{:#}", e);
             process::exit(1);
         }
     };

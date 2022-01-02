@@ -1,21 +1,23 @@
 //! Deserializes configuration options.
+use std::default::Default;
 use std::fmt;
-use std::fs::File;
-use std::io::{self, Read};
+use std::fs::{read_to_string};
+use std::io;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 
-use super::keybinds::{Keybinds, KeybindsFromYaml};
+use super::keybinds::{Keybinds, KeybindsFromYaml, KeybindsFromKdl};
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
-use super::theme::ThemesFromYaml;
+use super::theme::{ThemesFromYaml, ThemeFromKdl};
 use crate::cli::{CliArgs, Command};
 use crate::setup;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
+const DEFAULT_CONFIG_KDL: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
 
@@ -27,6 +29,20 @@ pub struct ConfigFromYaml {
     pub keybinds: Option<KeybindsFromYaml>,
     pub themes: Option<ThemesFromYaml>,
     #[serde(default)]
+    pub plugins: PluginsConfigFromYaml,
+}
+
+/// Intermediate deserialization config struct
+#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(knuffel::Decode)]
+pub struct ConfigFromKdl {
+    #[knuffel(flatten(child))]
+    pub options: Options,
+    #[knuffel(child)]
+    pub keybinds: Option<KeybindsFromKdl>,
+    #[knuffel(children(name="theme"))]
+    pub themes: Option<Vec<ThemeFromKdl>>,
+    #[knuffel(children(name="plugin"))]
     pub plugins: PluginsConfigFromYaml,
 }
 
@@ -44,6 +60,11 @@ pub enum ConfigError {
     // Deserialization error
     #[error("Deserialization error: {0}")]
     Serde(#[from] serde_yaml::Error),
+
+    /// KDL parsing error
+    #[error("Error parsing config")]
+    Kdl(#[from] knuffel::Error<knuffel::span::Span>),
+
     // Io error
     #[error("IoError: {0}")]
     Io(#[from] io::Error),
@@ -97,9 +118,12 @@ impl TryFrom<&CliArgs> for Config {
             .or_else(setup::find_default_config_dir);
 
         if let Some(ref config) = config_dir {
-            let path = config.join(DEFAULT_CONFIG_FILE_NAME);
-            if path.exists() {
-                Config::new(&path)
+            let kdl = config.join(DEFAULT_CONFIG_KDL);
+            let yaml = config.join(DEFAULT_CONFIG_FILE_NAME);
+            if kdl.exists() {
+                Config::new(&kdl)
+            } else if yaml.exists() {
+                Config::new(&yaml)
             } else {
                 Config::from_default_assets()
             }
@@ -133,12 +157,16 @@ impl Config {
 
     /// Deserializes from given path.
     pub fn new(path: &Path) -> ConfigResult {
-        match File::open(path) {
-            Ok(mut file) => {
-                let mut yaml_config = String::new();
-                file.read_to_string(&mut yaml_config)
-                    .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
-                Ok(Config::from_yaml(&yaml_config)?)
+        match read_to_string(&path) {
+            Ok(config_text) => {
+                if path.extension().and_then(|s| s.to_str()) == Some("kdl") {
+                    let file_name = path.display().to_string();
+                    let parsed: ConfigFromKdl;
+                    parsed = knuffel::parse(&file_name, &config_text)?;
+                    Ok(parsed.try_into()?)
+                } else {
+                    Ok(Config::from_yaml(&config_text)?)
+                }
             }
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }
@@ -178,6 +206,26 @@ impl TryFrom<ConfigFromYaml> for Config {
             options,
             plugins,
             themes,
+        })
+    }
+}
+
+impl TryFrom<ConfigFromKdl> for Config {
+    type Error = ConfigError;
+
+    fn try_from(src: ConfigFromKdl) -> ConfigResult {
+        let keybinds = if let Some(keybinds) = src.keybinds {
+            Keybinds::from_kdl_config_with_defaults(keybinds)
+        } else {
+            Keybinds::default()
+        };
+        let plugins = PluginsConfig::get_plugins_with_default(
+            src.plugins.try_into()?);
+        Ok(Self {
+            keybinds,
+            options: src.options,
+            plugins,
+            themes: src.themes.map(|vec| vec.into()),
         })
     }
 }
