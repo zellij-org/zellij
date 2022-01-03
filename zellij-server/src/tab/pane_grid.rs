@@ -1647,27 +1647,30 @@ impl<'a> PaneGrid<'a> {
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
         // true => successfully filled space over pane
         // false => didn't succeed, so didn't do anything
+        log::info!("fill_space_over_pane");
         let (freed_width, freed_height) = {
             let panes = self.panes.borrow_mut();
             let pane_to_close = panes.get(&id).unwrap();
             let freed_space = pane_to_close.position_and_size();
-            let freed_width = freed_space.cols.as_percent().unwrap();
-            let freed_height = freed_space.rows.as_percent().unwrap();
+            let freed_width = freed_space.cols.as_percent();
+            let freed_height = freed_space.rows.as_percent();
             (freed_width, freed_height)
         };
-        if let Some((panes_to_grow, direction)) = self.find_panes_to_grow(id) {
-            self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
-            let side_length = match direction {
-                Direction::Vertical => self.display_area.rows,
-                Direction::Horizontal => self.display_area.cols,
-            };
-            {
-                let mut panes = self.panes.borrow_mut();
-                (*panes).remove(&id);
+        if let (Some(freed_width), Some(freed_height)) = (freed_width, freed_height) {
+            if let Some((panes_to_grow, direction)) = self.find_panes_to_grow(id) {
+                self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
+                let side_length = match direction {
+                    Direction::Vertical => self.display_area.rows,
+                    Direction::Horizontal => self.display_area.cols,
+                };
+                {
+                    let mut panes = self.panes.borrow_mut();
+                    (*panes).remove(&id);
+                }
+                let mut pane_resizer = PaneResizer::new(self.panes.clone());
+                let _ = pane_resizer.layout(direction, side_length);
+                return true;
             }
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(direction, side_length);
-            return true;
         }
         false
     }
