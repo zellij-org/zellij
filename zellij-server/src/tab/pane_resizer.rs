@@ -4,9 +4,9 @@ use cassowary::{
     Expression, Solver, Variable,
     WeightedRelation::EQ,
 };
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::cell::RefCell;
 use zellij_utils::{
     input::layout::Direction,
     pane_size::{Constraint, Dimension, PaneGeom},
@@ -68,7 +68,6 @@ impl<'a> PaneResizer<'a> {
             .add_constraints(&constraints)
             .map_err(|e| format!("{:?}", e))?;
 
-
         Ok(grid)
     }
 
@@ -83,7 +82,6 @@ impl<'a> PaneResizer<'a> {
                 )
             })
             .collect();
-
 
         // Round f64 pane sizes to usize without gaps or overlap
         let mut finalised = Vec::new();

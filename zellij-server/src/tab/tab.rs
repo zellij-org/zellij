@@ -4,8 +4,8 @@
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use super::pane_grid::{split, PaneGrid};
 use crate::ui::pane_boundaries_frame::FrameParams;
-use super::pane_grid::{PaneGrid, split};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -546,8 +546,7 @@ impl Tab {
             let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
             let terminal_ws = terminal_to_split.position_and_size();
             if let PaneId::Terminal(term_pid) = pid {
-                if let Some((first_winsize, second_winsize)) =
-                    split(split_direction, &terminal_ws)
+                if let Some((first_winsize, second_winsize)) = split(split_direction, &terminal_ws)
                 {
                     let new_terminal = TerminalPane::new(
                         term_pid,
@@ -561,7 +560,7 @@ impl Tab {
                     // ¯\_(ツ)_/¯
                     let relayout_direction = match split_direction {
                         Direction::Vertical => Direction::Horizontal,
-                        Direction::Horizontal => Direction::Vertical
+                        Direction::Horizontal => Direction::Vertical,
                     };
                     self.relayout_tab(relayout_direction);
                 }
@@ -1410,7 +1409,7 @@ impl Tab {
                     }
                     return true;
                 }
-                None => Some(active_pane_id)
+                None => Some(active_pane_id),
             }
         } else {
             active_pane_id
