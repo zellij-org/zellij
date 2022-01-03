@@ -306,20 +306,20 @@ impl Pane for PluginPane {
         self.geom.y -= count;
         self.should_render = true;
     }
-    fn scroll_up(&mut self, count: usize) {
+    fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::ScrollUp(count)),
             ))
             .unwrap();
     }
-    fn scroll_down(&mut self, count: usize) {
+    fn scroll_down(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::ScrollDown(count)),
             ))
             .unwrap();
@@ -327,29 +327,30 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         unimplemented!();
     }
-    fn start_selection(&mut self, start: &Position) {
+    fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+        log::info!("plugin pane send left click plugin instruction");
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
             ))
             .unwrap();
     }
-    fn update_selection(&mut self, position: &Position) {
+    fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
             ))
             .unwrap();
     }
-    fn end_selection(&mut self, end: Option<&Position>) {
+    fn end_selection(&mut self, end: Option<&Position>, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::Release(
                     end.map(|Position { line, column }| (line.0, column.0)),
                 )),
@@ -379,11 +380,11 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
-    fn handle_right_click(&mut self, to: &Position) {
+    fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
-                None,
+                Some(client_id),
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();

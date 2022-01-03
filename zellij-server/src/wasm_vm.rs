@@ -141,7 +141,8 @@ pub(crate) fn wasm_thread_main(
                     if subs.contains(&event_type)
                         && ((pid.is_none() && cid.is_none())
                             || (pid.is_none() && cid == Some(client_id))
-                            || (cid.is_none() && pid == Some(plugin_id)))
+                            || (cid.is_none() && pid == Some(plugin_id))
+                            || (cid == Some(client_id) && pid == Some(plugin_id)))
                     {
                         let update = instance.exports.get_function("update").unwrap();
                         wasi_write_object(&plugin_env.wasi_env, &event);

@@ -177,8 +177,8 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
-    fn scroll_up(&mut self, count: usize);
-    fn scroll_down(&mut self, count: usize);
+    fn scroll_up(&mut self, count: usize, client_id: ClientId);
+    fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;
@@ -194,9 +194,9 @@ pub trait Pane {
             None => self.position_and_size().contains(position),
         }
     }
-    fn start_selection(&mut self, _start: &Position) {}
-    fn update_selection(&mut self, _position: &Position) {}
-    fn end_selection(&mut self, _end: Option<&Position>) {}
+    fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
+    fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
+    fn end_selection(&mut self, _end: Option<&Position>, _client_id: ClientId) {}
     fn reset_selection(&mut self) {}
     fn get_selected_text(&self) -> Option<String> {
         None
@@ -265,7 +265,7 @@ pub trait Pane {
     }
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
-    fn handle_right_click(&mut self, _to: &Position) {}
+    fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
 }
 
 macro_rules! resize_pty {
@@ -1696,7 +1696,7 @@ impl Tab {
                 .panes
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
-            active_terminal.scroll_up(1);
+            active_terminal.scroll_up(1, client_id);
         }
     }
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) {
@@ -1705,7 +1705,7 @@ impl Tab {
                 .panes
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
-            active_terminal.scroll_down(1);
+            active_terminal.scroll_down(1, client_id);
             if !active_terminal.is_scrolled() {
                 self.process_pending_vte_events(active_terminal_id);
             }
@@ -1719,7 +1719,7 @@ impl Tab {
                 .unwrap();
             // prevent overflow when row == 0
             let scroll_rows = active_terminal.rows().max(1) - 1;
-            active_terminal.scroll_up(scroll_rows);
+            active_terminal.scroll_up(scroll_rows, client_id);
         }
     }
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) {
@@ -1730,7 +1730,7 @@ impl Tab {
                 .unwrap();
             // prevent overflow when row == 0
             let scroll_rows = active_terminal.rows().max(1) - 1;
-            active_terminal.scroll_down(scroll_rows);
+            active_terminal.scroll_down(scroll_rows, client_id);
             if !active_terminal.is_scrolled() {
                 self.process_pending_vte_events(active_terminal_id);
             }
@@ -1744,7 +1744,7 @@ impl Tab {
                 .unwrap();
             // prevent overflow when row == 0
             let scroll_rows = (active_terminal.rows().max(1) - 1) / 2;
-            active_terminal.scroll_up(scroll_rows);
+            active_terminal.scroll_up(scroll_rows, client_id);
         }
     }
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) {
@@ -1755,7 +1755,7 @@ impl Tab {
                 .unwrap();
             // prevent overflow when row == 0
             let scroll_rows = (active_terminal.rows().max(1) - 1) / 2;
-            active_terminal.scroll_down(scroll_rows);
+            active_terminal.scroll_down(scroll_rows, client_id);
             if !active_terminal.is_scrolled() {
                 self.process_pending_vte_events(active_terminal_id);
             }
@@ -1785,14 +1785,14 @@ impl Tab {
             }
         }
     }
-    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize) {
+    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            pane.scroll_up(lines);
+            pane.scroll_up(lines, client_id);
         }
     }
-    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize) {
+    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            pane.scroll_down(lines);
+            pane.scroll_down(lines, client_id);
             if !pane.is_scrolled() {
                 if let PaneId::Terminal(pid) = pane.pid() {
                     self.process_pending_vte_events(pid);
@@ -1832,7 +1832,7 @@ impl Tab {
 
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
-            pane.start_selection(&relative_position);
+            pane.start_selection(&relative_position, client_id);
             self.selecting_with_mouse = true;
         };
     }
@@ -1841,7 +1841,7 @@ impl Tab {
 
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
-            pane.handle_right_click(&relative_position);
+            pane.handle_right_click(&relative_position, client_id);
         };
     }
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
@@ -1869,14 +1869,14 @@ impl Tab {
         if active_pane_id != self.get_pane_id_at(position, true) {
             if let Some(active_pane_id) = active_pane_id {
                 if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
-                    active_pane.end_selection(None);
+                    active_pane.end_selection(None, client_id);
                     selected_text = active_pane.get_selected_text();
                     active_pane.reset_selection();
                 }
             }
         } else if let Some(pane) = self.get_pane_at(position, true) {
             let relative_position = pane.relative_position(position);
-            pane.end_selection(Some(&relative_position));
+            pane.end_selection(Some(&relative_position), client_id);
             selected_text = pane.get_selected_text();
             pane.reset_selection();
         }
@@ -1890,7 +1890,7 @@ impl Tab {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
                 let relative_position = active_pane.relative_position(position_on_screen);
-                active_pane.update_selection(&relative_position);
+                active_pane.update_selection(&relative_position, client_id);
             }
         }
     }
