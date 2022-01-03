@@ -58,6 +58,7 @@ pub(crate) fn stdin_loop(
 ) {
     let mut pasting = false;
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let csi_mouse_sgr_start = vec![27, 91, 60];
     let adjusted_keys = keys_to_adjust();
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
@@ -149,6 +150,19 @@ pub(crate) fn stdin_loop(
                     continue;
                 }
             }
+
+            // FIXME: termion does not properly parse some csi sgr mouse sequences
+            // like ctrl + click.
+            // As a workaround, to avoid writing these sequences to tty stdin,
+            // we discard them.
+            if let termion::event::Event::Unsupported(_) = key_event {
+                if raw_bytes.len() > csi_mouse_sgr_start.len()
+                    && raw_bytes[0..csi_mouse_sgr_start.len()] == csi_mouse_sgr_start
+                {
+                    continue;
+                }
+            }
+
             send_input_instructions
                 .send(InputInstruction::KeyEvent(key_event, raw_bytes))
                 .unwrap();

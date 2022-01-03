@@ -1,6 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
@@ -114,6 +115,7 @@ pub(crate) struct Tab {
     draw_pane_frames: bool,
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    selecting_with_mouse: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -329,6 +331,7 @@ impl Tab {
             pending_vte_events: HashMap::new(),
             connected_clients_in_app,
             connected_clients,
+            selecting_with_mouse: false,
         }
     }
 
@@ -1808,7 +1811,7 @@ impl Tab {
     }
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
-        if self.fullscreen_is_active {
+        if self.fullscreen_is_active && self.is_position_inside_viewport(point) {
             let first_client_id = self.connected_clients.iter().next().unwrap(); // TODO: instead of doing this, record the pane that is in fullscreen
             return self.get_active_pane_id(*first_client_id);
         }
@@ -1828,6 +1831,7 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position);
+            self.selecting_with_mouse = true;
         };
     }
     pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) {
@@ -1853,6 +1857,10 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        if !self.selecting_with_mouse {
+            return;
+        }
+
         let active_pane_id = self.get_active_pane_id(client_id);
         // on release, get the selected text from the active pane, and reset it's selection
         let mut selected_text = None;
@@ -1874,6 +1882,7 @@ impl Tab {
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
         }
+        self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
@@ -1977,6 +1986,19 @@ impl Tab {
                 .unwrap();
             active_terminal.update_name(s);
         }
+    }
+
+    pub fn is_position_inside_viewport(&self, point: &Position) -> bool {
+        let Position {
+            line: Line(line),
+            column: Column(column),
+        } = *point;
+        let line: usize = line.try_into().unwrap();
+
+        line >= self.viewport.y
+            && column >= self.viewport.x
+            && line <= self.viewport.y + self.viewport.rows
+            && column <= self.viewport.x + self.viewport.cols
     }
 }
 

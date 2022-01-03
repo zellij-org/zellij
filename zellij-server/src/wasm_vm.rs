@@ -398,7 +398,10 @@ fn host_open_file(plugin_env: &PluginEnv) {
 fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
     plugin_env
         .senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, None)) // this is a hack, we should be able to return the client id here
+        .send_to_screen(ScreenInstruction::GoToTab(
+            tab_idx,
+            Some(plugin_env.client_id),
+        ))
         .unwrap();
 }
 

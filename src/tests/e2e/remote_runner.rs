@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use zellij_tile::data::Palette;
 
@@ -135,8 +136,8 @@ fn read_from_channel(
     last_snapshot: &Arc<Mutex<String>>,
     cursor_coordinates: &Arc<Mutex<(usize, usize)>>,
     pane_geom: &PaneGeom,
-) -> (Arc<Mutex<bool>>, std::thread::JoinHandle<()>) {
-    let should_keep_running = Arc::new(Mutex::new(true));
+) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {
+    let should_keep_running = Arc::new(AtomicBool::new(true));
     let thread = std::thread::Builder::new()
         .name("read_thread".into())
         .spawn({
@@ -151,7 +152,7 @@ fn read_from_channel(
             move || {
                 let mut should_sleep = false;
                 loop {
-                    if !*should_keep_running.lock().unwrap() {
+                    if !should_keep_running.load(Ordering::SeqCst) {
                         break;
                     }
                     if should_sleep {
@@ -307,7 +308,7 @@ pub struct RemoteRunner {
     panic_on_no_retries_left: bool,
     last_snapshot: Arc<Mutex<String>>,
     cursor_coordinates: Arc<Mutex<(usize, usize)>>, // x, y
-    reader_thread: (Arc<Mutex<bool>>, std::thread::JoinHandle<()>),
+    reader_thread: (Arc<AtomicBool>, std::thread::JoinHandle<()>),
     pub test_timed_out: bool,
 }
 
@@ -606,6 +607,6 @@ impl Drop for RemoteRunner {
     fn drop(&mut self) {
         let _ = self.channel.lock().unwrap().close();
         let reader_thread_running = &mut self.reader_thread.0;
-        *reader_thread_running.lock().unwrap() = false;
+        reader_thread_running.store(false, Ordering::SeqCst);
     }
 }

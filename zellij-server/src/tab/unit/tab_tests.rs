@@ -12,7 +12,7 @@ use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;

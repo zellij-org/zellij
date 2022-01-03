@@ -69,7 +69,7 @@ args = ["run", "--", "--data-dir", "${CARGO_TARGET_DIR}/dev-data/", "@@split(CAR
 
 # Simple clippy tweak
 [tasks.clippy]
-args = ["clippy", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["clippy", "--all-targets", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Release building and installing Zellij
 [tasks.install]
