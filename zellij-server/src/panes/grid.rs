@@ -399,6 +399,7 @@ pub struct Grid {
     pub title: Option<String>,
     pub is_scrolled: bool,
     pub link_handler: LinkHandler,
+    pub ring_bell: bool,
     scrollback_buffer_lines: usize,
 }
 
@@ -446,6 +447,7 @@ impl Grid {
             changed_colors: None,
             is_scrolled: false,
             link_handler: Default::default(),
+            ring_bell: false,
             scrollback_buffer_lines: 0,
         }
     }
@@ -1506,6 +1508,9 @@ impl Perform for Grid {
 
     fn execute(&mut self, byte: u8) {
         match byte {
+            7 => {
+                self.ring_bell = true;
+            }
             8 => {
                 // backspace
                 self.move_cursor_back(1);
