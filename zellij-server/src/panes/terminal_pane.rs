@@ -273,6 +273,11 @@ impl Pane for TerminalPane {
                 }
                 character_styles.clear();
             }
+            if self.grid.ring_bell {
+                let ring_bell = '\u{7}';
+                vte_output.push(ring_bell);
+                self.grid.ring_bell = false;
+            }
             self.set_should_render(false);
             Some(vte_output)
         } else {
