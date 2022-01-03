@@ -176,14 +176,16 @@ pub(crate) fn wasm_thread_main(
             }
             PluginInstruction::AddClient(client_id) => {
                 connected_clients.push(client_id);
+
                 let mut seen = HashSet::new();
                 let mut new_plugins = HashMap::new();
-                for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
+                for (&(plugin_id, _), (instance, plugin_env)) in &plugin_map {
                     if seen.contains(&plugin_id) {
                         continue;
                     } else {
                         seen.insert(plugin_id);
                         let mut new_plugin_env = plugin_env.clone();
+
                         new_plugin_env.client_id = client_id;
                         new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
                     }
