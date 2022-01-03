@@ -46,105 +46,105 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn resize_pane_left(&'a mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
+        if self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+            self.increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
             // let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT);
+        } else if self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+            self.reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
         }
     }
     pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
+        if self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+            self.increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
             // TODO: CONTINUE HERE - fix these to self.panes.clone() - then fix the rest of the
             // functions to match, those functions that break out of the RC (eg. return panes) make
             // return pane ids and handle them in function, a little work, but eh - we'll get
             // through it!
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT);
+        } else if self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+            self.reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
         }
     }
     pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+        if self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+            self.increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+        } else if self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+            self.reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
         }
     }
     pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+        if self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+            self.increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+        } else if self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+            self.reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
         }
     }
     pub fn resize_increase(&mut self, pane_id: &PaneId) {
-        if self.try_increase_pane_and_surroundings_right_and_down(&pane_id) {
+        if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left_and_down(&pane_id) {
+        if self.try_increase_pane_and_surroundings_left_and_down(pane_id) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_right_and_up(&pane_id) {
+        if self.try_increase_pane_and_surroundings_right_and_up(pane_id) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left_and_up(&pane_id) {
+        if self.try_increase_pane_and_surroundings_left_and_up(pane_id) {
             return;
         }
 
-        if self.try_increase_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
             return;
         }
-        self.try_increase_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT);
+        self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_decrease(&mut self, pane_id: &PaneId) {
-        if self.try_reduce_pane_and_surroundings_left_and_up(&pane_id) {
+        if self.try_reduce_pane_and_surroundings_left_and_up(pane_id) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right_and_up(&pane_id) {
+        if self.try_reduce_pane_and_surroundings_right_and_up(pane_id) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right_and_down(&pane_id) {
+        if self.try_reduce_pane_and_surroundings_right_and_down(pane_id) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_left_and_down(&pane_id) {
+        if self.try_reduce_pane_and_surroundings_left_and_down(pane_id) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_left(&pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right(&pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_up(&pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_down(&pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
     }
     fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         let panes = self.panes.borrow();
@@ -1405,7 +1405,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let current_pane = panes.get(&current_pane_id)?;
+        let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
@@ -1425,7 +1425,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let current_pane = panes.get(&current_pane_id)?;
+        let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
@@ -1445,7 +1445,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let current_pane = panes.get(&current_pane_id)?;
+        let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
@@ -1465,7 +1465,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn next_selectable_pane_id_to_the_right(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let current_pane = panes.get(&current_pane_id)?;
+        let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
@@ -1705,11 +1705,7 @@ impl<'a> PaneGrid<'a> {
                 None
             };
 
-            if let Some(direction) = direction {
-                Some((*t_id_to_split, direction))
-            } else {
-                None
-            }
+            direction.map(|direction| (*t_id_to_split, direction))
         })
     }
 }
