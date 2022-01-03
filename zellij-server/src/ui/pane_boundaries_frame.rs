@@ -2,8 +2,8 @@ use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
-use zellij_utils::pane_size::Viewport;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
+use zellij_utils::{envs::get_session_name, pane_size::Viewport};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -560,6 +560,15 @@ impl PaneFrame {
                 )
                 .unwrap(); // goto row/col + boundary character
             }
+        }
+        if self.is_main_client {
+            write!(
+                &mut vte_output,
+                "\u{1b}]0;Zellij ({}) - {}",
+                get_session_name().unwrap(),
+                self.title
+            )
+            .unwrap();
         }
         vte_output
     }
