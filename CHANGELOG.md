@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: ensure clippy runs on all targets (https://github.com/zellij-org/zellij/pull/972)
 * Fix: atomically create default assets every time a session starts (https://github.com/zellij-org/zellij/pull/961)
 * Fix: Allow multiple users to switch tabs with the mouse (https://github.com/zellij-org/zellij/pull/959)
+* Fix: Allow switching tabs with the mouse when pane is in fullscreen (https://github.com/zellij-org/zellij/pull/977)
 
 ## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
