@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Allow switching tabs with the mouse when pane is in fullscreen (https://github.com/zellij-org/zellij/pull/977)
 * Fix: pass bell (helpful for eg. desktop notifications) from terminal to desktop (https://github.com/zellij-org/zellij/pull/981)
 * Fix: tab click crash on mouse click with multiple users (https://github.com/zellij-org/zellij/pull/984)
+* Fix: accidental tab synchronization bug between multiple users when clicking with mouse (https://github.com/zellij-org/zellij/pull/986)
 
 ## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
