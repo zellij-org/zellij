@@ -414,11 +414,11 @@ impl Pane for TerminalPane {
         self.geom.y -= count;
         self.reflow_lines();
     }
-    fn scroll_up(&mut self, count: usize) {
+    fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
     }
-    fn scroll_down(&mut self, count: usize) {
+    fn scroll_down(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
@@ -452,12 +452,12 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn start_selection(&mut self, start: &Position) {
+    fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
     }
 
-    fn update_selection(&mut self, to: &Position) {
+    fn update_selection(&mut self, to: &Position, _client_id: ClientId) {
         let should_scroll = self.selection_scrolled_at.elapsed()
             >= time::Duration::from_millis(SELECTION_SCROLL_INTERVAL_MS);
         // TODO: check how far up/down mouse is relative to pane, to increase scroll lines?
@@ -474,7 +474,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: Option<&Position>) {
+    fn end_selection(&mut self, end: Option<&Position>, _client_id: ClientId) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }

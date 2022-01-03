@@ -931,7 +931,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_terminal_up(&point, 3);
+                    .scroll_terminal_up(&point, 3, client_id);
 
                 screen.render();
             }
@@ -947,7 +947,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_terminal_down(&point, 3);
+                    .scroll_terminal_down(&point, 3, client_id);
 
                 screen.render();
             }
