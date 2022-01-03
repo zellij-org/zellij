@@ -4,14 +4,16 @@ use cassowary::{
     Expression, Solver, Variable,
     WeightedRelation::EQ,
 };
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use zellij_utils::{
     input::layout::Direction,
     pane_size::{Constraint, Dimension, PaneGeom},
 };
 
 pub struct PaneResizer<'a> {
-    panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
 }
@@ -30,10 +32,9 @@ struct Span {
 type Grid = Vec<Vec<Span>>;
 
 impl<'a> PaneResizer<'a> {
-    pub fn new(panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>) -> Self {
-        let panes: HashMap<_, _> = panes.into_iter().collect();
+    pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>) -> Self {
         let mut vars = HashMap::new();
-        for &&k in panes.keys() {
+        for &k in panes.borrow().keys() {
             vars.insert(k, Variable::new());
         }
         PaneResizer {
@@ -122,8 +123,9 @@ impl<'a> PaneResizer<'a> {
     }
 
     fn apply_spans(&mut self, spans: Vec<Span>) {
+        let mut panes = self.panes.borrow_mut();
         for span in spans {
-            let pane = self.panes.get_mut(&span.pid).unwrap();
+            let pane = panes.get_mut(&span.pid).unwrap();
             let new_geom = match span.direction {
                 Direction::Horizontal => PaneGeom {
                     x: span.pos,
@@ -149,6 +151,7 @@ impl<'a> PaneResizer<'a> {
         // Select the spans running *perpendicular* to the direction of resize
         let spans: Vec<Span> = self
             .panes
+            .borrow()
             .values()
             .map(|p| self.get_span(!direction, p.as_ref()))
             .collect();
@@ -170,6 +173,7 @@ impl<'a> PaneResizer<'a> {
         let bwn = |v, (s, e)| s <= v && v < e;
         let mut spans: Vec<_> = self
             .panes
+            .borrow()
             .values()
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
@@ -186,7 +190,8 @@ impl<'a> PaneResizer<'a> {
 
     fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
         let pas = pane.current_geom();
-        let size_var = self.vars[&pane.pid()];
+        // let size_var = self.vars[&pane.pid()];
+        let size_var = *self.vars.get(&pane.pid()).unwrap();
         match direction {
             Direction::Horizontal => Span {
                 pid: pane.pid(),
