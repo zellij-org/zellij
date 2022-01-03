@@ -4,7 +4,7 @@
 use zellij_utils::{position::Position, serde, zellij_tile};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
-use crate::ui::pane_resizer::PaneGrid;
+use super::pane_grid::{PaneGrid, split};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -32,50 +32,14 @@ use zellij_utils::{
         layout::{Direction, Layout, Run},
         parse_keys,
     },
-    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
+    pane_size::{Offset, PaneGeom, Size, Viewport},
 };
-
-const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 const MIN_TERMINAL_HEIGHT: usize = 5;
 const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
-
-fn split(direction: Direction, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
-    let space = match direction {
-        Direction::Vertical => rect.cols,
-        Direction::Horizontal => rect.rows,
-    };
-    if let Some(p) = space.as_percent() {
-        let first_rect = match direction {
-            Direction::Vertical => PaneGeom {
-                cols: Dimension::percent(p / 2.0),
-                ..*rect
-            },
-            Direction::Horizontal => PaneGeom {
-                rows: Dimension::percent(p / 2.0),
-                ..*rect
-            },
-        };
-        let second_rect = match direction {
-            Direction::Vertical => PaneGeom {
-                x: first_rect.x + 1,
-                cols: first_rect.cols,
-                ..*rect
-            },
-            Direction::Horizontal => PaneGeom {
-                y: first_rect.y + 1,
-                rows: first_rect.rows,
-                ..*rect
-            },
-        };
-        Some((first_rect, second_rect))
-    } else {
-        None
-    }
-}
 
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
     // (columns_offset, rows_offset)
@@ -572,83 +536,44 @@ impl Tab {
         if self.fullscreen_is_active {
             self.unset_fullscreen();
         }
-        // TODO: check minimum size of active terminal
-
-        let (_largest_terminal_size, terminal_id_to_split) = self.get_panes().fold(
-            (0, None),
-            |(current_largest_terminal_size, current_terminal_id_to_split),
-             id_and_terminal_to_check| {
-                let (id_of_terminal_to_check, terminal_to_check) = id_and_terminal_to_check;
-                let terminal_size = (terminal_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO)
-                    * terminal_to_check.cols();
-                let terminal_can_be_split = terminal_to_check.cols() >= MIN_TERMINAL_WIDTH
-                    && terminal_to_check.rows() >= MIN_TERMINAL_HEIGHT
-                    && ((terminal_to_check.cols() > terminal_to_check.min_width() * 2)
-                        || (terminal_to_check.rows() > terminal_to_check.min_height() * 2));
-                if terminal_can_be_split && terminal_size > current_largest_terminal_size {
-                    (terminal_size, Some(*id_of_terminal_to_check))
+        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+        let terminal_id_and_split_direction = pane_grid.find_room_for_new_pane();
+        if let Some((terminal_id_to_split, split_direction)) = terminal_id_and_split_direction {
+            let next_terminal_position = self.get_next_terminal_position();
+            let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
+            let terminal_ws = terminal_to_split.position_and_size();
+            if let PaneId::Terminal(term_pid) = pid {
+                if let Some((first_winsize, second_winsize)) =
+                    split(split_direction, &terminal_ws)
+                {
+                    let new_terminal = TerminalPane::new(
+                        term_pid,
+                        second_winsize,
+                        self.colors,
+                        next_terminal_position,
+                        String::new(),
+                    );
+                    terminal_to_split.set_geom(first_winsize);
+                    self.panes.insert(pid, Box::new(new_terminal));
+                    // ¯\_(ツ)_/¯
+                    let relayout_direction = match split_direction {
+                        Direction::Vertical => Direction::Horizontal,
+                        Direction::Horizontal => Direction::Vertical
+                    };
+                    self.relayout_tab(relayout_direction);
+                }
+            }
+            if let Some(client_id) = client_id {
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, pid);
+                    }
                 } else {
-                    (current_largest_terminal_size, current_terminal_id_to_split)
-                }
-            },
-        );
-        if terminal_id_to_split.is_none() {
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(pid)) // we can't open this pane, close the pty
-                .unwrap();
-            return; // likely no terminal large enough to split
-        }
-        let terminal_id_to_split = terminal_id_to_split.unwrap();
-        let next_terminal_position = self.get_next_terminal_position();
-        let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
-        let terminal_ws = terminal_to_split.position_and_size();
-        if terminal_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO > terminal_to_split.cols()
-            && terminal_to_split.rows() > terminal_to_split.min_height() * 2
-        {
-            if let PaneId::Terminal(term_pid) = pid {
-                if let Some((top_winsize, bottom_winsize)) =
-                    split(Direction::Horizontal, &terminal_ws)
-                {
-                    let new_terminal = TerminalPane::new(
-                        term_pid,
-                        bottom_winsize,
-                        self.colors,
-                        next_terminal_position,
-                        String::new(),
-                    );
-                    terminal_to_split.set_geom(top_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
-                    self.relayout_tab(Direction::Vertical);
-                }
-            }
-        } else if terminal_to_split.cols() > terminal_to_split.min_width() * 2 {
-            if let PaneId::Terminal(term_pid) = pid {
-                if let Some((left_winsize, right_winsize)) =
-                    split(Direction::Vertical, &terminal_ws)
-                {
-                    let new_terminal = TerminalPane::new(
-                        term_pid,
-                        right_winsize,
-                        self.colors,
-                        next_terminal_position,
-                        String::new(),
-                    );
-                    terminal_to_split.set_geom(left_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
-                    self.relayout_tab(Direction::Horizontal);
-                }
-            }
-        }
-        if let Some(client_id) = client_id {
-            if self.session_is_mirrored {
-                // move all clients
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
                     self.active_panes.insert(client_id, pid);
                 }
-            } else {
-                self.active_panes.insert(client_id, pid);
             }
         }
     }
@@ -1162,6 +1087,7 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
+        println!("tab resize_left active_panes: {:?}", self.active_panes);
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
             pane_grid.resize_pane_left(&active_pane_id);
@@ -1736,7 +1662,6 @@ impl Tab {
         }
         let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
         if pane_grid.fill_space_over_pane(id) {
-            log::info!("successfully filled pane space in tab");
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&id);
             self.move_clients_out_of_pane(id);
@@ -1745,6 +1670,10 @@ impl Tab {
             }
             closed_pane
         } else {
+            self.panes.remove(&id);
+            // this is a bit of a roundabout way to say: this is the last pane and so the tab
+            // should be destroyed
+            self.active_panes.clear();
             None
         }
     }
